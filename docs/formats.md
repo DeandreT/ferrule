@@ -427,3 +427,7 @@ Tabular fallback identities defer to recognized filename extensions, and
 update-existing workbook controls are available only for flat XLSX output.
 Replacing a Protocol Buffers boundary schema requires its exact embedded root
 projection, or an explicit format change first.
+
+Explicit live JSON requests are available through the opt-in native
+[JSON REST host route](rest-json-host.md). Captured-response metadata and
+offline execution keep their existing behavior.
