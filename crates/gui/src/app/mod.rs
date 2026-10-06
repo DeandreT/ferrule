@@ -51,6 +51,7 @@ mod diagnostic_navigation;
 mod extra_source_ui;
 #[path = "extra_targets.rs"]
 mod extra_target_ui;
+mod failure_rules;
 #[path = "../workspace/functions.rs"]
 mod function_workspace;
 #[path = "host_parameters.rs"]
