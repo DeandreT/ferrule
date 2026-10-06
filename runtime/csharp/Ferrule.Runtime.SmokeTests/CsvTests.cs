@@ -106,6 +106,7 @@ internal static partial class Program
         var crossing = new string('x', 4095) + "🙂";
         CsvBytes(crossing + "\n", CsvRows(Group(Field("Value", Scalar(Text(crossing))))),
             [new("Value", FerruleScalarType.String)], new() { HasHeaders = false });
+        CsvTextBufferAndApiOwnership();
     }
 
     private static void CsvEmptyRecordsAndDialect()
@@ -208,6 +209,7 @@ internal static partial class Program
             [new("bad,name", FerruleScalarType.String)], new() { QuoteDisabled = true }));
         Equal<int?>(1, later.Row);
         Equal("bad,name", later.Field);
+        CsvTextFailurePayloads();
     }
 
     private static void CsvActualUtf8Limit()
@@ -241,6 +243,122 @@ internal static partial class Program
             CsvRows(Group(Field("x", Scalar(Text(new string('x', maximum))))), Scalar(Text("invalid"))),
             fields, headerless));
         Equal<int?>(1, later.Row);
+        CsvTextOutputLimit();
+    }
+
+    private static void CsvTextBufferAndApiOwnership()
+    {
+        FerruleCsvField[] fields = [new("Value", FerruleScalarType.String)];
+        // Short documents leave unused MemoryStream capacity. Decode only the
+        // written bytes, including the empty and BOM-only cases.
+        CsvBytes("", CsvRows(), fields, new() { HasHeaders = false });
+        CsvBytes("\uFEFF", CsvRows(), fields, new() { HasHeaders = false, Utf8Bom = true });
+        CsvBytes("Value\n", CsvRows(), fields);
+        CsvBytes("\"\"\n", CsvRows(Group()), [], new() { HasHeaders = false });
+        var primary = CsvRows(Group(Field("Value", Scalar(Text("short")))));
+        var bytes = FerruleCsv.SerializeBytes(primary, fields);
+        var text = FerruleCsv.Serialize(primary, fields);
+        Equal("Value\nshort\n", text);
+        Equal(false, text.Contains('\0'));
+        // Returned bytes stay caller-owned; they do not expose shared storage.
+        bytes[0] = (byte)'!';
+        Equal("Value\nshort\n", text);
+        Equal("Value\nshort\n", FerruleCsv.Serialize(primary, fields));
+        Equal((byte)'V', FerruleCsv.SerializeBytes(primary, fields)[0]);
+        CsvBytes("Value\nembedded\0zero\n",
+            CsvRows(Group(Field("Value", Scalar(Text("embedded\0zero"))))), fields);
+
+        var crossing = new string('x', 4095) + "🙂';tail";
+        CsvBytes("\uFEFF'V;alue'\n'" + new string('x', 4095) + "🙂'';tail'\n",
+            CsvRows(Group(Field("V;alue", Scalar(Text(crossing))))),
+            [new("V;alue", FerruleScalarType.String)],
+            new() { Delimiter = ';', Quote = '\'', Utf8Bom = true });
+        CsvBytes("Value\n'🙂\r'\n", CsvRows(Group(Field("Value", Scalar(Text("🙂\r"))))),
+            fields, new() { QuoteDisabled = false, Quote = '\'' });
+    }
+
+    private static void CsvTextFailurePayloads()
+    {
+        FerruleCsvField[] fields = [new("Value", FerruleScalarType.String)];
+        CsvMatchingFailure(FerruleCsvError.RootShape, Scalar(Text("wrong")),
+            [new("duplicate", FerruleScalarType.String), new("duplicate", FerruleScalarType.Int64)],
+            new() { Delimiter = '\0' });
+        CsvMatchingFailure(FerruleCsvError.UnsupportedSchema, CsvRows(),
+            [new("duplicate", FerruleScalarType.String), new("duplicate", FerruleScalarType.Int64)],
+            new() { Delimiter = '\0' });
+        CsvMatchingFailure(FerruleCsvError.BadDelimiter, CsvRows(Scalar(Text("wrong"))),
+            fields, new() { Delimiter = '\0' });
+        CsvMatchingFailure(FerruleCsvError.ConflictingQuoteSettings, CsvRows(),
+            fields, new() { QuoteDisabled = true, Quote = '"' });
+        CsvMatchingFailure(FerruleCsvError.BadQuote, CsvRows(), fields, new() { Quote = 'é' });
+        CsvMatchingFailure(FerruleCsvError.DelimiterQuoteConflict, CsvRows(),
+            fields, new() { Delimiter = '|', Quote = '|' });
+        CsvMatchingFailure(FerruleCsvError.MissingField,
+            CsvRows(Group(Field("bad,name", Scalar(Text("first,row")))), Group()),
+            [new("bad,name", FerruleScalarType.String)], new() { QuoteDisabled = true });
+        CsvMatchingFailure(FerruleCsvError.ValueType,
+            CsvRows(Group(Field("Value", Scalar(Text("first,row")))),
+                Group(Field("Value", Scalar(FerruleValue.XmlNil)))),
+            fields, new() { QuoteDisabled = true });
+        CsvMatchingFailure(FerruleCsvError.UnquotedHeaderBoundary, CsvRows(),
+            [new("bad,name", FerruleScalarType.String)], new() { QuoteDisabled = true });
+        CsvMatchingFailure(FerruleCsvError.UnquotedFieldBoundary,
+            CsvRows(Group(Field("Value", Scalar(Text("first,row"))))),
+            fields, new() { QuoteDisabled = true, HasHeaders = false });
+        CsvMatchingFailure(FerruleCsvError.UnquotedSingleEmptyRow,
+            CsvRows(Group(Field("Value", Scalar(FerruleValue.Null)))),
+            fields, new() { QuoteDisabled = true, HasHeaders = false });
+    }
+
+    private static void CsvTextOutputLimit()
+    {
+        FerruleCsvField[] fields = [new("x", FerruleScalarType.String)];
+        var maximum = FerruleCsv.MaximumOutputBytes;
+        var headerless = new FerruleCsvWriteOptions { HasHeaders = false };
+        var exact = FerruleCsv.Serialize(
+            CsvRows(Group(Field("x", Scalar(Text(new string('x', maximum - 1)))))), fields, headerless);
+        Equal(maximum, exact.Length);
+        Equal(true, exact.AsSpan(0, maximum - 1).IndexOfAnyExcept('x') < 0);
+        Equal('\n', exact[^1]);
+        CsvMatchingFailure(FerruleCsvError.OutputTooLarge,
+            CsvRows(Group(Field("x", Scalar(Text(new string('x', maximum)))))), fields, headerless);
+
+        // Compare text to the existing exact byte-budget case without creating
+        // another document-sized UTF-8 conversion array. A decoded BOM is one
+        // UTF-16 code unit but occupies three bytes in the logical byte budget.
+        var quotes = new string('"', (maximum - 8) / 2);
+        var bom = new FerruleCsvWriteOptions { Utf8Bom = true };
+        var expanded = FerruleCsv.Serialize(CsvRows(Group(Field("x", Scalar(Text(quotes))))), fields, bom);
+        Equal(maximum - 2, expanded.Length);
+        Equal(true, expanded.AsSpan(0, 3).SequenceEqual("\uFEFFx\n".AsSpan()));
+        Equal(true, expanded.AsSpan(3, expanded.Length - 4).IndexOfAnyExcept('"') < 0);
+        Equal('\n', expanded[^1]);
+        CsvMatchingFailure(FerruleCsvError.OutputTooLarge,
+            CsvRows(Group(Field("x", Scalar(Text(quotes + "a"))))), fields, bom);
+        CsvMatchingFailure(FerruleCsvError.RowShape,
+            CsvRows(Group(Field("x", Scalar(Text(new string('x', maximum))))), Scalar(Text("invalid"))),
+            fields, headerless);
+        CsvMatchingFailure(FerruleCsvError.UnquotedFieldBoundary,
+            CsvRows(Group(Field("x", Scalar(Text(new string(',', maximum)))))),
+            fields, new() { HasHeaders = false, QuoteDisabled = true });
+    }
+
+    private static void CsvMatchingFailure(
+        FerruleCsvError expected,
+        FerruleInstance primary,
+        IReadOnlyList<FerruleCsvField> fields,
+        FerruleCsvWriteOptions? options = null)
+    {
+        var bytes = CsvError(expected, () => FerruleCsv.SerializeBytes(primary, fields, options));
+        var text = CsvError(expected, () => FerruleCsv.Serialize(primary, fields, options));
+        Equal(bytes.Message, text.Message);
+        Equal(bytes.Row, text.Row);
+        Equal(bytes.Field, text.Field);
+        Equal(bytes.Expected, text.Expected);
+        Equal(bytes.Got, text.Got);
+        Equal(bytes.Character, text.Character);
+        Equal(bytes.Maximum, text.Maximum);
+        Equal<Exception?>(null, text.InnerException);
     }
 
     private static FerruleRepeated CsvRows(params FerruleInstance[] rows) => new(rows);
