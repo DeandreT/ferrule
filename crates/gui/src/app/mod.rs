@@ -67,6 +67,7 @@ mod pipeline_ui;
 #[path = "preview.rs"]
 mod preview_ui;
 mod primary_xml_input;
+mod rest_run;
 #[path = "run.rs"]
 mod run_ui;
 mod scope_retirement;
@@ -428,6 +429,10 @@ pub struct FerruleApp {
     file_run_input_condition: crate::preview::BreakpointInputConditionDraft,
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
+    rest_run_draft: Option<rest_run::RestRunDraft>,
+    pending_rest_run: Option<rest_run::PendingRestRun>,
+    rest_run_result: Option<rest_run::RestRunResult>,
+    close_after_rest_run: bool,
     library_generation_draft: Option<library_generation::LibraryGenerationDraft>,
     pending_library_generation: Option<library_generation::PendingLibraryGeneration>,
     close_after_library_generation: bool,
@@ -582,6 +587,10 @@ impl Default for FerruleApp {
             file_run_input_condition: Default::default(),
             file_run_pause_on_failure: false,
             pending_file_run: None,
+            rest_run_draft: None,
+            pending_rest_run: None,
+            rest_run_result: None,
+            close_after_rest_run: false,
             library_generation_draft: None,
             pending_library_generation: None,
             close_after_library_generation: false,
@@ -984,6 +993,9 @@ impl FerruleApp {
         &mut self,
         action: DestructiveAction,
     ) -> Option<DestructiveAction> {
+        if self.rest_run_busy() {
+            return None;
+        }
         if self.is_dirty() {
             self.pending_destructive_action = Some(action);
             None
@@ -993,6 +1005,9 @@ impl FerruleApp {
     }
 
     fn perform_destructive_action(&mut self, action: DestructiveAction, ctx: &egui::Context) {
+        if self.rest_run_busy() {
+            return;
+        }
         match action {
             DestructiveAction::OpenProject => {
                 self.pending_dialog = Some((
@@ -1183,6 +1198,9 @@ impl FerruleApp {
         continuation: Option<SaveContinuation>,
         ctx: &egui::Context,
     ) {
+        if self.rest_run_busy() {
+            return;
+        }
         let Some(path) = self.document.saved_path().map(std::path::Path::to_path_buf) else {
             self.pending_destructive_action = None;
             self.start_save_as(continuation);
@@ -1424,24 +1442,12 @@ impl eframe::App for FerruleApp {
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
         self.poll_file_run(ui.ctx());
+        self.poll_rest_run(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
             self.guard_app_close_requested(ui.ctx(), close_requested);
         }
-        let project_editing_enabled = self.library_generation_draft.is_none()
-            && self.pending_library_generation.is_none()
-            && self.pending_dialog.is_none()
-            && self.pending_destructive_action.is_none()
-            && self.new_mapping_setup.is_none()
-            && self.extra_source_draft.is_none()
-            && self.pending_extra_source_removal.is_none()
-            && self.extra_target_draft.is_none()
-            && self.pending_extra_target_removal.is_none()
-            && self.pending_auto_connect.is_none()
-            && self.preview_draft.is_none()
-            && self.pending_preview.is_none()
-            && self.pending_file_run.is_none()
-            && self.pending_pipeline_run.is_none();
+        let project_editing_enabled = self.project_editing_enabled();
         let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
             input.pointer.primary_down()
@@ -1547,6 +1553,7 @@ impl eframe::App for FerruleApp {
         self.show_auto_connect_confirmation(ui.ctx());
         self.show_preview_setup(ui.ctx());
         self.show_file_run_progress(ui.ctx());
+        self.show_rest_run(ui.ctx());
         self.show_pipeline_run_setup(ui.ctx());
         self.show_pipeline_editor(ui.ctx());
         self.show_pipeline_editor_guard(ui.ctx());
