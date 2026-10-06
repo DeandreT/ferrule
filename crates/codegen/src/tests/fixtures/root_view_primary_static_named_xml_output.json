@@ -1,0 +1,257 @@
+{
+  "source": {
+    "name": "Root",
+    "xml_namespace": {
+      "kind": "unqualified"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Code",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "attribute": true
+        },
+        {
+          "name": "Extra",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "attribute": true,
+          "xml_attribute_required": true
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "{urn:types}Base",
+          "members": [
+            "Code"
+          ]
+        },
+        {
+          "name": "{urn:types}Derived",
+          "members": [
+            "Code",
+            "Extra"
+          ]
+        }
+      ]
+    },
+    "xml_type_alternatives": true,
+    "xml_default_type": "{urn:types}Base"
+  },
+  "target": {
+    "name": "Result",
+    "xml_namespace": {
+      "kind": "qualified",
+      "uri": "urn:result"
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Code",
+          "xml_namespace": {
+            "kind": "unqualified"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "attribute": true
+        },
+        {
+          "name": "Derived",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Marker",
+          "xml_namespace": {
+            "kind": "qualified",
+            "uri": "urn:result"
+          },
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "xml_document": true,
+    "xml_allow_inactive_root_type_members": true,
+    "xml_root_view_read_policy": true
+  },
+  "target_options": {
+    "xml_document": true,
+    "xml_schema_hints": {
+      "locations": [
+        {
+          "namespace": "urn:result",
+          "location": "result.xsd"
+        }
+      ]
+    }
+  },
+  "extra_sources": [],
+  "extra_targets": [
+    {
+      "name": "audit",
+      "path": null,
+      "schema": {
+        "name": "Audit",
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:audit"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Code",
+              "xml_namespace": {
+                "kind": "unqualified"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "attribute": true
+            },
+            {
+              "name": "Extra",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Marker",
+              "xml_namespace": {
+                "kind": "qualified",
+                "uri": "urn:audit"
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "xml_document": true,
+        "xml_schema_hints": {
+          "locations": [
+            {
+              "namespace": "urn:audit",
+              "location": "audit.xsd"
+            }
+          ]
+        }
+      },
+      "root": {
+        "target_field": "Audit",
+        "bindings": [
+          {
+            "target_field": "Code",
+            "node": 0
+          },
+          {
+            "target_field": "Extra",
+            "node": 4
+          },
+          {
+            "target_field": "Marker",
+            "node": 6
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_root_field",
+        "path": [
+          "Code"
+        ],
+        "required": true
+      },
+      "1": {
+        "kind": "source_root_field",
+        "path": [
+          "Extra"
+        ],
+        "required": true
+      },
+      "2": {
+        "kind": "source_root_xml_type_equals",
+        "canonical_expanded_type": "{urn:types}Derived"
+      },
+      "3": {
+        "kind": "const",
+        "value": "skipped"
+      },
+      "4": {
+        "kind": "if",
+        "condition": 2,
+        "then": 1,
+        "else": 3
+      },
+      "5": {
+        "kind": "const",
+        "value": "primary"
+      },
+      "6": {
+        "kind": "const",
+        "value": "audit"
+      }
+    }
+  },
+  "root": {
+    "target_field": "Result",
+    "bindings": [
+      {
+        "target_field": "Code",
+        "node": 0
+      },
+      {
+        "target_field": "Derived",
+        "node": 2
+      },
+      {
+        "target_field": "Marker",
+        "node": 5
+      }
+    ],
+    "children": []
+  }
+}

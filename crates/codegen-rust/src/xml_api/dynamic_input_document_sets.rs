@@ -21,14 +21,32 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
         .enumerate()
         .filter(|(_, source)| source.dynamic.is_none())
         .collect::<Vec<_>>();
-    let (dynamic_index, dynamic_source) = program
+    let dynamic_sources = program
         .extra_sources
         .iter()
         .enumerate()
-        .find(|(_, source)| source.dynamic.is_some())
-        .ok_or_else(|| ProgramValidationError::InvalidXmlBoundary {
+        .filter(|(_, source)| source.dynamic.is_some())
+        .collect::<Vec<_>>();
+    let (dynamic_index, dynamic_source) = dynamic_sources.first().copied().ok_or_else(|| {
+        ProgramValidationError::InvalidXmlBoundary {
             reason: "dynamic-input document lists require their dynamic declaration".into(),
-        })?;
+        }
+    })?;
+    let adapter = if dynamic_sources.len() == 1 {
+        format!(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader, codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);\n",
+            rust_string(&dynamic_source.name)
+        )
+    } else {
+        let mut adapter = String::from(
+            "    let adapter = codegen_runtime::XmlDynamicSourceAdapter::for_sources(loader, vec![\n",
+        );
+        for (index, source) in dynamic_sources {
+            adapter.push_str(&format!("        codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {index}, source: {}, schema: EXTRA_XML_INPUT_SCHEMA_{index} }},\n", rust_string(&source.name)));
+        }
+        adapter.push_str("    ], budget);\n");
+        adapter
+    };
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -131,8 +149,7 @@ fn xml_dynamic_document_input_error(error: codegen_runtime::XmlExecutionError) -
                     rust_string(&input.name)
                 ));
             }
-            let dynamic_name = rust_string(&dynamic_source.name);
-            output.push_str(&format!("    ];\n    let adapter = codegen_runtime::XmlDynamicSourceAdapter::new(loader, codegen_runtime::XmlDynamicSourcePolicy {{ declaration_index: {dynamic_index}, source: {dynamic_name}, schema: EXTRA_XML_INPUT_SCHEMA_{dynamic_index} }}, budget);\n    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| xml_dynamic_document_input_error(adapter.recover(error)))?;\n    {helper}(mapped)\n}}\n\n"));
+            output.push_str(&format!("    ];\n{adapter}    let mapped = {execute}(&parsed, &parsed_inputs{context_call}, &adapter).map_err(|error| xml_dynamic_document_input_error(adapter.recover(error)))?;\n    {helper}(mapped)\n}}\n\n"));
         }
         output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<Vec<{dto}>, codegen_runtime::XmlDynamicInputDocumentExecutionError> {{\n    if !mapped.extras.is_empty() {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require no named mapped outputs\").into());\n    }}\n    let Instance::DocumentSet(members) = mapped.primary else {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require a primary document set\").into());\n    }};\n    let mut budget = codegen_runtime::XmlDocumentSetBudget::new(members.len()).map_err(codegen_runtime::XmlDynamicInputDocumentExecutionError::from)?;\n    let mut outputs = Vec::with_capacity(members.len());\n    for (index, member) in members.into_iter().enumerate() {{\n        let xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, member.value(), {arguments}).map_err(|error| codegen_runtime::XmlDynamicInputDocumentExecutionError::from(codegen_runtime::XmlDocumentExecutionError::serialization(index, member.path(), error)))?;\n        budget.charge(index, member.path(), xml.len()).map_err(codegen_runtime::XmlDynamicInputDocumentExecutionError::from)?;\n        outputs.push({dto} {{ path: member.path().to_owned(), document: {} }});\n    }}\n    Ok(outputs)\n}}\n\n", if bytes { "xml.into_bytes()" } else { "xml" }));
     }
@@ -236,5 +253,40 @@ mod tests {
         assert!(output.contains("let _ = &indices;"));
         assert!(!output.contains("let parsed_input_"));
         assert!(output.contains("let parsed_inputs: Vec<NamedInput<'_>> = vec![\n    ];"));
+    }
+    #[test]
+    fn multiple_dynamic_policies_share_one_adapter_and_keep_complete_indices() {
+        let project: ::mapping::Project = serde_json::from_str(include_str!("../../../codegen/src/tests/fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents.json")).unwrap();
+        let mut program = codegen::lower(&project).unwrap();
+        let output = render(&program).unwrap();
+        assert_eq!(
+            output
+                .matches("XmlDynamicSourceAdapter::for_sources(loader, vec![")
+                .count(),
+            4
+        );
+        for policy in [
+            "declaration_index: 1, source: \"catalog\", schema: EXTRA_XML_INPUT_SCHEMA_1",
+            "declaration_index: 3, source: \"codes\", schema: EXTRA_XML_INPUT_SCHEMA_3",
+        ] {
+            assert_eq!(output.matches(policy).count(), 4);
+        }
+        assert!(
+            output.contains(
+                "XmlInputSource::Named { index: 2, name: \"labels\" }, inputs[indices[1]]"
+            )
+        );
+        assert!(!output.contains("NamedInput { name: \"codes\""));
+        assert_eq!(output.matches("adapter.recover(error)").count(), 4);
+        let single = render(&self::program()).unwrap();
+        assert_eq!(
+            single
+                .matches("XmlDynamicSourceAdapter::new(loader,")
+                .count(),
+            4
+        );
+        assert!(!single.contains("XmlDynamicSourceAdapter::for_sources("));
+        program.xml_boundary.as_mut().unwrap().extra_inputs[3].name = "wrong".into();
+        assert!(render(&program).is_err());
     }
 }

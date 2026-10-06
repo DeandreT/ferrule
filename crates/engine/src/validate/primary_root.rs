@@ -64,8 +64,15 @@ pub(super) fn validate_primary_root_primitives(
         );
     }
     validate_scope(project, &primitives, &project.root, true, issues);
+    let named_root_allowed = observed_static_named_root_is_supported(project);
     for target in &project.extra_targets {
-        validate_scope(project, &primitives, &target.root, false, issues);
+        validate_scope(
+            project,
+            &primitives,
+            &target.root,
+            named_root_allowed,
+            issues,
+        );
     }
     for rule in &project.failure_rules {
         let roots = rule
@@ -97,17 +104,46 @@ pub(super) fn validate_primary_root_primitives(
     }
 }
 
-fn validate_scope(
-    project: &Project,
-    primitives: &BTreeSet<NodeId>,
-    scope: &Scope,
-    primary: bool,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    let allowed = primary
-        && !project.target.repeating
-        && matches!(project.target.kind, ir::SchemaKind::Group { .. })
-        && matches!(scope.iteration, ScopeIteration::None)
+// Both flat outputs evaluate with the same explicit primary owner. This does
+// not grant ownership to descendants, controls or dynamic boundaries.
+fn observed_static_named_root_is_supported(project: &Project) -> bool {
+    project.source_options
+        == (mapping::FormatOptions {
+            xml_document: true,
+            xml_allow_inactive_root_type_members: true,
+            xml_root_view_read_policy: true,
+            ..Default::default()
+        })
+        && ir::xml_root_view_read_policy_is_supported(&project.source)
+        && project.extra_sources.is_empty()
+        && project.extra_targets.len() == 1
+        && flat_static_group_root(&project.target, &project.root)
+        && xml_document_output_options(&project.target_options)
+        && project.extra_targets.iter().all(|target| {
+            flat_static_group_root(&target.schema, &target.root)
+                && xml_document_output_options(&target.options)
+        })
+}
+
+fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
+    *options
+        == mapping::FormatOptions {
+            xml_document: true,
+            xml_schema_hints: options.xml_schema_hints.clone(),
+            ..Default::default()
+        }
+}
+
+fn flat_static_group_root(schema: &ir::SchemaNode, scope: &Scope) -> bool {
+    !schema.repeating
+        && matches!(schema.kind, ir::SchemaKind::Group { .. })
+        && (scope.target_field.is_empty() || scope.target_field == schema.name)
+        && scope.dynamic_bindings.is_empty()
+        && flat_static_scope(scope)
+}
+
+fn flat_static_scope(scope: &Scope) -> bool {
+    matches!(scope.iteration, ScopeIteration::None)
         && matches!(scope.construction, ScopeConstruction::Constructed)
         && scope.filter.is_none()
         && scope.post_group_filter.is_none()
@@ -118,6 +154,19 @@ fn validate_scope(
         && scope.children.is_empty()
         && scope.dynamic_children.is_empty()
         && scope.concatenated().is_none()
+}
+
+fn validate_scope(
+    project: &Project,
+    primitives: &BTreeSet<NodeId>,
+    scope: &Scope,
+    root_binding_allowed: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let allowed = root_binding_allowed
+        && !project.target.repeating
+        && matches!(project.target.kind, ir::SchemaKind::Group { .. })
+        && flat_static_scope(scope)
         && project
             .extra_sources
             .iter()
