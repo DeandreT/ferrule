@@ -442,3 +442,86 @@ mod dynamic_document_tests {
         assert!(render_types(&program).unwrap().is_empty());
     }
 }
+
+#[cfg(test)]
+mod observed_static_output_tests {
+    use super::*;
+
+    #[test]
+    fn observed_primary_static_named_output_uses_existing_eight_methods_and_writer_order() {
+        let project: ::mapping::Project = serde_json::from_str(include_str!(
+            "../../../codegen/src/tests/fixtures/root_view_primary_static_named_xml_output.json"
+        ))
+        .unwrap();
+        let program = codegen::lower(&project).unwrap();
+        assert_eq!(
+            program.xml_output_mode(),
+            Ok(Some(codegen::XmlOutputMode::SingleDocument))
+        );
+        let types = render_types(&program).unwrap();
+        assert!(types.contains("XmlExecutionOutputs") && types.contains("NamedXmlOutput"));
+        assert!(!types.contains("NamedXmlInput"));
+        let mut source = String::new();
+        render(&program, &mut source).unwrap();
+        let methods = source
+            .lines()
+            .filter(|line| line.trim_start().starts_with("public static "))
+            .collect::<Vec<_>>();
+        assert_eq!(methods.len(), 8);
+        for name in [
+            "ExecuteXmlOutputs",
+            "ExecuteXml",
+            "ExecuteXmlBytesOutputs",
+            "ExecuteXmlBytes",
+        ] {
+            assert_eq!(
+                methods
+                    .iter()
+                    .filter(|line| line.contains(&format!(" {name}(")))
+                    .count(),
+                2
+            );
+        }
+        assert_eq!(
+            source
+                .matches("ParseEmbedded(SourceXmlSchema, source, true, true)")
+                .count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("ParseEmbeddedBytes(SourceXmlSchema, source, true, true)")
+                .count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("FerruleXmlOutputTarget.Named(0, \"audit\")")
+                .count(),
+            2
+        );
+        assert!(source.contains("result.xsd") && source.contains("audit.xsd"));
+        assert!(!source.contains("IFerruleDynamicXmlSourceLoader"));
+        let helper = &source[source
+            .find("private static XmlExecutionOutputs SerializeXmlOutputs(")
+            .unwrap()..];
+        let positions = [
+            "mapped.Extras.Count != 1 || mapped.Extras[0].Name != \"audit\"",
+            "new global::Ferrule.Runtime.FerruleXmlOutputSetBudget(mapped.Extras.Count + 1)",
+            "SerializeXmlTarget(primaryTarget, TargetXmlSchema",
+            "budget.Charge(primaryTarget",
+            "SerializeXmlTarget(target_0, ExtraXmlSchema_0",
+            "budget.Charge(target_0",
+            "extras.Add(new NamedXmlOutput",
+            "extras.AsReadOnly()",
+        ]
+        .map(|part| helper.find(part).unwrap());
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+        let mut invalid = program;
+        invalid.xml_boundary.as_mut().unwrap().extra_outputs[0].name = "wrong".into();
+        let mut refused = String::new();
+        assert!(render(&invalid, &mut refused).is_err());
+        assert!(refused.is_empty());
+        assert!(render_types(&invalid).is_err());
+    }
+}

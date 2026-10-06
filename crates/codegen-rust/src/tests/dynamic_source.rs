@@ -415,3 +415,260 @@ fn main() {
         String::from_utf8_lossy(&result.stderr)
     );
 }
+
+fn unused_second_document_fixture() -> Program {
+    let mut program = dynamic_document_fixture();
+    program.extra_sources.push(NamedSourceProgram {
+        name: "Config".into(),
+        source: SchemaNode::group(
+            "ConfigDocument",
+            vec![SchemaNode::scalar("Note", ScalarType::String)],
+        ),
+        dynamic: Some(DynamicSourceProgram {
+            path: 99,
+            driver: SourceIteration::new(vec!["Files".into()]),
+        }),
+    });
+    program.expressions.push(ExpressionNode {
+        id: 99,
+        expression: Expression::RuntimeValue {
+            value: RuntimeValue::CurrentDateTime,
+        },
+    });
+    program
+}
+
+#[test]
+fn unused_xml_dynamic_declaration_keeps_policy_without_emitting_its_path_function() {
+    let mut project: ::mapping::Project = serde_json::from_str(include_str!(
+        "../../../codegen/src/tests/fixtures/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents.json"
+    )).unwrap();
+    project.extra_targets.pop();
+    project.graph.nodes.insert(
+        107,
+        ::mapping::Node::RuntimeValue {
+            value: ::mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.extra_sources[3].dynamic_path.as_mut().unwrap().node = 107;
+    let program = codegen::lower(&project).unwrap();
+    assert!(program.expressions.iter().any(|node| node.id == 107));
+    assert_eq!(program.extra_sources[3].dynamic.as_ref().unwrap().path, 107);
+    let source = render_source(&program).unwrap();
+    assert!(!source.contains("fn expression_107("));
+    assert_eq!(source.matches("DynamicSourceItems::load(").count(), 1);
+    assert!(source.contains("fn expression_2("));
+    assert!(source.contains("\"codes\"") && source.contains("\"catalog\""));
+    assert!(
+        source.contains(
+            "pub fn execute_xml_document_outputs_with_sources_and_dynamic_source_loader("
+        )
+    );
+}
+
+#[test]
+fn unused_path_dependencies_are_omitted_but_shared_reads_and_failure_messages_remain() {
+    let mut program = unused_second_document_fixture();
+    program
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 99)
+        .unwrap()
+        .expression = Expression::Call {
+        function: ScalarFunction::Concat,
+        args: vec![100, 101],
+    };
+    program.expressions.extend([
+        ExpressionNode {
+            id: 100,
+            expression: Expression::RuntimeValue {
+                value: RuntimeValue::CurrentDateTime,
+            },
+        },
+        ExpressionNode {
+            id: 101,
+            expression: Expression::Const {
+                value: Value::String(".xml".into()),
+            },
+        },
+    ]);
+    validate_program(&program).unwrap();
+    let source = render_source(&program).unwrap();
+    for node in [99, 100, 101] {
+        assert!(!source.contains(&format!("fn expression_{node}(")));
+    }
+    let mut shared = program.clone();
+    let SchemaKind::Group { children, .. } = &mut shared.target.kind else {
+        unreachable!()
+    };
+    children.push(SchemaNode::scalar("Date", ScalarType::String));
+    shared.root.bindings.push(Binding {
+        target_field: "Date".into(),
+        expression: 100,
+        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
+        repeating: false,
+    });
+    validate_program(&shared).unwrap();
+    let source = render_source(&shared).unwrap();
+    assert!(source.contains("fn expression_100("));
+    assert!(!source.contains("fn expression_99(") && !source.contains("fn expression_101("));
+    program.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source(SourceIteration::new(vec!["Files".into()])),
+        selection: FailureSelection::All,
+        message: Some(99),
+    });
+    validate_program(&program).unwrap();
+    let source = render_source(&program).unwrap();
+    for node in [99, 100, 101] {
+        assert!(source.contains(&format!("fn expression_{node}(")));
+    }
+    assert!(source.contains("let message = Some(expression_99(&item_context)?);"));
+}
+
+#[test]
+fn reached_second_source_retains_both_lazy_path_branches() {
+    let mut program = unused_second_document_fixture();
+    program
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 99)
+        .unwrap()
+        .expression = Expression::If {
+        condition: 100,
+        then: 101,
+        else_: 102,
+    };
+    program.expressions.extend([
+        ExpressionNode {
+            id: 100,
+            expression: Expression::Const {
+                value: Value::Bool(false),
+            },
+        },
+        ExpressionNode {
+            id: 101,
+            expression: Expression::RuntimeValue {
+                value: RuntimeValue::CurrentDateTime,
+            },
+        },
+        ExpressionNode {
+            id: 102,
+            expression: Expression::Const {
+                value: Value::String("config.xml".into()),
+            },
+        },
+        ExpressionNode {
+            id: 103,
+            expression: Expression::SourceField {
+                frame: None,
+                path: vec!["Note".into()],
+            },
+        },
+    ]);
+    let SchemaKind::Group { children, .. } = &mut program.target.kind else {
+        unreachable!()
+    };
+    children.push(
+        SchemaNode::group(
+            "Notes",
+            vec![SchemaNode::scalar("Note", ScalarType::String)],
+        )
+        .repeating(),
+    );
+    program.root.children.push(TargetScope {
+        target_field: "Notes".into(),
+        repeating: true,
+        iteration: Some(IterationPlan::new(
+            SourceIteration::new(vec!["Config".into()]),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )),
+        construction: TargetConstruction::Group,
+        bindings: vec![Binding {
+            target_field: "Note".into(),
+            expression: 103,
+            target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
+            repeating: false,
+        }],
+        children: Vec::new(),
+    });
+    validate_program(&program).unwrap();
+    let source = render_source(&program).unwrap();
+    for node in [1, 2, 99, 100, 101, 102, 103] {
+        assert!(source.contains(&format!("fn expression_{node}(")));
+    }
+    assert_eq!(source.matches("DynamicSourceItems::load(").count(), 2);
+    assert!(source.contains("|driver_context| expression_99(driver_context)"));
+    assert!(source.contains("if require_bool(100, condition)?"));
+}
+
+#[test]
+fn zero_and_one_dynamic_source_keep_legacy_expression_emission() {
+    let mut program = unused_second_document_fixture();
+    program.extra_sources.pop();
+    validate_program(&program).unwrap();
+    assert!(
+        render_source(&program)
+            .unwrap()
+            .contains("fn expression_99(")
+    );
+    let mut zero = fixture();
+    zero.expressions.push(ExpressionNode {
+        id: 99,
+        expression: Expression::RuntimeValue {
+            value: RuntimeValue::CurrentDateTime,
+        },
+    });
+    validate_program(&zero).unwrap();
+    assert!(render_source(&zero).unwrap().contains("fn expression_99("));
+}
+
+#[test]
+fn generated_unused_dynamic_source_keeps_loader_and_context_reads_lazy_without_warnings() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|parent| parent.join("codegen-runtime"))
+        .unwrap_or_default();
+    let output = TempDir::new("rust_unused_dynamic_source_codegen");
+    let artifacts = emit(
+        &unused_second_document_fixture(),
+        &Options {
+            package_name: "generated-unused-dynamic-source".into(),
+            runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
+        },
+    )
+    .unwrap();
+    write_artifacts(output.path(), &artifacts);
+    fs::write(output.path().join("src/main.rs"), r#"use codegen_runtime::{DynamicSourceLoader, Instance, Value, field, group, repeated, scalar};
+
+struct Loader;
+impl DynamicSourceLoader for Loader {
+    fn load(&self, source: &str, path: &str) -> Result<Instance, String> {
+        assert_eq!(source, "Catalog");
+        assert_eq!(path, "same.json");
+        Ok(group([field("Rows", repeated([group([field("value", scalar(Value::String("loaded".into())))])]))]))
+    }
+}
+fn main() {
+    let source = group([field("Files", repeated([group([field("path", scalar(Value::String("same.json".into())))])]))]);
+    let mapped = generated_unused_dynamic_source::execute_with_dynamic_source_loader(&source, &Loader).unwrap();
+    let rows = mapped.field("Rows").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].field("value").and_then(Instance::as_scalar), Some(&Value::String("loaded".into())));
+}
+"#).unwrap();
+    let result = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .env("RUSTFLAGS", "-D warnings")
+        .current_dir(output.path())
+        .generated_host_output(output.path())
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "generated unused-source host failed:\n{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}

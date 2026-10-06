@@ -638,8 +638,9 @@ is serialized. Each document uses its own embedded target schema and output
 policy. Parsing, mapping, or serialization failure returns no output set.
 An unsuitable ordinary target omits the whole optional XML adapter while
 preserving otherwise supported typed/JSON core generation, including when
-other XML targets retain literal hints. Observed root-view named boundaries
-remain strict refusals.
+other XML targets retain literal hints. Observed root-view boundaries retain
+their explicit compound restrictions, including the single static named-output
+exception described below.
 
 Set APIs return `codegen_runtime::XmlOutputSetError` in Rust and throw
 `FerruleXmlOutputSetException` in C#. The wrapper retains the original typed
@@ -661,8 +662,9 @@ one `NamedXmlInputPolicy` per named source in exact declaration order, with its
 exact name and a `Structured` input policy (both observed flags false). The
 corresponding schemas stay in `Program.extra_sources`, including every dynamic
 declaration when present. Missing, reordered or surplus policies and observed
-named policies reject before emission. Existing
-`RootView` programs use an empty `extra_inputs` vector.
+named policies reject before emission. Zero-named `RootView` programs use an
+empty `extra_inputs` vector; their static named-input route retains the complete
+`Structured` declarations.
 
 `XmlBoundaryProgram.extra_outputs` remains required:
 an empty vector for one output, or one exact named policy per declared target
@@ -768,16 +770,16 @@ crossed its independent limit. No partial list is returned. The four zero-named
 primary-list APIs and the static named-input APIs keep their existing signatures,
 wrappers and semantics. Paths remain opaque metadata with no publication.
 
-### One Dynamic Named Input and Dynamic Primary Documents
+### Dynamic Named Inputs and Dynamic Primary Documents
 
-An ordinary `Structured` XML mapping can combine exactly one dynamic named
-XML source and optional static named XML inputs with a primary dynamic document
+An ordinary `Structured` XML mapping can combine one or more dynamic named
+XML sources and optional static named XML inputs with a primary dynamic document
 list. Every input retains its own closed schema and policy in original
 declaration order, including unused static inputs. The output driver must be
 a nonempty path in the primary schema ending in a repeating group. The target
 member is a closed nonrepeating group, named targets are absent, and both
-observed input flags remain false. Multiple dynamic declarations, drivers rooted in named
-inputs, observed root-view profiles and advanced unsupported schemas remain
+observed input flags remain false. Drivers rooted in named inputs, observed
+root-view profiles and advanced unsupported schemas remain
 outside this adapter. Unsupported ordinary boundaries retain the typed and JSON
 core without these XML methods; observed profiles keep their strict refusals.
 
@@ -802,12 +804,15 @@ C# collections are read-only and byte results own their buffers.
 The adapter checks the initial input count, complete static names and document
 shapes, all static per-document sizes and then combined original bytes before
 parsing primary and each static input in declaration order. Owners retain the
-original indices across the dynamic declaration. C# strict text measurement can
+original indices across all dynamic declarations. C# strict text measurement can
 reject invalid UTF-16 during the size pass; byte decoding occurs during parsing.
 An empty final list still requires all static inputs to be admitted and parsed.
-After static admission, one fresh loader adapter shares that input budget across
-all actual requests. Existing typed traversal determines callbacks, Null path
-skips, lazy context reads and repeated loads; an XML adapter does not move them
+After static admission, one fresh loader adapter owns each dynamic declaration's
+exact source name, original index and independent schema. All dynamic sources
+share the input budget, whole-execution request ordinal and first-failure channel.
+The same logical path under two source names is parsed with each source's schema.
+Existing typed traversal determines callbacks, Null path skips, lazy context
+reads and repeated loads; an XML adapter does not move them
 before mapping or suppress reached callbacks. Each request reserves its document
 count before invoking the host. A host failure reserves count and charges no
 bytes. Repeated loads count and charge again. A failed adapter is terminal; the
@@ -1029,9 +1034,19 @@ Their shared input admission and `XmlExecutionError` / `FerruleXmlExecutionExcep
 wrappers are the same as the static named-input adapter. The zero-named observed
 methods retain their existing signatures and boundary wrappers.
 
-Dynamic XML document inputs, observed named inputs, dynamic outputs and named
-outputs remain outside this observed-primary adapter. Unsupported input or target
-schemas fail during generation, before the artifact destination is created.
+With no named inputs, an observed primary can also feed a static constructed
+primary XML document and exactly one static constructed named XML document. Both
+output roots are closed nonrepeating groups with independent schemas, namespaces
+and literal hints. The existing text, byte and context output-set methods return
+primary then named output; the singular methods serialize the same complete set
+before returning primary. Mapping completes before any writer, and serialization
+failures retain the exact Primary or Named target. This route does not perform
+file publication or add document-member paths.
+
+Dynamic XML document inputs, observed named inputs, dynamic outputs, two or more
+named outputs, and combined named inputs and outputs remain outside this
+observed-primary adapter. Unsupported input or target schemas fail during
+generation, before the artifact destination is created.
 
 ### Output and Limits
 
