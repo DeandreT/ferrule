@@ -348,6 +348,24 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             "supplementary XML names are unsupported by the generated input and hinted-output parsers",
         ));
     }
+    if validate_mixed_named_output(program)? {
+        validate_document_output(&program.target, &program.root, &policy.output, false)?;
+        for (target, output) in program.extra_targets.iter().zip(&policy.extra_outputs) {
+            let dynamic = target
+                .root
+                .iteration
+                .as_ref()
+                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some());
+            validate_document_output(&target.target, &target.root, &output.output, dynamic)
+                .map_err(|error| match error {
+                    ProgramValidationError::InvalidXmlBoundary { reason } => {
+                        reject(&format!("named XML output `{}`: {reason}", target.name))
+                    }
+                    error => error,
+                })?;
+        }
+        return Ok(());
+    }
     let dynamic_primary = validate_dynamic_primary_output(program)?;
     let dynamic_named = validate_dynamic_named_output(program)?;
     validate_document_output(
@@ -366,6 +384,84 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
             })?;
     }
     Ok(())
+}
+
+fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, ProgramValidationError> {
+    let Some(policy) = program.xml_boundary.as_ref() else {
+        return Ok(false);
+    };
+    // Only this exact new cardinality bypasses the existing all-list requirement.
+    // Every older route still runs its complete original validator.
+    if policy.input.profile() != Some(crate::XmlInputProfile::Structured)
+        || !program.extra_sources.is_empty()
+        || !policy.extra_inputs.is_empty()
+        || program.extra_targets.len() != 2
+        || program
+            .extra_targets
+            .iter()
+            .filter(|target| target.root.iteration.is_none())
+            .count()
+            != 1
+        || program
+            .extra_targets
+            .iter()
+            .filter(|target| {
+                target
+                    .root
+                    .iteration
+                    .as_ref()
+                    .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+            })
+            .count()
+            != 1
+    {
+        return Ok(false);
+    }
+    let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
+        reason: reason.to_owned(),
+    };
+    let flat_group = |schema: &SchemaNode, scope: &crate::TargetScope| {
+        !schema.repeating
+            && matches!(schema.kind, SchemaKind::Group { .. })
+            && !scope.repeating
+            && matches!(scope.construction, crate::TargetConstruction::Group)
+            && scope.children.is_empty()
+            && (scope.target_field.is_empty() || scope.target_field == schema.name)
+    };
+    if program.root.iteration.is_some() || !flat_group(&program.target, &program.root) {
+        return Err(reject(
+            "mixed named XML outputs require a flat static Group primary",
+        ));
+    }
+    for target in &program.extra_targets {
+        if !flat_group(&target.target, &target.root) {
+            return Err(reject(&format!(
+                "named XML output `{}`: mixed outputs require a flat nonrepeating Group with its own root label",
+                target.name,
+            )));
+        }
+        if let Some(dynamic) = target
+            .root
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.dynamic_document_iteration())
+        {
+            let path = dynamic.source().path();
+            let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
+            if path.is_empty()
+                || !driver.is_some_and(|driver| {
+                    driver.node().repeating
+                        && matches!(driver.node().kind, SchemaKind::Group { .. })
+                })
+            {
+                return Err(reject(&format!(
+                    "named XML output `{}`: mixed XML document driver must end in a repeating Group",
+                    target.name,
+                )));
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn validate_dynamic_primary_output(

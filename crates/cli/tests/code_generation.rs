@@ -1303,3 +1303,6 @@ mod rootview_named_inputs;
 
 #[path = "code_generation/xml_dynamic_input_document_outputs.rs"]
 mod xml_dynamic_input_document_outputs;
+
+#[path = "code_generation/xml_mixed_named_outputs.rs"]
+mod xml_mixed_named_outputs;
