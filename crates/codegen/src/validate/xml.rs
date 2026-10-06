@@ -207,8 +207,17 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
         && !program.root.repeating;
     let root_view_static_output = program.extra_sources.is_empty()
         && policy.extra_inputs.is_empty()
-        && program.extra_targets.len() == 1
-        && policy.extra_outputs.len() == 1
+        && !program.extra_targets.is_empty()
+        && policy.extra_outputs.len() == program.extra_targets.len()
+        // The plural route stays flat even without primary-root expressions;
+        // the historical one-output route keeps its existing checks.
+        && (program.extra_targets.len() == 1
+            || std::iter::once((&program.target, &program.root))
+                .chain(program.extra_targets.iter().map(|target| (&target.target, &target.root)))
+                .all(|(schema, scope)| {
+                    (scope.target_field.is_empty() || scope.target_field == schema.name)
+                        && scope.children.is_empty()
+                }))
         && program.root.iteration.is_none()
         && matches!(program.root.construction, crate::TargetConstruction::Group)
         && !program.root.repeating

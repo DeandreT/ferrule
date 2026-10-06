@@ -104,8 +104,8 @@ pub(super) fn validate_primary_root_primitives(
     }
 }
 
-// Both flat outputs evaluate with the same explicit primary owner. This does
-// not grant ownership to descendants, controls or dynamic boundaries.
+// Every admitted flat output evaluates with the same explicit primary owner.
+// This does not grant ownership to descendants, controls or dynamic boundaries.
 fn observed_static_named_root_is_supported(project: &Project) -> bool {
     project.source_options
         == (mapping::FormatOptions {
@@ -116,7 +116,7 @@ fn observed_static_named_root_is_supported(project: &Project) -> bool {
         })
         && ir::xml_root_view_read_policy_is_supported(&project.source)
         && project.extra_sources.is_empty()
-        && project.extra_targets.len() == 1
+        && !project.extra_targets.is_empty()
         && flat_static_group_root(&project.target, &project.root)
         && xml_document_output_options(&project.target_options)
         && project.extra_targets.iter().all(|target| {

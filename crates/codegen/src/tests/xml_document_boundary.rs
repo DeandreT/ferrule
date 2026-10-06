@@ -439,6 +439,7 @@ fn observed_static_output_exception_keeps_other_compound_and_root_shapes_closed(
             0 => {
                 let mut second = project.extra_targets[0].clone();
                 second.name = "second".into();
+                second.root.target_field = "descendant".into();
                 project.extra_targets.push(second);
             }
             1 => {
@@ -627,4 +628,235 @@ fn named_output_context_read_is_lazy_and_preserves_missing_value_failure() {
             .and_then(ir::Instance::as_scalar),
         Some(&Value::String("2026-10-05T12:00:00Z".into()))
     );
+}
+
+fn root_view_plural_static_output_project(count: usize, reversed: bool) -> Project {
+    let wire = match (count, reversed) {
+        (2, false) => include_str!("fixtures/root_view_two_static_named_xml_outputs.json"),
+        (2, true) => include_str!("fixtures/root_view_two_static_named_xml_outputs_reversed.json"),
+        (3, false) => include_str!("fixtures/root_view_three_static_named_xml_outputs.json"),
+        _ => unreachable!(),
+    };
+    serde_json::from_str(wire).unwrap()
+}
+
+#[test]
+fn observed_plural_output_lowering_preserves_every_declared_schema_hint_and_order() {
+    for (count, reversed) in [(2, false), (3, false), (2, true)] {
+        let project = root_view_plural_static_output_project(count, reversed);
+        assert!(engine::validate(&project).is_empty());
+        let program = lower(&project).unwrap();
+        assert_eq!(
+            program.xml_output_mode(),
+            Ok(Some(crate::XmlOutputMode::SingleDocument))
+        );
+        let policy = program.xml_boundary.as_ref().unwrap();
+        assert_eq!(policy.extra_outputs.len(), count);
+        assert_eq!(program.extra_targets.len(), count);
+        for ((target, lowered), output) in project
+            .extra_targets
+            .iter()
+            .zip(&program.extra_targets)
+            .zip(&policy.extra_outputs)
+        {
+            assert_eq!(lowered.name, target.name);
+            assert_eq!(lowered.target, target.schema);
+            assert_eq!(lowered.root.target_field, target.schema.name);
+            assert_eq!(output.name, target.name);
+            assert_eq!(output.output.schema_hints, target.options.xml_schema_hints);
+        }
+        assert_ne!(
+            policy.extra_outputs[0].output.schema_hints,
+            policy.extra_outputs[1].output.schema_hints
+        );
+        for derived in [false, true] {
+            let source = root_view_static_output_source(derived, derived.then_some("later extra"));
+            let outputs = engine::run_outputs(&project, &source).unwrap();
+            assert_eq!(outputs.extras.len(), count);
+            for (output, target) in outputs.extras.iter().zip(&project.extra_targets) {
+                assert_eq!(output.name, target.name);
+                assert_eq!(
+                    output
+                        .instance
+                        .field("Code")
+                        .and_then(ir::Instance::as_scalar),
+                    Some(&Value::String("  code 雪😀  ".into()))
+                );
+                let expected = if target.name == "z-audit" || !derived {
+                    "skipped"
+                } else {
+                    "later extra"
+                };
+                assert_eq!(
+                    output
+                        .instance
+                        .field("Extra")
+                        .and_then(ir::Instance::as_scalar),
+                    Some(&Value::String(expected.into()))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn observed_plural_last_mapping_failure_precedes_primary_writer_and_context_stays_lazy() {
+    let mut project = root_view_plural_static_output_project(2, false);
+    project.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::String("\u{1}".into()),
+        },
+    );
+    assert!(lower(&project).is_ok());
+    assert!(
+        matches!(engine::run_outputs(&project, &root_view_static_output_source(true, None)),
+        Err(engine::EngineError::PrimaryRoot { node: 1, source: ir::PrimaryRootError::MissingRequiredField { path } })
+        if path == vec!["Extra".to_owned()])
+    );
+    project.graph.nodes.insert(
+        9,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.graph.nodes.insert(
+        10,
+        Node::If {
+            condition: 2,
+            then: 9,
+            else_: 3,
+        },
+    );
+    project.extra_targets[1]
+        .root
+        .bindings
+        .iter_mut()
+        .find(|binding| binding.target_field == "Marker")
+        .unwrap()
+        .node = 10;
+    assert!(lower(&project).is_ok());
+    let base = engine::run_outputs(&project, &root_view_static_output_source(false, None)).unwrap();
+    assert_eq!(
+        base.extras[1]
+            .instance
+            .field("Marker")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("skipped".into()))
+    );
+    let source = root_view_static_output_source(true, Some("present"));
+    assert!(matches!(
+        engine::run_outputs(&project, &source),
+        Err(engine::EngineError::MissingRuntimeValue(
+            mapping::RuntimeValue::CurrentDateTime
+        ))
+    ));
+    let context = engine::ExecutionContext::new(std::path::Path::new("mapping.json"))
+        .with_current_datetime("2026-10-05T12:00:00Z");
+    let outputs =
+        engine::run_outputs_with_sources_and_context(&project, &source, Vec::new(), &context)
+            .unwrap();
+    assert_eq!(
+        outputs.extras[1]
+            .instance
+            .field("Marker")
+            .and_then(ir::Instance::as_scalar),
+        Some(&Value::String("2026-10-05T12:00:00Z".into()))
+    );
+}
+
+#[test]
+fn observed_plural_flatness_is_required_without_any_primary_root_primitive() {
+    let mut project = root_view_plural_static_output_project(2, false);
+    for (&id, node) in &mut project.graph.nodes {
+        *node = Node::Const {
+            value: if id == 2 {
+                Value::Bool(false)
+            } else {
+                Value::String("constant".into())
+            },
+        };
+    }
+    assert!(engine::validate(&project).is_empty());
+    let program = lower(&project).unwrap();
+    for primary in [false, true] {
+        let mut nested = project.clone();
+        let (schema, scope) = if primary {
+            (&mut nested.target, &mut nested.root)
+        } else {
+            let target = &mut nested.extra_targets[1];
+            (&mut target.schema, &mut target.root)
+        };
+        if let ir::SchemaKind::Group { children, .. } = &mut schema.kind {
+            children.push(SchemaNode::group("Child", Vec::new()));
+        }
+        scope.children.push(Scope {
+            target_field: "Child".into(),
+            ..Scope::default()
+        });
+        assert!(
+            engine::validate(&nested).is_empty(),
+            "the nested shape must otherwise be valid"
+        );
+        assert!(lower(&nested).is_err());
+        let mut mismatched = project.clone();
+        if primary {
+            mismatched.root.target_field = "descendant".into();
+        } else {
+            mismatched.extra_targets[1].root.target_field = "Audit".into();
+        }
+        assert!(lower(&mismatched).is_err());
+        let mut neutral = program.clone();
+        let (schema, scope) = if primary {
+            (&mut neutral.target, &mut neutral.root)
+        } else {
+            let target = &mut neutral.extra_targets[1];
+            (&mut target.target, &mut target.root)
+        };
+        if let ir::SchemaKind::Group { children, .. } = &mut schema.kind {
+            children.push(SchemaNode::group("Child", Vec::new()));
+        }
+        scope.children.push(crate::TargetScope {
+            target_field: "Child".into(),
+            repeating: false,
+            iteration: None,
+            construction: crate::TargetConstruction::Group,
+            bindings: Vec::new(),
+            children: Vec::new(),
+        });
+        assert!(matches!(
+            validate_program(&neutral),
+            Err(ProgramValidationError::InvalidXmlBoundary { .. })
+        ));
+    }
+    for mutation in 0..11 {
+        let mut invalid = project.clone();
+        match mutation {
+            0 => invalid.root.filter = Some(2),
+            1 => invalid.extra_targets[1].root.filter = Some(2),
+            2 => invalid.extra_targets[1].root.set_source(Some(vec![])),
+            3 => invalid.extra_targets[1].schema.repeating = true,
+            4 => invalid.extra_targets[1].root.construction = ScopeConstruction::CopyCurrentSource,
+            5 => invalid.target.repeating = true,
+            6 => invalid
+                .root
+                .dynamic_bindings
+                .push(mapping::DynamicBinding { key: 0, value: 1 }),
+            7 => invalid.extra_targets[1]
+                .root
+                .dynamic_bindings
+                .push(mapping::DynamicBinding { key: 0, value: 1 }),
+            8 => invalid.root.set_source(Some(vec![])),
+            9 => {
+                invalid.extra_targets[1].root.set_source(Some(vec![]));
+                assert!(invalid.extra_targets[1].root.set_output_path(Some(0)));
+            }
+            10 => {
+                invalid.root.set_source(Some(vec![]));
+                assert!(invalid.root.set_output_path(Some(0)));
+            }
+            _ => unreachable!(),
+        }
+        assert!(lower(&invalid).is_err(), "no-reader mutation {mutation}");
+    }
 }
