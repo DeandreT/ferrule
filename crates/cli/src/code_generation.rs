@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 use codegen::ArtifactSet;
 
-use super::load_project;
+use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
 /// Source language and runtime linkage for one generated mapping project.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +29,42 @@ pub fn generate_project(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
+    generate_project_impl(project_path, output_directory, target, false)
+}
+
+/// Generate the ordinary mapping APIs plus an explicitly selected bounded flat
+/// CSV output adapter. Stored target format identity and policy remain exact.
+pub fn generate_project_with_csv_output(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    generate_project_impl(project_path, output_directory, target, true)
+}
+
+fn generate_project_impl(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    csv_output: bool,
+) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
+    let csv_policy = if csv_output {
+        let policy = codegen::CsvOutputPolicy::from_format_options(&project.target_options)?;
+        if let Some(path) = &project.target_path {
+            let path = Path::new(path);
+            validate_tabular_fallback(path, &project.target_options, "target")?;
+            let extension = extension_for_dispatch(path, &project.target_options)?;
+            if !matches!(extension.as_str(), "csv" | "txt") {
+                bail!(
+                    "generated CSV output requires a CSV target; stored target selects {extension:?}"
+                );
+            }
+        }
+        Some(policy)
+    } else {
+        None
+    };
     let program = codegen::lower(&project).map_err(|error| {
         let details = error
             .diagnostics()
@@ -50,17 +85,19 @@ pub fn generate_project(
             let runtime_path = runtime_path
                 .to_str()
                 .context("Rust codegen runtime path must be valid UTF-8")?;
-            codegen_rust::emit(
-                &program,
-                &codegen_rust::Options {
-                    package_name: "ferrule-generated-mapping".to_string(),
-                    runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                        runtime_path.to_owned(),
-                    ),
-                },
-            )?
+            let options = codegen_rust::Options {
+                package_name: "ferrule-generated-mapping".to_string(),
+                runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime_path.to_owned()),
+            };
+            match &csv_policy {
+                Some(policy) => codegen_rust::emit_with_csv_output(&program, &options, policy)?,
+                None => codegen_rust::emit(&program, &options)?,
+            }
         }
-        GenerateTarget::CSharp => codegen_csharp::emit(&program)?,
+        GenerateTarget::CSharp => match &csv_policy {
+            Some(policy) => codegen_csharp::emit_with_csv_output(&program, policy)?,
+            None => codegen_csharp::emit(&program)?,
+        },
     };
     write_artifacts(output_directory, &artifacts)?;
     Ok(GenerateOutcome {
@@ -223,6 +260,258 @@ mod tests {
             "generated"
         );
         fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    struct CsvFacadeDirectory {
+        path: PathBuf,
+        complete: bool,
+    }
+
+    impl CsvFacadeDirectory {
+        fn new() -> std::io::Result<Self> {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule_csv_facade_{}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path)?;
+            Ok(Self {
+                path,
+                complete: false,
+            })
+        }
+    }
+
+    impl Drop for CsvFacadeDirectory {
+        fn drop(&mut self) {
+            if self.complete
+                && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                    != Some(std::ffi::OsStr::new("1"))
+            {
+                let _ = fs::remove_dir_all(&self.path);
+            } else {
+                eprintln!("Retained CSV facade artifacts: {}", self.path.display());
+            }
+        }
+    }
+
+    fn csv_facade_project() -> mapping::Project {
+        use ir::{ScalarType, SchemaNode};
+        mapping::Project {
+            source: SchemaNode::group("Source", Vec::new()).repeating(),
+            target: SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            extra_targets: Vec::new(),
+            failure_rules: Vec::new(),
+            user_functions: Default::default(),
+            graph: mapping::Graph {
+                nodes: std::collections::BTreeMap::from([(
+                    9,
+                    mapping::Node::Const {
+                        value: ir::Value::String("fixed".into()),
+                    },
+                )]),
+            },
+            root: mapping::Scope {
+                iteration: mapping::ScopeIteration::Source(Vec::new()),
+                bindings: vec![mapping::Binding {
+                    target_field: "Value".into(),
+                    node: 9,
+                }],
+                ..Default::default()
+            },
+        }
+    }
+
+    fn csv_facade_targets() -> [GenerateTarget; 2] {
+        [
+            GenerateTarget::Rust {
+                runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
+            },
+            GenerateTarget::CSharp,
+        ]
+    }
+
+    fn write_csv_facade_project(path: &Path, project: &mapping::Project) -> anyhow::Result<()> {
+        fs::write(path, serde_json::to_vec(project)?)?;
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_csv_generation_accepts_exact_stored_format_identity() -> anyhow::Result<()> {
+        let mut directory = CsvFacadeDirectory::new()?;
+        for (case, stored_path, fallback) in [
+            ("explicit", None, None),
+            ("csv", Some("result.CsV"), None),
+            ("text", Some("result.txt"), None),
+            (
+                "unknown",
+                Some("result.dat"),
+                Some(mapping::TabularBoundaryKind::Csv),
+            ),
+            (
+                "extensionless",
+                Some("result"),
+                Some(mapping::TabularBoundaryKind::Csv),
+            ),
+        ] {
+            let mut project = csv_facade_project();
+            project.target_path = stored_path.map(str::to_owned);
+            project.target_options = mapping::FormatOptions {
+                delimiter: Some(';'),
+                csv_quote: Some('\''),
+                csv_utf8_bom: true,
+                has_header_row: Some(false),
+                tabular_kind: fallback,
+                ..Default::default()
+            };
+            let project_path = directory.path.join(format!("{case}.json"));
+            write_csv_facade_project(&project_path, &project)?;
+            for (language, target) in csv_facade_targets().into_iter().enumerate() {
+                let output = directory.path.join(format!("{case}-{language}"));
+                let outcome = generate_project_with_csv_output(&project_path, &output, target)?;
+                assert_eq!(outcome.output_directory, output);
+                let entry = if language == 0 {
+                    "src/lib.rs"
+                } else {
+                    "GeneratedMapping.Csv.cs"
+                };
+                let source = fs::read_to_string(output.join(entry))?;
+                assert!(source.contains(if language == 0 {
+                    "execute_csv_bytes"
+                } else {
+                    "ExecuteCsvBytes"
+                }));
+            }
+        }
+        directory.complete = true;
+        Ok(())
+    }
+
+    #[test]
+    fn stored_non_csv_paths_win_over_csv_fallback_before_publication() -> anyhow::Result<()> {
+        let mut directory = CsvFacadeDirectory::new()?;
+        for (case, path) in [
+            ("json", "result.json"),
+            ("xml", "result.xml"),
+            ("xlsx", "result.xlsx"),
+        ] {
+            let mut project = csv_facade_project();
+            project.target_path = Some(path.into());
+            project.target_options.tabular_kind = Some(mapping::TabularBoundaryKind::Csv);
+            let project_path = directory.path.join(format!("{case}.project.json"));
+            write_csv_facade_project(&project_path, &project)?;
+            for (language, target) in csv_facade_targets().into_iter().enumerate() {
+                let output = directory.path.join(format!("{case}-{language}"));
+                let error = generate_project_with_csv_output(&project_path, &output, target)
+                    .expect_err("the stored physical format must not silently change");
+                assert!(error.to_string().contains("requires a CSV target"));
+                assert!(!output.exists());
+            }
+        }
+        assert!(fs::read_dir(&directory.path)?.all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("ferrule-stage")
+        }));
+        directory.complete = true;
+        Ok(())
+    }
+
+    #[test]
+    fn csv_repair_and_conflicting_adapters_keep_typed_prepublication_errors() -> anyhow::Result<()>
+    {
+        let mut directory = CsvFacadeDirectory::new()?;
+        for (case, options, expected) in [
+            (
+                "json_lines",
+                mapping::FormatOptions {
+                    json_lines: true,
+                    ..Default::default()
+                },
+                codegen::CsvOutputError::ConflictingFormatOptions,
+            ),
+            (
+                "xlsx",
+                mapping::FormatOptions {
+                    tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
+                    ..Default::default()
+                },
+                codegen::CsvOutputError::ConflictingFormatOptions,
+            ),
+            (
+                "repair",
+                mapping::FormatOptions {
+                    csv_text_repair_dependency: Some(mapping::CsvTextRepairDependency::new(
+                        mapping::CsvTextRepairCause::Encoding,
+                    )),
+                    ..Default::default()
+                },
+                codegen::CsvOutputError::RepairRequired,
+            ),
+        ] {
+            let mut project = csv_facade_project();
+            project.target_options = options;
+            let project_path = directory.path.join(format!("{case}.json"));
+            write_csv_facade_project(&project_path, &project)?;
+            for (language, target) in csv_facade_targets().into_iter().enumerate() {
+                let output = directory.path.join(format!("{case}-{language}"));
+                let error = generate_project_with_csv_output(&project_path, &output, target)
+                    .expect_err("unsupported policy must refuse before staging");
+                assert_eq!(
+                    error.downcast_ref::<codegen::CsvOutputError>(),
+                    Some(&expected)
+                );
+                assert!(!output.exists());
+            }
+        }
+        directory.complete = true;
+        Ok(())
+    }
+
+    #[test]
+    fn csv_project_policy_precedes_lowering_and_valid_policy_keeps_legacy_mapping_errors()
+    -> anyhow::Result<()> {
+        let mut directory = CsvFacadeDirectory::new()?;
+        let mut project = csv_facade_project();
+        project.root.bindings[0].node = 999;
+        project.target_path = Some("result.json".into());
+        project.target_options.delimiter = Some('\n');
+        let project_path = directory.path.join("dual-invalid.json");
+        write_csv_facade_project(&project_path, &project)?;
+        for (language, target) in csv_facade_targets().into_iter().enumerate() {
+            let output = directory.path.join(format!("policy-first-{language}"));
+            let error = generate_project_with_csv_output(&project_path, &output, target)
+                .expect_err("literal CSV policy precedes Project lowering and path admission");
+            assert_eq!(
+                error.downcast_ref::<codegen::CsvOutputError>(),
+                Some(&codegen::CsvOutputError::BadDelimiter('\n'))
+            );
+            assert!(!output.exists());
+        }
+        project.target_path = Some("result.csv".into());
+        project.target_options = Default::default();
+        write_csv_facade_project(&project_path, &project)?;
+        for (language, target) in csv_facade_targets().into_iter().enumerate() {
+            let output = directory.path.join(format!("mapping-first-{language}"));
+            let legacy_output = directory.path.join(format!("legacy-invalid-{language}"));
+            let legacy = generate_project(&project_path, &legacy_output, target.clone())
+                .expect_err("the disconnected binding is invalid");
+            let error = generate_project_with_csv_output(&project_path, &output, target)
+                .expect_err("valid CSV policy preserves the original mapping failure");
+            assert_eq!(format!("{error:#}"), format!("{legacy:#}"));
+            assert!(!output.exists());
+            assert!(!legacy_output.exists());
+        }
+        directory.complete = true;
         Ok(())
     }
 }

@@ -984,6 +984,7 @@ name = "codegen-runtime"
 version = "0.1.0"
 dependencies = [
  "codegen-schema",
+ "format-csv",
  "format-json",
  "format-xml",
  "functions",
@@ -1820,6 +1821,7 @@ name = "format-csv"
 version = "0.1.0"
 dependencies = [
  "csv",
+ "csv-core",
  "ir",
  "mapping",
  "thiserror 2.0.18",
