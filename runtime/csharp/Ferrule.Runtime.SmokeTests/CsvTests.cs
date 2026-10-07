@@ -107,6 +107,7 @@ internal static partial class Program
         CsvBytes(crossing + "\n", CsvRows(Group(Field("Value", Scalar(Text(crossing))))),
             [new("Value", FerruleScalarType.String)], new() { HasHeaders = false });
         CsvTextBufferAndApiOwnership();
+        CsvManyFormattedRows();
     }
 
     private static void CsvEmptyRecordsAndDialect()
@@ -210,6 +211,7 @@ internal static partial class Program
         Equal<int?>(1, later.Row);
         Equal("bad,name", later.Field);
         CsvTextFailurePayloads();
+        CsvDeferredQuoteFailureOrder();
     }
 
     private static void CsvActualUtf8Limit()
@@ -244,6 +246,66 @@ internal static partial class Program
             fields, headerless));
         Equal<int?>(1, later.Row);
         CsvTextOutputLimit();
+    }
+
+    private static void CsvManyFormattedRows()
+    {
+        FerruleCsvField[] fields = [new("Value", FerruleScalarType.String),
+            new("Count", FerruleScalarType.Int64), new("Enabled", FerruleScalarType.Bool)];
+        var rows = new FerruleInstance[4096];
+        var expected = new StringBuilder("\uFEFFValue;Count;Enabled\n");
+        for (var row = 0; row < rows.Length; row++)
+        {
+            var quoted = row % 2 == 0;
+            rows[row] = Group(Field("Enabled", Scalar(Text(quoted ? " 1 " : " 0 "))),
+                Field("Count", Scalar(Text(" +0007 "))),
+                Field("Value", Scalar(Text(quoted ? "é;🙂'" : "plain"))));
+            expected.Append(quoted ? "'é;🙂''';7;true\n" : "plain;7;false\n");
+        }
+        CsvBytes(expected.ToString(), CsvRows(rows), fields,
+            new() { Delimiter = ';', Quote = '\'', Utf8Bom = true });
+        CsvBytes(string.Concat(Enumerable.Repeat("7\n", 4096)),
+            CsvRows(Enumerable.Range(0, 4096).Select(_ =>
+                Group(Field("Count", Scalar(Text(" +0007 "))))).ToArray()),
+            [new("Count", FerruleScalarType.Int64)],
+            new() { HasHeaders = false, QuoteDisabled = true });
+    }
+
+    private static void CsvDeferredQuoteFailureOrder()
+    {
+        FerruleCsvField[] fields = [new("Value", FerruleScalarType.String)];
+        var unquoted = new FerruleCsvWriteOptions { HasHeaders = false, QuoteDisabled = true };
+        var emptyFirst = CsvRows(Group(Field("Value", Scalar(Text("")))),
+            Group(Field("Value", Scalar(Text("needs,quotes")))));
+        CsvMatchingFailure(FerruleCsvError.UnquotedSingleEmptyRow, emptyFirst, fields, unquoted);
+        Equal<int?>(0, CsvError(FerruleCsvError.UnquotedSingleEmptyRow,
+            () => FerruleCsv.SerializeBytes(emptyFirst, fields, unquoted)).Row);
+        var quotedFirst = CsvRows(Group(Field("Value", Scalar(Text("needs,quotes")))),
+            Group(Field("Value", Scalar(Text("")))));
+        CsvMatchingFailure(FerruleCsvError.UnquotedFieldBoundary, quotedFirst, fields, unquoted);
+        var first = CsvError(FerruleCsvError.UnquotedFieldBoundary,
+            () => FerruleCsv.SerializeBytes(quotedFirst, fields, unquoted));
+        Equal<int?>(0, first.Row);
+        Equal("Value", first.Field);
+        // Deferred early refusals must not hide any later row or scalar failure.
+        foreach (var earlier in new[] { "", "needs,quotes" })
+        {
+            var laterShape = CsvRows(Group(Field("Value", Scalar(Text(earlier)))), Group());
+            CsvMatchingFailure(FerruleCsvError.MissingField, laterShape, fields, unquoted);
+            Equal<int?>(1, CsvError(FerruleCsvError.MissingField,
+                () => FerruleCsv.SerializeBytes(laterShape, fields, unquoted)).Row);
+            var laterType = CsvRows(Group(Field("Value", Scalar(Text(earlier)))),
+                Group(Field("Value", Scalar(FerruleValue.XmlNil))));
+            CsvMatchingFailure(FerruleCsvError.ValueType, laterType, fields, unquoted);
+            var typed = CsvError(FerruleCsvError.ValueType,
+                () => FerruleCsv.SerializeBytes(laterType, fields, unquoted));
+            Equal<int?>(1, typed.Row);
+            Equal("xml nil", typed.Got);
+        }
+        var header = CsvRows(Group(Field("bad,name", Scalar(Text("")))),
+            Group(Field("bad,name", Scalar(Text("needs,quotes")))));
+        CsvMatchingFailure(FerruleCsvError.UnquotedHeaderBoundary, header,
+            [new("bad,name", FerruleScalarType.String)], new() { QuoteDisabled = true });
     }
 
     private static void CsvTextBufferAndApiOwnership()
