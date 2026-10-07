@@ -363,7 +363,8 @@ fn matching_entries(query: &str) -> Vec<PaletteEntry> {
         .split_whitespace()
         .map(str::to_ascii_lowercase)
         .collect();
-    entries()
+    let normalized_query = terms.join(" ");
+    let mut matches = entries()
         .into_iter()
         .filter(|entry| {
             let signature = builtin_definition(entry.template)
@@ -380,7 +381,25 @@ fn matching_entries(query: &str) -> Vec<PaletteEntry> {
             .to_ascii_lowercase();
             terms.iter().all(|term| haystack.contains(term))
         })
-        .collect()
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|entry| {
+        let label = entry
+            .label
+            .split_whitespace()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if label == normalized_query {
+            0
+        } else if matches!(entry.template, NodeTemplate::Builtin(name)
+            if name.eq_ignore_ascii_case(&normalized_query))
+        {
+            1
+        } else {
+            2
+        }
+    });
+    matches
 }
 
 fn builtin_definition(template: NodeTemplate) -> Option<&'static BuiltinDefinition> {
@@ -596,6 +615,130 @@ mod tests {
                     "{query}: allowed={allowed}"
                 );
             }
+        }
+    }
+
+    fn palette_frame(context: &egui::Context, events: Vec<egui::Event>) -> Option<NodeTemplate> {
+        let mut selected = None;
+        let _ = context.run_ui(
+            egui::RawInput {
+                events,
+                ..Default::default()
+            },
+            |ui| selected = show_available(ui, true, true),
+        );
+        selected
+    }
+
+    fn key(key: Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn exact_display_labels_precede_documentation_matches_and_accept_return() {
+        for query in ["value map", "VALUE MAP", "  VaLuE   mAp  "] {
+            let matches = matching_entries(query);
+            assert_eq!(
+                matches.first().map(|entry| entry.template),
+                Some(NodeTemplate::ValueMap)
+            );
+            assert!(
+                matches
+                    .iter()
+                    .skip(1)
+                    .any(|entry| entry.template == NodeTemplate::HostInput)
+            );
+            let context = egui::Context::default();
+            assert_eq!(palette_frame(&context, Vec::new()), None);
+            assert_eq!(
+                palette_frame(&context, vec![egui::Event::Text(query.into())]),
+                None
+            );
+            let selected = palette_frame(&context, vec![key(Key::Enter)]);
+            eprintln!("query={query:?}, returned={selected:?}");
+            assert_eq!(selected, Some(NodeTemplate::ValueMap));
+        }
+    }
+
+    #[test]
+    fn exact_builtin_native_alias_accepts_return_without_changing_catalog_identity() {
+        for (query, expected) in [
+            (
+                "  NORMALIZE_SPACE  ",
+                NodeTemplate::Builtin("normalize_space"),
+            ),
+            ("upper", NodeTemplate::Builtin("upper")),
+        ] {
+            assert_eq!(
+                matching_entries(query).first().map(|entry| entry.template),
+                Some(expected)
+            );
+            let context = egui::Context::default();
+            assert_eq!(palette_frame(&context, Vec::new()), None);
+            assert_eq!(
+                palette_frame(&context, vec![egui::Event::Text(query.into())]),
+                None
+            );
+            let selected = palette_frame(&context, vec![key(Key::Enter)]);
+            eprintln!("alias={query:?}, returned={selected:?}");
+            assert_eq!(selected, Some(expected));
+        }
+    }
+
+    #[test]
+    fn partial_and_empty_searches_keep_catalog_order_and_zero_matches_do_not_choose() {
+        assert_eq!(matching_entries(" \t\n "), entries());
+        assert_eq!(
+            matching_entries("host")
+                .iter()
+                .map(|entry| entry.template)
+                .collect::<Vec<_>>(),
+            vec![NodeTemplate::HostInput, NodeTemplate::HostInputDefault],
+        );
+        let context = egui::Context::default();
+        assert_eq!(palette_frame(&context, Vec::new()), None);
+        assert_eq!(
+            palette_frame(&context, vec![egui::Event::Text("does-not-exist".into())]),
+            None
+        );
+        let selected = palette_frame(&context, vec![key(Key::Enter)]);
+        eprintln!("zero-match Return={selected:?}");
+        assert_eq!(selected, None);
+        assert_eq!(
+            palette_frame(&context, vec![key(Key::ArrowDown), key(Key::ArrowUp)]),
+            None
+        );
+    }
+
+    #[test]
+    fn explicit_arrow_selection_still_overrides_the_exact_match_default() {
+        for move_back in [false, true] {
+            let context = egui::Context::default();
+            assert_eq!(palette_frame(&context, Vec::new()), None);
+            assert_eq!(
+                palette_frame(&context, vec![egui::Event::Text("value map".into())]),
+                None
+            );
+            assert_eq!(palette_frame(&context, vec![key(Key::ArrowDown)]), None);
+            if move_back {
+                assert_eq!(palette_frame(&context, vec![key(Key::ArrowUp)]), None);
+            }
+            let selected = palette_frame(&context, vec![key(Key::Enter)]);
+            eprintln!("exact-query arrow selection: move_back={move_back}, returned={selected:?}");
+            assert_eq!(
+                selected,
+                Some(if move_back {
+                    NodeTemplate::ValueMap
+                } else {
+                    NodeTemplate::HostInput
+                })
+            );
         }
     }
 }
