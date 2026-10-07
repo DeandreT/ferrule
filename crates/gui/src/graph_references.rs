@@ -75,6 +75,11 @@ struct ReferenceCollector {
     blocking: std::collections::BTreeSet<String>,
 }
 
+enum RemovedOwner<'a> {
+    Scope(&'a Scope),
+    FailureRule(&'a FailureRule),
+}
+
 impl ReferenceCollector {
     fn add(&mut self, label: String, blocking: bool) {
         if blocking {
@@ -197,7 +202,26 @@ pub(crate) fn references_outside_scope(
         &[],
         ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
         needle,
-        Some(removed),
+        Some(RemovedOwner::Scope(removed)),
+    )
+    .all
+}
+
+/// References that survive removing one exact failure rule. Equal rule values
+/// or printable positions must not hide another rule's ownership.
+pub(crate) fn references_outside_failure_rule(
+    project: &Project,
+    removed: &FailureRule,
+    needle: NodeId,
+) -> Vec<String> {
+    references_to_inner(
+        &project.graph,
+        &project.root,
+        &project.extra_targets,
+        &[],
+        ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
+        needle,
+        Some(RemovedOwner::FailureRule(removed)),
     )
     .all
 }
@@ -209,8 +233,13 @@ fn references_to_inner(
     inactive_targets: &[InactiveTargetScope<'_>],
     project: ProjectGraphReferences<'_>,
     needle: NodeId,
-    removed: Option<&Scope>,
+    removed: Option<RemovedOwner<'_>>,
 ) -> NodeReferences {
+    let (removed, removed_rule) = match removed {
+        Some(RemovedOwner::Scope(scope)) => (Some(scope), None),
+        Some(RemovedOwner::FailureRule(rule)) => (None, Some(rule)),
+        None => (None, None),
+    };
     fn scope_references(
         scope: &Scope,
         path: &mut Vec<String>,
@@ -362,6 +391,9 @@ fn references_to_inner(
         );
     }
     for (index, rule) in project.failure_rules.iter().enumerate() {
+        if removed_rule.is_some_and(|removed| std::ptr::eq(rule, removed)) {
+            continue;
+        }
         let label = format!("failure rule {}", index + 1);
         if rule.selection.predicate() == Some(needle) {
             found.add(format!("{label} predicate"), true);
