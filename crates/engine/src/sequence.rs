@@ -679,7 +679,10 @@ pub(super) fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Valu
     .ok_or(functions::FunctionError::InvalidArgument {
         function: "tokenize-by-length",
         message: "requires a positive integer length",
-    })? as usize;
+    })?;
+    // A wider positive length exceeds every addressable character buffer.
+    // Saturating avoids wrapping to zero on narrower platforms.
+    let length = usize::try_from(length).unwrap_or(usize::MAX);
 
     // Count before allocating character storage or any output items.
     let requested = (input.chars().count() as u128).div_ceil(length as u128);
