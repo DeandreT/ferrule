@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use ir::{Instance, ScalarType, SchemaNode};
 
 use super::{
-    CsvFormatError, CsvWriteOptions, dialect_bytes, format_row, require_executable_dependency,
-    requires_quoting, row_fields,
+    CsvFormatError, CsvWriteOptions, dialect_bytes, encoding::RecordEncoder, format_row,
+    require_executable_dependency, requires_quoting, row_fields,
 };
 
 /// Failure from bounded CSV output. Native format errors retain their cause.
@@ -116,42 +116,6 @@ fn bounded_io_error(error: io::Error) -> CsvBoundedError {
     }
 }
 
-const FIELD_CHUNK_BYTES: usize = 4096;
-const ENCODE_BUFFER_BYTES: usize = 2 * FIELD_CHUNK_BYTES + 2;
-
-fn write_record<'a>(
-    writer: &mut csv_core::Writer,
-    sink: &mut BoundedBytes,
-    buffer: &mut [u8; ENCODE_BUFFER_BYTES],
-    fields: impl IntoIterator<Item = &'a str>,
-) -> Result<(), CsvBoundedError> {
-    for (index, field) in fields.into_iter().enumerate() {
-        if index != 0 {
-            let (_, written) = writer.delimiter(buffer);
-            sink.write_all(&buffer[..written])
-                .map_err(bounded_io_error)?;
-        }
-        // Necessary quoting must inspect the complete field, including a
-        // delimiter or quote beyond the first output buffer. Do this once.
-        let bytes = field.as_bytes();
-        let (_, consumed, written) = writer.field(bytes, buffer);
-        sink.write_all(&buffer[..written])
-            .map_err(bounded_io_error)?;
-        // csv-core retains the field's quoting state. Its worst-case escaped
-        // output is twice the chunk length, so each remaining chunk fits and
-        // is completely consumed. This avoids rescanning a large suffix each
-        // time the fixed output buffer fills.
-        for chunk in bytes[consumed..].chunks(FIELD_CHUNK_BYTES) {
-            let (_, _, written) = writer.field(chunk, buffer);
-            sink.write_all(&buffer[..written])
-                .map_err(bounded_io_error)?;
-        }
-    }
-    // Keep csv-core's empty-record, closing-quote, and LF behavior intact.
-    let (_, written) = writer.terminator(buffer);
-    sink.write_all(&buffer[..written]).map_err(bounded_io_error)
-}
-
 pub(super) struct ValidatedCsv<'a> {
     pub(super) fields: Vec<(&'a str, ScalarType)>,
     pub(super) delimiter: u8,
@@ -228,33 +192,17 @@ pub fn to_bytes_with_options_bounded(
     if options.utf8_bom {
         sink.write_all(b"\xef\xbb\xbf").map_err(bounded_io_error)?;
     }
-    let mut writer = csv_core::WriterBuilder::new()
-        .delimiter(delimiter)
-        .quote(quote.unwrap_or(b'"'))
-        .quote_style(if options.quote_disabled {
-            csv_core::QuoteStyle::Never
-        } else {
-            csv_core::QuoteStyle::Necessary
-        })
-        .terminator(csv_core::Terminator::Any(b'\n'))
-        .build();
-    let mut buffer = [0; ENCODE_BUFFER_BYTES];
+    let mut writer = RecordEncoder::new(delimiter, quote, options.quote_disabled);
     if options.has_headers {
-        write_record(
-            &mut writer,
-            &mut sink,
-            &mut buffer,
-            fields.iter().map(|(name, _)| *name),
-        )?;
+        writer
+            .write_record(&mut sink, fields.iter().map(|(name, _)| *name))
+            .map_err(bounded_io_error)?;
     }
     for (row, instance) in rows.iter().enumerate() {
         let record = format_row(row, instance, &fields)?;
-        write_record(
-            &mut writer,
-            &mut sink,
-            &mut buffer,
-            record.iter().map(String::as_str),
-        )?;
+        writer
+            .write_record(&mut sink, record.iter().map(String::as_str))
+            .map_err(bounded_io_error)?;
     }
     Ok(sink.bytes)
 }
