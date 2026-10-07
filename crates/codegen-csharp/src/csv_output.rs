@@ -89,6 +89,15 @@ fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
         output.push_str(NAMED_ADAPTERS);
         output.push_str("}\n");
     }
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some())
+    {
+        output.truncate(output.len() - 2);
+        output.push_str(DYNAMIC_ADAPTERS);
+        output.push_str("}\n");
+    }
     output
 }
 
@@ -135,6 +144,62 @@ const NAMED_ADAPTERS: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext executionContext)
     {
         var primary = ExecuteWithSources(source, extraSources, executionContext);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+"#;
+
+const DYNAMIC_ADAPTERS: &str = r#"
+    public static string ExecuteCsvWithDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithDynamicSourceLoader(source, loader);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static string ExecuteCsvWithSourcesAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithSourcesAndDynamicSourceLoader(source, extraSources, loader);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static string ExecuteCsvWithSourcesContextAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithSourcesContextAndDynamicSourceLoader(source, extraSources, executionContext, loader);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytesWithDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithDynamicSourceLoader(source, loader);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytesWithSourcesAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithSourcesAndDynamicSourceLoader(source, extraSources, loader);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytesWithSourcesContextAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        var primary = ExecuteWithSourcesContextAndDynamicSourceLoader(source, extraSources, executionContext, loader);
         return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
     }
 "#;
