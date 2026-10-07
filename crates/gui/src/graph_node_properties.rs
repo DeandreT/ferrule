@@ -267,18 +267,56 @@ impl GraphViewer<'_> {
                     ));
                 }
                 Node::XmlMixedContent {
-                    path, replacements, ..
+                    path,
+                    frame,
+                    replacements,
                 } => {
-                    ui.label(format!(
-                        "{} ({} replacement{})",
-                        if path.is_empty() {
-                            "<current>".to_string()
-                        } else {
-                            path.join("/")
-                        },
-                        replacements.len(),
-                        if replacements.len() == 1 { "" } else { "s" }
-                    ));
+                    egui::ScrollArea::vertical()
+                        .id_salt("xml_mixed_content_replacements")
+                        .max_height(180.0)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(format!(
+                                    "{} ({} replacement{})",
+                                    if path.is_empty() {
+                                        "<current>".to_owned()
+                                    } else {
+                                        path.join("/")
+                                    },
+                                    replacements.len(),
+                                    if replacements.len() == 1 { "" } else { "s" },
+                                ))
+                                .wrap(),
+                            );
+                            let frame = match frame {
+                                None => "automatic".to_owned(),
+                                Some(frame) if frame.is_empty() => {
+                                    "explicit (empty path)".to_owned()
+                                }
+                                Some(frame) => format!("explicit {}", frame.join("/")),
+                            };
+                            ui.add(egui::Label::new(format!("Frame: {frame}")).wrap());
+                            for (input, replacement) in replacements.iter().enumerate() {
+                                ui.separator();
+                                ui.add(
+                                    egui::Label::new(format!(
+                                        "Input {input}: {}",
+                                        replacement.element
+                                    ))
+                                    .wrap(),
+                                );
+                                let collection = if replacement.collection.is_empty() {
+                                    "parent context (empty path)".to_owned()
+                                } else {
+                                    replacement.collection.join("/")
+                                };
+                                ui.add(
+                                    egui::Label::new(format!("Collection: {collection}")).wrap(),
+                                );
+                                ui.label(format!("Expression: #{}", replacement.expression));
+                            }
+                        });
                 }
                 Node::XmlSerialize {
                     path,
