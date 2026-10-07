@@ -57,6 +57,21 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
 
 pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
     match node {
+        Some(Node::DynamicSourceField { object, frame, .. }) => {
+            let object = if object.is_empty() {
+                "<current> (empty path)".to_owned()
+            } else {
+                object.join("/")
+            };
+            let frame = match frame {
+                None => "automatic".to_owned(),
+                Some(frame) if frame.is_empty() => "explicit (empty path)".to_owned(),
+                Some(frame) => format!("explicit {}", frame.join("/")),
+            };
+            return format!(
+                "{title}\nOpen source object: {object}\nFrame: {frame}\nThe property name is supplied by the input.\nRead-only computed property"
+            );
+        }
         Some(Node::SourceRootField { path, required }) => {
             let path = if path.is_empty() {
                 "<empty> (empty path)".to_owned()
@@ -231,6 +246,16 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 SUMMARY_CHAR_LIMIT,
             ),
         ),
+        Node::DynamicSourceField { object, .. } => (
+            Icon::Braces,
+            format!(
+                "dynamic {}",
+                object.last().map_or_else(
+                    || "current".into(),
+                    |field| compact(field, SUMMARY_CHAR_LIMIT),
+                ),
+            ),
+        ),
         Node::SourceDocumentPath => (Icon::FileText, "path".into()),
         Node::RuntimeValue { value } => match value {
             RuntimeValue::MappingFilePath => (Icon::Folder, "mapping path".into()),
@@ -304,6 +329,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::SourceField { .. }
             | Node::SourceRootField { .. }
             | Node::SourceRootXmlTypeEquals { .. }
+            | Node::DynamicSourceField { .. }
             | Node::JoinField { .. }
             | Node::Lookup { .. }
             | Node::Position { .. }
