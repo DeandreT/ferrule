@@ -19,6 +19,10 @@ flowchart LR
 ```
 
 Input instances can remain live while target rows and output buffers are built.
+The filesystem CLI releases its primary input and dynamic-source cache after
+evaluation and the before-publication check, before serializing selected or all
+targets. Target instances own their data. Earlier parsing and mapping peaks,
+allocator-retained pages, and the target/output buffers can still dominate RSS.
 Joins, sorting, grouping, generated sequences, copies, multiple targets, and
 retained preview or pipeline results may require additional collections or
 clones. A small serialized file can still create many owned strings and tree
@@ -96,4 +100,7 @@ remain outside an individual output-byte limit.
 - [ ] Check disk space for inputs, artifacts, compilation, and retained results.
 
 This page describes source contracts and measurement practice. It supplies no
-new benchmark, RSS estimate, universal improvement claim, or total-RAM cap.
+universal improvement claim or total-RAM cap. The separate
+[filesystem input-lifetime measurement](performance/filesystem-input-lifetime-2026-10-07.md)
+records eight normal-debug observations, exact output checks, and the workloads
+where early input release did and did not reduce the observed process peak.

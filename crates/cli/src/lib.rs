@@ -377,6 +377,9 @@ pub fn run_project_value_with_options(
             selection,
         )?;
         allow_output_publication(options)?;
+        // Target values own their data; inputs are no longer needed during serialization.
+        drop(dynamic_loader);
+        drop(source_instance);
         write_selected_target(
             &targets[0],
             &output,
@@ -391,6 +394,9 @@ pub fn run_project_value_with_options(
             &execution,
         )?;
         allow_output_publication(options)?;
+        // Target values own their data; inputs are no longer needed during serialization.
+        drop(dynamic_loader);
+        drop(source_instance);
         write_all_targets(
             &targets,
             &outputs,
