@@ -613,6 +613,9 @@ impl GraphViewer<'_> {
                     }
                 })
             }
+            NodeTemplate::RuntimeValue(value) => {
+                self.insert(snarl, pos, Node::RuntimeValue { value })
+            }
             NodeTemplate::Builtin(function) => {
                 let input_count = functions::builtin(function)
                     .map(|builtin| builtin.arity.minimum())

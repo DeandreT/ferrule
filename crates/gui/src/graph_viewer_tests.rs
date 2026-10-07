@@ -1067,6 +1067,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             | NodeTemplate::SourceRootXmlTypeEquals
             | NodeTemplate::Position
             | NodeTemplate::HostInput
+            | NodeTemplate::RuntimeValue(_)
             | NodeTemplate::Raise
             | NodeTemplate::Aggregate(_) => 0,
         }
@@ -1092,6 +1093,9 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                     function: actual, ..
                 },
             ) => expected == actual,
+            (NodeTemplate::RuntimeValue(expected), Node::RuntimeValue { value: actual }) => {
+                expected == *actual
+            }
             (
                 NodeTemplate::Aggregate(expected),
                 Node::Aggregate {

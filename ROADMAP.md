@@ -109,6 +109,9 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   64 MiB output cap or changing validation/publication order.
 - [x] Document materialization and route-specific limits rather than a universal
   memory ceiling.
+- [x] Add searchable mapping-path, main-mapping-path, and stable run-time values
+  to primary, named-target, and function canvases, with compact presentation,
+  edit locks, history, and checked node-ID allocation.
 - [ ] Maintain representative many-row and wide-row trials, individual repeats,
   late errors, full outputs, and regressions under clearly named build profiles.
 - [ ] Choose the next GUI authoring gap from an existing executable mapping;
