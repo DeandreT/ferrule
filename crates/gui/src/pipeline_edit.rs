@@ -98,6 +98,58 @@ impl PipelineEditorDocument {
             .collect()
     }
 
+    pub(crate) fn replace_stage_project(
+        &mut self,
+        index: usize,
+        stage_id: &str,
+        expected_pipeline: &str,
+        project: &Project,
+    ) -> anyhow::Result<()> {
+        if crate::project_state::pipeline_snapshot_key(&self.pipeline) != expected_pipeline {
+            bail!("The pipeline changed while its stage canvas was open");
+        }
+        let stage = self
+            .pipeline
+            .stages
+            .get(index)
+            .context("The selected stage no longer exists")?;
+        if stage.id != stage_id {
+            bail!("The selected stage identity changed");
+        }
+        let mut editable = stage.project.clone();
+        editable.graph = project.graph.clone();
+        editable.root = project.root.clone();
+        editable.user_functions = project.user_functions.clone();
+        editable.failure_rules = project.failure_rules.clone();
+        for (old, new) in editable
+            .extra_targets
+            .iter_mut()
+            .zip(&project.extra_targets)
+        {
+            old.root = new.root.clone();
+        }
+        if crate::project_state::project_snapshot_key(&editable)
+            != crate::project_state::project_snapshot_key(project)
+        {
+            bail!("Stage canvas editing cannot change boundary schemas, options or paths");
+        }
+        let mut candidate = self.pipeline.clone();
+        candidate.stages[index].project = project.clone();
+        let issues = engine::validate_pipeline(&candidate);
+        if !issues.is_empty() {
+            bail!(
+                "Stage changes leave the pipeline invalid: {}",
+                issues
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+        }
+        self.pipeline.stages[index].project = project.clone();
+        Ok(())
+    }
+
     pub fn add_project(&mut self, project_path: &Path) -> anyhow::Result<usize> {
         if self.pipeline.stages.len() >= 1_024 {
             bail!("pipeline already contains 1024 stages");

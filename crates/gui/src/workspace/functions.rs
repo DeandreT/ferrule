@@ -216,7 +216,9 @@ impl FerruleApp {
                                 action = Some(TabAction::Split(id));
                                 ui.close();
                             }
-                            if ui.button("Float").clicked() {
+                            if self.embedded_stage_namespace.is_none()
+                                && ui.button("Float").clicked()
+                            {
                                 action = Some(TabAction::Float(id));
                                 ui.close();
                             }
@@ -239,23 +241,26 @@ impl FerruleApp {
                     }
                 }
                 ui.separator();
-                ui.add_enabled_ui(editing_enabled, |ui| {
-                    if crate::icons::button(
-                        ui,
-                        true,
-                        lucide_icons::Icon::Library,
-                        "Function navigator",
-                    )
-                    .clicked()
-                    {
-                        self.show_function_navigator = true;
-                    }
-                    if crate::icons::button(ui, true, lucide_icons::Icon::Plus, "New function")
+                ui.add_enabled_ui(
+                    editing_enabled && self.embedded_stage_namespace.is_none(),
+                    |ui| {
+                        if crate::icons::button(
+                            ui,
+                            true,
+                            lucide_icons::Icon::Library,
+                            "Function navigator",
+                        )
                         .clicked()
-                    {
-                        self.new_function_draft = Some(NewFunctionDraft::default());
-                    }
-                });
+                        {
+                            self.show_function_navigator = true;
+                        }
+                        if crate::icons::button(ui, true, lucide_icons::Icon::Plus, "New function")
+                            .clicked()
+                        {
+                            self.new_function_draft = Some(NewFunctionDraft::default());
+                        }
+                    },
+                );
             });
         });
         match action {
@@ -362,6 +367,8 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         editing_enabled: bool,
     ) {
+        let canvas_id =
+            self.embedded_canvas_id(egui::Id::new(("named_target_canvas", target_index)));
         if !self.ensure_target_canvas(target_index) {
             ui.colored_label(self.palette.error, "Target definition is missing");
             return;
@@ -451,7 +458,7 @@ impl FerruleApp {
                 &mut viewer,
                 &mut canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
-                    id_salt: egui::Id::new(("named_target_canvas", target_index)),
+                    id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
                     style: self.appearance.to_snarl_style_with_palette(self.palette),
@@ -499,6 +506,10 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         editing_enabled: bool,
     ) {
+        let canvas_id = self.embedded_canvas_id(egui::Id::new((
+            "function_mapping_canvas",
+            function_id.get(),
+        )));
         if !self.ensure_function_canvas(function_id) {
             ui.colored_label(self.palette.error, "Function definition is missing");
             return;
@@ -575,7 +586,7 @@ impl FerruleApp {
                 &mut viewer,
                 &mut canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
-                    id_salt: egui::Id::new(("function_mapping_canvas", function_id.get())),
+                    id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
                     style: self.appearance.to_snarl_style_with_palette(self.palette),
