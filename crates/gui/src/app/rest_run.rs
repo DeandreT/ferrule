@@ -147,7 +147,10 @@ impl RestRunResult {
 
 impl FerruleApp {
     pub(super) fn rest_run_busy(&self) -> bool {
-        self.rest_run_draft.is_some() || self.pending_rest_run.is_some()
+        // Existing external-action entry points share this ownership guard.
+        self.rest_run_draft.is_some()
+            || self.pending_rest_run.is_some()
+            || self.stage_document_actions_blocked()
     }
 
     pub(super) fn project_editing_enabled(&self) -> bool {
@@ -165,7 +168,9 @@ impl FerruleApp {
             && self.pending_preview.is_none()
             && self.pending_file_run.is_none()
             && self.pending_pipeline_run.is_none()
-            && !self.rest_run_busy()
+            && self.rest_run_draft.is_none()
+            && self.pending_rest_run.is_none()
+            && self.pipeline_stage_canvas.is_none()
     }
 
     pub(super) fn clear_rest_run_session(&mut self) {
@@ -180,7 +185,8 @@ impl FerruleApp {
     }
 
     pub(super) fn begin_rest_run(&mut self) {
-        if !self.project_editing_enabled()
+        if self.stage_document_actions_blocked()
+            || !self.project_editing_enabled()
             || self.pipeline_editor.is_some()
             || self.pipeline_run_draft.is_some()
             || self.pending_save_continuation.is_some()

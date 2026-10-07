@@ -593,7 +593,7 @@ impl FerruleApp {
         }
     }
 
-    fn validate_now(&mut self) {
+    pub(super) fn validate_now(&mut self) {
         let issues = cli::validate(&self.project);
         if issues.is_empty() {
             self.status = "project is valid".to_string();
@@ -605,6 +605,7 @@ impl FerruleApp {
     }
 
     pub(super) fn show_source_explorer(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let editing_enabled = editing_enabled && self.embedded_stage_namespace.is_none();
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
             &self.project.source,
             self.project.source_path.as_deref(),
@@ -736,6 +737,7 @@ impl FerruleApp {
     }
 
     pub(super) fn show_inspector(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let boundary_editing = editing_enabled && self.embedded_stage_namespace.is_none();
         let mut activate = None;
         let active_target = match self.mapping_workspace.active {
             MappingDocument::Target(index) => Some(index),
@@ -769,7 +771,7 @@ impl FerruleApp {
                 });
             if crate::icons::button(
                 ui,
-                editing_enabled,
+                boundary_editing,
                 lucide_icons::Icon::CirclePlus,
                 "Add target",
             )
@@ -780,7 +782,7 @@ impl FerruleApp {
             if let Some(index) = active_target {
                 if crate::icons::button(
                     ui,
-                    editing_enabled,
+                    boundary_editing,
                     lucide_icons::Icon::Pencil,
                     "Edit target",
                 )
@@ -790,7 +792,7 @@ impl FerruleApp {
                 }
                 if crate::icons::button(
                     ui,
-                    editing_enabled,
+                    boundary_editing,
                     lucide_icons::Icon::Trash2,
                     "Remove target",
                 )
@@ -1047,6 +1049,7 @@ impl FerruleApp {
             &self.project.target_options,
         );
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
+        let canvas_id = self.embedded_canvas_id(egui::Id::new("main_mapping_canvas"));
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
@@ -1100,7 +1103,7 @@ impl FerruleApp {
                 &mut viewer,
                 &mut self.main_canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
-                    id_salt: egui::Id::new("main_mapping_canvas"),
+                    id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: self.main_canvas.view_generation,
                     style: self.appearance.to_snarl_style_with_palette(self.palette),
@@ -1115,6 +1118,14 @@ impl FerruleApp {
             if let Some(error) = viewer.error {
                 self.status = "graph edit failed".to_string();
                 self.diagnostics.error("Graph edit failed", error);
+            }
+            #[cfg(test)]
+            if self.embedded_stage_namespace.is_some() {
+                self.embedded_stage_pin_ids = crate::canvas_keyboard::current_pin_interaction_ids(
+                    ui.ctx(),
+                    canvas_id,
+                    self.main_canvas.view_generation,
+                );
             }
             requested_function = viewer.requested_function_open;
         });
