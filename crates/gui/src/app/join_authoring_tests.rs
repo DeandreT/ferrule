@@ -2315,7 +2315,7 @@ fn join_key_edit_exhausted_id_imported_owner_and_unsupported_admission_preserve_
             .iter()
             .any(|item| item.message.contains("mapping node IDs are exhausted"))
     );
-    for kind in ["three", "singleton", "dynamic", "correlated"] {
+    for kind in ["singleton", "dynamic", "correlated"] {
         let mut rejected = composite_fixture(MappingDocument::Main, false);
         let left = JoinSource::new(vec!["Orders".into()]);
         let right = if kind == "singleton" {
@@ -2747,3 +2747,6 @@ fn join_key_edit_unsaved_preview_uses_applied_three_keys_and_publishes_no_files(
     assert!(app.document.saved_path().is_none());
     assert!(app.is_dirty());
 }
+
+#[path = "join_authoring_tests/nary.rs"]
+mod nary;
