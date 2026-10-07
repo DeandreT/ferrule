@@ -1549,7 +1549,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         ui: &mut Ui,
         snarl: &mut Snarl<CanvasNode>,
     ) {
-        if ui.rect_contains_pointer(rect) {
+        // egui-snarl's node frame already participates in transformed, clipped
+        // widget hit-testing. Area-only rectangle checks miss its child layer.
+        // Reuse its response without adding a click/drag target or an auto ID.
+        let frame_id = ui.layer_id().id.with(("snarl-node", node)).with("frame");
+        if ui
+            .ctx()
+            .read_response(frame_id)
+            .is_some_and(|response| response.contains_pointer())
+        {
             self.hovered_node_this_frame = Some(node);
         }
         let canvas_node = snarl[node];
