@@ -226,6 +226,100 @@ fn pick(
     click_at(app, context, point);
 }
 
+fn message_popup_diagnostics(
+    output: &egui::FullOutput,
+    closed: &[egui::Pos2],
+    current: &str,
+    wanted: &str,
+) -> String {
+    fn collect(
+        shape: &egui::epaint::Shape,
+        clip: egui::Rect,
+        remaining: &mut usize,
+        lines: &mut Vec<String>,
+    ) {
+        match shape {
+            egui::epaint::Shape::Text(text) if *remaining > 0 => {
+                *remaining -= 1;
+                let center = text.visual_bounding_rect().center();
+                let label: String = text.galley.text().chars().take(160).collect();
+                lines.push(format!("text(first160scalars)={label:?} center={center:?} clip={clip:?} center_visible={}", clip.contains(center)));
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect(shape, clip, remaining, lines);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut remaining = 128;
+    let mut lines = vec![format!(
+        "closed_current_centers={closed:?}; current={current:?} visible={:?}; wanted={wanted:?} visible={:?}; bounded128textshapes",
+        positions(output, current),
+        positions(output, wanted)
+    )];
+    for shape in &output.shapes {
+        collect(&shape.shape, shape.clip_rect, &mut remaining, &mut lines);
+    }
+    lines.join("\n")
+}
+
+fn pick_toward_start(
+    app: &mut FerruleApp,
+    context: &egui::Context,
+    current: &str,
+    occurrence: usize,
+    wanted: &str,
+) {
+    let closed = settle(app, context);
+    let closed_controls = positions(&closed, current);
+    let button = *closed_controls
+        .get(occurrence)
+        .unwrap_or_else(|| panic!("visible control {current:?} #{occurrence}"));
+    click_at(app, context, button);
+    let mut output = settle(app, context);
+    if positions(&output, wanted).is_empty() {
+        // Exclude every current-label center already visible in the closed editor.
+        // The distinct selected row is inside this message popup, unlike FALSE,
+        // which also labels the ordinary predicate selector beside the popup.
+        let anchor = positions(&output, current)
+            .into_iter()
+            .rfind(|point| {
+                closed_controls
+                    .iter()
+                    .all(|closed| point.distance(*closed) > 1.0)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "distinct visible selected message popup row; {}",
+                    message_popup_diagnostics(&output, &closed_controls, current, wanted)
+                )
+            });
+        frame(
+            app,
+            context,
+            vec![
+                egui::Event::PointerMoved(anchor),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, 600.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        output = settle(app, context);
+    }
+    let point = *positions(&output, wanted).last().unwrap_or_else(|| {
+        panic!(
+            "visible popup choice {wanted:?}; {}",
+            message_popup_diagnostics(&output, &closed_controls, current, wanted)
+        )
+    });
+    click_at(app, context, point);
+}
+
 fn item(app: &FerruleApp, index: usize) -> NodeId {
     match &app.project.failure_rules[index].iteration {
         FailureIteration::Sequence { sequence } => sequence.item(),
@@ -692,10 +786,16 @@ fn generated_rule_other_kinds_missing_invalid_and_shared_items_remain_unchanged(
             },
         );
         let sequence = if case == 0 {
-            SequenceExpr::TokenizeRegex {
-                input: 10,
-                pattern: 11,
-                flags: None,
+            app.project.source =
+                SchemaNode::group("Source", vec![retained_recursive_tree_schema()]);
+            SequenceExpr::RecursiveCollect {
+                collection: vec!["Tree".into()],
+                children: vec!["Children".into()],
+                descent_value: vec!["Name".into()],
+                values: vec!["Files".into()],
+                value: vec!["Value".into()],
+                prefix: 10,
+                separator: 11,
                 item: 42,
             }
         } else {
@@ -984,6 +1084,7 @@ fn generated_rule_id_exhaustion_and_missing_owned_ids_reserve_atomically() {
                     GeneratedRuleKind::IntegerRange => "Add integer range rule",
                     GeneratedRuleKind::SplitText => "Add split text rule",
                     GeneratedRuleKind::SplitTextByLength => "Add fixed-length text rule",
+                    GeneratedRuleKind::SplitTextByRegex => "Add regex text rule",
                 },
             );
             app.apply_failure_rule_action(RuleAction::AddSequence(kind), true);
@@ -1903,4 +2004,1415 @@ fn generated_fixed_length_preview_busy_and_id_exhaustion_preserve_atomic_graph_h
             .contains_key(&(NodeId::MAX - 2))
     );
     assert_eq!(item(&reserved, 1), NodeId::MAX);
+}
+
+fn retained_recursive_tree_schema() -> SchemaNode {
+    let files = || {
+        SchemaNode::group(
+            "Files",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        )
+        .repeating()
+    };
+    SchemaNode::group(
+        "Tree",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            files(),
+            SchemaNode::group(
+                "Children",
+                vec![SchemaNode::scalar("Name", ScalarType::String), files()],
+            )
+            .repeating(),
+        ],
+    )
+    .repeating()
+}
+
+fn regex_fixture(root_arguments: bool) -> FerruleApp {
+    let mut app = fixture();
+    app.project.graph.nodes.insert(
+        8,
+        Node::Const {
+            value: Value::String(String::new()),
+        },
+    );
+    if root_arguments {
+        app.project.source = SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar("Text", ScalarType::String),
+                SchemaNode::scalar("Pattern", ScalarType::String),
+                SchemaNode::scalar("Flags", ScalarType::String),
+            ],
+        );
+        for (id, name) in [(5, "Text"), (6, "Pattern"), (7, "Flags")] {
+            app.project.graph.nodes.insert(
+                id,
+                Node::SourceField {
+                    path: vec![name.into()],
+                    frame: None,
+                },
+            );
+        }
+    }
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    app
+}
+
+fn regex_input(text: Value, pattern: Value, flags: Value) -> Instance {
+    Instance::Group(
+        vec![
+            ("Text".into(), Instance::Scalar(text)),
+            ("Pattern".into(), Instance::Scalar(pattern)),
+            ("Flags".into(), Instance::Scalar(flags)),
+        ]
+        .into(),
+    )
+}
+
+fn author_root_regex(app: &mut FerruleApp, context: &egui::Context) {
+    click(app, context, "Add regex text rule");
+    pick(
+        app,
+        context,
+        "12: constant String(\"first,second\")",
+        0,
+        "5: field Text",
+    );
+    pick(
+        app,
+        context,
+        "13: constant String(\"[,;]+\")",
+        0,
+        "6: field Pattern",
+    );
+    click(app, context, "Custom flags expression");
+    pick(
+        app,
+        context,
+        "8: constant String(\"\")",
+        0,
+        "7: field Flags",
+    );
+    item_message(app, context, 0);
+    assert_eq!(
+        app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 5,
+                pattern: 6,
+                flags: Some(7),
+                item: 14
+            },
+        }
+    );
+}
+
+#[test]
+fn generated_regex_real_controls_preserve_absent_flags_unicode_modifiers_and_lazy_message() {
+    let directory = Directory::new();
+    let mut app = regex_fixture(false);
+    let context = context();
+    let original_graph_nodes = app.project.graph.nodes.len();
+    click(&mut app, &context, "Add regex text rule");
+    assert_eq!(app.project.graph.nodes.len(), original_graph_nodes + 3);
+    assert_eq!(
+        app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 12,
+                pattern: 13,
+                flags: None,
+                item: 14
+            },
+        }
+    );
+    assert_eq!(
+        match &app.project.failure_rules[0].iteration {
+            FailureIteration::Sequence { sequence } => sequence.inputs(),
+            _ => unreachable!(),
+        },
+        vec![12, 13],
+        "absent flags create no required/null argument"
+    );
+    item_message(&mut app, &context, 0);
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-default", &app, &source()),
+        fixed_failure("first")
+    );
+    let graph = serde_json::to_value(&app.project.graph).unwrap();
+    click(&mut app, &context, "Custom flags expression");
+    assert!(matches!(
+        &app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: Some(8),
+                item: 14,
+                ..
+            },
+        }
+    ));
+    click(&mut app, &context, "Custom flags expression");
+    assert_eq!(serde_json::to_value(&app.project.graph).unwrap(), graph);
+    assert!(matches!(
+        &app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: None,
+                item: 14,
+                ..
+            },
+        }
+    ));
+    // Runtime fields keep even long/error patterns out of widget text labels.
+    let mut root = regex_fixture(true);
+    author_root_regex(&mut root, &context);
+    for (name, text, pattern, flags, expected) in [
+        ("unicode-literal", "é🙂🙂z", "🙂+", "", "é"),
+        ("unicode-scalars", "aé🙂z", "..", "", ""),
+        ("combining", "e\u{301}🙂z", "e\u{301}", "", ""),
+        ("empty-fields", ",a,,", ",", "", ""),
+        ("ignore-case", "aBb", "b", "i", "a"),
+        ("case-sensitive", "aBb", "b", "", "aB"),
+        ("line-anchors", "first\n--\nlast", "^--$", "m", "first\n"),
+        (
+            "no-line-anchors",
+            "first\n--\nlast",
+            "^--$",
+            "",
+            "first\n--\nlast",
+        ),
+        ("dot-line-break", "a\nb", "a.b", "s", ""),
+        ("no-dot-line-break", "a\nb", "a.b", "", "a\nb"),
+        ("pattern-spacing", "axb", " x ", "x", "a"),
+        ("literal-spacing", "axb", " x ", "", "axb"),
+        (
+            "combined-flags",
+            "Alpha--BETA--Gamma",
+            "-+ beta -+",
+            "ix",
+            "Alpha",
+        ),
+    ] {
+        let input = regex_input(
+            Value::String(text.into()),
+            Value::String(pattern.into()),
+            Value::String(flags.into()),
+        );
+        assert_eq!(
+            fixed_recorded_run(&directory, &format!("regex-{name}"), &root, &input),
+            fixed_failure(expected)
+        );
+        assert_eq!(item(&root, 0), 14);
+    }
+    click(&mut root, &context, "All items");
+    click(&mut root, &context, "Expression is true");
+    pick(&mut root, &context, SUCCESS, 0, FALSE);
+    pick_toward_start(&mut root, &context, "14: field <current>", 0, "2: divide");
+    assert_eq!(root.project.failure_rules[0].message, Some(2));
+    let input = regex_input(
+        Value::String("é--🙂".into()),
+        Value::String("-+".into()),
+        Value::String(String::new()),
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-unselected-message", &root, &input),
+        Ok(success())
+    );
+    click(&mut root, &context, "Expression is true");
+    click(&mut root, &context, "Expression is false");
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-selected-message", &root, &input),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+    pick(&mut root, &context, "2: divide", 0, "14: field <current>");
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-restored-item-message", &root, &input),
+        fixed_failure("é")
+    );
+}
+
+#[test]
+fn generated_regex_root_argument_errors_and_null_order_keep_typed_native_outcomes() {
+    let directory = Directory::new();
+    let mut app = regex_fixture(true);
+    let context = context();
+    author_root_regex(&mut app, &context);
+    for (name, input, expected) in [
+        (
+            "empty-input",
+            regex_input(
+                Value::String(String::new()),
+                Value::String(",".into()),
+                Value::String(String::new()),
+            ),
+            Ok(success()),
+        ),
+        (
+            "input-type",
+            regex_input(
+                Value::Bool(true),
+                Value::String(",".into()),
+                Value::String(String::new()),
+            ),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-regexp",
+                    got: "bool",
+                },
+            )),
+        ),
+        (
+            "pattern-type",
+            regex_input(
+                Value::String("a".into()),
+                Value::Int(1),
+                Value::String(String::new()),
+            ),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-regexp",
+                    got: "int",
+                },
+            )),
+        ),
+        (
+            "flags-type",
+            regex_input(
+                Value::String("a".into()),
+                Value::String(",".into()),
+                Value::Bool(true),
+            ),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-regexp",
+                    got: "bool",
+                },
+            )),
+        ),
+        (
+            "bad-flags",
+            regex_input(
+                Value::String("a".into()),
+                Value::String(",".into()),
+                Value::String("q".into()),
+            ),
+            Err(engine::EngineError::InvalidTokenizeRegexFlags { flags: "q".into() }),
+        ),
+        (
+            "zero-width",
+            regex_input(
+                Value::String("abc".into()),
+                Value::String(r"\b".into()),
+                Value::String(String::new()),
+            ),
+            Err(engine::EngineError::ZeroWidthTokenizeRegex),
+        ),
+        (
+            "empty-zero-width",
+            regex_input(
+                Value::String(String::new()),
+                Value::String(String::new()),
+                Value::String(String::new()),
+            ),
+            Err(engine::EngineError::ZeroWidthTokenizeRegex),
+        ),
+        (
+            "over-pattern-cap-before-flags",
+            regex_input(
+                Value::String("a".into()),
+                Value::String("x".repeat(64 * 1024 + 1)),
+                Value::String("q".into()),
+            ),
+            Err(engine::EngineError::TokenizeRegexPatternTooLarge {
+                bytes: 64 * 1024 + 1,
+                max: 64 * 1024,
+            }),
+        ),
+        (
+            "flags-type-before-pattern-cap",
+            regex_input(
+                Value::String("a".into()),
+                Value::String("x".repeat(64 * 1024 + 1)),
+                Value::Bool(true),
+            ),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-regexp",
+                    got: "bool",
+                },
+            )),
+        ),
+        (
+            "xml-nil-input",
+            regex_input(
+                Value::XmlNil(ir::XmlNil),
+                Value::String(",".into()),
+                Value::String(String::new()),
+            ),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-regexp",
+                    got: "xml nil",
+                },
+            )),
+        ),
+    ] {
+        assert_eq!(
+            fixed_recorded_run(&directory, &format!("regex-{name}"), &app, &input),
+            expected
+        );
+    }
+    let invalid = fixed_recorded_run(
+        &directory,
+        "regex-invalid-pattern",
+        &app,
+        &regex_input(
+            Value::String("a".into()),
+            Value::String("(".into()),
+            Value::String(String::new()),
+        ),
+    );
+    assert!(
+        matches!(invalid, Err(engine::EngineError::InvalidTokenizeRegex { message }) if !message.is_empty())
+    );
+    let compiled_budget = fixed_recorded_run(
+        &directory,
+        "regex-compiled-budget",
+        &app,
+        &regex_input(
+            Value::String("a".into()),
+            Value::String("a{1000000}".into()),
+            Value::String(String::new()),
+        ),
+    );
+    assert!(
+        matches!(compiled_budget, Err(engine::EngineError::InvalidTokenizeRegex { message }) if !message.is_empty())
+    );
+    // Full flags bytes and optionality survive engine errors and GUI navigation.
+    assert_eq!(
+        app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 5,
+                pattern: 6,
+                flags: Some(7),
+                item: 14
+            },
+        }
+    );
+    pick(&mut app, &context, "6: field Pattern", 0, "2: divide");
+    pick(&mut app, &context, "7: field Flags", 0, "2: divide");
+    for (index, input) in [Value::Null, Value::JsonNull(ir::JsonNull)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(
+            fixed_recorded_run(
+                &directory,
+                &format!("regex-null-skips-pattern-and-flags-{index}"),
+                &app,
+                &regex_input(
+                    input,
+                    Value::String("ignored".into()),
+                    Value::String("ignored".into())
+                )
+            ),
+            Ok(success())
+        );
+    }
+    assert_eq!(
+        fixed_recorded_run(
+            &directory,
+            "regex-empty-evaluates-pattern",
+            &app,
+            &regex_input(
+                Value::String(String::new()),
+                Value::String("ignored".into()),
+                Value::String("ignored".into())
+            )
+        ),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+    pick(&mut app, &context, "2: divide", 0, "6: field Pattern");
+    for (index, pattern) in [Value::Null, Value::JsonNull(ir::JsonNull)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(
+            fixed_recorded_run(
+                &directory,
+                &format!("regex-null-pattern-skips-flags-{index}"),
+                &app,
+                &regex_input(
+                    Value::String("a".into()),
+                    pattern,
+                    Value::String("ignored".into())
+                )
+            ),
+            Ok(success())
+        );
+    }
+    pick(&mut app, &context, "2: divide", 0, "7: field Flags");
+    for (index, flags) in [Value::Null, Value::JsonNull(ir::JsonNull)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(
+            fixed_recorded_run(
+                &directory,
+                &format!("regex-null-flags-skips-helper-{index}"),
+                &app,
+                &regex_input(Value::String("a".into()), Value::String("(".into()), flags)
+            ),
+            Ok(success())
+        );
+    }
+}
+
+#[test]
+fn generated_regex_imported_flags_nested_reducer_and_invalid_owners_are_preserved() {
+    let directory = Directory::new();
+    let mut app = regex_fixture(false);
+    for id in [42, 51] {
+        app.project.graph.nodes.insert(
+            id,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        );
+    }
+    app.project.graph.nodes.insert(
+        50,
+        Node::SequenceAggregate {
+            function: mapping::AggregateOp::Join,
+            sequence: SequenceExpr::Generate {
+                from: None,
+                to: 3,
+                item: 51,
+            },
+            predicate: None,
+            expression: Some(51),
+            arg: Some(8),
+        },
+    );
+    app.project.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 10,
+                pattern: 50,
+                flags: Some(8),
+                item: 42,
+            },
+        },
+        selection: FailureSelection::All,
+        message: Some(42),
+    });
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    assert!(editable_generated_rule(
+        &app.project,
+        &app.project.failure_rules[0]
+    ));
+    let context = context();
+    let before = encoded(&app);
+    click(&mut app, &context, "Rule 1: generated sequence");
+    let _ = settle(&mut app, &context);
+    assert_eq!(
+        encoded(&app),
+        before,
+        "viewing an imported optional flags expression does not replace it"
+    );
+    assert!(!app.can_undo());
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-imported-nested-pattern", &app, &source()),
+        fixed_failure("red,green")
+    );
+    click(&mut app, &context, "Custom flags expression");
+    assert!(matches!(
+        &app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: None,
+                item: 42,
+                pattern: 50,
+                ..
+            },
+        }
+    ));
+    click(&mut app, &context, "Custom flags expression");
+    assert_eq!(encoded(&app), before);
+    let imported = app.project.clone();
+    for case in 0..5 {
+        app.project = imported.clone();
+        match case {
+            0 => {
+                if let FailureIteration::Sequence {
+                    sequence: SequenceExpr::TokenizeRegex { flags, .. },
+                } = &mut app.project.failure_rules[0].iteration
+                {
+                    *flags = Some(77); // A missing imported optional expression must remain intact.
+                }
+            }
+            1 => {
+                if let FailureIteration::Sequence {
+                    sequence: SequenceExpr::TokenizeRegex { flags, .. },
+                } = &mut app.project.failure_rules[0].iteration
+                {
+                    *flags = Some(42); // The argument cannot use its own private item.
+                }
+            }
+            2 => {
+                if let FailureIteration::Sequence {
+                    sequence: SequenceExpr::TokenizeRegex { flags, .. },
+                } = &mut app.project.failure_rules[0].iteration
+                {
+                    *flags = Some(51); // The nested reducer's private item is unavailable in its parent.
+                }
+            }
+            3 => app
+                .project
+                .failure_rules
+                .push(app.project.failure_rules[0].clone()),
+            4 => {
+                app.project.graph.nodes.insert(
+                    42,
+                    Node::Const {
+                        value: Value::String("retained".into()),
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        app.rebuild_mapping_canvases_after_retirement();
+        app.mark_clean();
+        app.rebase_history();
+        let original = encoded(&app);
+        let layout =
+            CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+        assert!(
+            !editable_generated_rule(&app.project, &app.project.failure_rules[0]),
+            "case {case}"
+        );
+        click(&mut app, &context, "Rule 1: generated sequence");
+        click(&mut app, &context, "Remove rule");
+        app.apply_failure_rule_action(RuleAction::Remove(0), true);
+        assert_eq!(encoded(&app), original, "case {case}");
+        assert_eq!(
+            CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+            layout
+        );
+        assert!(!app.is_dirty());
+        assert!(!app.can_undo());
+        assert!(app.project.graph.nodes.contains_key(&51));
+    }
+}
+
+#[test]
+fn generated_regex_remaining_references_block_retirement_and_disconnection_retains_arguments() {
+    let directory = Directory::new();
+    let context = context();
+    for case in 0..5 {
+        let mut app = regex_fixture(false);
+        open_named_canvas(&mut app);
+        let main_positions = CanvasLayout::capture_nodes(&app.main_canvas.snarl);
+        let named_positions =
+            CanvasLayout::capture_nodes(&app.mapping_workspace.target_canvases[&0].snarl);
+        click(&mut app, &context, "Add regex text rule");
+        click(&mut app, &context, "Custom flags expression");
+        item_message(&mut app, &context, 0);
+        assert_eq!(item(&app, 0), 14);
+        let disconnected = app.project.clone();
+        match case {
+            0 => {
+                app.project.graph.nodes.insert(
+                    30,
+                    Node::Call {
+                        function: "string".into(),
+                        args: vec![14],
+                    },
+                );
+            }
+            1 => app.project.extra_targets[0].root.bindings[0].node = 14,
+            2 => app.project.failure_rules.push(FailureRule {
+                iteration: FailureIteration::Source {
+                    collection: Vec::new(),
+                },
+                selection: FailureSelection::All,
+                message: Some(14),
+            }),
+            3 => app.project.extra_sources.push(NamedSource {
+                name: "Dynamic".into(),
+                path: "reference.json".into(),
+                schema: app.project.source.clone(),
+                options: FormatOptions::default(),
+                dynamic_path: Some(DynamicSourcePath {
+                    node: 14,
+                    iteration: Vec::new(),
+                }),
+            }),
+            4 => {
+                app.project.graph.nodes.insert(
+                    30,
+                    Node::SequenceExists {
+                        sequence: SequenceExpr::Generate {
+                            from: None,
+                            to: 3,
+                            item: 42,
+                        },
+                        predicate: 14,
+                    },
+                );
+                app.project.graph.nodes.insert(
+                    42,
+                    Node::SourceField {
+                        path: Vec::new(),
+                        frame: None,
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        app.rebuild_mapping_canvases_after_retirement();
+        app.mark_clean();
+        app.rebase_history();
+        click(&mut app, &context, "Rule 1: generated sequence");
+        let before = encoded(&app);
+        let layout =
+            CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+        click(&mut app, &context, "Remove rule");
+        assert_eq!(encoded(&app), before, "case {case}");
+        assert_eq!(
+            CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+            layout
+        );
+        assert!(!app.can_undo());
+        assert!(!app.is_dirty());
+        assert!(
+            app.diagnostics
+                .items()
+                .iter()
+                .any(|entry| entry.message.contains("disconnect those references")),
+            "case {case}"
+        );
+        // Disconnect only the unrelated consumer(s), then exercise the same real Remove control.
+        app.project = disconnected.clone();
+        app.rebuild_mapping_canvases_after_retirement();
+        app.mark_clean();
+        app.rebase_history();
+        click(&mut app, &context, "Rule 1: generated sequence");
+        click(&mut app, &context, "Remove rule");
+        let mut expected = disconnected;
+        expected.failure_rules.clear();
+        expected.graph.nodes.remove(&14);
+        assert_eq!(
+            encoded(&app),
+            mapping::project_file::encode_pretty(&expected).unwrap()
+        );
+        for id in [8, 12, 13] {
+            assert!(
+                app.project.graph.nodes.contains_key(&id),
+                "ordinary regex argument {id} survives"
+            );
+        }
+        for snarl in [
+            &app.main_canvas.snarl,
+            &app.mapping_workspace.target_canvases[&0].snarl,
+        ] {
+            assert!(snarl.nodes().all(|node| *node != CanvasNode::Graph(14)));
+        }
+        assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+        assert_surviving_positions(
+            &named_positions,
+            &app.mapping_workspace.target_canvases[&0].snarl,
+            None,
+        );
+        assert_eq!(
+            fixed_recorded_run(
+                &directory,
+                &format!("regex-disconnected-{case}"),
+                &app,
+                &source()
+            ),
+            Ok(success())
+        );
+    }
+}
+
+#[test]
+fn generated_regex_save_as_reopen_and_undo_redo_keep_flags_item_layout_and_boundary_identity() {
+    let directory = Directory::new();
+    let origin = directory.0.join("origin");
+    let destination = directory.0.join("saved");
+    std::fs::create_dir_all(&origin).unwrap();
+    std::fs::create_dir_all(&destination).unwrap();
+    for name in ["input.json", "output.json", "other.json"] {
+        std::fs::write(origin.join(name), b"{}").unwrap();
+    }
+    let mut app = regex_fixture(false);
+    app.document = DocumentLocation::untitled(origin.join("mapping.json"));
+    open_named_canvas(&mut app);
+    let main_positions = CanvasLayout::capture_nodes(&app.main_canvas.snarl);
+    let named_positions =
+        CanvasLayout::capture_nodes(&app.mapping_workspace.target_canvases[&0].snarl);
+    let context = context();
+    click(&mut app, &context, "Add regex text rule");
+    click(&mut app, &context, "Custom flags expression");
+    item_message(&mut app, &context, 0);
+    for snarl in [
+        &app.main_canvas.snarl,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+    ] {
+        for id in [12, 13, 14] {
+            assert!(snarl.nodes().any(|node| *node == CanvasNode::Graph(id)));
+        }
+    }
+    assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+    assert_surviving_positions(
+        &named_positions,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+        None,
+    );
+    let authored = encoded(&app);
+    let before_save = app.project.clone();
+    let path = destination.join("mapping.json");
+    app.save_document_to(&path).unwrap();
+    let saved = encoded(&app);
+    let saved_layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    std::fs::write(
+        directory.0.join("regex-authored-before-save.json"),
+        &authored,
+    )
+    .unwrap();
+    std::fs::write(directory.0.join("regex-saved-editor.json"), &saved).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    let mut nonpaths = app.project.clone();
+    nonpaths.source_path = before_save.source_path.clone();
+    nonpaths.target_path = before_save.target_path.clone();
+    nonpaths.extra_targets[0].path = before_save.extra_targets[0].path.clone();
+    assert_eq!(
+        mapping::project_file::encode_pretty(&nonpaths).unwrap(),
+        authored
+    );
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&path);
+    assert_eq!(encoded(&reopened), saved);
+    assert!(!reopened.is_dirty());
+    assert_eq!(
+        CanvasLayout::capture(
+            &reopened.project,
+            &reopened.main_canvas.snarl,
+            &reopened.mapping_workspace
+        ),
+        saved_layout
+    );
+    assert_eq!(
+        reopened.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 12,
+                pattern: 13,
+                flags: Some(8),
+                item: 14
+            },
+        }
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-reopened", &reopened, &source()),
+        fixed_failure("first")
+    );
+    for (stored, name) in [
+        (
+            reopened.project.source_path.as_deref().unwrap(),
+            "input.json",
+        ),
+        (
+            reopened.project.target_path.as_deref().unwrap(),
+            "output.json",
+        ),
+        (
+            reopened.project.extra_targets[0].path.as_deref().unwrap(),
+            "other.json",
+        ),
+    ] {
+        assert!(!Path::new(stored).is_absolute());
+        assert_eq!(
+            std::fs::canonicalize(destination.join(stored)).unwrap(),
+            std::fs::canonicalize(origin.join(name)).unwrap()
+        );
+        assert_eq!(std::fs::read(origin.join(name)).unwrap(), b"{}");
+    }
+    // Explicit flag edits remain one owned item; save/rebase requires reselecting the row first.
+    click(&mut app, &context, "Rule 1: generated sequence");
+    click(&mut app, &context, "Custom flags expression");
+    let absent = encoded(&app);
+    assert!(matches!(
+        &app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: None,
+                item: 14,
+                ..
+            },
+        }
+    ));
+    app.undo_project();
+    assert_eq!(encoded(&app), saved);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        saved_layout
+    );
+    app.redo_project();
+    assert_eq!(encoded(&app), absent);
+    app.undo_project();
+    assert_eq!(encoded(&app), saved);
+    click(&mut app, &context, "Rule 1: generated sequence");
+    click(&mut app, &context, "Remove rule");
+    let removed = encoded(&app);
+    assert!(app.project.failure_rules.is_empty());
+    assert!(!app.project.graph.nodes.contains_key(&14));
+    for id in [8, 12, 13] {
+        assert!(app.project.graph.nodes.contains_key(&id));
+    }
+    assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+    assert_surviving_positions(
+        &named_positions,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+        None,
+    );
+    app.undo_project();
+    assert_eq!(encoded(&app), saved);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        saved_layout
+    );
+    app.redo_project();
+    assert_eq!(encoded(&app), removed);
+}
+
+#[test]
+fn generated_regex_preview_modifiers_errors_busy_locks_and_checked_id_reservation_are_atomic() {
+    let directory = Directory::new();
+    let context = context();
+    let mut app = regex_fixture(true);
+    open_named_canvas(&mut app);
+    author_root_regex(&mut app, &context);
+    app.mark_clean();
+    app.rebase_history();
+    click(&mut app, &context, "Rule 1: generated sequence");
+    app.begin_preview();
+    let before = encoded(&app);
+    let layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    for label in [
+        "Add regex text rule",
+        "Remove rule",
+        "Custom flags expression",
+        "Custom message expression",
+        "6: field Pattern",
+    ] {
+        click(&mut app, &context, label);
+        assert_eq!(encoded(&app), before, "locked {label}");
+    }
+    for action in [
+        RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex),
+        RuleAction::EnableRegexFlags(0),
+        RuleAction::Remove(0),
+    ] {
+        app.apply_failure_rule_action(action, true);
+        assert_eq!(encoded(&app), before);
+    }
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        layout
+    );
+    assert!(!app.can_undo());
+    assert!(!app.history.can_redo());
+    assert!(!app.is_dirty());
+    for (name, text, pattern, flags, expected) in [
+        ("i", "aBb", "b", "i", fixed_failure("a")),
+        (
+            "m",
+            "first\n--\nlast",
+            "^--$",
+            "m",
+            fixed_failure("first\n"),
+        ),
+        ("s", "a\nb", "a.b", "s", fixed_failure("")),
+        ("x", "axb", " x ", "x", fixed_failure("a")),
+        (
+            "bad-flags",
+            "a",
+            ",",
+            "q",
+            Err(engine::EngineError::InvalidTokenizeRegexFlags { flags: "q".into() }),
+        ),
+        (
+            "zero-width",
+            "abc",
+            r"\b",
+            "",
+            Err(engine::EngineError::ZeroWidthTokenizeRegex),
+        ),
+    ] {
+        if app.preview_draft.is_none() {
+            app.begin_preview();
+        }
+        assert!(app.preview_draft.is_some());
+        let output = directory
+            .0
+            .join(format!("regex-{name}-must-not-write.json"));
+        let draft = app.preview_draft.as_mut().unwrap();
+        draft.input_text =
+            serde_json::json!({"Text": text, "Pattern": pattern, "Flags": flags}).to_string();
+        draft.input_identity = "input.json".into();
+        draft.output_identity = output.display().to_string();
+        std::fs::write(
+            directory
+                .0
+                .join(format!("regex-preview-{name}-project.json")),
+            &before,
+        )
+        .unwrap();
+        std::fs::write(
+            directory.0.join(format!("regex-preview-{name}-input.json")),
+            &draft.input_text,
+        )
+        .unwrap();
+        app.execute_preview();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.pending_preview.is_some() && std::time::Instant::now() < deadline {
+            app.poll_preview(&context);
+            if app.pending_preview.is_some() {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        std::fs::write(
+            directory
+                .0
+                .join(format!("regex-preview-{name}-outcome.txt")),
+            format!(
+                "status={} diagnostics={:?}",
+                app.status,
+                app.diagnostics.items()
+            ),
+        )
+        .unwrap();
+        let error = expected.expect_err("each preview stops before targets");
+        assert!(app.pending_preview.is_none());
+        assert_eq!(app.status, "preview failed");
+        assert!(
+            app.diagnostics
+                .items()
+                .iter()
+                .any(|entry| entry.message.ends_with(&error.to_string())),
+            "{name}: {:?}",
+            app.diagnostics.items()
+        );
+        assert!(!output.exists());
+        assert_eq!(encoded(&app), before);
+        assert_eq!(
+            CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+            layout
+        );
+        assert!(app.document.saved_path().is_none());
+    }
+    for maximum in [NodeId::MAX, NodeId::MAX - 2] {
+        let mut exhausted = regex_fixture(false);
+        exhausted.project.graph.nodes.insert(
+            maximum,
+            Node::Const {
+                value: Value::Int(0),
+            },
+        );
+        exhausted.main_canvas = CanvasDocumentState::main(&exhausted.project);
+        exhausted.mark_clean();
+        exhausted.rebase_history();
+        let before = encoded(&exhausted);
+        let layout = CanvasLayout::capture(
+            &exhausted.project,
+            &exhausted.main_canvas.snarl,
+            &exhausted.mapping_workspace,
+        );
+        click(&mut exhausted, &context, "Add regex text rule");
+        exhausted.apply_failure_rule_action(
+            RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex),
+            true,
+        );
+        assert_eq!(encoded(&exhausted), before);
+        assert_eq!(
+            CanvasLayout::capture(
+                &exhausted.project,
+                &exhausted.main_canvas.snarl,
+                &exhausted.mapping_workspace
+            ),
+            layout
+        );
+        assert!(!exhausted.can_undo());
+        assert!(!exhausted.is_dirty());
+        assert!(
+            exhausted
+                .diagnostics
+                .items()
+                .iter()
+                .any(|entry| entry.message == "mapping node IDs are exhausted")
+        );
+    }
+    let mut reserved = regex_fixture(false);
+    reserved.project.graph.nodes.insert(
+        NodeId::MAX - 4,
+        Node::Const {
+            value: Value::Int(0),
+        },
+    );
+    reserved.project.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Sequence {
+            sequence: SequenceExpr::Generate {
+                from: None,
+                to: 3,
+                item: NodeId::MAX - 1,
+            },
+        },
+        selection: FailureSelection::All,
+        message: None,
+    });
+    let retained = reserved.project.failure_rules[0].clone();
+    reserved.apply_failure_rule_action(
+        RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex),
+        true,
+    );
+    assert_eq!(reserved.project.failure_rules[0], retained);
+    assert!(
+        !reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 1))
+    );
+    assert!(
+        reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 3))
+    );
+    assert!(
+        reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 2))
+    );
+    assert_eq!(
+        reserved.project.failure_rules[1].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: NodeId::MAX - 3,
+                pattern: NodeId::MAX - 2,
+                flags: None,
+                item: NodeId::MAX
+            },
+        }
+    );
+}
+
+#[test]
+fn retained_recursive_generated_rules_have_valid_schema_real_items_and_stay_read_only() {
+    let directory = Directory::new();
+    let mut app = regex_fixture(false);
+    app.project.source = SchemaNode::group("Source", vec![retained_recursive_tree_schema()]);
+    app.project.graph.nodes.insert(
+        42,
+        Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        },
+    );
+    app.project.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Sequence {
+            sequence: SequenceExpr::RecursiveCollect {
+                collection: vec!["Tree".into()],
+                children: vec!["Children".into()],
+                descent_value: vec!["Name".into()],
+                values: vec!["Files".into()],
+                value: vec!["Value".into()],
+                prefix: 10,
+                separator: 11,
+                item: 42,
+            },
+        },
+        selection: FailureSelection::WhenTrue { predicate: 1 },
+        message: Some(42),
+    });
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    let leaf = |value: &str| {
+        Instance::Repeated(vec![Instance::Group(
+            vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )]
+            .into(),
+        )])
+    };
+    let input = Instance::Group(
+        vec![(
+            "Tree".into(),
+            Instance::Repeated(vec![Instance::Group(
+                vec![
+                    (
+                        "Name".into(),
+                        Instance::Scalar(Value::String("root".into())),
+                    ),
+                    ("Files".into(), leaf("leaf")),
+                    (
+                        "Children".into(),
+                        Instance::Repeated(vec![Instance::Group(
+                            vec![
+                                (
+                                    "Name".into(),
+                                    Instance::Scalar(Value::String("child".into())),
+                                ),
+                                ("Files".into(), leaf("nested")),
+                            ]
+                            .into(),
+                        )]),
+                    ),
+                ]
+                .into(),
+            )]),
+        )]
+        .into(),
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "retained-recursive-unselected", &app, &input),
+        Ok(success())
+    );
+    let original = encoded(&app);
+    let context = context();
+    click(&mut app, &context, "Rule 1: generated sequence");
+    click(&mut app, &context, "Remove rule");
+    app.apply_failure_rule_action(RuleAction::Remove(0), true);
+    assert_eq!(encoded(&app), original);
+    assert!(!editable_generated_rule(
+        &app.project,
+        &app.project.failure_rules[0]
+    ));
+    assert!(!app.can_undo());
+    assert!(!app.is_dirty());
+    app.project.failure_rules[0].selection = FailureSelection::All;
+    assert_eq!(
+        fixed_recorded_run(
+            &directory,
+            "retained-recursive-first-actual-item",
+            &app,
+            &input
+        ),
+        fixed_failure("red,green,root,leaf")
+    );
+    app.project.graph.nodes.insert(
+        43,
+        Node::Const {
+            value: Value::String("red,green,root,child,nested".into()),
+        },
+    );
+    app.project.graph.nodes.insert(
+        44,
+        Node::Call {
+            function: "equal".into(),
+            args: vec![42, 43],
+        },
+    );
+    app.project.failure_rules[0].selection = FailureSelection::WhenTrue { predicate: 44 };
+    assert_eq!(
+        fixed_recorded_run(
+            &directory,
+            "retained-recursive-valid-child-item",
+            &app,
+            &input
+        ),
+        fixed_failure("red,green,root,child,nested")
+    );
+}
+
+#[test]
+fn generated_regex_explicit_flags_create_one_valid_constant_or_refuse_atomically_and_reuse() {
+    let directory = Directory::new();
+    let context = context();
+    // The ordinary fresh mapping has no empty-string constant to reuse.
+    let mut app = fixture();
+    open_named_canvas(&mut app);
+    let main_positions = CanvasLayout::capture_nodes(&app.main_canvas.snarl);
+    let named_positions =
+        CanvasLayout::capture_nodes(&app.mapping_workspace.target_canvases[&0].snarl);
+    click(&mut app, &context, "Add regex text rule");
+    item_message(&mut app, &context, 0);
+    assert!(matches!(
+        &app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: None,
+                item: 14,
+                ..
+            },
+        }
+    ));
+    app.mark_clean();
+    app.rebase_history();
+    click(&mut app, &context, "Rule 1: generated sequence");
+    let absent = encoded(&app);
+    let absent_layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    let count = app.project.graph.nodes.len();
+    click(&mut app, &context, "Custom flags expression");
+    let enabled = encoded(&app);
+    let enabled_layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    assert_eq!(app.project.graph.nodes.len(), count + 1);
+    assert!(
+        matches!(app.project.graph.nodes.get(&15), Some(Node::Const { value: Value::String(value) }) if value.is_empty())
+    );
+    assert_eq!(
+        app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 12,
+                pattern: 13,
+                flags: Some(15),
+                item: 14
+            },
+        }
+    );
+    for snarl in [
+        &app.main_canvas.snarl,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+    ] {
+        assert!(snarl.nodes().any(|node| *node == CanvasNode::Graph(15)));
+    }
+    assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+    assert_surviving_positions(
+        &named_positions,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+        None,
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "regex-explicit-empty-flags", &app, &source()),
+        fixed_failure("first")
+    );
+    app.undo_project();
+    assert_eq!(encoded(&app), absent);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        absent_layout
+    );
+    app.redo_project();
+    assert_eq!(encoded(&app), enabled);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        enabled_layout
+    );
+    click(&mut app, &context, "Rule 1: generated sequence");
+    click(&mut app, &context, "Custom flags expression");
+    assert!(
+        app.project.graph.nodes.contains_key(&15),
+        "explicit disabling retains the ordinary expression node"
+    );
+    click(&mut app, &context, "Custom flags expression");
+    assert_eq!(
+        encoded(&app),
+        enabled,
+        "re-enabling reuses the legitimate empty constant"
+    );
+    assert_eq!(app.project.graph.nodes.len(), count + 1);
+
+    // Flags creation uses a single checked ID, even at the last available boundary.
+    let mut last = fixture();
+    click(&mut last, &context, "Add regex text rule");
+    last.project.graph.nodes.insert(
+        NodeId::MAX - 1,
+        Node::Const {
+            value: Value::Int(0),
+        },
+    );
+    last.rebuild_mapping_canvases_after_retirement();
+    last.mark_clean();
+    last.rebase_history();
+    click(&mut last, &context, "Rule 1: generated sequence");
+    click(&mut last, &context, "Custom flags expression");
+    assert!(
+        matches!(last.project.graph.nodes.get(&NodeId::MAX), Some(Node::Const { value: Value::String(value) }) if value.is_empty())
+    );
+    assert!(
+        matches!(&last.project.failure_rules[0].iteration, FailureIteration::Sequence {
+        sequence: SequenceExpr::TokenizeRegex { flags: Some(flags), item: 14, .. },
+    } if *flags == NodeId::MAX)
+    );
+
+    let mut exhausted = fixture();
+    click(&mut exhausted, &context, "Add regex text rule");
+    exhausted.project.graph.nodes.insert(
+        NodeId::MAX,
+        Node::Const {
+            value: Value::Int(0),
+        },
+    );
+    exhausted.rebuild_mapping_canvases_after_retirement();
+    exhausted.mark_clean();
+    exhausted.rebase_history();
+    click(&mut exhausted, &context, "Rule 1: generated sequence");
+    let before = encoded(&exhausted);
+    let layout = CanvasLayout::capture(
+        &exhausted.project,
+        &exhausted.main_canvas.snarl,
+        &exhausted.mapping_workspace,
+    );
+    click(&mut exhausted, &context, "Custom flags expression");
+    exhausted.apply_failure_rule_action(RuleAction::EnableRegexFlags(0), true);
+    assert_eq!(encoded(&exhausted), before);
+    assert_eq!(
+        CanvasLayout::capture(
+            &exhausted.project,
+            &exhausted.main_canvas.snarl,
+            &exhausted.mapping_workspace
+        ),
+        layout
+    );
+    assert!(!exhausted.is_dirty());
+    assert!(!exhausted.can_undo());
+    assert!(
+        exhausted
+            .diagnostics
+            .items()
+            .iter()
+            .any(|entry| entry.message == "mapping node IDs are exhausted")
+    );
+    assert!(matches!(
+        &exhausted.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeRegex {
+                flags: None,
+                item: 14,
+                ..
+            },
+        }
+    ));
+    exhausted.begin_preview();
+    exhausted.apply_failure_rule_action(RuleAction::EnableRegexFlags(0), true);
+    assert_eq!(
+        encoded(&exhausted),
+        before,
+        "locked direct flags action cannot allocate or select"
+    );
+    assert!(!exhausted.can_undo());
 }
