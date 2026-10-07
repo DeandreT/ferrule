@@ -273,6 +273,19 @@ impl GraphViewer<'_> {
                             .unwrap_or_default(),
                         object.join("/")
                     ));
+                    let selectable = self.function_output.is_none()
+                        && self.source_paths.first_open_scalar_object().is_some();
+                    let selected = ui
+                        .add_enabled_ui(selectable, |ui| {
+                            self.source_paths.show_open_scalar_object_picker(ui, object)
+                        })
+                        .inner;
+                    if selected {
+                        *frame = None;
+                    }
+                    if frame.is_some() || !selectable {
+                        ui.small("Stored object and frame are kept until you choose a supported source object.");
+                    }
                 }
                 Node::XmlMixedContent {
                     path,

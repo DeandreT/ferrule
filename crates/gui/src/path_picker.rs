@@ -33,6 +33,7 @@ pub struct SourcePathCatalog {
     collections: Vec<CollectionChoice>,
     primary_root_fields: Vec<PathChoice>,
     primary_root_types: Vec<String>,
+    open_scalar_objects: Vec<PathChoice>,
 }
 
 impl SourcePathCatalog {
@@ -60,6 +61,7 @@ impl SourcePathCatalog {
                 label: path.join(" / "),
             })
             .collect();
+        let open_scalar_objects = open_scalar_object_choices(source);
         let primary_root_types = source
             .alternatives()
             .iter()
@@ -115,7 +117,44 @@ impl SourcePathCatalog {
             collections,
             primary_root_fields,
             primary_root_types,
+            open_scalar_objects,
         }
+    }
+
+    pub(crate) fn first_open_scalar_object(&self) -> Option<Vec<String>> {
+        self.open_scalar_objects
+            .first()
+            .map(|choice| choice.path.clone())
+    }
+
+    // A click is an explicit replacement of the stored object/frame selection.
+    // Merely opening this picker must leave imported or framed metadata intact.
+    pub(crate) fn show_open_scalar_object_picker(
+        &self,
+        ui: &mut Ui,
+        path: &mut Vec<String>,
+    ) -> bool {
+        let selected = self
+            .open_scalar_objects
+            .iter()
+            .find(|choice| choice.path == *path)
+            .map_or_else(|| open_object_label(path), |choice| choice.label.clone());
+        let mut chosen = false;
+        egui::ComboBox::from_id_salt(ui.id().with("dynamic_source_object"))
+            .selected_text(selected)
+            .width(170.0)
+            .show_ui(ui, |ui| {
+                for choice in &self.open_scalar_objects {
+                    if ui
+                        .selectable_label(choice.path == *path, &choice.label)
+                        .clicked()
+                    {
+                        *path = choice.path.clone();
+                        chosen = true;
+                    }
+                }
+            });
+        chosen
     }
 
     pub(crate) fn first_primary_root_field(&self) -> Option<Vec<String>> {
@@ -208,6 +247,41 @@ impl SourcePathCatalog {
             .map_or_else(Vec::new, |choice| choice.values.iter().collect());
         show_path_picker(ui, id_salt, path, &choices, value_label);
     }
+}
+
+fn open_object_label(path: &[String]) -> String {
+    if path.is_empty() {
+        "<source root>".to_owned()
+    } else {
+        path.join(" / ")
+    }
+}
+
+fn open_scalar_object_choices(source: &SchemaNode) -> Vec<PathChoice> {
+    let mut pending = vec![(source, Vec::new())];
+    let mut choices = Vec::new();
+    while let Some((schema, path)) = pending.pop() {
+        if schema.repeating || !schema.alternatives().is_empty() {
+            continue;
+        }
+        if let SchemaKind::Group { children, .. } = &schema.kind {
+            if schema
+                .dynamic_fields()
+                .is_some_and(|value| !value.repeating && value.is_scalar())
+            {
+                choices.push(PathChoice {
+                    label: open_object_label(&path),
+                    path: path.clone(),
+                });
+            }
+            for child in children.iter().rev() {
+                let mut child_path = path.clone();
+                child_path.push(child.name.clone());
+                pending.push((child, child_path));
+            }
+        }
+    }
+    choices
 }
 
 fn show_path_picker(

@@ -30,6 +30,7 @@ pub(super) fn aggregate_node(function: AggregateOp, arg: Option<NodeId>) -> Node
 pub(super) enum NodeTemplate {
     Constant,
     SourceField,
+    DynamicSourceField,
     SourceRootField,
     SourceRootXmlTypeEquals,
     Position,
@@ -87,7 +88,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 22] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 23] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -101,6 +102,13 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 22] = [
         keywords: "source input field path",
         documentation: "Reads one source field using an editable path.",
         template: NodeTemplate::SourceField,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Source property by name",
+        keywords: "dynamic property key open object",
+        documentation: "Reads a computed property from a supported open source object. Connect its property-name input.",
+        template: NodeTemplate::DynamicSourceField,
     },
     PaletteEntry {
         category: Category::Input,
@@ -268,6 +276,7 @@ pub(super) fn show_available(
     ui: &mut Ui,
     root_fields: bool,
     root_types: bool,
+    open_objects: bool,
 ) -> Option<NodeTemplate> {
     #[cfg(test)]
     tests::begin_palette_response_capture();
@@ -299,6 +308,7 @@ pub(super) fn show_available(
     let matches = matching_entries(&state.query)
         .into_iter()
         .filter(|entry| match entry.template {
+            NodeTemplate::DynamicSourceField => open_objects,
             NodeTemplate::SourceRootField => root_fields,
             NodeTemplate::SourceRootXmlTypeEquals => root_types,
             _ => true,
@@ -672,7 +682,7 @@ mod tests {
                             events,
                             ..Default::default()
                         },
-                        |ui| selected = show_available(ui, allowed, allowed),
+                        |ui| selected = show_available(ui, allowed, allowed, allowed),
                     );
                 };
                 run(Vec::new());
@@ -700,7 +710,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| selected = show_available(ui, true, true),
+            |ui| selected = show_available(ui, true, true, true),
         );
         selected
     }
@@ -882,7 +892,7 @@ mod tests {
             |ui| {
                 let canvas = ui.allocate_rect(ui.max_rect(), egui::Sense::click());
                 canvas.context_menu(|ui| {
-                    chosen = show_available(ui, true, true);
+                    chosen = show_available(ui, true, true, true);
                     if chosen.is_some() {
                         ui.close();
                     }
@@ -1019,7 +1029,7 @@ mod tests {
             visible_selected_palette_row(&context, &initial).label,
             "Constant"
         );
-        for _ in 0..21 {
+        for _ in 0..22 {
             let moved = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             assert_eq!(moved.chosen, None);
             let settled = settle_overflow_palette(&context, &mut time);
@@ -1094,7 +1104,7 @@ mod tests {
         let context = overflow_palette_context();
         let mut time = 0.0;
         open_overflow_palette(&context, &mut time);
-        for _ in 0..21 {
+        for _ in 0..22 {
             overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             settle_overflow_palette(&context, &mut time);
         }
