@@ -1,0 +1,211 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var root = args.Single();
+var evidence = Path.Combine(root, "csharp-evidence");
+Directory.CreateDirectory(evidence);
+var fixture = File.ReadAllBytes(Path.Combine(root, "cases.json"));
+File.WriteAllBytes(Path.Combine(evidence, "cases.json"), fixture);
+File.WriteAllText(Path.Combine(evidence, "context.json"), "{\"mapping\":\"dynamic-properties.json\",\"Child\":\"context-child\"}");
+using var cases = JsonDocument.Parse(fixture);
+var parameters = new FerruleRuntimeParameters(new[] {
+    new KeyValuePair<string, FerruleValue>("Child", FerruleValue.FromString("context-child"))
+});
+var execution = FerruleExecutionContext.WithParameters("dynamic-properties.json", parameters);
+var calls = 0;
+foreach (var item in cases.RootElement.EnumerateArray())
+{
+    var name = item.GetProperty("name").GetString()!;
+    var directory = Path.Combine(evidence, name);
+    Directory.CreateDirectory(directory);
+    var source = ReadInstance(item.GetProperty("source"));
+    for (var index = 0; index < 2; index++)
+    {
+        var label = index == 0 ? "default" : "context";
+        var expected = item.GetProperty("expected")[index];
+        calls++;
+        Typed(directory, $"typed-{label}",
+            () => index == 0 ? GeneratedMapping.Execute(source) : GeneratedMapping.Execute(source, execution), expected);
+        if (!item.GetProperty("json").GetBoolean()) continue;
+        var input = File.ReadAllBytes(Path.Combine(root, name, "input.json"));
+        File.WriteAllBytes(Path.Combine(directory, "input.json"), input);
+        byte[]? textResult = null;
+        var textApi = item.GetProperty("text").GetBoolean();
+        if (textApi)
+        {
+            var text = new UTF8Encoding(false, true).GetString(input);
+            calls++;
+            textResult = Boundary(directory, $"text-{label}", () => Encoding.UTF8.GetBytes(
+                index == 0 ? GeneratedMapping.ExecuteJson(text) : GeneratedMapping.ExecuteJson(text, execution)), expected);
+        }
+        calls++;
+        var bytesResult = Boundary(directory, $"bytes-{label}",
+            () => index == 0 ? GeneratedMapping.ExecuteJsonBytes(input) : GeneratedMapping.ExecuteJsonBytes(input, execution), expected);
+        if (textApi)
+        {
+            Require((textResult is null && bytesResult is null) ||
+                (textResult is not null && bytesResult is not null && textResult.AsSpan().SequenceEqual(bytesResult)),
+                $"Text/bytes output buffers differ for {name} {label}.");
+        }
+    }
+}
+Write(Path.Combine(root, "csharp-complete.json"), new { cases = cases.RootElement.GetArrayLength(), calls });
+
+static FerruleInstance ReadInstance(JsonElement value)
+{
+    var kind = value.GetProperty("kind").GetString();
+    if (kind == "group") return new FerruleGroup(value.GetProperty("fields").EnumerateArray()
+        .Select(field => new FerruleField(field.GetProperty("name").GetString()!, ReadInstance(field.GetProperty("value")))));
+    return new FerruleScalar(kind switch {
+        "null" => FerruleValue.Null, "json-null" => FerruleValue.JsonNull, "xml-nil" => FerruleValue.XmlNil,
+        "string" => FerruleValue.FromString(value.GetProperty("value").GetString()!),
+        "int" => FerruleValue.FromInt64(value.GetProperty("value").GetInt64()),
+        "bool" => FerruleValue.FromBoolean(value.GetProperty("value").GetBoolean()),
+        _ => throw new InvalidOperationException($"Unknown authored fixture tag {kind}.")
+    });
+}
+static object Wire(FerruleInstance instance)
+{
+    if (instance is FerruleGroup group) return new { kind = "group", fields = group.Fields
+        .Select(field => new { name = field.Name, value = Wire(field.Value) }).ToArray() };
+    if (instance is not FerruleScalar scalar) throw new InvalidOperationException("Unexpected output structure.");
+    return scalar.Value.Kind switch {
+        FerruleValueKind.Null => new { kind = "null" },
+        FerruleValueKind.JsonNull => new { kind = "json-null" },
+        FerruleValueKind.XmlNil => new { kind = "xml-nil" },
+        FerruleValueKind.String => new { kind = "string", value = scalar.Value.StringValue },
+        FerruleValueKind.Int64 => new { kind = "int", value = scalar.Value.Int64Value },
+        FerruleValueKind.Bool => new { kind = "bool", value = scalar.Value.BooleanValue },
+        _ => throw new InvalidOperationException("Unexpected output scalar.")
+    };
+}
+// Raw evidence spans the full public runtime domain, independently of the fixture oracle.
+static object RawValue(FerruleValue value) => value.Kind switch {
+    FerruleValueKind.Null => new { kind = "Null" },
+    FerruleValueKind.JsonNull => new { kind = "JsonNull" },
+    FerruleValueKind.XmlNil => new { kind = "XmlNil" },
+    FerruleValueKind.Bool => new { kind = "Bool", value = value.BooleanValue },
+    FerruleValueKind.Int64 => new { kind = "Int64", value = value.Int64Value },
+    // Lexical text and exact IEEE bits retain non-finite values and signed zero without a JSON number failure.
+    FerruleValueKind.Double => new { kind = "Double",
+        lexical = value.DoubleValue.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        ieee754Bits = BitConverter.DoubleToInt64Bits(value.DoubleValue)
+            .ToString("X16", System.Globalization.CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => new { kind = "String", value = value.StringValue },
+    _ => new { kind = "Unknown", tag = value.Kind.ToString(), display = value.ToString() }
+};
+static object RawInstance(FerruleInstance? instance) => instance switch {
+    null => new { kind = "UnexpectedNull" },
+    FerruleScalar scalar => new { kind = "Scalar", value = RawValue(scalar.Value) },
+    FerruleGroup group => new { kind = "Group",
+        xmlTypeOrigin = new { kind = group.XmlTypeOrigin.Kind.ToString(),
+            identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal },
+        fields = group.Fields.Select(field => new { name = field.Name, value = RawInstance(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() },
+    FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document =>
+        new { path = document.Path, resolvedSourcePath = document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() },
+    _ => new { kind = "Unknown", runtimeType = instance.GetType().FullName, display = instance.ToString() }
+};
+static object Normalized(FerruleRuntimeException error) => error.Error switch {
+    FerruleRuntimeError.DynamicPropertyName => new { kind = "name", node = error.Node, found = error.FoundKind switch {
+        FerruleValueKind.Null => "null", FerruleValueKind.JsonNull => "json null", FerruleValueKind.XmlNil => "xml nil",
+        FerruleValueKind.Int64 => "int", FerruleValueKind.Bool => "bool", FerruleValueKind.String => "string",
+        _ => throw new InvalidOperationException("Unexpected name failure tag.")
+    } },
+    FerruleRuntimeError.DuplicateDynamicProperty => new { kind = "duplicate", name = error.Detail },
+    FerruleRuntimeError.DivideByZero => new { kind = "divide" },
+    _ => throw new InvalidOperationException($"Unexpected runtime error {error.Error}.")
+};
+static object ErrorRecord(Exception error)
+{
+    var chain = new List<object>();
+    for (Exception? current = error; current is not null; current = current.InnerException)
+        chain.Add(new { type = current.GetType().FullName, message = current.Message });
+    return new { exception = error.ToString(), chain, category = (error as FerruleRuntimeException)?.Error.ToString(),
+        node = (error as FerruleRuntimeException)?.Node, found = (error as FerruleRuntimeException)?.FoundKind.ToString(),
+        detail = (error as FerruleRuntimeException)?.Detail };
+}
+static void Write(string path, object record) => File.WriteAllBytes(path,
+    JsonSerializer.SerializeToUtf8Bytes(record, new JsonSerializerOptions { WriteIndented = true }));
+static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+static void Ordered(JsonElement actual, JsonElement expected)
+{
+    Require(actual.ValueKind == expected.ValueKind, "JSON value tags differ.");
+    switch (actual.ValueKind)
+    {
+        case JsonValueKind.Object:
+            var actualFields = actual.EnumerateObject().ToArray();
+            var expectedFields = expected.EnumerateObject().ToArray();
+            Require(actualFields.Select(field => field.Name).SequenceEqual(expectedFields.Select(field => field.Name)),
+                "JSON object insertion order or names differ.");
+            for (var index = 0; index < actualFields.Length; index++) Ordered(actualFields[index].Value, expectedFields[index].Value);
+            break;
+        case JsonValueKind.Array:
+            Require(actual.GetArrayLength() == expected.GetArrayLength(), "JSON array lengths differ.");
+            for (var index = 0; index < actual.GetArrayLength(); index++) Ordered(actual[index], expected[index]);
+            break;
+        case JsonValueKind.String: Require(actual.GetString() == expected.GetString(), "JSON strings differ."); break;
+        case JsonValueKind.Number: Require(actual.GetDecimal() == expected.GetDecimal(), "JSON numbers differ."); break;
+        default: Require(actual.GetRawText() == expected.GetRawText(), "JSON scalar values differ."); break;
+    }
+}
+static void Typed(string directory, string label, Func<FerruleInstance> call, JsonElement expected)
+{
+    FerruleInstance? value = null;
+    Exception? error = null;
+    try { value = call(); } catch (Exception caught) { error = caught; }
+    // Publish the whole raw runtime result before the fixture's restricted semantic wire conversion.
+    Write(Path.Combine(directory, $"{label}-raw.json"), error is null ? new { result = RawInstance(value) } : ErrorRecord(error));
+    // Record unexpected exceptions as well as typed runtime failures before assertions.
+    Write(Path.Combine(directory, $"{label}.json"), error is null ? new { result = Wire(value!) } : ErrorRecord(error));
+    if (error is null)
+    {
+        Require(expected.GetProperty("runtime_error").ValueKind == JsonValueKind.Null, "Expected typed mapping failure.");
+        Ordered(JsonSerializer.SerializeToElement(Wire(value!)), expected.GetProperty("mapped"));
+    }
+    else
+    {
+        Require(error is FerruleRuntimeException, "Mapping failure lost its runtime type.");
+        Ordered(JsonSerializer.SerializeToElement(Normalized((FerruleRuntimeException)error)), expected.GetProperty("runtime_error"));
+    }
+}
+static byte[]? Boundary(string directory, string label, Func<byte[]> call, JsonElement expected)
+{
+    byte[]? value = null;
+    Exception? error = null;
+    try { value = call(); } catch (Exception caught) { error = caught; }
+    if (error is null) File.WriteAllBytes(Path.Combine(directory, $"{label}-output.json"), value!);
+    Write(Path.Combine(directory, $"{label}.json"), error is null ? new { bytes = value } : ErrorRecord(error));
+    if (error is null)
+    {
+        Require(expected.GetProperty("boundary_error").ValueKind == JsonValueKind.Null &&
+            expected.GetProperty("runtime_error").ValueKind == JsonValueKind.Null, "Expected JSON refusal.");
+        using var output = JsonDocument.Parse(value!);
+        Ordered(output.RootElement, expected.GetProperty("output_json"));
+        return value;
+    }
+    Require(error is FerruleRuntimeException, "JSON failure lost its runtime type.");
+    var runtime = (FerruleRuntimeException)error;
+    var phase = expected.GetProperty("boundary_error");
+    if (phase.ValueKind == JsonValueKind.Null)
+    {
+        Require(runtime.Error != FerruleRuntimeError.JsonBoundary, "Mapping error was replaced by a JSON boundary error.");
+        Ordered(JsonSerializer.SerializeToElement(Normalized(runtime)), expected.GetProperty("runtime_error"));
+    }
+    else if (phase.GetString() == "input")
+    {
+        Require(runtime.Error == FerruleRuntimeError.JsonBoundary &&
+            runtime.Message.StartsWith("JSON input", StringComparison.Ordinal) && runtime.InnerException is not null,
+            "Malformed input did not precede mapping with its original parser/decoder cause.");
+    }
+    else
+    {
+        Require(phase.GetString() == "output" && runtime.Error == FerruleRuntimeError.JsonBoundary &&
+            runtime.Message.Contains("forbidden", StringComparison.Ordinal) && runtime.Message.Contains("property name", StringComparison.Ordinal),
+            "Output property-name constraint did not retain its category and name.");
+    }
+    return null;
+}
