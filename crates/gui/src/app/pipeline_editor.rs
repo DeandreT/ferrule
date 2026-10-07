@@ -47,6 +47,10 @@ impl PipelineEditorUi {
         editor
     }
 
+    pub(super) fn set_stage_canvas_error(&mut self, message: &str) {
+        self.error = Some(message.into());
+    }
+
     fn select(&mut self, index: usize) {
         self.selected_stage = Some(index);
         self.rename_draft = self.document.pipeline.stages[index].id.clone();
@@ -143,7 +147,7 @@ impl PipelineEditorUi {
 
 impl FerruleApp {
     pub(super) fn request_pipeline_editor_action(&mut self, action: PipelineEditorAction) {
-        if self.pipeline_mfd_busy() {
+        if self.stage_document_actions_blocked() || self.pipeline_mfd_busy() {
             return;
         }
         if self
@@ -158,6 +162,9 @@ impl FerruleApp {
     }
 
     fn perform_pipeline_editor_action(&mut self, action: PipelineEditorAction) {
+        if self.stage_document_actions_blocked() {
+            return;
+        }
         let result = match action {
             PipelineEditorAction::Close => {
                 self.pipeline_editor = None;
@@ -191,6 +198,9 @@ impl FerruleApp {
     }
 
     pub(super) fn add_pipeline_stage_from_path(&mut self, path: &Path) {
+        if self.stage_document_actions_blocked() {
+            return;
+        }
         let Some(editor) = &mut self.pipeline_editor else {
             return;
         };
@@ -210,7 +220,7 @@ impl FerruleApp {
     }
 
     pub(super) fn show_pipeline_editor(&mut self, ctx: &egui::Context) {
-        let mfd_busy = self.pipeline_mfd_busy();
+        let mfd_busy = self.pipeline_mfd_busy() || self.stage_document_actions_blocked();
         let Some(editor) = &mut self.pipeline_editor else {
             return;
         };
@@ -222,6 +232,7 @@ impl FerruleApp {
         let mut run_saved = false;
         let mut close = false;
         let mut export_profile = None;
+        let mut edit_mapping = None;
         let issues = editor.document.issues();
         let dirty = editor.is_dirty();
         let unapplied = editor.has_unapplied_text();
@@ -268,6 +279,9 @@ impl FerruleApp {
                 if let Some(stage) = editor.document.pipeline.stages.get(index).cloned() {
                     ui.separator();
                     ui.strong("Selected stage");
+                    if ui.add_enabled(!unapplied, egui::Button::new("Edit mapping on canvas")).clicked() {
+                        edit_mapping = Some(index);
+                    }
                     ui.horizontal(|ui| {
                         ui.label("Stage ID");
                         ui.text_edit_singleline(&mut editor.rename_draft);
@@ -408,6 +422,9 @@ impl FerruleApp {
             ui.weak("Export includes the current applied pipeline edits. Saving the pipeline file is optional.");
             });
         });
+        if let Some(index) = edit_mapping {
+            self.begin_pipeline_stage_canvas(index);
+        }
         if let Some(index) = selected
             && let Some(editor) = &mut self.pipeline_editor
         {
@@ -513,6 +530,9 @@ impl FerruleApp {
         if !close_requested || self.allow_close {
             return;
         }
+        if self.guard_pipeline_stage_canvas_close(ctx) {
+            return;
+        }
         self.cancel_pipeline_mfd_for_app_close();
         if self.pending_file_run.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -554,6 +574,9 @@ impl FerruleApp {
     }
 
     pub(super) fn discard_pending_pipeline_editor_action(&mut self, ctx: &egui::Context) {
+        if self.stage_document_actions_blocked() {
+            return;
+        }
         let Some(action) = self.pending_pipeline_editor_action.take() else {
             return;
         };

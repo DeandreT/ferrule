@@ -65,6 +65,7 @@ mod mfd_pipeline;
 mod new_mapping_ui;
 #[path = "pipeline_editor.rs"]
 mod pipeline_editor_ui;
+mod pipeline_stage_canvas;
 #[path = "pipeline.rs"]
 mod pipeline_ui;
 #[path = "preview.rs"]
@@ -464,6 +465,11 @@ pub struct FerruleApp {
     pipeline_run_input_stage: Option<String>,
     close_after_pipeline_run: bool,
     pipeline_editor: Option<pipeline_editor_ui::PipelineEditorUi>,
+    pipeline_stage_canvas: Option<pipeline_stage_canvas::StageCanvasSession>,
+    embedded_stage_namespace: Option<egui::Id>,
+    stage_canvas_generation: u64,
+    #[cfg(test)]
+    embedded_stage_pin_ids: Vec<egui::Id>,
     pending_pipeline_editor_action: Option<pipeline_editor_ui::PipelineEditorAction>,
     pending_mfd_pipeline_import: Option<mfd_pipeline::PendingMfdPipelineImport>,
     pending_pipeline_mfd_export: Option<mfd_pipeline::PipelineMfdExport>,
@@ -630,6 +636,11 @@ impl Default for FerruleApp {
             pipeline_run_input_stage: None,
             close_after_pipeline_run: false,
             pipeline_editor: None,
+            pipeline_stage_canvas: None,
+            embedded_stage_namespace: None,
+            stage_canvas_generation: 0,
+            #[cfg(test)]
+            embedded_stage_pin_ids: Vec::new(),
             pending_pipeline_editor_action: None,
             pending_mfd_pipeline_import: None,
             pending_pipeline_mfd_export: None,
@@ -1101,6 +1112,9 @@ impl FerruleApp {
     }
 
     fn load_project_from(&mut self, path: &std::path::Path) {
+        if self.stage_document_actions_blocked() {
+            return;
+        }
         let loaded = (|| -> anyhow::Result<Project> {
             let bytes = std::fs::read(path)?;
             Ok(mapping::project_file::decode_bytes(&bytes)?)
@@ -1151,6 +1165,10 @@ impl FerruleApp {
     }
 
     fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<DocumentSaveOutcome> {
+        anyhow::ensure!(
+            !self.stage_document_actions_blocked(),
+            "Finish the stage canvas before saving a mapping"
+        );
         let mut project = self.project.clone();
         let previous_path = self.document.suggested_path();
         cli::rebase_project_paths(&mut project, previous_path, path)?;
@@ -1203,6 +1221,9 @@ impl FerruleApp {
     }
 
     fn start_save_as(&mut self, continuation: Option<SaveContinuation>) {
+        if self.stage_document_actions_blocked() {
+            return;
+        }
         self.pending_save_continuation = continuation;
         #[cfg(test)]
         let receiver = self.save_as_dialog_override.take().unwrap_or_else(|| {
@@ -1504,6 +1525,11 @@ impl eframe::App for FerruleApp {
         if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
             self.guard_app_close_requested(ui.ctx(), close_requested);
         }
+        if self.pipeline_stage_canvas.is_some() {
+            self.show_pipeline_stage_canvas(ui);
+            self.show_pipeline_stage_close_guard(ui.ctx());
+            return;
+        }
         let project_editing_enabled = self.ui_project_editing_enabled();
         let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
@@ -1613,6 +1639,9 @@ impl eframe::App for FerruleApp {
         self.show_rest_run(ui.ctx());
         self.show_pipeline_run_setup(ui.ctx());
         self.show_pipeline_editor(ui.ctx());
+        if self.pipeline_stage_canvas.is_some() {
+            return;
+        }
         self.show_pipeline_editor_guard(ui.ctx());
         self.show_new_function_dialog(ui.ctx(), project_editing_enabled);
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
@@ -1655,3 +1684,6 @@ mod primary_root_authoring_tests;
 
 #[cfg(test)]
 mod target_xml_type_tests;
+
+#[cfg(test)]
+mod pipeline_stage_canvas_tests;

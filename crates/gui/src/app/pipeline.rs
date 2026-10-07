@@ -649,6 +649,14 @@ impl PipelineRunHook {
 
 impl FerruleApp {
     pub(super) fn load_pipeline_for_run(&mut self, path: &Path) {
+        if self.stage_document_actions_blocked()
+            || self.pipeline_editor.as_ref().is_some_and(|editor| {
+                editor.document.path == path
+                    && (editor.document.is_dirty() || editor.has_unapplied_text())
+            })
+        {
+            return;
+        }
         match crate::pipeline_run::PipelineRunDraft::load(path) {
             Ok(draft) => {
                 self.status = format!("inspecting pipeline {}", path.display());
