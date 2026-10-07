@@ -130,6 +130,14 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
     }
 }
 
+pub(super) fn value_map_editor_width(entry_count: usize) -> f32 {
+    if entry_count <= 1 {
+        VALUE_MAP_COMPACT_CONTENT_WIDTH
+    } else {
+        VALUE_MAP_CONTENT_WIDTH
+    }
+}
+
 /// Edits a `ValueMap`'s complete lookup table. Entries are coerced to strings
 /// while editing, matching the original inline editor's behavior.
 pub fn show_value_map_editor(
@@ -142,11 +150,7 @@ pub fn show_value_map_editor(
         // Leave room for the solid scrollbar without reserving a second
         // entry column for an empty or single-entry table.
         let mut compact = table.len() <= 1;
-        let content_width = if compact {
-            VALUE_MAP_COMPACT_CONTENT_WIDTH
-        } else {
-            VALUE_MAP_CONTENT_WIDTH
-        };
+        let content_width = value_map_editor_width(table.len());
         ui.set_min_width(content_width);
         ui.set_max_width(content_width);
         ui.horizontal(|ui| {
@@ -190,7 +194,7 @@ pub fn show_value_map_editor(
                 .scroll_source(egui::scroll_area::ScrollSource {
                     scroll_bar: true,
                     drag: egui::scroll_area::DragScroll::Never,
-                    mouse_wheel: false,
+                    mouse_wheel: true,
                 })
                 .show(ui, |ui| {
                     let grid = if compact {

@@ -120,8 +120,7 @@ pub fn show(
         .flatten()
         .filter(|(_, delta_y)| *delta_y != 0.0);
     if let Some((graph_position, delta_y)) = node_wheel
-        && (viewer.scroll_endpoint_at(graph_position, delta_y, snarl)
-            || viewer.queue_value_map_wheel_at(graph_position, delta_y, snarl))
+        && viewer.scroll_endpoint_at(graph_position, delta_y, snarl)
     {
         // Consume the vertical component before egui::Scene can interpret it
         // as canvas panning. Horizontal trackpad motion remains available.
