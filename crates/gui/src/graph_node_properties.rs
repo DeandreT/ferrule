@@ -247,8 +247,8 @@ impl GraphViewer<'_> {
                 Node::If { .. } => {
                     ui.label("condition ? then : else");
                 }
-                Node::ValueMap { .. } => {
-                    ui.label("mapped value");
+                Node::ValueMap { table, default, .. } => {
+                    show_value_map_editor(ui, table, default, None);
                 }
                 Node::Lookup {
                     collection,
