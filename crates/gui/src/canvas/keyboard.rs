@@ -210,6 +210,20 @@ pub fn show(
     }
 }
 
+#[cfg(test)]
+pub fn current_pin_interaction_ids(
+    context: &egui::Context,
+    id_salt: egui::Id,
+    view_generation: u64,
+) -> Vec<egui::Id> {
+    let canvas_id = egui::Id::new((CANVAS_ID, id_salt, view_generation));
+    context.data(|data| {
+        data.get_temp::<PinInteractionIds>(canvas_id.with("pin_interaction_ids"))
+            .unwrap_or_default()
+            .0
+    })
+}
+
 fn pin_drag_active(
     primary_down: bool,
     dragged_id: Option<egui::Id>,
