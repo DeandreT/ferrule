@@ -112,6 +112,9 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 - [x] Add searchable mapping-path, main-mapping-path, and stable run-time values
   to primary, named-target, and function canvases, with compact presentation,
   edit locks, history, and checked node-ID allocation.
+- [x] Author computed source-property reads from supported open scalar objects
+  on primary and named-target canvases, with compact icons, explicit object
+  selection, real wire interactions, edit locks, and undo/redo.
 - [ ] Maintain representative many-row and wide-row trials, individual repeats,
   late errors, full outputs, and regressions under clearly named build profiles.
 - [ ] Choose the next GUI authoring gap from an existing executable mapping;

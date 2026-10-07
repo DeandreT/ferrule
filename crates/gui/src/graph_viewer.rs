@@ -552,6 +552,24 @@ impl GraphViewer<'_> {
                     frame: None,
                 },
             ),
+            NodeTemplate::DynamicSourceField => {
+                if self.function_output.is_some() {
+                    return Err("Source properties are unavailable in isolated functions.".into());
+                }
+                let object = self
+                    .source_paths
+                    .first_open_scalar_object()
+                    .ok_or_else(|| {
+                        "No supported open scalar source object is available.".to_owned()
+                    })?;
+                self.insert_with_unconnected_inputs(snarl, pos, 1, |inputs| {
+                    Node::DynamicSourceField {
+                        object,
+                        frame: None,
+                        key: inputs[0],
+                    }
+                })
+            }
             NodeTemplate::SourceRootField => {
                 if !self.primary_root_authoring {
                     return Err("Primary root fields are available on the supported primary mapping canvas.".into());
@@ -1946,7 +1964,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.set_max_width(properties_width);
                     ui.add(egui::Label::new(&full_title).wrap());
                     ui.separator();
-                    if matches!(self.graph.nodes.get(&node_id), Some(Node::ValueMap { .. })) {
+                    if matches!(
+                        self.graph.nodes.get(&node_id),
+                        Some(Node::ValueMap { .. } | Node::DynamicSourceField { .. })
+                    ) {
                         ui.add_enabled_ui(edit.enabled(), |ui| {
                             self.show_node_properties(pin, ui, snarl);
                         });
@@ -2178,6 +2199,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             ui,
             self.primary_root_authoring && self.source_paths.first_primary_root_field().is_some(),
             self.primary_root_authoring && self.source_paths.first_primary_root_type().is_some(),
+            self.function_output.is_none()
+                && self.source_paths.first_open_scalar_object().is_some(),
         ) {
             self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();

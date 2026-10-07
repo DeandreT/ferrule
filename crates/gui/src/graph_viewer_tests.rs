@@ -1054,7 +1054,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
     fn expected_unconnected_inputs(template: NodeTemplate) -> usize {
         match template {
             NodeTemplate::If => 3,
-            NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
+            NodeTemplate::DynamicSourceField | NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
             NodeTemplate::HostInputDefault => 1,
             NodeTemplate::CollectionFind => 2,
             NodeTemplate::Aggregate(AggregateOp::Join | AggregateOp::ItemAt) => 1,
@@ -1077,6 +1077,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         match (template, node) {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
+            | (NodeTemplate::DynamicSourceField, Node::DynamicSourceField { frame: None, .. })
             | (NodeTemplate::SourceRootField, Node::SourceRootField { .. })
             | (NodeTemplate::SourceRootXmlTypeEquals, Node::SourceRootXmlTypeEquals { .. })
             | (NodeTemplate::Position, Node::Position { .. })
@@ -1113,6 +1114,14 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         )
     }) {
         let mut fx = fixture();
+        if template == NodeTemplate::DynamicSourceField {
+            fx.source_paths = SourcePathCatalog::new(
+                &SchemaNode::group("object", Vec::new())
+                    .with_dynamic_fields(SchemaNode::scalar("value", ScalarType::String))
+                    .unwrap(),
+                &[],
+            );
+        }
         let mut snarl = std::mem::take(&mut fx.snarl);
         let graph_before = fx.graph.nodes.len();
         let snarl_before = snarl.nodes().count();

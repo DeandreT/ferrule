@@ -262,7 +262,7 @@ fn compact_dynamic_headers_retain_complete_object_frame_hover_accessibility_and_
             object.join("/")
         };
         let identity = format!(
-            "\nOpen source object: {object_identity}\nFrame: {frame_identity}\nThe property name is supplied by the input.\nRead-only computed property"
+            "\nOpen source object: {object_identity}\nFrame: {frame_identity}\nThe property name is supplied by the input.\nChoose a supported source object with the pencil."
         );
         for protected in [None, Some(42), Some(0)] {
             let (mut fx, mut snarl) = dynamic_fixture(object.clone(), frame.clone());
