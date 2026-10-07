@@ -1,5 +1,5 @@
-//! Delimited flat file schema and instance read/write, backed by the `csv`
-//! crate for correct quoting/escaping.
+//! Delimited flat file schema and instance read/write, backed by `csv` for
+//! parsing and `csv-core` for correct quoting/escaping.
 //!
 //! A CSV file's row-schema is a non-repeating [`SchemaNode::Group`] of
 //! scalar fields; the file's row-repetition itself is a format convention,
@@ -8,7 +8,7 @@
 //! Empty cells default to [`Value::Null`]. [`CsvReadOptions`] can preserve
 //! present empty text cells as empty strings while missing columns remain null.
 
-use std::io::Read as _;
+use std::io::{Read as _, Write as _};
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
@@ -16,6 +16,7 @@ use mapping::{CsvTextRepairDependency, FormatOptions};
 use thiserror::Error;
 
 mod bounded;
+mod encoding;
 mod fixed_width;
 mod read;
 
@@ -451,24 +452,16 @@ pub fn to_string_with_options(
         delimiter,
         quote,
     } = bounded::validate_csv(schema, rows, options)?;
-    let mut writer = csv::WriterBuilder::new()
-        .delimiter(delimiter)
-        .quote(quote.unwrap_or(b'"'))
-        .quote_style(if options.quote_disabled {
-            csv::QuoteStyle::Never
-        } else {
-            csv::QuoteStyle::Necessary
-        })
-        .from_writer(Vec::new());
+    let mut bytes = Vec::new();
+    let mut writer = encoding::RecordEncoder::new(delimiter, quote, options.quote_disabled);
     if options.has_headers {
-        writer.write_record(fields.iter().map(|(n, _)| *n))?;
+        writer.write_record(&mut bytes, fields.iter().map(|(name, _)| *name))?;
     }
     for (row, instance) in rows.iter().enumerate() {
         let record = format_row(row, instance, &fields)?;
-        writer.write_record(record)?;
+        writer.write_record(&mut bytes, record.iter().map(String::as_str))?;
     }
-    writer.flush()?;
-    let bytes = writer.into_inner().map_err(|error| error.into_error())?;
+    bytes.flush()?;
     let mut text = String::from_utf8(bytes)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     if options.utf8_bom {
