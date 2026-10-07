@@ -22,6 +22,7 @@ thiserror = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]
+functions = { workspace = true }
 codegen = { workspace = true }
 codegen-csharp = { workspace = true }
 codegen-rust = { workspace = true }
