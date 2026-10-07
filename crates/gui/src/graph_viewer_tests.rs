@@ -1063,6 +1063,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                 .unwrap_or_default(),
             NodeTemplate::Constant
             | NodeTemplate::SourceField
+            | NodeTemplate::SourceDocumentPath
             | NodeTemplate::SourceRootField
             | NodeTemplate::SourceRootXmlTypeEquals
             | NodeTemplate::Position
@@ -1077,6 +1078,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         match (template, node) {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
+            | (NodeTemplate::SourceDocumentPath, Node::SourceDocumentPath)
             | (NodeTemplate::DynamicSourceField, Node::DynamicSourceField { frame: None, .. })
             | (NodeTemplate::SourceRootField, Node::SourceRootField { .. })
             | (NodeTemplate::SourceRootXmlTypeEquals, Node::SourceRootXmlTypeEquals { .. })
@@ -1122,6 +1124,14 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                 &[],
             );
         }
+        if template == NodeTemplate::SourceDocumentPath {
+            fx.source_paths =
+                fx.source_paths
+                    .with_primary_source_options(&mapping::FormatOptions {
+                        local_xml_file_set: true,
+                        ..Default::default()
+                    });
+        }
         let mut snarl = std::mem::take(&mut fx.snarl);
         let graph_before = fx.graph.nodes.len();
         let snarl_before = snarl.nodes().count();
@@ -1146,6 +1156,46 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                 .count(),
             unconnected
         );
+    }
+}
+
+#[test]
+fn source_document_path_factory_defends_boundary_and_isolated_function_ownership() {
+    for (file_set, isolated) in [(false, false), (false, true), (true, true)] {
+        let mut fx = fixture();
+        fx.source_paths = fx
+            .source_paths
+            .with_primary_source_options(&mapping::FormatOptions {
+                local_xml_file_set: file_set,
+                ..Default::default()
+            });
+        let before = serde_json::to_value(&fx.graph).unwrap();
+        let scope_before = serde_json::to_value(&fx.root_scope).unwrap();
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let nodes = snarl.nodes().count();
+        let wires = snarl.wires().count();
+        let mut output = 0;
+        let result = {
+            let mut viewer = fx.viewer();
+            if isolated {
+                viewer.function_output = Some(&mut output);
+            }
+            viewer.insert_palette_node(
+                &mut snarl,
+                egui::pos2(240.0, 160.0),
+                NodeTemplate::SourceDocumentPath,
+            )
+        };
+        eprintln!(
+            "Document-path original direct request: file_set={file_set}, isolated={isolated}, result={result:?}, graph={:?}",
+            fx.graph
+        );
+        assert_eq!(result, Err("Source document paths require a primary local XML file set outside isolated functions.".into()));
+        assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
+        assert_eq!(serde_json::to_value(&fx.root_scope).unwrap(), scope_before);
+        assert_eq!(snarl.nodes().count(), nodes);
+        assert_eq!(snarl.wires().count(), wires);
+        assert_eq!(output, 0);
     }
 }
 

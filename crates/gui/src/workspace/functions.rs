@@ -376,7 +376,8 @@ impl FerruleApp {
         let function_names = self.function_names();
         let function_inputs = self.function_inputs();
         let source_paths =
-            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources)
+                .with_primary_source_options(&self.project.source_options);
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
             &self.project.source,
             self.project.source_path.as_deref(),

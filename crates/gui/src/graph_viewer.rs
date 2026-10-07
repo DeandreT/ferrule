@@ -552,6 +552,14 @@ impl GraphViewer<'_> {
                     frame: None,
                 },
             ),
+            NodeTemplate::SourceDocumentPath => {
+                if self.function_output.is_some()
+                    || !self.source_paths.primary_source_document_path_available()
+                {
+                    return Err("Source document paths require a primary local XML file set outside isolated functions.".into());
+                }
+                self.insert(snarl, pos, Node::SourceDocumentPath)
+            }
             NodeTemplate::DynamicSourceField => {
                 if self.function_output.is_some() {
                     return Err("Source properties are unavailable in isolated functions.".into());
@@ -2201,6 +2209,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             self.primary_root_authoring && self.source_paths.first_primary_root_type().is_some(),
             self.function_output.is_none()
                 && self.source_paths.first_open_scalar_object().is_some(),
+            self.function_output.is_none()
+                && self.source_paths.primary_source_document_path_available(),
         ) {
             self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();
