@@ -1819,3 +1819,931 @@ fn join_composite_unsaved_preview_and_imported_plan_display_keep_exact_keys_with
     assert!(!output.exists());
     assert!(app.document.saved_path().is_none());
 }
+
+fn key_edit_fixture(
+    document: MappingDocument,
+    named: bool,
+    count: usize,
+) -> (FerruleApp, egui::Context) {
+    let mut app = composite_fixture(document, named);
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    composite_prepare(&mut app, &context, count);
+    click(&mut app, &context, true, "Create inner join", false);
+    composite_bind(&mut app, &context, named);
+    app.mark_clean();
+    app.rebase_history();
+    app.selected_scope = vec![0];
+    (app, context)
+}
+
+fn key_edit_draft(app: &FerruleApp) -> CompositeDraftPaths {
+    let Edit::Keys {
+        left, right, keys, ..
+    } = &app.join_authoring_draft.as_ref().expect("key draft").edit
+    else {
+        panic!("key-only draft");
+    };
+    (
+        left.clone(),
+        right.clone(),
+        keys.iter()
+            .map(|pair| (pair.left.clone(), pair.right.clone()))
+            .collect(),
+    )
+}
+
+fn key_edit_layout(app: &FerruleApp) -> CanvasLayout {
+    let mut layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    // The full project fingerprint must change with the keys. The live layout
+    // fields themselves must remain exact and history restores those fields.
+    layout.project_fingerprint = None;
+    layout
+}
+
+fn key_edit_live_canvases(app: &FerruleApp) -> Vec<String> {
+    std::iter::once(&app.main_canvas)
+        .chain(app.mapping_workspace.target_canvases.values())
+        .map(|canvas| {
+            let nodes = canvas
+                .snarl
+                .node_ids()
+                .map(|(id, node)| {
+                    let info = canvas.snarl.get_node_info(id).unwrap();
+                    (id, *node, info.pos, info.open)
+                })
+                .collect::<Vec<_>>();
+            format!(
+                "nodes={nodes:?};wires={:?};sizes={:?};generation={};viewport={};focus={:?}",
+                canvas.snarl.wires().collect::<Vec<_>>(),
+                canvas.node_sizes,
+                canvas.view_generation,
+                canvas.viewport_width,
+                canvas.pending_focus
+            )
+        })
+        .collect()
+}
+
+fn key_edit_assert_only_keys(before: &Project, app: &FerruleApp) {
+    let document = app.mapping_workspace.active;
+    let (before_root, _) = target_root(before, document).unwrap();
+    let old = crate::auto_connect::scope_at(before_root, &[0]).unwrap();
+    let new = active_scope(app);
+    let (old_id, old_plan) = old.join().unwrap();
+    let (new_id, new_plan) = new.join().unwrap();
+    assert_eq!(new_id, old_id);
+    assert_eq!(
+        new_plan.sources().collect::<Vec<_>>(),
+        old_plan.sources().collect::<Vec<_>>()
+    );
+    let mut restored = app.project.clone();
+    let root = match document {
+        MappingDocument::Main => &mut restored.root,
+        MappingDocument::Target(index) => &mut restored.extra_targets[index].root,
+        MappingDocument::Function(_) => panic!("mapping target"),
+    };
+    root.children[0].iteration = old.iteration.clone();
+    assert_eq!(
+        mapping::project_file::encode_pretty(&restored).unwrap(),
+        mapping::project_file::encode_pretty(before).unwrap(),
+        "only the selected join key list changes; graph IDs, projections, controls, children, rules and boundaries stay exact"
+    );
+}
+
+#[test]
+fn join_key_edit_real_fields_add_remove_reorder_apply_and_cancel_keep_projections() {
+    let directory = Directory::new();
+    let (mut app, context) = key_edit_fixture(MappingDocument::Main, false, 1);
+    let before = app.project.clone();
+    let original = state(&app);
+    let canvases = key_edit_live_canvases(&app);
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-original-one-key",
+            &app,
+            false,
+            left,
+            right
+        )
+        .unwrap(),
+        composite_expected(&[
+            ("L1", "R1"),
+            ("L1", "R2"),
+            ("L1", "R3"),
+            ("L1", "R4"),
+            ("L2", "R1"),
+            ("L2", "R2"),
+            ("L2", "R3"),
+            ("L2", "R4"),
+            ("L3", "R1"),
+            ("L3", "R2"),
+            ("L3", "R3"),
+            ("L3", "R4")
+        ])
+    );
+    click(&mut app, &context, true, "Edit equality keys", false);
+    composite_choose_nth(&mut app, &context, "Key", 0, "Tenant");
+    composite_choose_nth(&mut app, &context, "Key", 0, "Tenant");
+    assert_eq!(state(&app), original);
+    assert!(!app.can_undo());
+    click(&mut app, &context, true, "Cancel join edit", false);
+    assert!(app.join_authoring_draft.is_none());
+    assert_eq!(state(&app), original);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    click(&mut app, &context, true, "Edit equality keys", false);
+    composite_choose_nth(&mut app, &context, "Key", 0, "Tenant");
+    composite_choose_nth(&mut app, &context, "Key", 0, "Tenant");
+    click(&mut app, &context, true, "Remove key pair 1", false);
+    assert_eq!(
+        key_edit_draft(&app).2.len(),
+        1,
+        "the final equality pair is protected"
+    );
+    click(&mut app, &context, true, "Apply equality keys", false);
+    assert_eq!(
+        composite_key_names(&app),
+        vec![(vec!["Tenant".into()], vec!["Tenant".into()])]
+    );
+    key_edit_assert_only_keys(&before, &app);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(&directory, "edit-tenant-only", &app, false, left, right).unwrap(),
+        composite_expected(&[
+            ("L1", "R1"),
+            ("L1", "R2"),
+            ("L2", "R3"),
+            ("L3", "R1"),
+            ("L3", "R2")
+        ])
+    );
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Add equality pair", false);
+    composite_choose_nth(&mut app, &context, "Key", 0, "Batch");
+    composite_choose_nth(&mut app, &context, "Key", 0, "Batch");
+    click(&mut app, &context, true, "Add equality pair", false);
+    let draft = key_edit_draft(&app);
+    click(&mut app, &context, true, "Move key pair 3 up", false);
+    assert_eq!(key_edit_draft(&app).2[1].0, vec!["Key".to_string()]);
+    click(&mut app, &context, true, "Move key pair 2 down", false);
+    assert_eq!(key_edit_draft(&app), draft);
+    click(&mut app, &context, true, "Apply equality keys", false);
+    assert_eq!(
+        composite_key_names(&app),
+        ["Tenant", "Batch", "Key"]
+            .map(|name| (vec![name.into()], vec![name.into()]))
+            .to_vec()
+    );
+    key_edit_assert_only_keys(&before, &app);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(&directory, "edit-three-keys", &app, false, left, right).unwrap(),
+        composite_expected(&[("L1", "R1"), ("L2", "R3"), ("L3", "R1")])
+    );
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Remove key pair 1", false);
+    click(&mut app, &context, true, "Apply equality keys", false);
+    assert_eq!(
+        composite_key_names(&app),
+        ["Batch", "Key"]
+            .map(|name| (vec![name.into()], vec![name.into()]))
+            .to_vec()
+    );
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(&directory, "edit-removed-tenant", &app, false, left, right).unwrap(),
+        composite_expected(&[
+            ("L1", "R1"),
+            ("L1", "R3"),
+            ("L1", "R4"),
+            ("L2", "R1"),
+            ("L2", "R3"),
+            ("L2", "R4"),
+            ("L3", "R1"),
+            ("L3", "R3"),
+            ("L3", "R4")
+        ])
+    );
+    key_edit_assert_only_keys(&before, &app);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    assert_wires(&app);
+    assert!(app.is_dirty());
+}
+
+#[test]
+fn join_key_edit_order_changes_only_reached_native_comparison_errors_and_null_exclusion() {
+    let directory = Directory::new();
+    let mut app = composite_fixture(MappingDocument::Main, false);
+    let SchemaKind::Group { children, .. } = &mut app.project.source.kind else {
+        panic!("source");
+    };
+    for source in children {
+        let ty = if source.name == "Orders" {
+            ScalarType::Bool
+        } else {
+            ScalarType::Int
+        };
+        let SchemaKind::Group { children, .. } = &mut source.kind else {
+            panic!("row");
+        };
+        *children
+            .iter_mut()
+            .find(|field| field.name == "Tenant")
+            .unwrap() = SchemaNode::scalar("Tenant", ty);
+    }
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    composite_prepare(&mut app, &context, 2);
+    click(&mut app, &context, true, "Create inner join", false);
+    composite_bind(&mut app, &context, false);
+    app.mark_clean();
+    app.rebase_history();
+    app.selected_scope = vec![0];
+    let before = app.project.clone();
+    let left = composite_row(Value::Int(7), Value::Bool(true), Value::Int(1), "Code", "L");
+    let right = composite_row(
+        Value::String("8".into()),
+        Value::Int(1),
+        Value::Int(1),
+        "Name",
+        "R",
+    );
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-order-before",
+            &app,
+            false,
+            vec![left.clone()],
+            vec![right.clone()]
+        )
+        .unwrap(),
+        composite_expected(&[])
+    );
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Move key pair 2 up", false);
+    click(&mut app, &context, true, "Apply equality keys", false);
+    key_edit_assert_only_keys(&before, &app);
+    let reached = composite_run(
+        &directory,
+        "edit-order-reached",
+        &app,
+        false,
+        vec![left.clone()],
+        vec![right.clone()],
+    );
+    assert!(matches!(
+        reached,
+        Err(engine::EngineError::Function(
+            functions::FunctionError::TypeMismatch {
+                function: "equal",
+                got: "int"
+            }
+        ))
+    ));
+    let mut nil = left.clone();
+    composite_replace_field(&mut nil, "Tenant", Some(Value::XmlNil(ir::XmlNil)));
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-order-nil",
+            &app,
+            false,
+            vec![nil],
+            vec![right.clone()]
+        )
+        .unwrap(),
+        composite_expected(&[])
+    );
+    let mut absent = left.clone();
+    composite_replace_field(&mut absent, "Tenant", None);
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-order-absent",
+            &app,
+            false,
+            vec![absent],
+            vec![right.clone()]
+        )
+        .unwrap(),
+        composite_expected(&[])
+    );
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Move key pair 2 up", false);
+    click(&mut app, &context, true, "Apply equality keys", false);
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-order-restored",
+            &app,
+            false,
+            vec![left],
+            vec![right]
+        )
+        .unwrap(),
+        composite_expected(&[])
+    );
+    key_edit_assert_only_keys(&before, &app);
+}
+
+#[test]
+fn join_key_edit_locked_cancel_stale_key_source_and_invalid_pair_refusals_are_atomic() {
+    let (mut app, context) = key_edit_fixture(MappingDocument::Main, false, 2);
+    let original = state(&app);
+    let layout = key_edit_layout(&app);
+    let canvases = key_edit_live_canvases(&app);
+    click(&mut app, &context, false, "Edit equality keys", false);
+    assert!(app.join_authoring_draft.is_none());
+    click(&mut app, &context, true, "Edit equality keys", false);
+    let draft = app.join_authoring_draft.clone().unwrap();
+    let signature = key_edit_draft(&app);
+    app.begin_preview();
+    for control in [
+        "Add equality pair",
+        "Remove key pair 2",
+        "Move key pair 2 up",
+        "Apply equality keys",
+        "Cancel join edit",
+    ] {
+        click(&mut app, &context, true, control, false);
+    }
+    app.apply_join_draft(&draft, true);
+    assert_eq!(key_edit_draft(&app), signature);
+    assert_eq!(state(&app), original);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    assert!(!app.can_undo());
+    app.preview_draft = None;
+    click(&mut app, &context, true, "Cancel join edit", false);
+    assert_eq!(key_edit_layout(&app), layout);
+    assert_eq!(state(&app), original);
+    for failure in ["empty", "path", "collection"] {
+        let mut invalid = draft.clone();
+        let Edit::Keys { keys, left, .. } = &mut invalid.edit else {
+            panic!("keys");
+        };
+        match failure {
+            "empty" => keys.clear(),
+            "path" => keys[1].right = vec!["missing".into()],
+            _ => *left = vec!["Products".into()],
+        }
+        app.apply_join_draft(&invalid, true);
+        assert_eq!(state(&app), original);
+        assert_eq!(key_edit_live_canvases(&app), canvases);
+        assert!(!app.is_dirty());
+        assert!(!app.can_undo());
+        let reason = match failure {
+            "empty" => "at least one equality pair",
+            "path" => "Equality pair 2",
+            _ => "collections stay fixed",
+        };
+        assert!(
+            app.diagnostics
+                .items()
+                .iter()
+                .any(|item| item.message.contains(reason))
+        );
+    }
+    let id = active_scope(&app).join().unwrap().0;
+    for changed_sources in [false, true] {
+        app.project.root.children[0].iteration = ScopeIteration::InnerJoin {
+            id,
+            plan: if changed_sources {
+                JoinPlan::new(
+                    JoinSource::new(vec!["Products".into()]),
+                    JoinSource::new(vec!["Orders".into()]),
+                    JoinConditions::new(JoinKey::new(
+                        vec!["Products".into()],
+                        vec!["Key".into()],
+                        vec!["Key".into()],
+                    )),
+                )
+                .unwrap()
+            } else {
+                JoinPlan::new(
+                    JoinSource::new(vec!["Orders".into()]),
+                    JoinSource::new(vec!["Products".into()]),
+                    JoinConditions::new(JoinKey::new(
+                        vec!["Orders".into()],
+                        vec!["Batch".into()],
+                        vec!["Batch".into()],
+                    )),
+                )
+                .unwrap()
+            },
+        };
+        let concurrent = state(&app);
+        app.apply_join_draft(&draft, true);
+        assert_eq!(
+            state(&app),
+            concurrent,
+            "same JoinId does not permit overwriting changed keys or source order"
+        );
+        assert!(
+            app.diagnostics
+                .items()
+                .iter()
+                .any(|item| item.message.contains("selected scope changed"))
+        );
+        let _ = frame(&mut app, &context, true, Vec::new());
+        assert!(app.join_authoring_draft.is_none());
+    }
+    app.selected_scope.clear();
+    let concurrent = state(&app);
+    app.apply_join_draft(&draft, true);
+    assert_eq!(state(&app), concurrent);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+}
+
+#[test]
+fn join_key_edit_exhausted_id_imported_owner_and_unsupported_admission_preserve_identity() {
+    let (mut app, context) = key_edit_fixture(MappingDocument::Main, false, 2);
+    let plan = active_scope(&app).join().unwrap().1.clone();
+    let imported = JoinId::new(u64::MAX);
+    app.project.root.children[0].iteration = ScopeIteration::InnerJoin { id: imported, plan };
+    for node in app.project.graph.nodes.values_mut() {
+        if let Node::JoinField { join, .. } | Node::JoinPosition { join } = node {
+            *join = imported;
+        }
+    }
+    app.project.graph.nodes.insert(
+        NodeId::MAX,
+        Node::Const {
+            value: Value::String("owned".into()),
+        },
+    );
+    let SchemaKind::Group { children, .. } = &mut app.project.target.kind else {
+        panic!("target");
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        panic!("rows");
+    };
+    children.push(SchemaNode::scalar("Spare", ScalarType::String));
+    app.rebuild_mapping_canvases_after_retirement();
+    app.mark_clean();
+    app.rebase_history();
+    app.selected_scope = vec![0];
+    assert!(cli::validate(&app.project).is_empty());
+    let before = app.project.clone();
+    let canvases = key_edit_live_canvases(&app);
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Remove key pair 2", false);
+    click(&mut app, &context, true, "Apply equality keys", false);
+    assert_eq!(active_scope(&app).join().unwrap().0, imported);
+    assert_eq!(composite_key_names(&app).len(), 1);
+    key_edit_assert_only_keys(&before, &app);
+    assert_eq!(key_edit_live_canvases(&app), canvases);
+    app.mark_clean();
+    app.rebase_history();
+    app.selected_scope = vec![0];
+    let edited = state(&app);
+    click(&mut app, &context, true, "Add joined output", false);
+    click(&mut app, &context, true, "Bind joined output", false);
+    assert_eq!(state(&app), edited);
+    assert!(!app.can_undo());
+    assert!(
+        app.diagnostics
+            .items()
+            .iter()
+            .any(|item| item.message.contains("mapping node IDs are exhausted"))
+    );
+    for kind in ["three", "singleton", "dynamic", "correlated"] {
+        let mut rejected = composite_fixture(MappingDocument::Main, false);
+        let left = JoinSource::new(vec!["Orders".into()]);
+        let right = if kind == "singleton" {
+            JoinSource::singleton(vec!["SingleKey".into()])
+        } else {
+            JoinSource::new(vec!["Products".into()])
+        };
+        let mut plan = JoinPlan::new(
+            left,
+            right,
+            JoinConditions::new(JoinKey::new(
+                vec!["Orders".into()],
+                vec!["Key".into()],
+                if kind == "singleton" {
+                    Vec::new()
+                } else {
+                    vec!["Key".into()]
+                },
+            )),
+        )
+        .unwrap();
+        let SchemaKind::Group { children, .. } = &mut rejected.project.source.kind else {
+            panic!("source");
+        };
+        if kind == "singleton" {
+            children.push(SchemaNode::scalar("SingleKey", ScalarType::String));
+        }
+        if kind == "three" {
+            children.push(composite_schema("Third", "Name", ScalarType::String));
+            plan = plan
+                .then(
+                    JoinSource::new(vec!["Third".into()]),
+                    JoinConditions::new(JoinKey::new(
+                        vec!["Orders".into()],
+                        vec!["Key".into()],
+                        vec!["Key".into()],
+                    )),
+                )
+                .unwrap();
+        }
+        rejected.project.root.children[0].iteration = ScopeIteration::InnerJoin {
+            id: JoinId::new(77),
+            plan,
+        };
+        if kind == "dynamic" {
+            rejected.project.graph.nodes.insert(
+                99,
+                Node::Const {
+                    value: Value::String("other.json".into()),
+                },
+            );
+            rejected.project.extra_sources.push(NamedSource {
+                name: "Other".into(),
+                path: "other.json".into(),
+                schema: SchemaNode::group("Other", vec![row_schema("Rows", "Name")]),
+                options: mapping::FormatOptions {
+                    json_document: true,
+                    ..Default::default()
+                },
+                dynamic_path: Some(mapping::DynamicSourcePath {
+                    node: 99,
+                    iteration: vec!["Orders".into()],
+                }),
+            });
+        }
+        if kind == "correlated" {
+            // The root-context editor cannot cross a parent repetition even
+            // when the imported nested plan itself has an exact owner.
+            rejected.project.root.iteration = ScopeIteration::Source(vec!["Orders".into()]);
+            rejected.project.target.repeating = true;
+        }
+        assert!(
+            cli::validate(&rejected.project).is_empty(),
+            "valid unsupported {kind}"
+        );
+        rejected.main_canvas = CanvasDocumentState::main(&rejected.project);
+        rejected.mark_clean();
+        rejected.rebase_history();
+        rejected.selected_scope = vec![0];
+        let original = state(&rejected);
+        let output = frame(&mut rejected, &context, true, Vec::new());
+        let mut shown = Vec::new();
+        for shape in &output.shapes {
+            positions(&shape.shape, "Edit equality keys", &mut shown);
+        }
+        assert!(!shown.is_empty());
+        click(&mut rejected, &context, true, "Edit equality keys", false);
+        assert!(rejected.join_authoring_draft.is_none());
+        assert_eq!(state(&rejected), original);
+        assert!(!rejected.can_undo());
+    }
+}
+
+fn key_edit_details_expected(pairs: &[(&str, &str)]) -> Instance {
+    Instance::Group(
+        vec![(
+            "Rows".into(),
+            Instance::Repeated(
+                pairs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (code, name))| {
+                        Instance::Group(
+                            vec![
+                                (
+                                    "Code".into(),
+                                    Instance::Scalar(Value::String((*code).into())),
+                                ),
+                                (
+                                    "Name".into(),
+                                    Instance::Scalar(Value::String((*name).into())),
+                                ),
+                                (
+                                    "Tuple".into(),
+                                    Instance::Scalar(Value::Int(index as i64 + 1)),
+                                ),
+                                (
+                                    "Details".into(),
+                                    Instance::Group(
+                                        vec![(
+                                            "Code".into(),
+                                            Instance::Scalar(Value::String((*code).into())),
+                                        )]
+                                        .into(),
+                                    ),
+                                ),
+                            ]
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )]
+        .into(),
+    )
+}
+
+#[test]
+fn join_key_edit_named_imported_owner_controls_children_all_canvases_history_and_save_as_are_exact()
+{
+    let directory = Directory::new();
+    let origin = directory.0.join("origin");
+    let saved_dir = directory.0.join("saved");
+    std::fs::create_dir_all(&origin).unwrap();
+    std::fs::create_dir_all(&saved_dir).unwrap();
+    for name in ["input.json", "reference.json", "output.json", "joined.json"] {
+        std::fs::write(origin.join(name), b"{}").unwrap();
+    }
+    let (mut app, context) = key_edit_fixture(MappingDocument::Target(0), true, 1);
+    app.document = DocumentLocation::untitled(origin.join("mapping.json"));
+    // Existing filter/sort/window controls and a static descendant use the
+    // same exact tuple owner. Editing keys must preserve their full bodies.
+    app.project.graph.nodes.insert(
+        100,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    app.project.graph.nodes.insert(
+        101,
+        Node::Const {
+            value: Value::Int(100),
+        },
+    );
+    let tuple = active_scope(&app)
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Tuple")
+        .unwrap()
+        .node;
+    let code = active_scope(&app)
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Code")
+        .unwrap()
+        .node;
+    let scope = &mut app.project.extra_targets[0].root.children[0];
+    scope.filter = Some(100);
+    scope.sort_by = Some(tuple);
+    scope
+        .windows
+        .push(mapping::SequenceWindow::First { count: 101 });
+    scope.children.push(Scope {
+        target_field: "Details".into(),
+        bindings: vec![Binding {
+            target_field: "Code".into(),
+            node: code,
+        }],
+        ..Default::default()
+    });
+    let SchemaKind::Group { children, .. } = &mut app.project.extra_targets[0].schema.kind else {
+        panic!("target");
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        panic!("rows");
+    };
+    children.push(SchemaNode::group(
+        "Details",
+        vec![SchemaNode::scalar("Code", ScalarType::String)],
+    ));
+    for name in ["Other", "Third"] {
+        app.project.extra_targets.push(NamedTarget {
+            name: name.into(),
+            path: None,
+            schema: app.project.target.clone(),
+            root: app.project.root.clone(),
+            options: app.project.target_options.clone(),
+        });
+    }
+    app.rebuild_mapping_canvases_after_retirement();
+    for index in 0..3 {
+        app.open_target_tab(index);
+        assert!(app.ensure_target_canvas(index));
+    }
+    app.mapping_workspace.active = MappingDocument::Target(0);
+    app.mapping_workspace.focused = MappingDocument::Target(0);
+    app.selected_scope = vec![0];
+    for (index, canvas) in std::iter::once(&mut app.main_canvas)
+        .chain(app.mapping_workspace.target_canvases.values_mut())
+        .enumerate()
+    {
+        for (node_index, (node, id)) in canvas
+            .snarl
+            .node_ids()
+            .map(|(id, node)| (*node, id))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .enumerate()
+        {
+            canvas.snarl.get_node_info_mut(id).unwrap().pos =
+                egui::pos2(70.0 + index as f32 * 220.0 + node_index as f32 * 35.0, 90.0);
+            canvas
+                .node_sizes
+                .insert(node, egui::vec2(111.0 + index as f32, 42.0));
+        }
+        canvas.view_generation = 20 + index as u64;
+        canvas.viewport_width = 640.0 + index as f32;
+        canvas.pending_focus = Some(egui::pos2(11.0 + index as f32, 12.0));
+    }
+    app.mark_clean();
+    app.rebase_history();
+    app.selected_scope = vec![0];
+    assert!(cli::validate(&app.project).is_empty());
+    let before = app.project.clone();
+    let original = state(&app);
+    let layout = key_edit_layout(&app);
+    let live_canvases = key_edit_live_canvases(&app);
+    std::fs::write(directory.0.join("before-edit.json"), &original).unwrap();
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Add equality pair", false);
+    composite_choose_nth(&mut app, &context, "Key", 2, "Tenant");
+    composite_choose_nth(&mut app, &context, "Key", 2, "Tenant");
+    assert_eq!(state(&app), original);
+    assert!(!app.can_undo());
+    click(&mut app, &context, true, "Apply equality keys", false);
+    key_edit_assert_only_keys(&before, &app);
+    assert_eq!(key_edit_layout(&app), layout);
+    assert_eq!(key_edit_live_canvases(&app), live_canvases);
+    let edited = state(&app);
+    let keys = composite_key_names(&app);
+    let id = active_scope(&app).join().unwrap().0;
+    std::fs::write(directory.0.join("edited.json"), &edited).unwrap();
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(&directory, "edit-named-controls", &app, true, left, right).unwrap(),
+        key_edit_details_expected(&[
+            ("L1", "R1"),
+            ("L1", "R2"),
+            ("L2", "R3"),
+            ("L3", "R1"),
+            ("L3", "R2")
+        ])
+    );
+    app.undo_project();
+    assert_eq!(state(&app), original);
+    assert_eq!(key_edit_layout(&app), layout);
+    assert!(
+        !app.can_undo(),
+        "one Apply produces one complete project/layout transaction"
+    );
+    app.redo_project();
+    assert_eq!(state(&app), edited);
+    assert_eq!(key_edit_layout(&app), layout);
+    app.selected_scope = vec![0];
+    assert_eq!(active_scope(&app).join().unwrap().0, id);
+    assert_eq!(composite_key_names(&app), keys);
+    let path = saved_dir.join("mapping.json");
+    let before_save = app.project.clone();
+    app.save_document_to(&path).unwrap();
+    let saved = state(&app);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    let mut logical = app.project.clone();
+    logical.source_path = before_save.source_path.clone();
+    logical.target_path = before_save.target_path.clone();
+    logical.extra_sources[0].path = before_save.extra_sources[0].path.clone();
+    logical.extra_targets[0].path = before_save.extra_targets[0].path.clone();
+    assert_eq!(
+        mapping::project_file::encode_pretty(&logical).unwrap(),
+        edited,
+        "Save As changes only four stored path hints"
+    );
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&path);
+    for index in 0..3 {
+        reopened.open_target_tab(index);
+        assert!(reopened.ensure_target_canvas(index));
+    }
+    reopened.mapping_workspace.active = MappingDocument::Target(0);
+    reopened.mapping_workspace.focused = MappingDocument::Target(0);
+    reopened.selected_scope = vec![0];
+    assert_eq!(state(&reopened), saved);
+    assert_eq!(composite_key_names(&reopened), keys);
+    assert_eq!(active_scope(&reopened).join().unwrap().0, id);
+    assert_eq!(key_edit_layout(&reopened), layout);
+    for (stored, name) in [
+        (
+            reopened.project.source_path.as_deref().unwrap(),
+            "input.json",
+        ),
+        (
+            reopened.project.extra_sources[0].path.as_str(),
+            "reference.json",
+        ),
+        (
+            reopened.project.target_path.as_deref().unwrap(),
+            "output.json",
+        ),
+        (
+            reopened.project.extra_targets[0].path.as_deref().unwrap(),
+            "joined.json",
+        ),
+    ] {
+        assert!(!Path::new(stored).is_absolute());
+        assert_eq!(
+            std::fs::canonicalize(saved_dir.join(stored)).unwrap(),
+            std::fs::canonicalize(origin.join(name)).unwrap()
+        );
+        assert_eq!(std::fs::read(origin.join(name)).unwrap(), b"{}");
+    }
+    let (left, right) = composite_inputs();
+    assert_eq!(
+        composite_run(
+            &directory,
+            "edit-reopened-controls",
+            &reopened,
+            true,
+            left,
+            right
+        )
+        .unwrap(),
+        key_edit_details_expected(&[
+            ("L1", "R1"),
+            ("L1", "R2"),
+            ("L2", "R3"),
+            ("L3", "R1"),
+            ("L3", "R2")
+        ])
+    );
+    click(&mut reopened, &context, true, "Edit equality keys", false);
+    assert_eq!(
+        key_edit_draft(&reopened).2,
+        keys,
+        "reopened supported owner remains editable"
+    );
+    click(&mut reopened, &context, true, "Cancel join edit", false);
+    assert!(!reopened.is_dirty());
+}
+
+#[test]
+fn join_key_edit_unsaved_preview_uses_applied_three_keys_and_publishes_no_files() {
+    let directory = Directory::new();
+    let (mut app, context) = key_edit_fixture(MappingDocument::Main, false, 2);
+    let before = app.project.clone();
+    click(&mut app, &context, true, "Edit equality keys", false);
+    click(&mut app, &context, true, "Add equality pair", false);
+    composite_choose_nth(&mut app, &context, "Key", 2, "Batch");
+    composite_choose_nth(&mut app, &context, "Key", 2, "Batch");
+    click(&mut app, &context, true, "Apply equality keys", false);
+    key_edit_assert_only_keys(&before, &app);
+    let edited = state(&app);
+    let id = active_scope(&app).join().unwrap().0;
+    let output = directory.0.join("must-not-publish.json");
+    let input = r#"{"Orders":[{"Key":7,"Tenant":"A","Batch":1,"Code":"L1"},{"Key":7,"Tenant":"B","Batch":1,"Code":"L2"},{"Key":7,"Tenant":"A","Batch":1,"Code":"L3"}],"Products":[{"Key":"7","Tenant":"A","Batch":1,"Name":"R1"},{"Key":"7","Tenant":"A","Batch":2,"Name":"R2"},{"Key":"7","Tenant":"B","Batch":1,"Name":"R3"},{"Key":"7","Tenant":"C","Batch":1,"Name":"R4"}]}"#;
+    std::fs::write(directory.0.join("preview-input.json"), input).unwrap();
+    std::fs::write(directory.0.join("preview-project.json"), &edited).unwrap();
+    app.preview_draft = Some(crate::preview::PreviewDraft {
+        target: crate::preview::PreviewTarget::Primary,
+        input_identity: "input.json".into(),
+        output_identity: output.display().to_string(),
+        input_text: input.into(),
+        debug_breakpoint: None,
+    });
+    app.execute_preview();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_preview.is_some() && std::time::Instant::now() < deadline {
+        app.poll_preview(&context);
+        if app.pending_preview.is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    std::fs::write(
+        directory.0.join("preview-status.txt"),
+        format!(
+            "status={} diagnostics={:?}\n",
+            app.status,
+            app.diagnostics.items()
+        ),
+    )
+    .unwrap();
+    assert!(app.pending_preview.is_none());
+    let report = app.run_report.as_mut().expect("edited unsaved Preview");
+    let crate::run_report::OutputPreview::Text { content, .. } = report.report.outputs[0].preview()
+    else {
+        panic!("JSON Preview");
+    };
+    std::fs::write(
+        directory.0.join("preview-original.json"),
+        content.as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(content).unwrap(),
+        serde_json::json!({"Rows":[
+        {"Code":"L1","Name":"R1","Tuple":1},{"Code":"L2","Name":"R3","Tuple":2},{"Code":"L3","Name":"R1","Tuple":3}]})
+    );
+    assert_eq!(state(&app), edited);
+    assert_eq!(active_scope(&app).join().unwrap().0, id);
+    assert!(!output.exists());
+    assert!(app.document.saved_path().is_none());
+    assert!(app.is_dirty());
+}

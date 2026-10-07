@@ -637,12 +637,41 @@ fn source_failure_rule_sequence_owners_and_stale_navigation_survive_list_changes
             value: Value::String(",".into()),
         },
     );
+    let files = || {
+        SchemaNode::group(
+            "Files",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        )
+        .repeating()
+    };
+    let tree = SchemaNode::group(
+        "Tree",
+        vec![
+            SchemaNode::scalar("Name", ScalarType::String),
+            files(),
+            SchemaNode::group(
+                "Children",
+                vec![SchemaNode::scalar("Name", ScalarType::String), files()],
+            )
+            .repeating(),
+        ],
+    )
+    .repeating();
+    if let ir::SchemaKind::Group { children, .. } = &mut app.project.source.kind {
+        children.push(tree);
+    } else {
+        unreachable!("source group fixture");
+    }
     let sequence_rule = FailureRule {
         iteration: FailureIteration::Sequence {
-            sequence: SequenceExpr::TokenizeRegex {
-                input: 3,
-                pattern: 13,
-                flags: None,
+            sequence: SequenceExpr::RecursiveCollect {
+                collection: vec!["Tree".into()],
+                children: vec!["Children".into()],
+                descent_value: vec!["Name".into()],
+                values: vec!["Files".into()],
+                value: vec!["Value".into()],
+                prefix: 3,
+                separator: 13,
                 item: 10,
             },
         },

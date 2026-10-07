@@ -30,6 +30,12 @@ enum Edit {
         right: Vec<String>,
         keys: Vec<EqualityPair>,
     },
+    Keys {
+        join: JoinId,
+        left: Vec<String>,
+        right: Vec<String>,
+        keys: Vec<EqualityPair>,
+    },
     Project {
         join: JoinId,
         collection: Vec<String>,
@@ -383,6 +389,84 @@ fn projection_fields(schema: &SchemaNode, scope: &Scope) -> Vec<String> {
         .collect()
 }
 
+fn editable_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
+    if scope.construction != mapping::ScopeConstruction::Constructed {
+        return None;
+    }
+    let (join, plan) = scope.join()?;
+    let mut sources = plan.sources();
+    let left = sources.next()?;
+    let right = sources.next()?;
+    if sources.next().is_some()
+        || left.cardinality() != mapping::JoinSourceCardinality::Repeating
+        || right.cardinality() != mapping::JoinSourceCardinality::Repeating
+    {
+        return None;
+    }
+    let left_fields = field_paths(available, left.collection());
+    let right_fields = field_paths(available, right.collection());
+    if left_fields.is_empty() || right_fields.is_empty() {
+        return None;
+    }
+    let keys = plan
+        .stages()
+        .flat_map(|(_, conditions)| conditions.iter())
+        .map(|key| {
+            (key.left_collection() == left.collection()
+                && left_fields
+                    .iter()
+                    .any(|path| path.as_slice() == key.left_path())
+                && right_fields
+                    .iter()
+                    .any(|path| path.as_slice() == key.right_path()))
+            .then(|| EqualityPair {
+                left: key.left_path().to_vec(),
+                right: key.right_path().to_vec(),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Edit::Keys {
+        join,
+        left: left.collection().to_vec(),
+        right: right.collection().to_vec(),
+        keys,
+    })
+}
+
+fn key_plan(
+    left: JoinSource,
+    right: JoinSource,
+    keys: &[EqualityPair],
+    available: &[Collection],
+) -> Result<JoinPlan, String> {
+    let Some((first, rest)) = keys.split_first() else {
+        return Err("Choose at least one equality pair".into());
+    };
+    let left_fields = field_paths(available, left.collection());
+    let right_fields = field_paths(available, right.collection());
+    for (index, key) in keys.iter().enumerate() {
+        if !left_fields.contains(&key.left) || !right_fields.contains(&key.right) {
+            return Err(format!(
+                "Equality pair {}: choose exact collection keys from the source schema",
+                index + 1
+            ));
+        }
+    }
+    let mut conditions = JoinConditions::new(JoinKey::new(
+        left.collection().to_vec(),
+        first.left.clone(),
+        first.right.clone(),
+    ));
+    for key in rest {
+        conditions = conditions.and(JoinKey::new(
+            left.collection().to_vec(),
+            key.left.clone(),
+            key.right.clone(),
+        ));
+    }
+    JoinPlan::new(left, right, conditions).map_err(|error| error.to_string())
+}
+
 impl FerruleApp {
     pub(super) fn show_join_authoring(&mut self, ui: &mut egui::Ui, supplied_enabled: bool) {
         let enabled = supplied_enabled && self.ui_project_editing_enabled();
@@ -418,6 +502,19 @@ impl FerruleApp {
                         right: right.fields[0].clone(),
                     }],
                 });
+            }
+            let keys = parts
+                .as_ref()
+                .ok()
+                .and_then(|(scope, _)| editable_keys(scope, &available));
+            if ui
+                .add_enabled(
+                    enabled && keys.is_some(),
+                    egui::Button::new("Edit equality keys"),
+                )
+                .clicked()
+            {
+                start = keys;
             }
             let project = parts.as_ref().ok().and_then(|(scope, schema)| {
                 let (join, plan) = scope.join()?;
@@ -505,6 +602,29 @@ impl FerruleApp {
                     ui.weak("Every pair must match. Duplicate matches retain left-row order. Missing and nil keys do not match.");
                     commit = ui.button("Create inner join").clicked();
                 }
+                Edit::Keys { join, left, right, keys } => {
+                    ui.strong(format!("Equality keys for join #{}", join.get()));
+                    ui.label(format!("Left collection: {}", label(left)));
+                    ui.label(format!("Right collection: {}", label(right)));
+                    for (index, key) in keys.iter_mut().enumerate() {
+                        ui.label(format!("Equality pair {}", index + 1));
+                        ui.horizontal(|ui| {
+                            ui.label("Left key:");
+                            picker(ui, &format!("join_edit_left_key_{index}"), &mut key.left, &field_paths(&available, left));
+                            ui.label("Right key:");
+                            picker(ui, &format!("join_edit_right_key_{index}"), &mut key.right, &field_paths(&available, right));
+                        });
+                    }
+                    key_controls(ui, keys);
+                    if ui.button("Add equality pair").clicked() {
+                        keys.push(EqualityPair {
+                            left: field_paths(&available, left).into_iter().next().unwrap_or_default(),
+                            right: field_paths(&available, right).into_iter().next().unwrap_or_default(),
+                        });
+                    }
+                    ui.weak("Collections and joined output fields stay fixed. Equality pairs are checked in this order.");
+                    commit = ui.button("Apply equality keys").clicked();
+                }
                 Edit::Project { join, collection, field, target, position } => {
                     ui.strong(format!("Output from join #{}", join.get()));
                     ui.checkbox(position, "Tuple position");
@@ -543,7 +663,11 @@ impl FerruleApp {
                 self.project = project;
                 self.join_authoring_draft = None;
                 self.clear_diagnostic_navigation();
-                self.rebuild_mapping_canvases_after_retirement();
+                // Key-only changes retain graph nodes, target bindings and every
+                // live canvas. History restores the existing project/layout snapshots.
+                if !matches!(&draft.edit, Edit::Keys { .. }) {
+                    self.rebuild_mapping_canvases_after_retirement();
+                }
                 if let Some(node) = node {
                     let canvas = match self.mapping_workspace.active {
                         MappingDocument::Main => Some(&mut self.main_canvas),
@@ -629,6 +753,33 @@ impl FerruleApp {
                     }),
                     None,
                 )
+            }
+            Edit::Keys {
+                join,
+                left,
+                right,
+                keys,
+            } => {
+                let (actual, plan) = scope
+                    .join()
+                    .ok_or("The selected scope is no longer joined")?;
+                if *join != actual || editable_keys(scope, &available).is_none() {
+                    return Err("Choose an exact two-static-collection root join".into());
+                }
+                let mut sources = plan.sources();
+                let actual_left = sources
+                    .next()
+                    .ok_or("The left joined collection is missing")?;
+                let actual_right = sources
+                    .next()
+                    .ok_or("The right joined collection is missing")?;
+                if actual_left.collection() != left.as_slice()
+                    || actual_right.collection() != right.as_slice()
+                {
+                    return Err("Joined collections stay fixed during key editing".into());
+                }
+                let plan = key_plan(actual_left.clone(), actual_right.clone(), keys, &available)?;
+                (Some(ScopeIteration::InnerJoin { id: actual, plan }), None)
             }
             Edit::Project {
                 join,
