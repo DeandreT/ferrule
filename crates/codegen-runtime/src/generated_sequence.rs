@@ -58,6 +58,15 @@ pub fn tokenize(input: Value, delimiter: Value) -> Result<Vec<Value>, RuntimeErr
         }
         .into());
     }
+    // Count borrowed fields before creating any owned output items.
+    let requested = input.split(&delimiter).count() as u128;
+    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
+        return Err(RuntimeError::GeneratedSequenceTooLarge {
+            requested,
+            max: MAX_GENERATED_SEQUENCE_ITEMS,
+        });
+    }
+
     Ok(input
         .split(&delimiter)
         .map(|value| Value::String(value.to_string()))
@@ -80,6 +89,15 @@ pub fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, Run
         function: "tokenize-by-length",
         message: "requires a positive integer length",
     })? as usize;
+
+    // Count before allocating character storage or any output items.
+    let requested = (input.chars().count() as u128).div_ceil(length as u128);
+    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
+        return Err(RuntimeError::GeneratedSequenceTooLarge {
+            requested,
+            max: MAX_GENERATED_SEQUENCE_ITEMS,
+        });
+    }
 
     let chars = input.chars().collect::<Vec<_>>();
     Ok(chars
@@ -473,5 +491,294 @@ mod tests {
                 limit: MAX_RECURSIVE_SEQUENCE_DEPTH,
             })
         );
+    }
+
+    fn length_tokenize_unicode_input(ascii: usize) -> Value {
+        let mut text = String::with_capacity(ascii + '🙂'.len_utf8());
+        for _ in 0..ascii {
+            text.push('x');
+        }
+        text.push('🙂');
+        Value::String(text)
+    }
+
+    #[test]
+    fn length_tokenize_enforces_exact_generated_item_cap_before_materialization() {
+        let maximum = MAX_GENERATED_SEQUENCE_ITEMS as usize;
+        {
+            // One million scalars, but more UTF-8 bytes and UTF-16 code units.
+            // There is no second million-item expected vector.
+            let original =
+                tokenize_by_length(length_tokenize_unicode_input(maximum - 1), Value::Int(1));
+            let values = match original {
+                Ok(values) => values,
+                Err(error) => panic!("exact-cap original refusal: {error:?}"),
+            };
+            eprintln!(
+                "tokenize-by-length exact-cap original count={} last={:?}",
+                values.len(),
+                values.last()
+            );
+            assert_eq!(values.len(), maximum);
+            assert!(
+                values[..maximum - 1]
+                    .iter()
+                    .all(|value| matches!(value, Value::String(text) if text == "x"))
+            );
+            assert_eq!(values.last(), Some(&Value::String("🙂".into())));
+        }
+        // Drop the accepted million-item result before refusal cases. Fresh owned
+        // inputs are only1–2MiB; each refusal must avoid the character/output arrays.
+        for (ascii, length) in [
+            (maximum, Value::Int(1)),
+            (maximum * 2, Value::Int(2)),
+            (maximum * 2, Value::Float(2.9)),
+            (maximum * 2, Value::String(" \u{2003}+2\u{85} ".into())),
+        ] {
+            let original = tokenize_by_length(length_tokenize_unicode_input(ascii), length);
+            let error = match original {
+                Err(error) => error,
+                Ok(values) => panic!(
+                    "over-cap original unexpectedly returned {} items",
+                    values.len()
+                ),
+            };
+            eprintln!("tokenize-by-length over-cap original: {error:?}");
+            assert_eq!(
+                error,
+                RuntimeError::GeneratedSequenceTooLarge {
+                    requested: MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                    max: MAX_GENERATED_SEQUENCE_ITEMS,
+                }
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "generate-sequence requested {} items; maximum is {}",
+                    MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                    MAX_GENERATED_SEQUENCE_ITEMS,
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn length_tokenize_preserves_coercion_unicode_and_error_precedence() {
+        let text = "e\u{301}🙂z!";
+        for length in [
+            Value::Int(2),
+            Value::Float(2.9),
+            Value::String(" \u{2003}+2\u{85} ".into()),
+        ] {
+            assert_eq!(
+                tokenize_by_length(Value::String(text.into()), length).unwrap(),
+                vec![
+                    Value::String("e\u{301}".into()),
+                    Value::String("🙂z".into()),
+                    Value::String("!".into()),
+                ]
+            );
+        }
+        for length in [
+            Value::Int(i64::MAX),
+            Value::Float(f64::MAX),
+            Value::String(i64::MAX.to_string()),
+        ] {
+            assert_eq!(
+                tokenize_by_length(Value::String(text.into()), length).unwrap(),
+                vec![Value::String(text.into())]
+            );
+        }
+        assert!(
+            tokenize_by_length(Value::String(String::new()), Value::Int(1))
+                .unwrap()
+                .is_empty()
+        );
+        for length in [
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Float(0.9),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::String("2.0".into()),
+            Value::Bool(true),
+            Value::Null,
+            Value::JsonNull(ir::JsonNull),
+            Value::XmlNil(ir::XmlNil),
+        ] {
+            assert_eq!(
+                tokenize_by_length(Value::String(String::new()), length),
+                Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                    function: "tokenize-by-length",
+                    message: "requires a positive integer length",
+                }))
+            );
+        }
+        assert_eq!(
+            tokenize_by_length(Value::Bool(true), Value::Int(0)),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize-by-length",
+                got: "bool",
+            }))
+        );
+        assert_eq!(
+            tokenize_by_length(
+                length_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+                Value::String("2.0".into())
+            ),
+            Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                function: "tokenize-by-length",
+                message: "requires a positive integer length",
+            })),
+            "invalid width keeps precedence over the new cap"
+        );
+    }
+
+    fn literal_tokenize_unicode_input(delimiters: usize) -> Value {
+        let mut text = String::with_capacity(delimiters * "🙂|".len() + 3);
+        for _ in 0..delimiters {
+            text.push_str("🙂|");
+        }
+        text.push_str("end");
+        Value::String(text)
+    }
+
+    #[test]
+    fn literal_tokenize_enforces_exact_item_cap_before_output_materialization() {
+        let maximum = MAX_GENERATED_SEQUENCE_ITEMS as usize;
+        {
+            // One accepted million-item result; no million-item expected collection.
+            let original = tokenize(
+                literal_tokenize_unicode_input(maximum - 1),
+                Value::String("🙂|".into()),
+            );
+            let values = match original {
+                Ok(values) => values,
+                Err(error) => panic!("exact-cap original refusal: {error:?}"),
+            };
+            eprintln!(
+                "tokenize exact-cap original count={} last={:?}",
+                values.len(),
+                values.last()
+            );
+            assert_eq!(values.len(), maximum);
+            assert!(
+                values[..maximum - 1]
+                    .iter()
+                    .all(|value| matches!(value, Value::String(text) if text.is_empty()))
+            );
+            assert_eq!(values.last(), Some(&Value::String("end".into())));
+        }
+        // Accepted output is dropped before fresh, bounded refusal inputs.
+        for (input, delimiter, requested) in [
+            (
+                literal_tokenize_unicode_input(maximum),
+                "🙂|",
+                MAX_GENERATED_SEQUENCE_ITEMS + 1,
+            ),
+            (
+                Value::String("x".repeat(maximum * 2)),
+                "x",
+                MAX_GENERATED_SEQUENCE_ITEMS * 2 + 1,
+            ),
+        ] {
+            let original = tokenize(input, Value::String(delimiter.into()));
+            let error = match original {
+                Err(error) => error,
+                Ok(values) => panic!(
+                    "over-cap original unexpectedly returned {} items",
+                    values.len()
+                ),
+            };
+            eprintln!("tokenize over-cap original: {error:?}");
+            assert_eq!(
+                error,
+                RuntimeError::GeneratedSequenceTooLarge {
+                    requested,
+                    max: MAX_GENERATED_SEQUENCE_ITEMS
+                }
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "generate-sequence requested {requested} items; maximum is {MAX_GENERATED_SEQUENCE_ITEMS}"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn literal_tokenize_preserves_unicode_empty_nonoverlap_and_error_order() {
+        for (input, delimiter, expected) in [
+            ("", ",", vec![""]),
+            (",", ",", vec!["", ""]),
+            ("a,,b,", ",", vec!["a", "", "b", ""]),
+            ("🙂|a🙂|🙂|b🙂|", "🙂|", vec!["", "a", "", "b", ""]),
+            ("ababa", "aba", vec!["", "ba"]),
+            ("e\u{301}🙂", "e\u{301}", vec!["", "🙂"]),
+            ("x", "🙂|longer", vec!["x"]),
+        ] {
+            assert_eq!(
+                tokenize(Value::String(input.into()), Value::String(delimiter.into())).unwrap(),
+                expected
+                    .into_iter()
+                    .map(|text| Value::String(text.into()))
+                    .collect::<Vec<_>>()
+            );
+        }
+        for input in [
+            Value::String(String::new()),
+            literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+        ] {
+            assert_eq!(
+                tokenize(input, Value::String(String::new())),
+                Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                    function: "tokenize",
+                    message: "requires a non-empty delimiter",
+                })),
+                "invalid delimiter retains precedence over the item cap"
+            );
+        }
+        assert_eq!(
+            tokenize(Value::Int(1), Value::Bool(false)),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize",
+                got: "int"
+            })),
+            "input type failure precedes delimiter type failure"
+        );
+        assert_eq!(
+            tokenize(
+                literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+                Value::Bool(false)
+            ),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize",
+                got: "bool"
+            })),
+            "delimiter type failure precedes the cap"
+        );
+    }
+
+    #[test]
+    fn literal_tokenize_items_keep_parent_broadcast_and_raw_positions() {
+        let source = group([field("Parent", scalar(Value::String("outer".into())))]);
+        let parent = ScopeContext::new(&source);
+        let values =
+            tokenize(Value::String("🙂|a🙂|".into()), Value::String("🙂|".into())).unwrap();
+        let items = crate::GeneratedItems::new(values);
+        let contexts = parent.generated_items(&items);
+        assert_eq!(contexts.len(), 3);
+        for (index, (context, expected)) in contexts.iter().zip(["", "a", ""]).enumerate() {
+            assert_eq!(
+                context.resolve_scalar(&[]),
+                Ok(Value::String(expected.into()))
+            );
+            assert_eq!(
+                context.resolve_scalar(&["Parent"]),
+                Ok(Value::String("outer".into()))
+            );
+            assert_eq!(context.position(&[]), index + 1);
+        }
     }
 }
