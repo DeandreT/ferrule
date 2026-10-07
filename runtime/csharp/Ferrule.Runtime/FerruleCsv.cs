@@ -71,7 +71,7 @@ public sealed class FerruleCsvException : Exception
 
 /// <summary>
 /// Package-free flat CSV output. The 64 MiB limit covers returned UTF-8 bytes;
-/// it does not bound the mapped instance or validated record storage.
+/// it does not bound the mapped instance, current formatted row or buffer capacity.
 /// </summary>
 public static class FerruleCsv
 {
@@ -118,47 +118,55 @@ public static class FerruleCsv
         var orderedFields = ValidateFields(fields);
         options ??= new FerruleCsvWriteOptions();
         var (delimiter, quote) = ValidateDialect(options);
-        var records = new List<string[]>(rows.Items.Count);
-        for (var row = 0; row < rows.Items.Count; row++)
-        {
-            records.Add(FormatRow(row, rows.Items[row], orderedFields));
-        }
         // Native CSV validation gives every row/type failure precedence over
         // no-quote header/data refusals and serialization/resource failures.
+        // Keep only the earliest no-quote refusal while validating every row,
+        // then format one row at a time again during encoding.
+        FerruleCsvException? unquotedFailure = null;
         if (options.QuoteDisabled)
         {
             foreach (var field in orderedFields)
             {
                 if (options.HasHeaders && RequiresBoundaryQuoting(field.Name, delimiter))
                 {
-                    throw new FerruleCsvException(
+                    unquotedFailure = new FerruleCsvException(
                         FerruleCsvError.UnquotedHeaderBoundary,
                         $"Header '{field.Name}' cannot be written without quoting.",
                         field: field.Name);
+                    break;
                 }
             }
-            for (var row = 0; row < records.Count; row++)
+        }
+        for (var row = 0; row < rows.Items.Count; row++)
+        {
+            var record = FormatRow(row, rows.Items[row], orderedFields);
+            if (options.QuoteDisabled && unquotedFailure is null)
             {
-                var record = records[row];
                 if (record.Length == 1 && record[0].Length == 0)
                 {
-                    throw new FerruleCsvException(
+                    unquotedFailure = new FerruleCsvException(
                         FerruleCsvError.UnquotedSingleEmptyRow,
                         $"Row {row}: a single empty field requires quoting.",
                         row: row);
+                    continue;
                 }
                 for (var column = 0; column < record.Length; column++)
                 {
                     if (RequiresBoundaryQuoting(record[column], delimiter))
                     {
-                        throw new FerruleCsvException(
+                        unquotedFailure = new FerruleCsvException(
                             FerruleCsvError.UnquotedFieldBoundary,
                             $"Row {row}: column '{orderedFields[column].Name}' requires quoting.",
                             row: row,
                             field: orderedFields[column].Name);
+                        break;
                     }
                 }
             }
+        }
+        if (unquotedFailure is not null)
+        {
+            throw unquotedFailure;
         }
         var sink = new BoundedUtf8Sink();
         try
@@ -172,8 +180,9 @@ public static class FerruleCsv
                 WriteRecord(sink, orderedFields.Select(field => field.Name).ToArray(),
                     delimiter, quote, options.QuoteDisabled);
             }
-            foreach (var record in records)
+            for (var row = 0; row < rows.Items.Count; row++)
             {
+                var record = FormatRow(row, rows.Items[row], orderedFields);
                 WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled);
             }
             return sink;
