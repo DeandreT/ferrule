@@ -80,6 +80,15 @@ fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
     output.push_str(
         ",\n        };\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n}\n",
     );
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_none())
+    {
+        output.truncate(output.len() - 2); // Retain every existing method before the class close.
+        output.push_str(NAMED_ADAPTERS);
+        output.push_str("}\n");
+    }
     output
 }
 
@@ -93,3 +102,39 @@ fn character(value: Option<char>) -> String {
 const fn boolean(value: bool) -> &'static str {
     if value { "true" } else { "false" }
 }
+
+const NAMED_ADAPTERS: &str = r#"
+    public static string ExecuteCsvWithSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources)
+    {
+        var primary = ExecuteWithSources(source, extraSources);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static string ExecuteCsvWithSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        var primary = ExecuteWithSources(source, extraSources, executionContext);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytesWithSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources)
+    {
+        var primary = ExecuteWithSources(source, extraSources);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytesWithSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        var primary = ExecuteWithSources(source, extraSources, executionContext);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+"#;
