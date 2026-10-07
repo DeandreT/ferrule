@@ -49,8 +49,8 @@ internal static partial class Program
         foreach (var indent in new[] { false, true })
         foreach (var mode in new[] { 0, 1, 2 })
         {
-            Equal("<Root></Root>", SelectedEmptySerialize(ordinary, Group(), indent, mode));
-            Equal("<Root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"B\"></Root>", SelectedEmptySerialize(SelectedEmptySchema, Group(Field("\u001fferrule-xml-type", Scalar(Text("B")))), indent, mode));
+            Equal(indent ? "<Root>\n</Root>" : "<Root></Root>", SelectedEmptySerialize(ordinary, Group(), indent, mode));
+            Equal($"<Root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"B\">{(indent ? "\n" : "")}</Root>", SelectedEmptySerialize(SelectedEmptySchema, Group(Field("\u001fferrule-xml-type", Scalar(Text("B")))), indent, mode));
             foreach (var text in new[] { "", "kept" })
             {
                 var xml = SelectedEmptySerialize(SelectedEmptySchema, Group(Field("Value", Scalar(Text(text))), Field("\u001fferrule-xml-type", Scalar(Text("B")))), indent, mode);
@@ -59,5 +59,7 @@ internal static partial class Program
                 Equal($"<Root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"B\">{newline}{spaces}<Value>{text}</Value>{newline}</Root>", xml);
             }
         }
+        XmlStructuralEmptyDocumentFormatting();
+        XmlStructuralEmptyFormattingControls();
     }
 }
