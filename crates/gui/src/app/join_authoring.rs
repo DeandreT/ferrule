@@ -36,6 +36,11 @@ enum Edit {
         right: Vec<String>,
         keys: Vec<EqualityPair>,
     },
+    NaryKeys {
+        join: JoinId,
+        first: JoinSource,
+        stages: Vec<StageKeys>,
+    },
     Project {
         join: JoinId,
         collection: Vec<String>,
@@ -47,6 +52,19 @@ enum Edit {
 
 #[derive(Clone)]
 struct EqualityPair {
+    left: Vec<String>,
+    right: Vec<String>,
+}
+
+#[derive(Clone)]
+struct StageKeys {
+    source: JoinSource,
+    keys: Vec<StageEqualityPair>,
+}
+
+#[derive(Clone)]
+struct StageEqualityPair {
+    left_collection: Vec<String>,
     left: Vec<String>,
     right: Vec<String>,
 }
@@ -467,6 +485,245 @@ fn key_plan(
     JoinPlan::new(left, right, conditions).map_err(|error| error.to_string())
 }
 
+fn editable_nary_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
+    if scope.construction != mapping::ScopeConstruction::Constructed {
+        return None;
+    }
+    let (join, plan) = scope.join()?;
+    let sources = plan.sources().cloned().collect::<Vec<_>>();
+    if sources.len() < 3
+        || sources.iter().any(|source| {
+            source.cardinality() != mapping::JoinSourceCardinality::Repeating
+                || field_paths(available, source.collection()).is_empty()
+        })
+    {
+        return None;
+    }
+    let stages = plan
+        .stages()
+        .enumerate()
+        .map(|(index, (source, conditions))| {
+            let right_fields = field_paths(available, source.collection());
+            let keys = conditions
+                .iter()
+                .map(|key| {
+                    (sources[..=index]
+                        .iter()
+                        .any(|prior| prior.collection() == key.left_collection())
+                        && field_paths(available, key.left_collection())
+                            .iter()
+                            .any(|path| path.as_slice() == key.left_path())
+                        && right_fields
+                            .iter()
+                            .any(|path| path.as_slice() == key.right_path()))
+                    .then(|| StageEqualityPair {
+                        left_collection: key.left_collection().to_vec(),
+                        left: key.left_path().to_vec(),
+                        right: key.right_path().to_vec(),
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(StageKeys {
+                source: source.clone(),
+                keys,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Edit::NaryKeys {
+        join,
+        first: sources[0].clone(),
+        stages,
+    })
+}
+
+fn stage_conditions(
+    index: usize,
+    stage: &StageKeys,
+    prior: &[JoinSource],
+    available: &[Collection],
+) -> Result<JoinConditions, String> {
+    let Some((first, rest)) = stage.keys.split_first() else {
+        return Err(format!(
+            "Join stage {}: choose at least one equality pair",
+            index + 1
+        ));
+    };
+    let right_fields = field_paths(available, stage.source.collection());
+    for (pair, key) in stage.keys.iter().enumerate() {
+        if !prior
+            .iter()
+            .any(|source| source.collection() == key.left_collection.as_slice())
+            || !field_paths(available, &key.left_collection).contains(&key.left)
+            || !right_fields.contains(&key.right)
+        {
+            return Err(format!(
+                "Join stage {}, equality pair {}: choose exact keys from an earlier collection and this right collection",
+                index + 1,
+                pair + 1
+            ));
+        }
+    }
+    let mut conditions = JoinConditions::new(JoinKey::new(
+        first.left_collection.clone(),
+        first.left.clone(),
+        first.right.clone(),
+    ));
+    for key in rest {
+        conditions = conditions.and(JoinKey::new(
+            key.left_collection.clone(),
+            key.left.clone(),
+            key.right.clone(),
+        ));
+    }
+    Ok(conditions)
+}
+
+fn nary_key_plan(
+    original: &JoinPlan,
+    first: &JoinSource,
+    stages: &[StageKeys],
+    available: &[Collection],
+) -> Result<JoinPlan, String> {
+    if original
+        .sources()
+        .ne(std::iter::once(first).chain(stages.iter().map(|stage| &stage.source)))
+    {
+        return Err(
+            "Joined collections and their stage order stay fixed during key editing".into(),
+        );
+    }
+    let Some((second, rest)) = stages.split_first() else {
+        return Err("The joined stages are missing".into());
+    };
+    let mut prior = vec![first.clone()];
+    let conditions = stage_conditions(0, second, &prior, available)?;
+    let mut plan = JoinPlan::new(first.clone(), second.source.clone(), conditions)
+        .map_err(|error| error.to_string())?;
+    prior.push(second.source.clone());
+    for (index, stage) in rest.iter().enumerate() {
+        let conditions = stage_conditions(index + 1, stage, &prior, available)?;
+        plan = plan
+            .then(stage.source.clone(), conditions)
+            .map_err(|error| error.to_string())?;
+        prior.push(stage.source.clone());
+    }
+    Ok(plan)
+}
+
+fn show_nary_keys(
+    ui: &mut egui::Ui,
+    join: JoinId,
+    first: &JoinSource,
+    stages: &mut [StageKeys],
+    available: &[Collection],
+) -> bool {
+    ui.strong(format!("Equality keys for join #{}", join.get()));
+    ui.label(format!("First collection: {}", label(first.collection())));
+    let mut prior = vec![first.collection().to_vec()];
+    for (stage_index, stage) in stages.iter_mut().enumerate() {
+        let number = stage_index + 1;
+        ui.separator();
+        ui.strong(format!(
+            "Join stage {number}: {}",
+            label(stage.source.collection())
+        ));
+        let left_choices = available
+            .iter()
+            .filter(|choice| prior.contains(&choice.path))
+            .cloned()
+            .collect::<Vec<_>>();
+        for (pair_index, key) in stage.keys.iter_mut().enumerate() {
+            ui.label(format!("Stage {number}, equality pair {}", pair_index + 1));
+            ui.horizontal(|ui| {
+                ui.label("Earlier collection:");
+                pick_collection(
+                    ui,
+                    &format!("join_stage_{stage_index}_pair_{pair_index}_collection"),
+                    &mut key.left_collection,
+                    &mut key.left,
+                    &left_choices,
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("Left key:");
+                picker(
+                    ui,
+                    &format!("join_stage_{stage_index}_pair_{pair_index}_left"),
+                    &mut key.left,
+                    &field_paths(available, &key.left_collection),
+                );
+                ui.label("Right key:");
+                picker(
+                    ui,
+                    &format!("join_stage_{stage_index}_pair_{pair_index}_right"),
+                    &mut key.right,
+                    &field_paths(available, stage.source.collection()),
+                );
+            });
+        }
+        let mut remove = None;
+        let mut move_pair = None;
+        let count = stage.keys.len();
+        for pair in 0..count {
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        count > 1,
+                        egui::Button::new(format!("Remove stage {number} pair {}", pair + 1)),
+                    )
+                    .clicked()
+                {
+                    remove = Some(pair);
+                }
+                if ui
+                    .add_enabled(
+                        pair > 0,
+                        egui::Button::new(format!("Move stage {number} pair {} up", pair + 1)),
+                    )
+                    .clicked()
+                {
+                    move_pair = Some((pair, pair - 1));
+                }
+                if ui
+                    .add_enabled(
+                        pair + 1 < count,
+                        egui::Button::new(format!("Move stage {number} pair {} down", pair + 1)),
+                    )
+                    .clicked()
+                {
+                    move_pair = Some((pair, pair + 1));
+                }
+            });
+        }
+        if let Some(pair) = remove {
+            stage.keys.remove(pair);
+        } else if let Some((from, to)) = move_pair {
+            stage.keys.swap(from, to);
+        }
+        if ui
+            .button(format!("Add stage {number} equality pair"))
+            .clicked()
+        {
+            let collection = prior[0].clone();
+            stage.keys.push(StageEqualityPair {
+                left: field_paths(available, &collection)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default(),
+                left_collection: collection,
+                right: field_paths(available, stage.source.collection())
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default(),
+            });
+        }
+        prior.push(stage.source.collection().to_vec());
+    }
+    ui.weak("Collections, stage order and joined output fields stay fixed. Each stage checks its equality pairs in this order.");
+    ui.weak("Adding joined output fields to a multi-source plan is not available here.");
+    ui.button("Apply equality keys").clicked()
+}
+
 impl FerruleApp {
     pub(super) fn show_join_authoring(&mut self, ui: &mut egui::Ui, supplied_enabled: bool) {
         let enabled = supplied_enabled && self.ui_project_editing_enabled();
@@ -503,10 +760,9 @@ impl FerruleApp {
                     }],
                 });
             }
-            let keys = parts
-                .as_ref()
-                .ok()
-                .and_then(|(scope, _)| editable_keys(scope, &available));
+            let keys = parts.as_ref().ok().and_then(|(scope, _)| {
+                editable_keys(scope, &available).or_else(|| editable_nary_keys(scope, &available))
+            });
             if ui
                 .add_enabled(
                     enabled && keys.is_some(),
@@ -625,6 +881,9 @@ impl FerruleApp {
                     ui.weak("Collections and joined output fields stay fixed. Equality pairs are checked in this order.");
                     commit = ui.button("Apply equality keys").clicked();
                 }
+                Edit::NaryKeys { join, first, stages } => {
+                    commit = show_nary_keys(ui, *join, first, stages, &available);
+                }
                 Edit::Project { join, collection, field, target, position } => {
                     ui.strong(format!("Output from join #{}", join.get()));
                     ui.checkbox(position, "Tuple position");
@@ -665,7 +924,7 @@ impl FerruleApp {
                 self.clear_diagnostic_navigation();
                 // Key-only changes retain graph nodes, target bindings and every
                 // live canvas. History restores the existing project/layout snapshots.
-                if !matches!(&draft.edit, Edit::Keys { .. }) {
+                if !matches!(&draft.edit, Edit::Keys { .. } | Edit::NaryKeys { .. }) {
                     self.rebuild_mapping_canvases_after_retirement();
                 }
                 if let Some(node) = node {
@@ -779,6 +1038,20 @@ impl FerruleApp {
                     return Err("Joined collections stay fixed during key editing".into());
                 }
                 let plan = key_plan(actual_left.clone(), actual_right.clone(), keys, &available)?;
+                (Some(ScopeIteration::InnerJoin { id: actual, plan }), None)
+            }
+            Edit::NaryKeys {
+                join,
+                first,
+                stages,
+            } => {
+                let (actual, plan) = scope
+                    .join()
+                    .ok_or("The selected scope is no longer joined")?;
+                if *join != actual || editable_nary_keys(scope, &available).is_none() {
+                    return Err("Choose an exact static multi-source root join".into());
+                }
+                let plan = nary_key_plan(plan, first, stages, &available)?;
                 (Some(ScopeIteration::InnerJoin { id: actual, plan }), None)
             }
             Edit::Project {
