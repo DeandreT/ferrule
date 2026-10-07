@@ -26,6 +26,23 @@ EDI, binary, and other document formats without format-specific graph logic.
 See [Supported formats](docs/formats.md) for the complete direction and feature
 matrix.
 
+## Choose Your Workflow
+
+| Goal | Guide |
+| --- | --- |
+| Create a visual mapping, including a flat worksheet table | [Your first mapping](docs/getting-started.md) |
+| Run or validate a saved project | [Quick Start](#quick-start) |
+| Connect and edit mapping stages | [Mapping pipelines](docs/mapping-pipelines.md) |
+| Import/export an existing design with explicit limits | [`.mfd` interoperability](docs/mfd-interop.md) |
+| Embed a generated Rust or C# mapping | [Code generation](docs/code-generation.md) |
+| Plan a large-file workload | [Memory use and boundary limits](docs/memory-and-limits.md) |
+| Contribute and verify a change | [Development](docs/development.md) and [roadmap](ROADMAP.md) |
+
+Features, local tests, and external compatibility are separate claims. The
+[roadmap](ROADMAP.md#current-priorities) distinguishes current capabilities from
+remaining qualification work; the conformance inventory is incomplete and is
+not a parity percentage.
+
 ## Quick Start
 
 ferrule currently uses the Rust nightly toolchain:
@@ -102,6 +119,8 @@ keep their configured local paths. Dynamic named sources, SQLite, and
 update-existing XLSX remain filesystem-host operations; mappings that produce
 more than one artifact are rejected before stdout receives bytes. No success
 report is mixed into stdout; diagnostics remain on stderr.
+This is a transport option: parsed inputs, mapped rows, and serialized outputs
+are still materialized. See [Memory use](docs/memory-and-limits.md).
 
 Rust hosts can run the same interpreter without temporary input or output files:
 
@@ -122,8 +141,8 @@ for artifact in outcome.artifacts {
 
 Logical paths select the format and identify returned artifacts. Payload runs
 accept named static or dynamic secondary inputs, typed runtime parameters, and
-tracing. Inputs and outputs are bounded to 64 MiB per document, 256 MiB per
-run, and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
+tracing. Inputs and outputs are bounded to 64 MiB per document, with separate
+256 MiB input and output budgets per run and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
 and source names to 256. SQLite and update-existing XLSX operations remain
 filesystem APIs because they modify persistent state.
 Payload hosts can explicitly select design-time inputs with
@@ -203,14 +222,19 @@ cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
 
 ## Documentation
 
+- [Your first mapping and flat workbook setup](docs/getting-started.md)
 - [Mapping model and workspace architecture](docs/architecture.md)
+- [Editable architecture and qualification diagrams](docs/architecture-parity.drawio)
 - [Mapping pipelines](docs/mapping-pipelines.md)
 - [Execution trace JSON Lines contract](docs/tracing.md)
 - [Supported formats](docs/formats.md)
 - [`.mfd` interoperability](docs/mfd-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
 - [Runnable generated Rust and C# hosts](examples/codegen/)
+- [Memory use and boundary limits](docs/memory-and-limits.md)
+- [Development and verification checklist](docs/development.md)
 - [Compatibility and product-parity roadmap](ROADMAP.md)
+- [Historical compatibility checkpoints](docs/compatibility-baseline.md)
 
 The integration fixtures under `crates/cli/tests/fixtures/` are executable
 examples covering XML, JSON, CSV, SQLite, X12, EDIFACT, and cross-source

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" type="device" version="24.7.17">
+  <diagram id="current-architecture" name="Current architecture">
+    <mxGraphModel dx="1200" dy="950" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="heading" value="Ferrule: current architecture" style="text;html=1;whiteSpace=wrap;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="25" width="1120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="Solid arrows: data/execution or emitted-artifact flow. Dotted arrows: design-time lowering or shared model use. See docs/architecture.md for contracts." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#6b7280;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="gui" value="&lt;b&gt;Native editor&lt;/b&gt;&lt;br&gt;Compact nodes, full hover/details&lt;br&gt;Primary, named, function and stage canvases" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="350" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cli" value="&lt;b&gt;CLI and Rust host APIs&lt;/b&gt;&lt;br&gt;Filesystem and bounded payload runs&lt;br&gt;Validation, tracing, schema and design import" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="150" width="350" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="web" value="&lt;b&gt;Web demo&lt;/b&gt;&lt;br&gt;WASM mapping playground&lt;br&gt;Uses the real engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="150" width="350" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="project" value="&lt;b&gt;mapping::Project and Pipeline&lt;/b&gt;&lt;br&gt;Schemas · graph · scopes · endpoints · format options&lt;br&gt;UDFs · global failure rules · typed host parameters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="545" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="mfd" value="&lt;b&gt;.mfd interoperability&lt;/b&gt;&lt;br&gt;Repair import or strict executable admission&lt;br&gt;Native and extension export profiles; explicit refusals" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="615" y="300" width="545" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="reader" value="&lt;b&gt;Format readers&lt;/b&gt;&lt;br&gt;XML / JSON / JSON5 / tabular / database&lt;br&gt;EDI / FlexText / binary / document inputs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="455" width="350" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="engine" value="&lt;b&gt;Interpreter&lt;/b&gt;&lt;br&gt;Validate → global rules → target scopes/graphs&lt;br&gt;Lazy expression Raise; typed values and errors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="455" width="350" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="lower" value="&lt;b&gt;Validated static lowering&lt;/b&gt;&lt;br&gt;Reachable portable subset&lt;br&gt;Independent admission and diagnostics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="455" width="350" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="writer" value="&lt;b&gt;Format writers&lt;/b&gt;&lt;br&gt;Complete output validation and serialization&lt;br&gt;Supported output directions only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="625" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="model" value="&lt;b&gt;ir and functions&lt;/b&gt;&lt;br&gt;Schema / Instance / Value&lt;br&gt;Typed scalar built-ins and frame semantics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="625" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="generated" value="&lt;b&gt;Generated Rust and C# libraries&lt;/b&gt;&lt;br&gt;Static scope/expression functions + runtimes&lt;br&gt;Typed and eligible JSON/XML/CSV host adapters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="625" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="output" value="&lt;b&gt;Host publication&lt;/b&gt;&lt;br&gt;Staged files or returned bounded artifacts&lt;br&gt;Preview returns in-memory results" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ccfbf1;strokeColor=#0f766e;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="795" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="memory" value="&lt;b&gt;Memory boundary&lt;/b&gt;&lt;br&gt;Input/target trees and output buffers materialize&lt;br&gt;Byte/item limits are not total-RAM limits" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#6b7280;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="795" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="future" value="&lt;b&gt;Planned backends and connectors&lt;/b&gt;&lt;br&gt;More languages and service/database models&lt;br&gt;Broader setup wizards; see ROADMAP.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#6b7280;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="795" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="g-p" value="edit" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="gui" target="project">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c-p" value="execute" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="cli" target="project">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="w-p" value="model" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="web" target="project">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="m-p" value="import / export" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="mfd" target="project">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p-e" value="validated project" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="project" target="engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r-e" value="input instances" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="reader" target="engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-w" value="target instances" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="engine" target="writer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="w-o" value="serialized artifacts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="writer" target="output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p-l" value="generate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="project" target="lower">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-g" value="emit" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="lower" target="generated">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i-e" value="shared model" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="model" target="engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="i-g" value="runtime contracts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="model" target="generated">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="qualification" name="Qualification and next gates">
+    <mxGraphModel dx="1200" dy="950" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="heading" value="Ferrule: qualification is a sequence of separate gates" style="text;html=1;whiteSpace=wrap;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="25" width="1120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="scope" value="&lt;b&gt;Claim one bounded profile&lt;/b&gt;&lt;br&gt;Feature + format + backend + platform + workflow&lt;br&gt;No whole-product parity percentage; inventory remains incomplete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1120" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="fixture" value="&lt;b&gt;1. Concrete fixture&lt;/b&gt;&lt;br&gt;Self-authored inputs and independent full oracles&lt;br&gt;Triggering case plus meaningful refusals" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="source" value="&lt;b&gt;2. Source and contract review&lt;/b&gt;&lt;br&gt;Public defaults, type/error/order/ownership&lt;br&gt;Source acceptance is not execution" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="240" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="local" value="&lt;b&gt;3. Focused local gates&lt;/b&gt;&lt;br&gt;Validate, run, full bytes/values, errors and atomicity&lt;br&gt;Preserve failed originals" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="240" width="350" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="workflow" value="&lt;b&gt;4. Actual public workflow&lt;/b&gt;&lt;br&gt;Compiled host or ordinary desktop controls&lt;br&gt;Save/reopen, locks/cancel, real viewport" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="410" width="350" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="external" value="&lt;b&gt;5. External gate when claimed&lt;/b&gt;&lt;br&gt;Open/validate/execute/save + strict replay&lt;br&gt;Partial publication and I/O remain explicit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="425" y="410" width="350" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="ledger" value="&lt;b&gt;6. Evidence and docs&lt;/b&gt;&lt;br&gt;Exact profile, outcomes and remaining unknowns&lt;br&gt;A nearby success does not close another cell" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ccfbf1;strokeColor=#0f766e;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="410" width="350" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="f-s" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="fixture" target="source">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-l" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="source" target="local">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="l-w" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="local" target="workflow">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="w-x" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="workflow" target="external">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="x-d" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#475569;fontSize=12;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="external" target="ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="next" value="&lt;b&gt;Current focused follow-through&lt;/b&gt;&lt;br&gt;Normal workbook desktop save/reopen · saved integer-edge replay · generated public-host cohorts · native JSON5 metadata · representative memory trials" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="605" width="1120" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="boundary" value="&lt;b&gt;Keep the claim honest&lt;/b&gt;&lt;br&gt;Import ≠ execution. Export/reimport ≠ external acceptance. Emission ≠ compiled calls. Sampled RSS ≠ API peak. Source budgets ≠ total RAM.&lt;br&gt;Editable diagrams supplement, rather than replace, the versioned contract documents and roadmap checklists." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#6b7280;fontColor=#111827;fontSize=14;align=left;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="755" width="1120" height="125" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
