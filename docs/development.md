@@ -47,14 +47,20 @@ cargo +nightly test -p format-csv
 cargo +nightly test -p cli --test csv_row_release
 ```
 
-The ordinary CI workspace test command is:
+For a local alternate-display run, use the CI workspace test subset with both
+ambient Wayland handles removed:
 
 ```sh
-xvfb-run -a env -u WAYLAND_DISPLAY LIBGL_ALWAYS_SOFTWARE=1 \
+xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1 \
   cargo +nightly test --workspace \
   --exclude codegen --exclude codegen-runtime \
   --exclude codegen-rust --exclude codegen-csharp
 ```
+
+Removing `WAYLAND_DISPLAY` and `WAYLAND_SOCKET` avoids reusing these ambient
+Wayland handles during a local alternate-display run. The
+[current CI workflow](../.github/workflows/ci.yml) clears `WAYLAND_DISPLAY`
+only; this local example adds the socket guard.
 
 Those exclusions are not generated-backend qualification. Changes to lowering,
 runtime primitives, emitters, or public adapters need their focused Rust and

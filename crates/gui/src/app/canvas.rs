@@ -461,6 +461,12 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
         }
     }
 
+    let aggregate_inputs = graph_nodes
+        .iter()
+        .filter_map(|(&id, &node)| {
+            matches!(graph.nodes.get(&id), Some(Node::Aggregate { .. })).then_some(node)
+        })
+        .collect::<std::collections::BTreeSet<_>>();
     let endpoint_nodes = source_nodes
         .values()
         .chain(target_nodes.values())
@@ -468,7 +474,9 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
         .collect::<std::collections::BTreeSet<_>>();
     let existing = snarl.wires().collect::<std::collections::BTreeSet<_>>();
     for &(from, to) in &existing {
-        if (endpoint_nodes.contains(&from.node) || endpoint_nodes.contains(&to.node))
+        if (endpoint_nodes.contains(&from.node)
+            || endpoint_nodes.contains(&to.node)
+            || aggregate_inputs.contains(&to.node))
             && !expected.contains(&(from, to))
         {
             snarl.disconnect(from, to);
