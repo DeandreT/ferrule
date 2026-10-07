@@ -77,6 +77,38 @@ pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
                 replacements.len(),
             );
         }
+        Some(Node::XmlSerialize {
+            path,
+            frame,
+            schema,
+            declaration,
+            indent,
+            namespace,
+        }) => {
+            let path = if path.is_empty() {
+                "<current> (empty path)".to_owned()
+            } else {
+                path.join("/")
+            };
+            let frame = match frame {
+                None => "automatic".to_owned(),
+                Some(frame) if frame.is_empty() => "explicit (empty path)".to_owned(),
+                Some(frame) => format!("explicit {}", frame.join("/")),
+            };
+            let element_namespace = match &schema.xml_namespace {
+                None => "unspecified".to_owned(),
+                Some(ir::XmlNamespace::Unqualified) => "explicitly unqualified".to_owned(),
+                Some(ir::XmlNamespace::Qualified(uri)) => format!("qualified {:?}", uri.as_str()),
+            };
+            let default_namespace = match namespace {
+                None => "not set".to_owned(),
+                Some(uri) => format!("set {uri:?}"),
+            };
+            return format!(
+                "{title}\nPath: {path}\nFrame: {frame}\nElement: {}\nElement namespace: {element_namespace}\nXML declaration: {declaration}\nIndent output: {indent}\nDefault namespace: {default_namespace}",
+                schema.name,
+            );
+        }
         Some(Node::ValueMap {
             input_type,
             table,
@@ -476,6 +508,22 @@ pub(super) fn hint(node: &Node, full_title: &str) -> String {
         ),
         _ => full_title.to_owned(),
     }
+}
+
+pub(super) fn input_pin_hint(node: Option<&Node>, index: usize) -> Option<String> {
+    let Node::XmlMixedContent { replacements, .. } = node? else {
+        return None;
+    };
+    let replacement = replacements.get(index)?;
+    let collection = if replacement.collection.is_empty() {
+        "parent context (empty path)".to_owned()
+    } else {
+        replacement.collection.join("/")
+    };
+    Some(format!(
+        "Input {index}: {}\nCollection: {collection}\nExpression: #{}",
+        replacement.element, replacement.expression,
+    ))
 }
 
 pub(super) fn show_input(ui: &mut Ui, label: &str, node: Option<&Node>, index: usize) {

@@ -1772,6 +1772,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             let node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
             graph_node_presentation::show_input(ui, &label, node, idx);
         }
+        // Snarl creates this exact native pin widget immediately after this
+        // callback. egui can read its current hit response before registration
+        // using the preceding pass, without a second hit target or auto ID.
+        let graph_node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
+        if matches!(graph_node, Some(Node::XmlMixedContent { .. }))
+            && let Some(response) = ui.ctx().read_response(ui.next_auto_id())
+            && response.contains_pointer()
+            && let Some(hint) = graph_node_presentation::input_pin_hint(graph_node, idx)
+        {
+            response.on_hover_text(hint);
+        }
         self.record_pin_interaction_id(ui);
         let pin_info = if matches!(
             endpoint_pin,

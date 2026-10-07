@@ -1912,3 +1912,6 @@ mod compact_value_map_node_tests;
 
 #[path = "graph_viewer_tests/compact_raise_nodes.rs"]
 mod compact_raise_node_tests;
+
+#[path = "graph_viewer_tests/compact_xml_pin_identities.rs"]
+mod compact_xml_pin_identity_tests;
