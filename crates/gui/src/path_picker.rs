@@ -34,6 +34,7 @@ pub struct SourcePathCatalog {
     primary_root_fields: Vec<PathChoice>,
     primary_root_types: Vec<String>,
     open_scalar_objects: Vec<PathChoice>,
+    primary_source_document_path: bool,
 }
 
 impl SourcePathCatalog {
@@ -118,7 +119,17 @@ impl SourcePathCatalog {
             primary_root_fields,
             primary_root_types,
             open_scalar_objects,
+            primary_source_document_path: false,
         }
+    }
+
+    pub(crate) fn with_primary_source_options(mut self, options: &mapping::FormatOptions) -> Self {
+        self.primary_source_document_path = options.local_xml_file_set;
+        self
+    }
+
+    pub(crate) fn primary_source_document_path_available(&self) -> bool {
+        self.primary_source_document_path
     }
 
     pub(crate) fn first_open_scalar_object(&self) -> Option<Vec<String>> {
