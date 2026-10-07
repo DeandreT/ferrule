@@ -1898,3 +1898,6 @@ mod compact_node_tests;
 
 #[path = "graph_viewer_tests/compact_primary_root_nodes.rs"]
 mod compact_primary_root_node_tests;
+
+#[path = "graph_viewer_tests/compact_dynamic_property_nodes.rs"]
+mod compact_dynamic_property_node_tests;
