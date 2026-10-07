@@ -1756,6 +1756,42 @@ fn root_editor_click(
     for shape in &output.shapes {
         collect(&shape.shape, label, &mut positions);
     }
+    if positions.is_empty() {
+        let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
+        let mut editors = Vec::new();
+        for shape in &output.shapes {
+            collect(&shape.shape, &pencil, &mut editors);
+        }
+        let edit = *editors.first().unwrap_or_else(|| {
+            panic!(
+                "missing root editor for {label:?}; shapes={:?}",
+                output.shapes
+            )
+        });
+        for pressed in [true, false] {
+            let _ = root_editor_frame(
+                fx,
+                snarl,
+                context,
+                allowed,
+                vec![
+                    egui::Event::PointerMoved(edit),
+                    egui::Event::PointerButton {
+                        pos: edit,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        for _ in 0..3 {
+            output = root_editor_frame(fx, snarl, context, allowed, Vec::new());
+        }
+        for shape in &output.shapes {
+            collect(&shape.shape, label, &mut positions);
+        }
+    }
     let pos = *if last {
         positions.last()
     } else {
@@ -1859,3 +1895,6 @@ fn locked_root_editor_preserves_invalid_imported_path_and_policy() {
 
 #[path = "graph_viewer_tests/compact_nodes.rs"]
 mod compact_node_tests;
+
+#[path = "graph_viewer_tests/compact_primary_root_nodes.rs"]
+mod compact_primary_root_node_tests;
