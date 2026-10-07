@@ -1,0 +1,284 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Program
+{
+    private const string Marker = "dynamic-csv-original-second-loader-failure";
+    private static readonly string[] Apis = ["text-loader", "bytes-loader", "text-sources", "bytes-sources", "text-context", "bytes-context"];
+    private sealed record Returned(string? Text, byte[]? Bytes)
+    {
+        internal byte[] Utf8() => Bytes ?? new UTF8Encoding(false,true).GetBytes(Text!);
+    }
+    private sealed record Original(Returned? Value, Exception? Error);
+    private sealed class Loader(FerruleInstance first, FerruleInstance second, bool fail, string directory) : IFerruleDynamicSourceLoader
+    {
+        internal List<object> Calls { get; } = [];
+        internal Exception MarkerException { get; } = new InvalidOperationException(Marker);
+        public FerruleInstance Load(string sourceName, string logicalPath)
+        {
+            var ordinal = Calls.Count + 1;
+            if (sourceName == "catalog" && (logicalPath == "a.xml" || logicalPath == "b.xml" && !fail))
+            {
+                var value = logicalPath == "a.xml" ? first : second;
+                var document = $"callback-{ordinal}-document.txt";
+                using (var raw = File.CreateText(Path.Combine(directory,document))) RawInstance(raw,value);
+                Calls.Add(new { ordinal,source=sourceName,path=logicalPath,outcome=new { kind="returned",document } });
+                return value;
+            }
+            var error = sourceName == "catalog" && logicalPath == "b.xml" && fail
+                ? MarkerException : new InvalidOperationException("dynamic-csv-unexpected-path");
+            Calls.Add(new { ordinal,source=sourceName,path=logicalPath,outcome=new { kind="error",message=error.Message } });
+            throw error;
+        }
+    }
+    private static FerruleValue ReadValue(JsonElement snapshot)
+    {
+        var value=snapshot.GetProperty("value");
+        return value.GetProperty("kind").GetString() switch
+        {
+            "Null" => FerruleValue.Null, "JsonNull" => FerruleValue.JsonNull, "XmlNil" => FerruleValue.XmlNil,
+            "Bool" => FerruleValue.FromBoolean(value.GetProperty("value").GetBoolean()),
+            "Int64" => FerruleValue.FromInt64(long.Parse(value.GetProperty("value").GetString()!,CultureInfo.InvariantCulture)),
+            "Double" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(value.GetProperty("bits").GetString()!,NumberStyles.HexNumber,CultureInfo.InvariantCulture)))),
+            "String" => FerruleValue.FromString(value.GetProperty("value").GetString()!),
+            _ => throw new InvalidOperationException("unsupported authored input scalar"),
+        };
+    }
+    private static FerruleGroup Group(params FerruleField[] fields) => new(fields);
+    private static FerruleScalar Scalar(FerruleValue value) => new(value);
+    private static FerruleGroup Document(string file,FerruleValue value,bool empty) => Group(new FerruleField("Row",new FerruleRepeated(empty ? [] : new FerruleInstance[] {
+        Group(new("File",Scalar(FerruleValue.FromString(file))),new("Value",Scalar(value))),
+    })));
+    private static object ScalarSnapshot(FerruleValue value) => value.Kind switch
+    {
+        FerruleValueKind.Null => new { kind="Null" }, FerruleValueKind.JsonNull => new { kind="JsonNull" }, FerruleValueKind.XmlNil => new { kind="XmlNil" },
+        FerruleValueKind.Bool => new { kind="Bool",value=value.BooleanValue },
+        FerruleValueKind.Int64 => new { kind="Int64",value=value.Int64Value.ToString(CultureInfo.InvariantCulture) },
+        FerruleValueKind.Double => new { kind="Double",bits=unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16",CultureInfo.InvariantCulture) },
+        FerruleValueKind.String => new { kind="String",value=value.StringValue },
+        _ => throw new InvalidOperationException("unknown scalar after original retained"),
+    };
+    private static object Snapshot(FerruleInstance value) => value switch
+    {
+        FerruleScalar scalar => new { kind="Scalar",value=ScalarSnapshot(scalar.Value) },
+        FerruleGroup group => new { kind="Group",origin=new { kind=group.XmlTypeOrigin.Kind.ToString(),identity=group.XmlTypeOrigin.Identity,literal=group.XmlTypeOrigin.Literal },fields=group.Fields.Select(v=>new { name=v.Name,value=Snapshot(v.Value) }).ToArray() },
+        FerruleRepeated repeated => new { kind="Repeated",items=repeated.Items.Select(Snapshot).ToArray() },
+        FerruleMappedSequence mapped => new { kind="MappedSequence",items=mapped.Items.Select(Snapshot).ToArray() },
+        FerruleDocumentSet documents => new { kind="DocumentSet",documents=documents.Documents.Select(v=>new { path=v.Path,source_path=v.ResolvedSourcePath ?? v.Path,value=Snapshot(v.Value) }).ToArray() },
+        _ => throw new InvalidOperationException("unknown instance after original retained"),
+    };
+    // Lossless full raw custody precedes the narrower snapshot/error comparisons.
+    // Raw string bodies use their UTF-16 length and are streamed, including large input.
+    private static void RawValue(TextWriter raw,FerruleValue value)
+    {
+        raw.WriteLine($"Scalar {value.Kind}");
+        switch(value.Kind)
+        {
+            case FerruleValueKind.Null: case FerruleValueKind.JsonNull: case FerruleValueKind.XmlNil: break;
+            case FerruleValueKind.Bool: raw.WriteLine(value.BooleanValue); break;
+            case FerruleValueKind.Int64: raw.WriteLine(value.Int64Value.ToString(CultureInfo.InvariantCulture)); break;
+            case FerruleValueKind.Double:
+                raw.WriteLine(value.DoubleValue.ToString("R",CultureInfo.InvariantCulture));
+                raw.WriteLine(unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16",CultureInfo.InvariantCulture)); break;
+            case FerruleValueKind.String:
+                raw.WriteLine($"UTF16-length={value.StringValue.Length}"); raw.Write(value.StringValue); raw.WriteLine(); break;
+            default: raw.WriteLine($"Unknown scalar tag={(int)value.Kind}"); break;
+        }
+    }
+    private static void RawInstance(TextWriter raw,FerruleInstance value)
+    {
+        raw.WriteLine($"Instance {value.GetType().FullName}");
+        switch(value)
+        {
+            case FerruleScalar scalar: RawValue(raw,scalar.Value); break;
+            case FerruleGroup group:
+                raw.WriteLine($"Fields={group.Fields.Count} XML-origin={JsonSerializer.Serialize(new { kind=group.XmlTypeOrigin.Kind.ToString(),identity=group.XmlTypeOrigin.Identity,literal=group.XmlTypeOrigin.Literal })}");
+                foreach(var field in group.Fields) {raw.WriteLine($"Field={JsonSerializer.Serialize(field.Name)}");RawInstance(raw,field.Value);} break;
+            case FerruleRepeated repeated:
+                raw.WriteLine($"Count={repeated.Items.Count}"); foreach(var item in repeated.Items) RawInstance(raw,item); break;
+            case FerruleMappedSequence mapped:
+                raw.WriteLine($"Count={mapped.Items.Count}"); foreach(var item in mapped.Items) RawInstance(raw,item); break;
+            case FerruleDocumentSet documents:
+                raw.WriteLine($"Count={documents.Documents.Count}"); foreach(var document in documents.Documents)
+                {raw.WriteLine(JsonSerializer.Serialize(new { path=document.Path,resolvedSourcePath=document.ResolvedSourcePath }));RawInstance(raw,document.Value);} break;
+            default: raw.WriteLine("Unknown runtime instance"); break;
+        }
+    }
+    private static void RawError(string path,Exception error)
+    {
+        using var raw=File.CreateText(path);
+        for(Exception? current=error;current is not null;current=current.InnerException)
+        {
+            raw.WriteLine($"Type={current.GetType().FullName}\nFull={current}");
+            foreach(var property in current.GetType().GetProperties().Where(v=>v.GetIndexParameters().Length==0))
+                raw.WriteLine($"Property {property.Name}={property.GetValue(current)}");
+        }
+    }
+    private static string Kind(FerruleValueKind? value) => value switch
+    {
+        FerruleValueKind.Int64=>"int", FerruleValueKind.Double=>"float", FerruleValueKind.Bool=>"bool",
+        FerruleValueKind.String=>"string", FerruleValueKind.Null=>"null", FerruleValueKind.JsonNull=>"json null", FerruleValueKind.XmlNil=>"xml nil",
+        _ => throw new InvalidOperationException("unexpected original found kind"),
+    };
+    private static object RuntimeError(Exception error)
+    {
+        if(error is not FerruleRuntimeException runtime) throw new InvalidOperationException("unexpected exception; original retained",error);
+        return runtime.Error switch
+        {
+            FerruleRuntimeError.MissingNamedSource => new { kind="missing-name",source=runtime.Detail },
+            FerruleRuntimeError.DuplicateNamedSource => new { kind="duplicate-name",source=runtime.Detail },
+            FerruleRuntimeError.UnexpectedNamedSource => new { kind="unexpected-name",source=runtime.Detail },
+            FerruleRuntimeError.MissingDynamicSourceLoader => new { kind="missing-loader",source=runtime.SourceField },
+            FerruleRuntimeError.DynamicSourcePath => new { kind="path",source=runtime.SourceField,node=runtime.Node,found=Kind(runtime.FoundKind) },
+            FerruleRuntimeError.DynamicSourcePathTooLong => new { kind="path-limit",source=runtime.SourceField,maximum=(ulong)runtime.MaximumItems!.Value },
+            FerruleRuntimeError.DynamicSourceLoad => new { kind="load",source=runtime.SourceField,path=runtime.Detail,message=runtime.InnerException!.Message },
+            FerruleRuntimeError.MappingFailure => new { kind="failure",rule=runtime.FailureRule,message=runtime.MappingFailureMessage },
+            FerruleRuntimeError.DivideByZero => new { kind="divide" },
+            FerruleRuntimeError.RuntimeParameterType => new { kind="parameter",node=runtime.Node,name=runtime.RuntimeParameter,expected=runtime.ExpectedScalarType==FerruleScalarType.Int64 ? "Int" : runtime.ExpectedScalarType.ToString(),found=Kind(runtime.FoundKind) },
+            _ => throw new InvalidOperationException("unexpected original runtime category",error),
+        };
+    }
+    private static object CsvError(Exception error)
+    {
+        if(error is not FerruleCsvException csv) throw new InvalidOperationException("unexpected original CSV exception",error);
+        return csv.Error switch
+        {
+            FerruleCsvError.ValueType => new { kind="value-type",row=csv.Row,field=csv.Field,expected=csv.Expected.ToString(),got=csv.Got },
+            FerruleCsvError.OutputTooLarge => new { kind="output-limit",maximum=csv.Maximum },
+            _ => throw new InvalidOperationException("unexpected original CSV category",error),
+        };
+    }
+    private static Returned Call(string api,bool enabled,FerruleInstance source,IReadOnlyList<NamedInput> inputs,FerruleExecutionContext context,Loader loader)
+    {
+        if(!enabled) return api switch
+        {
+            "text-context"=>new(__NO_LOADER_TEXT_CONTEXT__,null), "bytes-context"=>new(null,__NO_LOADER_BYTES_CONTEXT__),
+            "text-loader" or "text-sources"=>new(__NO_LOADER_TEXT__,null), "bytes-loader" or "bytes-sources"=>new(null,__NO_LOADER_BYTES__),
+            _=>throw new InvalidOperationException("fixed API census"),
+        };
+        return api switch
+        {
+            "text-loader"=>new(GeneratedMapping.ExecuteCsvWithDynamicSourceLoader(source,loader),null),
+            "bytes-loader"=>new(null,GeneratedMapping.ExecuteCsvBytesWithDynamicSourceLoader(source,loader)),
+            "text-sources"=>new(GeneratedMapping.ExecuteCsvWithSourcesAndDynamicSourceLoader(source,inputs,loader),null),
+            "bytes-sources"=>new(null,GeneratedMapping.ExecuteCsvBytesWithSourcesAndDynamicSourceLoader(source,inputs,loader)),
+            "text-context"=>new(GeneratedMapping.ExecuteCsvWithSourcesContextAndDynamicSourceLoader(source,inputs,context,loader),null),
+            "bytes-context"=>new(null,GeneratedMapping.ExecuteCsvBytesWithSourcesContextAndDynamicSourceLoader(source,inputs,context,loader)),
+            _=>throw new InvalidOperationException("fixed API census"),
+        };
+    }
+    private static FerruleInstance Ordinary(string api,bool enabled,FerruleInstance source,IReadOnlyList<NamedInput> inputs,FerruleExecutionContext context,Loader loader)
+    {
+        if(!enabled) return api.EndsWith("context",StringComparison.Ordinal) ? GeneratedMapping.ExecuteWithSources(source,inputs,context) : GeneratedMapping.ExecuteWithSources(source,inputs);
+        return api switch
+        {
+            "text-loader" or "bytes-loader"=>GeneratedMapping.ExecuteWithDynamicSourceLoader(source,loader),
+            "text-sources" or "bytes-sources"=>GeneratedMapping.ExecuteWithSourcesAndDynamicSourceLoader(source,inputs,loader),
+            "text-context" or "bytes-context"=>GeneratedMapping.ExecuteWithSourcesContextAndDynamicSourceLoader(source,inputs,context,loader),
+            _=>throw new InvalidOperationException("fixed API census"),
+        };
+    }
+    private static void Equal(object actual,JsonElement expected,string label)
+    {
+        if(!JsonNode.DeepEquals(JsonNode.Parse(JsonSerializer.Serialize(actual)),JsonNode.Parse(expected.GetRawText())))
+            throw new InvalidOperationException($"{label} differs; complete originals retained");
+    }
+    private static IEnumerable<string> SelectedApis(JsonElement item,string mode)
+    {
+        if(mode=="large")return ["bytes-context"];
+        if(item.GetProperty("static_names").GetString()=="loader-only")return Apis.Take(2);
+        if(item.GetProperty("context_only").GetBoolean())return Apis.Skip(4);
+        return mode=="mixed" ? Apis.Skip(2) : Apis;
+    }
+    private static void Main(string[] args)
+    {
+        var mode=args.Single(); if(mode is not("pure" or "mixed" or "large"))throw new ArgumentException("explicit pure/mixed/large mode");
+        using var cases=JsonDocument.Parse(File.ReadAllBytes(mode=="large" ? "dynamic-large-cases.json" : "dynamic-cases.json"));
+        var evidence=$"dynamic-{mode}-evidence";Directory.CreateDirectory(evidence);
+        var records=new List<object>();var csvCalls=0;var ordinaryCalls=0;
+        foreach(var item in cases.RootElement.EnumerateArray())
+        {
+            var name=item.GetProperty("name").GetString()!;
+            var source=Group(new FerruleField("Driver",new FerruleRepeated(item.GetProperty("paths").EnumerateArray().Select(v=>(FerruleInstance)Group(new FerruleField("Path",Scalar(ReadValue(v))))))));
+            var firstValue=mode=="large" ? FerruleValue.FromString(new string('x',item.GetProperty("first").GetProperty("repeat_x").GetInt32())) : ReadValue(item.GetProperty("first"));
+            var first=Document("same.xml",firstValue,item.GetProperty("empty_first").GetBoolean());
+            var second=Document("../雪😀.xml",FerruleValue.FromString("  B  "),false);
+            var rates=Group(new FerruleField("Rate",Scalar(FerruleValue.FromInt64(7))));
+            string[] names=mode!="mixed" ? [] : item.GetProperty("static_names").GetString() switch
+            {
+                "missing" or "loader-only"=>[], "duplicate"=>["Rates","Rates"], "unexpected"=>["Rates","Other"],
+                "dynamic-name"=>["Rates","catalog"], _=>["Rates"],
+            };
+            var inputs=names.Select(v=>new NamedInput(v,rates)).ToArray();
+            var parameterPairs=item.GetProperty("parameters").EnumerateArray().Select(v=>new KeyValuePair<string,FerruleValue>(v.GetProperty("name").GetString()!,ReadValue(v.GetProperty("value")))).ToArray();
+            var parameters=new FerruleRuntimeParameters(parameterPairs);
+            var context=FerruleExecutionContext.WithParameters("dynamic-csv.json",parameters);
+            var enabled=item.GetProperty("loader").GetBoolean();
+            foreach(var api in SelectedApis(item,mode))
+            {
+                var directory=Path.Combine(evidence,$"{name}-{api}");Directory.CreateDirectory(directory);
+                using(var raw=File.CreateText(Path.Combine(directory,"prepared-inputs.txt")))
+                {
+                    raw.WriteLine("Source");RawInstance(raw,source);raw.WriteLine("First document");RawInstance(raw,first);raw.WriteLine("Second document");RawInstance(raw,second);
+                    foreach(var input in inputs){raw.WriteLine($"Input {JsonSerializer.Serialize(input.Name)}");RawInstance(raw,input.Instance);}
+                    foreach(var parameter in parameterPairs){raw.WriteLine($"Parameter {JsonSerializer.Serialize(parameter.Key)}");RawValue(raw,parameter.Value);}
+                    raw.WriteLine($"execution=dynamic-csv.json API={api} loader={enabled}");
+                }
+                var wanted=item.GetProperty("expected")[api.EndsWith("context",StringComparison.Ordinal) ? 1 : 0];
+                var loader=new Loader(first,second,item.GetProperty("fail_second").GetBoolean(),directory);
+                Original actual;
+                try{actual=new(Call(api,enabled,source,inputs,context,loader),null);}catch(Exception error){actual=new(null,error);}csvCalls++;
+                if(actual.Error is not null)RawError(Path.Combine(directory,"csv-original-error.txt"),actual.Error);
+                else File.WriteAllBytes(Path.Combine(directory,"csv-original.csv"),actual.Value!.Utf8());
+                File.WriteAllText(Path.Combine(directory,"callbacks.json"),JsonSerializer.Serialize(loader.Calls));
+                var markerIdentity=actual.Error is FerruleRuntimeException { Error:FerruleRuntimeError.DynamicSourceLoad } runtime && ReferenceEquals(runtime.InnerException,loader.MarkerException);
+                File.WriteAllText(Path.Combine(directory,"marker-cause-identity.txt"),markerIdentity.ToString());
+                FerruleInstance? mapped=null;Exception? ordinaryError=null;Loader? ordinaryLoader=null;
+                if(mode!="large")
+                {
+                    var ordinaryDirectory=Path.Combine(directory,"ordinary");Directory.CreateDirectory(ordinaryDirectory);
+                    ordinaryLoader=new Loader(first,second,item.GetProperty("fail_second").GetBoolean(),ordinaryDirectory);
+                    try{mapped=Ordinary(api,enabled,source,inputs,context,ordinaryLoader);}catch(Exception error){ordinaryError=error;}ordinaryCalls++;
+                    if(ordinaryError is not null)RawError(Path.Combine(ordinaryDirectory,"error-original.txt"),ordinaryError);
+                    else {using var raw=File.CreateText(Path.Combine(ordinaryDirectory,"result-original.txt"));RawInstance(raw,mapped!);}
+                    File.WriteAllText(Path.Combine(ordinaryDirectory,"callbacks.json"),JsonSerializer.Serialize(ordinaryLoader.Calls));
+                    File.WriteAllText(Path.Combine(ordinaryDirectory,"marker-cause-identity.txt"),
+                        (ordinaryError is FerruleRuntimeException { Error:FerruleRuntimeError.DynamicSourceLoad } ordinaryRuntime && ReferenceEquals(ordinaryRuntime.InnerException,ordinaryLoader.MarkerException)).ToString());
+                }
+                Equal(loader.Calls,wanted.GetProperty("callbacks"),$"CSV callbacks {name}/{api}");
+                var wantedRuntime=wanted.GetProperty("runtime_error");var wantedCsv=wanted.GetProperty("csv_error");
+                if(mode!="large")
+                {
+                    Equal(ordinaryLoader!.Calls,wanted.GetProperty("callbacks"),$"ordinary callbacks {name}/{api}");
+                    if(wantedRuntime.ValueKind!=JsonValueKind.Null)
+                    {
+                        Equal(RuntimeError(ordinaryError ?? throw new InvalidOperationException("ordinary must fail")),wantedRuntime,$"ordinary runtime {name}/{api}");
+                        if(wantedRuntime.GetProperty("kind").GetString()=="load" && wantedRuntime.GetProperty("message").GetString()==Marker &&
+                            !ReferenceEquals(ordinaryError!.InnerException,ordinaryLoader!.MarkerException))throw new InvalidOperationException("ordinary original host cause changed");
+                    }
+                    else {if(ordinaryError is not null)throw new InvalidOperationException("ordinary must return mapped tree",ordinaryError);Equal(Snapshot(mapped!),wanted.GetProperty("mapped"),$"complete mapped tree {name}/{api}");}
+                }
+                if(wantedRuntime.ValueKind!=JsonValueKind.Null)
+                {
+                    Equal(RuntimeError(actual.Error ?? throw new InvalidOperationException("mapping must precede CSV")),wantedRuntime,$"typed mapping error {name}/{api}");
+                    if(wantedRuntime.GetProperty("kind").GetString()=="load" && wantedRuntime.GetProperty("message").GetString()==Marker && !markerIdentity)
+                        throw new InvalidOperationException("original host cause changed");
+                }
+                else if(wantedCsv.ValueKind!=JsonValueKind.Null)Equal(CsvError(actual.Error ?? throw new InvalidOperationException("CSV must fail")),wantedCsv,$"typed CSV error {name}/{api}");
+                else
+                {
+                    if(actual.Error is not null)throw new InvalidOperationException("CSV must return full output",actual.Error);
+                    var label=api.EndsWith("context",StringComparison.Ordinal) ? "context" : "default";
+                    if(!actual.Value!.Utf8().AsSpan().SequenceEqual(File.ReadAllBytes($"expected-{name}-{label}.csv")))throw new InvalidOperationException($"whole CSV/EOF differs {name}/{api}");
+                }
+                records.Add(new { @case=name,api,csv_calls=1,ordinary_calls=mode!="large" ? 1 : 0 });
+            }
+        }
+        File.WriteAllText($"dynamic-{mode}-complete.json",JsonSerializer.Serialize(new { mode,cases=cases.RootElement.GetArrayLength(),csv_calls=csvCalls,ordinary_calls=ordinaryCalls,calls=records }));
+        Console.WriteLine("generated CSV checks passed");
+    }
+}

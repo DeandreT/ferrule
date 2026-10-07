@@ -1261,7 +1261,7 @@ fn generated_csharp_csv_static_named_real_limit_and_error_precedence() -> TestRe
 }
 
 #[test]
-fn generated_csv_dynamic_named_refusal_is_typed_before_any_destination_publication()
+fn generated_csv_dynamic_named_admission_keeps_document_refusal_before_publication()
 -> TestResult<()> {
     let mut directory = CsvDirectory::new("csv_named_dynamic_refusal")?;
     let mut project = named_csv_project(FormatOptions::default());
@@ -1293,17 +1293,51 @@ fn generated_csv_dynamic_named_refusal_is_typed_before_any_destination_publicati
                 .join(format!("{language}-generation-original.txt")),
             format!("{result:#?}\n"),
         )?;
-        let error = result.expect_err("valid dynamic source must refuse the CSV adapter");
-        let admission = error
-            .chain()
-            .find_map(|cause| cause.downcast_ref::<codegen::CsvOutputError>());
-        assert_eq!(
-            admission,
-            Some(&codegen::CsvOutputError::DynamicInputs {
-                name: "FirstDynamic".into()
-            })
+        result.expect("valid per-driver dynamic sources emit conditional CSV loader adapters");
+        assert!(output.is_dir());
+        let source = std::fs::read_to_string(output.join(if language == "rust" {
+            "src/lib.rs"
+        } else {
+            "GeneratedMapping.Csv.cs"
+        }))?;
+        assert!(source.contains(if language == "rust" {
+            "execute_csv_with_dynamic_source_loader"
+        } else {
+            "ExecuteCsvWithDynamicSourceLoader"
+        }));
+        let mut documents = project.clone();
+        documents.target_path = None;
+        documents.root.iteration = ScopeIteration::DynamicDocuments {
+            source: Vec::new(),
+            output_path: 19,
+        };
+        let documents_path = directory.path.join(format!("{language}-documents.json"));
+        std::fs::write(&documents_path, serde_json::to_vec_pretty(&documents)?)?;
+        let refused_output = directory.path.join(format!("{language}-documents"));
+        let refused = generate_project_with_csv_output(
+            &documents_path,
+            &refused_output,
+            if language == "rust" {
+                rust_target()
+            } else {
+                GenerateTarget::CSharp
+            },
         );
-        assert!(!output.exists());
+        std::fs::write(
+            directory
+                .path
+                .join(format!("{language}-documents-generation-original.txt")),
+            format!("{refused:#?}\n"),
+        )?;
+        let error =
+            refused.expect_err("dynamic document output still refuses the flat CSV adapter");
+        assert_eq!(
+            error
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<codegen::CsvOutputError>()),
+            Some(&codegen::CsvOutputError::DynamicDocuments)
+        );
+        assert!(!refused_output.exists());
     }
     assert!(std::fs::read_dir(&directory.path)?.all(|entry| {
         !entry
@@ -1315,3 +1349,6 @@ fn generated_csv_dynamic_named_refusal_is_typed_before_any_destination_publicati
     directory.complete = true;
     Ok(())
 }
+
+#[path = "csv_output/dynamic.rs"]
+mod dynamic;
