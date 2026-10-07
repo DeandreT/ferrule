@@ -2925,6 +2925,7 @@ dependencies = [
  "format-xbrl",
  "format-xlsx",
  "format-xml",
+ "functions",
  "ir",
  "mapping",
  "roxmltree",

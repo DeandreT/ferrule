@@ -724,6 +724,7 @@ fn connect_binding_positions(
     source_stages: Option<&[(Vec<String>, u32)]>,
     source_collection: Option<&[String]>,
     join: Option<JoinId>,
+    allow_empty_descendants: bool,
     from: u32,
     graph: &Graph,
     position_inputs: &BTreeMap<NodeId, u32>,
@@ -745,7 +746,8 @@ fn connect_binding_positions(
         warnings,
     );
 
-    // Named collections can be outer-owned; empty paths stay nested-owned.
+    // Ordinary empty paths stay nested-owned. The proven scoped Raise owner
+    // has only static descendants, so they inherit its exact output position.
     let mut descendant_roots = Vec::new();
     for child in &scope.children {
         descendant_binding_roots(child, &mut descendant_roots);
@@ -755,7 +757,7 @@ fn connect_binding_positions(
         source_stages,
         source_collection,
         join,
-        false,
+        allow_empty_descendants,
         from,
         graph,
         position_inputs,
@@ -898,6 +900,7 @@ fn collect_scope_edges(
                 None,
                 None,
                 Some(join),
+                false,
                 from,
                 graph,
                 position_inputs,
@@ -953,6 +956,7 @@ fn collect_scope_edges(
                         None,
                         None,
                         None,
+                        false,
                         from,
                         graph,
                         position_inputs,
@@ -1054,6 +1058,11 @@ fn collect_scope_edges(
                     Some(&position_stages),
                     Some(&abs),
                     None,
+                    scope.filter.is_some_and(|filter| {
+                        scoped_exception_branches
+                            .predicate(chain, &abs, filter)
+                            .is_some()
+                    }),
                     from,
                     graph,
                     position_inputs,

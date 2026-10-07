@@ -508,7 +508,7 @@ fn validate_expression(
         }
         Node::Position {
             collection: position_collection,
-        } if position_collection.as_slice() == collection => {}
+        } if position_collection.is_empty() || position_collection.as_slice() == collection => {}
         _ => {
             return Err(unsupported(
                 "item expressions support only scalar fields, constants, builtin calls, lazy If, and owner positions",
@@ -793,7 +793,9 @@ impl<'a> PredicateProof<'a> {
             Node::Const {
                 value: Value::String(_),
             } => Some(ScalarType::String),
-            Node::Position { collection } if collection.as_slice() == self.collection => {
+            Node::Position { collection }
+                if collection.is_empty() || collection.as_slice() == self.collection =>
+            {
                 Some(ScalarType::Int)
             }
             Node::SourceField { path, frame } => {

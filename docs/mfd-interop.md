@@ -225,8 +225,7 @@ the name is supplied; otherwise the default evaluates lazily. Explicit null
 does not select the default. String, integer, and decimal input tests cover
 strict warning-free export/reimport, overrides, and typed errors. Required and
 connected-default inputs retain enabled preview text separately, including
-empty and malformed lexical values. The reference
-[input settings](https://www.altova.com/manual/MapForce/MapForceenterprise/mff_in_settings.html)
+empty and malformed lexical values. Input preview settings
 define those values as design-time only. `ExecutionPurpose::Preview` selects
 saved preview text only when no host value was supplied; it precedes a connected
 default. Explicit host null still wins. Ordinary runs and generated Rust/C#
@@ -971,7 +970,8 @@ existing context and node identities.
 This mode evaluates a surviving item's target before testing the next item.
 An earlier target error can therefore precede a later selected exception.
 It is distinct from a global failure rule, which scans before any target.
-Extra boundaries, shared branch consumers, chained controls, controlled
+Extra boundaries outside the one transparent typed XML carrier described below,
+shared branch consumers, chained controls, controlled
 ancestors, independent target evaluation, generated or joined iteration,
 recursive/open schemas, ambiguous physical ports, and over-budget expression
 shapes produce import diagnostics. Executable import refuses them; best-effort
@@ -980,9 +980,8 @@ validated as a complete project before pruning. The option propagates to
 pipeline imports, whose exception stages remain outside this initial subset.
 
 Finite regressions and saved-design checks cover admitted direct guards, lazy
-messages, and earlier-target/later-exception priority. Resaved Position-variable
-shapes currently refuse strict item-ordered import without falling back to
-global rules. `Raise` has a node-identified `MappingException` error, while
+messages, and earlier-target/later-exception priority. `Raise` has a
+node-identified `MappingException` error, while
 legacy globals retain rule-identified `MappingFailure`. These categories and
 native output publication are separate compatibility boundaries; this option
 does not promise identical exception categories or partial-file behavior.
@@ -1010,3 +1009,23 @@ subset. Position must identify that owner collection, or the one current item
 in the already admitted tree without other iterations or private frames.
 Unsupported projections produce an opt-in warning before a guard is published;
 strict executable import refuses it without using a global failure-rule fallback.
+
+
+The item-order opt-in also accepts one transparent typed XML scope-sequence
+variable for one immediate repeated primary collection. Its complete schema
+must equal that collection's schema; it has no instance-file boundaries or
+connected descendant inputs. The primary non-repeating document root alone
+triggers computation, and the keep branch alone supplies the variable root.
+That root feeds one exact target structural owner and, when needed, dedicated
+filtered-target Position nodes. Scalar outputs feed only that owner's ordinary
+scalar binding dependencies. Raw predicate/message Position nodes instead read
+the original collection and cannot be shared with target expressions.
+
+The existing bounded owner-field proof, plain scopes, lazy message and original
+predicate identity remain required. Additional variables, modified schemas,
+foreign or item-level compute triggers, unrelated consumers, cross-context
+Position feeds, projection inputs, prepasses and unsupported scalar closures
+produce opt-in diagnostics. Strict executable import refuses those designs
+without a global-rule fallback; default import retains its legacy pre-target
+rules. This is a bounded local import route, not a promise of identical native
+serialization, file publication or arbitrary host-input behavior.

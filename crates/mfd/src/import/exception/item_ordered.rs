@@ -12,6 +12,8 @@ use super::super::graph::GraphBuilder;
 use super::super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use super::{Recipe, unsupported_control};
 
+mod scope_variable;
+
 const MAX_NODES: usize = 4096;
 const MAX_DEPTH: usize = 64;
 
@@ -208,7 +210,6 @@ fn plan(
             != 1
         || !ordinary_single_boundary
         || builder.sources.len() != 1
-        || !builder.intermediates.is_empty()
     {
         return Err(
             "requires one exception in one ordinary primary mapping without extra boundaries",
@@ -270,20 +271,25 @@ fn plan(
     if consumers(&edges, throw_feed) != vec![throw_input] {
         return Err("throw branch has shared or ambiguous consumers");
     }
-    let keep_sinks = consumers(&edges, keep);
-    let [target_input] = keep_sinks.as_slice() else {
-        return Err("opposite filter branch must have exactly one target owner");
+    let target_input = if builder.intermediates.is_empty() {
+        let keep_sinks = consumers(&edges, keep);
+        let [target_input] = keep_sinks.as_slice() else {
+            return Err("opposite filter branch must have exactly one target owner");
+        };
+        *target_input
+    } else {
+        scope_variable::target_owner(builder, target, &edges, keep, filter, recipe)?
     };
-    if !target.input_keys.contains(target_input) {
+    if !target.input_keys.contains(&target_input) {
         return Err("opposite filter branch does not drive the primary target structural input");
     }
     let target_path = target
         .ports
-        .get(target_input)
+        .get(&target_input)
         .ok_or("target input has no schema path")?;
     if target_path.is_empty()
         || target.ports.iter().any(|(key, path)| {
-            key != target_input && path == target_path && target.input_keys.contains(key)
+            key != &target_input && path == target_path && target.input_keys.contains(key)
         })
     {
         return Err("target structural path has multiple physical entry identities");
@@ -299,7 +305,7 @@ fn plan(
     let raw_input = filter.inputs[0].ok_or("filter node input is missing")?;
     let predicate_input = filter.inputs[1].ok_or("filter predicate input is missing")?;
     let raw = unique_feed(&edges, raw_input)?;
-    if consumers(&edges, raw) != vec![raw_input] {
+    if builder.intermediates.is_empty() && consumers(&edges, raw) != vec![raw_input] {
         return Err("raw collection is shared with another structural consumer");
     }
     unique_feed(&edges, predicate_input)?;
