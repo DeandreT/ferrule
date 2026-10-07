@@ -310,10 +310,7 @@ fn csv_emission_keeps_typed_dialect_and_named_boundary_refusals() {
         path: 0,
         driver: codegen::SourceIteration::new(Vec::new()),
     });
-    assert!(matches!(
-        emit_with_csv_output(&named, &CsvOutputPolicy::default()),
-        Err(EmitError::CsvOutput(CsvOutputError::DynamicInputs { name })) if name == "Secondary"
-    ));
+    assert!(emit_with_csv_output(&named, &CsvOutputPolicy::default()).is_ok());
     named.extra_sources.clear();
     named.extra_targets.push(NamedTargetProgram {
         name: "Secondary".into(),
@@ -427,4 +424,102 @@ fn named_csv_companions_reuse_ordinary_context_and_keep_no_name_bytes_exact() {
         emit_with_csv_output(&plain, &CsvOutputPolicy::default()).unwrap(),
         before
     );
+}
+
+#[test]
+fn dynamic_csv_companions_delegate_once_and_preserve_complete_existing_api_bodies() {
+    let plain = program();
+    let old = emit_with_csv_output(&plain, &CsvOutputPolicy::default()).unwrap();
+    let old_adapter = text(&old, "GeneratedMapping.Csv.cs");
+    let mut dynamic = plain.clone();
+    dynamic.extra_sources.push(NamedSourceProgram {
+        name: "Dynamic".into(),
+        source: SchemaNode::group("Dynamic", Vec::new()),
+        dynamic: Some(codegen::DynamicSourceProgram {
+            path: 0,
+            driver: codegen::SourceIteration::new(Vec::new()),
+        }),
+    });
+    let ordinary = emit(&dynamic).unwrap();
+    let opted = emit_with_csv_output(&dynamic, &CsvOutputPolicy::default()).unwrap();
+    let adapter = text(&opted, "GeneratedMapping.Csv.cs");
+    let prefix = old_adapter.strip_suffix("}\n").unwrap();
+    assert!(adapter.starts_with(prefix));
+    let added = &adapter[prefix.len()..adapter.len() - 2];
+    assert_eq!(added.matches("public static ").count(), 6);
+    assert!(!adapter.contains("public static string ExecuteCsvWithSources("));
+    for suffix in [
+        "WithDynamicSourceLoader",
+        "WithSourcesAndDynamicSourceLoader",
+        "WithSourcesContextAndDynamicSourceLoader",
+    ] {
+        assert_eq!(
+            added
+                .matches(&format!("public static string ExecuteCsv{suffix}("))
+                .count(),
+            1
+        );
+        assert_eq!(
+            added
+                .matches(&format!("public static byte[] ExecuteCsvBytes{suffix}("))
+                .count(),
+            1
+        );
+    }
+    for call in [
+        "ExecuteWithDynamicSourceLoader(source, loader)",
+        "ExecuteWithSourcesAndDynamicSourceLoader(source, extraSources, loader)",
+        "ExecuteWithSourcesContextAndDynamicSourceLoader(source, extraSources, executionContext, loader)",
+    ] {
+        assert_eq!(added.matches(call).count(), 2);
+    }
+    assert_eq!(added.matches("FerruleCsv.Serialize(primary,").count(), 3);
+    assert_eq!(
+        added.matches("FerruleCsv.SerializeBytes(primary,").count(),
+        3
+    );
+    assert!(!added.contains("ExecuteOutputs"));
+    assert!(!added.contains("ExecuteJson"));
+    assert!(!added.contains("catch"));
+    assert!(!added.contains("Parse"));
+    assert_eq!(opted.files().len(), ordinary.files().len() + 2);
+    for file in ordinary.files() {
+        let expected = match file.path.as_str() {
+            "GeneratedMapping.cs" => std::str::from_utf8(&file.contents).unwrap().replacen(
+                "public static class GeneratedMapping\n{", "public static partial class GeneratedMapping\n{", 1).into_bytes(),
+            "Ferrule.Generated.csproj" => std::str::from_utf8(&file.contents).unwrap().replacen(
+                "    <Compile Include=\"GeneratedMapping.cs\" />\n",
+                "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.Csv.cs\" />\n", 1).into_bytes(),
+            _ => file.contents.clone(),
+        };
+        assert_eq!(contents(&opted, file.path.as_str()), expected);
+    }
+    assert_eq!(emit(&dynamic).unwrap(), ordinary);
+    dynamic.extra_sources.push(NamedSourceProgram {
+        name: "Static".into(),
+        source: SchemaNode::group("Static", Vec::new()),
+        dynamic: None,
+    });
+    let mut static_only = dynamic.clone();
+    static_only.extra_sources.remove(0);
+    let static_artifacts = emit_with_csv_output(&static_only, &CsvOutputPolicy::default()).unwrap();
+    let static_adapter = text(&static_artifacts, "GeneratedMapping.Csv.cs");
+    let mixed = emit_with_csv_output(&dynamic, &CsvOutputPolicy::default()).unwrap();
+    let mixed_adapter = text(&mixed, "GeneratedMapping.Csv.cs");
+    assert_eq!(
+        mixed_adapter,
+        format!(
+            "{}{}{}",
+            static_adapter.strip_suffix("}\n").unwrap(),
+            added,
+            "}\n"
+        )
+    );
+    assert_eq!(
+        emit_with_csv_output(&plain, &CsvOutputPolicy::default()).unwrap(),
+        old
+    );
+    let mixed_ordinary = emit(&dynamic).unwrap();
+    let _mixed_opted = emit_with_csv_output(&dynamic, &CsvOutputPolicy::default()).unwrap();
+    assert_eq!(emit(&dynamic).unwrap(), mixed_ordinary);
 }
