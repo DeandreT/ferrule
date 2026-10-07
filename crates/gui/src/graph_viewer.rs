@@ -1415,8 +1415,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             path.extend(value.iter().cloned());
                         }
                         let op = format!("{function:?}").to_lowercase();
-                        let target =
-                            expression.map_or_else(|| path.join("/"), |_| "computed".into());
+                        let target = expression.map_or_else(
+                            || path.join("/"),
+                            |_| {
+                                let collection = if collection.is_empty() {
+                                    "<current>".to_owned()
+                                } else {
+                                    collection.join("/")
+                                };
+                                format!("{collection} (calculated values)")
+                            },
+                        );
                         format!("{op}: {target}")
                     }
                     Some(Node::JoinAggregate {
@@ -1999,7 +2008,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.separator();
                     if matches!(
                         self.graph.nodes.get(&node_id),
-                        Some(Node::ValueMap { .. } | Node::DynamicSourceField { .. })
+                        Some(
+                            Node::ValueMap { .. }
+                                | Node::DynamicSourceField { .. }
+                                | Node::Aggregate { .. }
+                        )
                     ) {
                         ui.add_enabled_ui(edit.enabled(), |ui| {
                             self.show_node_properties(pin, ui, snarl);

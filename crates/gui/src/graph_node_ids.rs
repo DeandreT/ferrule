@@ -113,6 +113,53 @@ impl GraphViewer<'_> {
         Ok(count)
     }
 
+    /// Reserve every new aggregate input before committing its complete staged edit.
+    pub(super) fn commit_aggregate_property_edit(
+        &mut self,
+        node_id: NodeId,
+        mut node: Node,
+        calculated: bool,
+    ) -> Result<usize, String> {
+        let Some(Node::Aggregate {
+            function: previous, ..
+        }) = self.graph.nodes.get(&node_id)
+        else {
+            return Err("aggregate node no longer exists".into());
+        };
+        let Node::Aggregate {
+            function,
+            expression,
+            arg,
+            ..
+        } = &mut node
+        else {
+            return Err("aggregate properties require an aggregate node".into());
+        };
+        if self.function_output.is_some() && calculated != expression.is_some() {
+            return Err(
+                "Calculated aggregate values are unavailable in isolated functions.".into(),
+            );
+        }
+        let add_expression = calculated && expression.is_none();
+        let add_argument =
+            node_palette::aggregate_needs_arg(*function) && arg.is_none() && *previous != *function;
+        let ids = self.reserve_node_ids(usize::from(add_expression) + usize::from(add_argument))?;
+        let mut reserved = ids.iter().copied();
+        if add_expression {
+            *expression = reserved.next();
+        } else if !calculated {
+            *expression = None;
+        }
+        if add_argument {
+            *arg = reserved.next();
+        }
+        for &id in &ids {
+            self.graph.nodes.insert(id, Node::Unconnected);
+        }
+        self.graph.nodes.insert(node_id, node);
+        Ok(ids.len())
+    }
+
     pub(super) fn remove_graph_node(
         &mut self,
         mapping_id: NodeId,

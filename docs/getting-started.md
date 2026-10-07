@@ -83,6 +83,31 @@ imported settings; explicitly choosing an element replaces the source selection
 while retaining declaration, indentation and namespace settings. Preview the
 result in its intended scope before running the complete mapping.
 
+## Calculate an Aggregate value per collection item
+
+An Aggregate keeps its compact Sigma header. On the main or a named-target
+canvas, open its pencil and choose the collection and operation. Turn on
+**Calculate each value**, then connect the expression to the **values** input.
+For example, connect a quantity-times-price expression to sum line totals.
+Collection aggregates are unavailable in isolated functions.
+
+**String join** takes its delimiter through the separate **arg** input;
+**Item at** takes a one-based index there. These arguments evaluate once in the
+surrounding parent context, after the collection values have been evaluated.
+Turning **Calculate each value** off preserves the stored field selection for
+field-based operations. Inspect imported expressions before changing their
+mode; opening the properties alone preserves them.
+
+Per-item expression evaluation is eager: **Count** and **Item at** still
+observe errors from any evaluated item, including items after the requested
+index. They do not skip a failing expression merely because its value is not
+needed for the final result. Preview a small collection with a late failing
+item and check the parent delimiter or index before running a complete mapping.
+
+Automated local checks cover computed-value editing, real wiring,
+persistence, and Preview. Normal desktop and broader authoring coverage
+remain tracked in the [roadmap](../ROADMAP.md#current-priorities).
+
 ## Set up a flat workbook table
 
 The New Mapping workbook setup covers one flat worksheet table per boundary.

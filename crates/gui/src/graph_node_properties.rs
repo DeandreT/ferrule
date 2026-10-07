@@ -32,6 +32,14 @@ impl GraphViewer<'_> {
         let mut call_function_changed = false;
         let mut remove_call_wire = None;
         let mut remove_aggregate_wire = None;
+        let aggregate_before = self.graph.nodes.get(&node_id).and_then(|node| match node {
+            Node::Aggregate {
+                expression, arg, ..
+            } => Some((*expression, *arg)),
+            _ => None,
+        });
+        let mut aggregate_calculated =
+            aggregate_before.is_some_and(|(expression, _)| expression.is_some());
         let mut staged_node = self
             .graph
             .nodes
@@ -414,10 +422,21 @@ impl GraphViewer<'_> {
                     function,
                     collection,
                     value,
-                    expression,
+                    expression: _,
                     arg,
                 } => {
                     let previous = *function;
+                    let calculated = &mut aggregate_calculated;
+                    ui.add_enabled(
+                        self.function_output.is_none(),
+                        egui::Checkbox::new(calculated, "Calculate each value"),
+                    )
+                    .on_hover_text(
+                        "Wire a value expression evaluated once for each collection item.",
+                    )
+                    .on_disabled_hover_text(
+                        "Collection aggregates are unavailable in isolated functions.",
+                    );
                     ui.allocate_ui_with_layout(
                         egui::vec2(PATH_EDITOR_WIDTH, 0.0),
                         egui::Layout::top_down(egui::Align::Min),
@@ -430,7 +449,7 @@ impl GraphViewer<'_> {
                                     collection,
                                 );
                                 ui.end_row();
-                                if expression.is_some() || arg.is_some() {
+                                if *calculated || arg.is_some() {
                                     ui.label("");
                                 } else {
                                     ui.label("operation");
@@ -448,7 +467,7 @@ impl GraphViewer<'_> {
                                         }
                                     });
                                 ui.end_row();
-                                if expression.is_some() {
+                                if *calculated {
                                     ui.label("value");
                                     ui.label("computed");
                                     ui.end_row();
@@ -486,12 +505,17 @@ impl GraphViewer<'_> {
             }
         }
         let edit_committed = if let Some(node) = staged_node {
-            match self.commit_node_property_edit(
-                node_id,
-                node,
-                call_function_changed,
-                new_call_arg_needed,
-            ) {
+            let result = if aggregate_before.is_some() {
+                self.commit_aggregate_property_edit(node_id, node, aggregate_calculated)
+            } else {
+                self.commit_node_property_edit(
+                    node_id,
+                    node,
+                    call_function_changed,
+                    new_call_arg_needed,
+                )
+            };
+            match result {
                 Ok(_) => true,
                 Err(error) => {
                     self.error = Some(error);
@@ -501,6 +525,9 @@ impl GraphViewer<'_> {
         } else {
             true
         };
+        if edit_committed && let Some((expression, argument)) = aggregate_before {
+            self.migrate_aggregate_mode_wires(pin.id.node, expression, argument, snarl);
+        }
         if edit_committed && let Some((input_index, removed)) = remove_call_wire {
             let input = InPinId {
                 node: pin.id.node,
@@ -531,6 +558,62 @@ impl GraphViewer<'_> {
                 snarl.disconnect(remote, input);
             }
             self.remove_orphaned_input(removed, snarl);
+        }
+    }
+
+    /// A value-mode switch changes pin order, not ownership of its ordinary expressions.
+    pub(super) fn migrate_aggregate_mode_wires(
+        &mut self,
+        node: SnarlNodeId,
+        old_expression: Option<NodeId>,
+        old_argument: Option<NodeId>,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let Some(mapping_id) = Self::mapping_id(snarl[node]) else {
+            return;
+        };
+        let Some(Node::Aggregate {
+            expression, arg, ..
+        }) = self.graph.nodes.get(&mapping_id)
+        else {
+            return;
+        };
+        let (expression, argument) = (*expression, *arg);
+        if old_expression.is_some() == expression.is_some() {
+            return;
+        }
+        let expression_input = InPinId { node, input: 0 };
+        let argument_input = InPinId {
+            node,
+            input: usize::from(old_expression.is_some()),
+        };
+        let expression_remotes = old_expression
+            .map(|_| snarl.in_pin(expression_input).remotes)
+            .unwrap_or_default();
+        let argument_remotes = old_argument
+            .map(|_| snarl.in_pin(argument_input).remotes)
+            .unwrap_or_default();
+        for from in expression_remotes {
+            snarl.disconnect(from, expression_input);
+        }
+        for from in argument_remotes {
+            snarl.disconnect(from, argument_input);
+            if argument.is_some() && argument == old_argument {
+                snarl.connect(
+                    from,
+                    InPinId {
+                        node,
+                        input: usize::from(expression.is_some()),
+                    },
+                );
+            }
+        }
+        // Ordinary expressions remain available for reuse. Only our hidden empty
+        // input is retired, and complete project references still protect it.
+        if let Some(id) = old_expression
+            && matches!(self.graph.nodes.get(&id), Some(Node::Unconnected))
+        {
+            self.remove_orphaned_input(id, snarl);
         }
     }
 }

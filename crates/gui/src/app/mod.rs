@@ -1686,3 +1686,6 @@ mod raise_creation_tests;
 
 #[cfg(test)]
 mod runtime_value_creation_tests;
+
+#[cfg(test)]
+mod computed_aggregate_authoring_tests;

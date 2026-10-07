@@ -128,6 +128,12 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 - [x] Author XML text serialization from supported primary source groups, with
   an explicit source picker, compact presentation, real wiring and settings,
   preserved imported metadata, edit locks, and undo/redo.
+- [x] Author computed-value Aggregate editing for primary and named-target
+  canvases, with an explicit per-item value mode, preserved stored fields,
+  and separate parent-context delimiter/index inputs.
+- [x] Qualify the local computed-value Aggregate controls, real wiring, edit locks,
+  node-ID refusal, undo/redo, saved projects, and Preview; retain eager Count
+  and Item at error controls and parent-argument context checks.
 - [x] Record matched many-row and wide-row trials for input lifetime under a
   normal debug profile, retaining both repeats, full outputs and regressions;
   [report the workload-dependent results](docs/performance/filesystem-input-lifetime-2026-10-07.md).
