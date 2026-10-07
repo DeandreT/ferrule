@@ -1,0 +1,337 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+Directory.CreateDirectory("evidence");
+var mode = args.Single();
+if (mode == "large") { Large(); } else { Small(mode); }
+Console.WriteLine("generated CSV checks passed");
+
+static string[] Apis() => new[] { "text", "bytes", "text-context", "bytes-context" };
+static string[] ContextApis() => new[] { "text-context", "bytes-context" };
+
+static object Call(string api, FerruleInstance source, IReadOnlyList<NamedInput> inputs, FerruleExecutionContext context) => api switch
+{
+    "text" => GeneratedMapping.ExecuteCsvWithSources(source, inputs),
+    "bytes" => GeneratedMapping.ExecuteCsvBytesWithSources(source, inputs),
+    "text-context" => GeneratedMapping.ExecuteCsvWithSources(source, inputs, context),
+    "bytes-context" => GeneratedMapping.ExecuteCsvBytesWithSources(source, inputs, context),
+    _ => throw new InvalidOperationException("fixed API census"),
+};
+static FerruleInstance Ordinary(string api, FerruleInstance source, IReadOnlyList<NamedInput> inputs, FerruleExecutionContext context) =>
+    api.EndsWith("context", StringComparison.Ordinal)
+        ? GeneratedMapping.ExecuteWithSources(source, inputs, context)
+        : GeneratedMapping.ExecuteWithSources(source, inputs);
+
+static Original Capture(string tag, Func<object> call)
+{
+    object returned;
+    try { returned = call(); }
+    catch (Exception error) { CapturedError(tag, error); return new(null, error); }
+    // Publication happens outside the call catch, so a file-write failure cannot replace a mapping observation.
+    if (returned is byte[] bytes)
+    {
+        File.WriteAllBytes(Path.Combine("evidence", tag + ".csv"), bytes);
+        Console.WriteLine($"original {tag} byte[] length={bytes.Length}");
+    }
+    else if (returned is string text)
+    {
+        // The output boundary owns a string. This finite host publishes its complete UTF-8 spelling.
+        File.WriteAllBytes(Path.Combine("evidence", tag + ".csv"), new UTF8Encoding(false, true).GetBytes(text));
+        Console.WriteLine($"original {tag} String chars={text.Length}");
+    }
+    else if (returned is FerruleInstance instance)
+    {
+        using var writer = File.CreateText(Path.Combine("evidence", tag + ".instance.txt"));
+        DumpInstance(writer, instance, 0);
+        Console.WriteLine($"original {tag} ordinary-instance");
+    }
+    else { throw new InvalidOperationException("unexpected return type after original call"); }
+    Console.Out.Flush(); return new(returned, null);
+}
+
+static void DumpInstance(TextWriter writer, FerruleInstance instance, int depth)
+{
+    writer.WriteLine($"depth={depth} type={instance.GetType().Name}");
+    switch (instance)
+    {
+        case FerruleScalar scalar:
+            writer.WriteLine($"kind={scalar.Value.Kind}");
+            if (scalar.Value.Kind == FerruleValueKind.String)
+            {
+                writer.WriteLine($"utf16Chars={scalar.Value.StringValue.Length}");
+                writer.Write(scalar.Value.StringValue); writer.WriteLine("\nEND STRING");
+            }
+            else { writer.WriteLine(scalar.Value.ToString()); }
+            break;
+        case FerruleGroup group:
+            writer.WriteLine($"fields={group.Fields.Count}");
+            foreach (var field in group.Fields) { writer.WriteLine(System.Text.Json.JsonSerializer.Serialize(field.Name)); DumpInstance(writer, field.Value, depth + 1); }
+            break;
+        case FerruleRepeated repeated:
+            writer.WriteLine($"items={repeated.Items.Count}");
+            foreach (var item in repeated.Items) { DumpInstance(writer, item, depth + 1); }
+            break;
+        default: throw new InvalidOperationException("fixture uses only scalar/group/repeated instances");
+    }
+}
+
+static void RetainInputs(string tag, FerruleInstance source, IReadOnlyList<NamedInput> inputs, FerruleExecutionContext context)
+{
+    using var writer = File.CreateText(Path.Combine("evidence", tag + ".inputs.txt"));
+    writer.WriteLine($"executionPath={context.MappingFilePath} mainPath={context.MainMappingFilePath} currentDateTime={context.CurrentDateTime}");
+    writer.WriteLine($"Complete parameter set: {ContextOriginals.Files[context]}");
+    writer.WriteLine("SOURCE"); DumpInstance(writer, source, 0);
+    writer.WriteLine($"namedCount={inputs.Count}");
+    foreach (var input in inputs) { writer.WriteLine(System.Text.Json.JsonSerializer.Serialize(input.Name)); DumpInstance(writer, input.Instance, 0); }
+}
+
+static FerruleExecutionContext Context(string tag, params (string Name, FerruleValue Value)[] values)
+{
+    var path = Path.Combine("evidence", "context-" + tag + ".json");
+    File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(
+        values.Select(value => new { value.Name, kind = value.Value.Kind.ToString(), lexical = value.Value.ToString() })));
+    var context = FerruleExecutionContext.WithParameters("csv-project.json", new FerruleRuntimeParameters(
+        values.Select(value => KeyValuePair.Create(value.Name, value.Value))));
+    ContextOriginals.Files.Add(context, path);
+    return context;
+}
+
+static void Success(string tag, FerruleInstance source, IReadOnlyList<NamedInput> inputs,
+    FerruleExecutionContext context, string[] apis, string expectedPath)
+{
+    RetainInputs(tag, source, inputs, context);
+    foreach (var api in apis)
+    {
+        var original = Capture(tag + "-" + api, () => Call(api, source, inputs, context));
+        var expected = File.ReadAllBytes(expectedPath);
+        Assert(original.Error is null, $"unexpected CSV error {tag}/{api}; originals retained");
+        var bytes = original.Value switch { byte[] buffer => buffer, string text => new UTF8Encoding(false, true).GetBytes(text), _ => throw new InvalidOperationException("CSV output type") };
+        Assert(bytes.SequenceEqual(expected), $"complete CSV differs {tag}/{api}; originals retained");
+    }
+}
+
+static FerruleRuntimeException RuntimeFailure(string tag, FerruleInstance source, IReadOnlyList<NamedInput> inputs,
+    FerruleExecutionContext context, string api, FerruleRuntimeError expected, string? name = null)
+{
+    var control = Capture(tag + "-ordinary", () => Ordinary(api, source, inputs, context));
+    var original = Capture(tag, () => Call(api, source, inputs, context));
+    Assert(control.Error is FerruleRuntimeException, "ordinary API did not give expected runtime error; originals retained");
+    Assert(original.Error is FerruleRuntimeException, "CSV API replaced runtime error category; originals retained");
+    var direct = (FerruleRuntimeException)control.Error!;
+    var error = (FerruleRuntimeException)original.Error!;
+    // Compare the original structured fields and message; stack traces differ by call site.
+    Assert(error.Error == expected && direct.Error == expected &&
+        error.Message == direct.Message && error.Node == direct.Node && error.Detail == direct.Detail &&
+        error.RuntimeParameter == direct.RuntimeParameter && error.ExpectedScalarType == direct.ExpectedScalarType &&
+        error.FoundKind == direct.FoundKind && error.FailureRule == direct.FailureRule &&
+        error.MappingFailureMessage == direct.MappingFailureMessage && error.InnerException is null && direct.InnerException is null,
+        "ordinary/CSV runtime payload or cause changed; originals retained");
+    if (name is not null) { Assert(error.Detail == name, "exact supplied/declared name changed"); }
+    return error;
+}
+
+static void RuntimeCases(string tag, FerruleInstance source, IReadOnlyList<NamedInput> inputs, FerruleExecutionContext context,
+    string[] apis, FerruleRuntimeError expected, string? name = null, uint? node = null, string? message = null)
+{
+    RetainInputs(tag, source, inputs, context);
+    foreach (var api in apis)
+    {
+        var error = RuntimeFailure(tag + "-" + api, source, inputs, context, api, expected, name);
+        if (node is not null) { Assert(error.Node == node, "runtime node identity changed"); }
+        if (expected == FerruleRuntimeError.MissingRuntimeParameter) { Assert(error.RuntimeParameter == "Required", "required host name changed"); }
+        if (expected == FerruleRuntimeError.RuntimeParameterType) { Assert(error.RuntimeParameter == "Count" && error.ExpectedScalarType == FerruleScalarType.Int64 && error.FoundKind == FerruleValueKind.Bool, "host type payload changed"); }
+        if (expected == FerruleRuntimeError.MappingFailure) { Assert(error.FailureRule == 1 && error.MappingFailureMessage == message, "first pre-target rule/message changed"); }
+    }
+}
+
+static void CsvCases(string tag, FerruleInstance source, IReadOnlyList<NamedInput> inputs, FerruleExecutionContext context,
+    string[] apis, FerruleCsvError expected, int? row = null, string? field = null, string? got = null)
+{
+    RetainInputs(tag, source, inputs, context);
+    foreach (var api in apis)
+    {
+        var original = Capture(tag + "-" + api, () => Call(api, source, inputs, context));
+        Assert(original.Error is FerruleCsvException, "expected CSV error; originals retained");
+        var error = (FerruleCsvException)original.Error!;
+        Assert(error.Error == expected && error.Row == row && error.Field == field && error.Got == got && error.InnerException is null, "CSV payload/cause changed");
+        if (expected == FerruleCsvError.OutputTooLarge) { Assert(error.Maximum == 67108864, "maximum changed"); }
+        if (expected == FerruleCsvError.ValueType) { Assert(error.Expected == (field == "Number" ? FerruleScalarType.Double : FerruleScalarType.String), "CSV scalar domain changed"); }
+    }
+}
+
+static NamedInput[] Inputs(FerruleValue label, int count = 3) => new NamedInput[]
+{
+    new("Settings", new FerruleGroup(new FerruleField[] { new("Label", new FerruleScalar(label)) })),
+    new("Catalog", new FerruleGroup(new FerruleField[] { new("Rows", new FerruleRepeated(
+        Enumerable.Range(0, count).Select(_ => (FerruleInstance)new FerruleGroup(Array.Empty<FerruleField>())))) })),
+};
+static FerruleGroup Row(string text, long integer, double number, bool boolean, bool keep, long rank) =>
+    RowValue(FerruleValue.FromString(text), integer, number, boolean, keep, rank);
+
+static FerruleGroup RowValue(FerruleValue text, long integer, double number, bool boolean, bool keep, long rank) =>
+    new(new FerruleField[]
+    {
+        new("Text", new FerruleScalar(text)),
+        new("Integer", new FerruleScalar(FerruleValue.FromInt64(integer))),
+        new("Number", new FerruleScalar(FerruleValue.FromDouble(number))),
+        new("Boolean", new FerruleScalar(FerruleValue.FromBoolean(boolean))),
+        new("Keep", new FerruleScalar(FerruleValue.FromBoolean(keep))),
+        new("Rank", new FerruleScalar(FerruleValue.FromInt64(rank))),
+    });
+
+static void CapturedError(string tag, Exception error)
+{
+    var causes = new List<string>();
+    for (var cause = error.InnerException; cause is not null; cause = cause.InnerException)
+    {
+        causes.Add(cause.ToString());
+    }
+    object payload;
+    if (error is FerruleCsvException csv)
+    {
+        payload = new { caseApi = tag, kind = "csv-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = csv.Error.ToString(), csv.Row, csv.Field,
+            expected = csv.Expected?.ToString(), csv.Got, csv.Character, csv.Maximum };
+    }
+    else if (error is FerruleRuntimeException mapping)
+    {
+        payload = new { caseApi = tag, kind = "mapping-error", type = error.GetType().FullName,
+            display = error.ToString(), causes, category = mapping.Error.ToString(), mapping.Node,
+            mapping.RuntimeParameter, expected = mapping.ExpectedScalarType?.ToString(),
+            found = mapping.FoundKind?.ToString(), mapping.Function, mapping.ExpectedArity,
+            mapping.ActualArity, mapping.Detail, mapping.SourceField, mapping.FoundInstance,
+            mapping.FailureRule, mapping.MappingFailureMessage, mapping.AggregateOperation,
+            requestedItems = mapping.RequestedItems?.ToString(), maximumItems = mapping.MaximumItems?.ToString(),
+            mapping.MaximumDepth, mapping.RuntimeValue, mapping.Join, mapping.UserFunction,
+            mapping.FunctionParameter, primaryRoot = mapping.PrimaryRoot?.ToString() };
+    }
+    else
+    {
+        payload = new { caseApi = tag, kind = "unexpected-error", type = error.GetType().FullName,
+            display = error.ToString(), causes };
+    }
+    var original = System.Text.Json.JsonSerializer.Serialize(payload);
+    File.WriteAllText(Path.Combine("evidence", tag + ".error.json"), original);
+    Console.WriteLine(original);
+    Console.Out.Flush();
+}
+
+
+static void NameErrors(FerruleInstance source, NamedInput[] valid, FerruleExecutionContext context)
+{
+    var settings = valid[0]; var catalog = valid[1];
+    var lower = new NamedInput("settings", settings.Instance); var unknown = new NamedInput("Unknown", settings.Instance);
+    foreach (var (tag, supplied, expected, name) in new (string, NamedInput[], FerruleRuntimeError, string)[]
+    {
+        ("none", Array.Empty<NamedInput>(), FerruleRuntimeError.MissingNamedSource, "Settings"),
+        ("missing-catalog", new[] { settings }, FerruleRuntimeError.MissingNamedSource, "Catalog"),
+        ("missing-settings", new[] { catalog }, FerruleRuntimeError.MissingNamedSource, "Settings"),
+        ("case", new[] { lower, catalog }, FerruleRuntimeError.UnexpectedNamedSource, "settings"),
+        ("duplicate-before-missing", new[] { settings, settings }, FerruleRuntimeError.DuplicateNamedSource, "Settings"),
+        ("extra", new[] { settings, catalog, unknown }, FerruleRuntimeError.UnexpectedNamedSource, "Unknown"),
+        ("unknown-before-duplicate", new[] { settings, unknown, settings }, FerruleRuntimeError.UnexpectedNamedSource, "Unknown"),
+        ("duplicate-before-unknown", new[] { settings, settings, unknown }, FerruleRuntimeError.DuplicateNamedSource, "Settings"),
+    }) { RuntimeCases("names-" + tag, source, supplied, context, Apis(), expected, name); }
+}
+
+static void OldApis(FerruleInstance source, FerruleExecutionContext context)
+{
+    foreach (var api in Apis())
+    {
+        var control = Capture("old-" + api + "-ordinary", () => api.EndsWith("context", StringComparison.Ordinal)
+            ? GeneratedMapping.Execute(source, context) : GeneratedMapping.Execute(source));
+        var original = Capture("old-" + api, () => api switch
+        {
+            "text" => (object)GeneratedMapping.ExecuteCsv(source), "bytes" => GeneratedMapping.ExecuteCsvBytes(source),
+            "text-context" => GeneratedMapping.ExecuteCsv(source, context),
+            "bytes-context" => GeneratedMapping.ExecuteCsvBytes(source, context), _ => throw new InvalidOperationException(),
+        });
+        Assert(control.Error is FerruleRuntimeException && original.Error is FerruleRuntimeException, "old missing name controls");
+        var error = (FerruleRuntimeException)original.Error!; var ordinary = (FerruleRuntimeException)control.Error!;
+        Assert(error.Error == FerruleRuntimeError.MissingNamedSource && error.Detail == "Settings" &&
+            ordinary.Error == error.Error && ordinary.Detail == error.Detail && ordinary.Message == error.Message && error.InnerException is null,
+            "old methods still require their complete named set");
+    }
+}
+
+static void Small(string mode)
+{
+    var source = mode == "disabled" ? new FerruleRepeated(new FerruleInstance[] { Row("safe's\"quoted", -7, 1.25, true, true, 1) })
+        : new FerruleRepeated(new FerruleInstance[] { Row("tail", 9, 1.25, true, true, 1), Row("filtered", 9, 1.25, true, false, 4),
+            Row("A;'B\"\n\U0001F600", -7, 1e-7, true, true, 3), Row("", 0, BitConverter.Int64BitsToDouble(long.MinValue), false, true, 2) });
+    var label = mode == "custom" ? "名;'\n\U0001F642" : "named"; var valid = Inputs(FerruleValue.FromString(label));
+    var defaults = Context("defaults");
+    Success("default", source, valid, defaults, Apis(), "expected-default.csv");
+    Success("reversed", source, new[] { valid[1], valid[0] }, defaults, Apis(), "expected-reversed.csv");
+    var supplied = Context("supplied", ("Label", FerruleValue.FromString("host")), ("Count", FerruleValue.FromString(" 9 ")));
+    Success("context", source, valid, supplied, ContextApis(), "expected-context.csv");
+    Success("supplied-default", source, valid, supplied, new[] { "text", "bytes" }, "expected-default.csv");
+    Success("null", source, valid, Context("null", ("Count", FerruleValue.Null)), ContextApis(), "expected-null.csv");
+    Success("named-null", source, Inputs(FerruleValue.Null), defaults, Apis(), "expected-named-null.csv");
+    Success("zero-count", source, Inputs(FerruleValue.FromString(label), 0), defaults, Apis(), "expected-zero-count.csv");
+    var required = Context("required", ("Require", FerruleValue.FromBoolean(true)));
+    var empty = new FerruleRepeated(Array.Empty<FerruleInstance>());
+    Success("empty", empty, valid, required, Apis(), "expected-empty.csv");
+    var filtered = new FerruleRepeated(new FerruleInstance[] { Row("not evaluated", -7, 1.25, true, false, 1) });
+    Success("filtered", filtered, valid, required, Apis(), "expected-filtered.csv");
+    RuntimeCases("required", source, valid, required, ContextApis(), FerruleRuntimeError.MissingRuntimeParameter, node: 15);
+    RuntimeCases("wrong-count", source, valid, Context("wrong", ("Count", FerruleValue.FromBoolean(true))), ContextApis(), FerruleRuntimeError.RuntimeParameterType, node: 12);
+    var fail = Context("failure-before-required", ("Require", FerruleValue.FromBoolean(true)), ("Fail", FerruleValue.FromBoolean(true)));
+    RuntimeCases("failure-rule-before-required", source, valid, fail, ContextApis(), FerruleRuntimeError.MappingFailure, message: label);
+    NameErrors(source, valid, fail);
+    RuntimeCases("empty-names-still-required", empty, Array.Empty<NamedInput>(), supplied, Apis(), FerruleRuntimeError.MissingNamedSource, "Settings");
+    RuntimeCases("filtered-names-still-required", filtered, Array.Empty<NamedInput>(), required, Apis(), FerruleRuntimeError.MissingNamedSource, "Settings");
+    OldApis(source, defaults);
+    var bad = new FerruleRepeated(new FerruleInstance[] { Row("bad\tvalue", -7, 1.25, true, true, 2) });
+    if (mode == "disabled") { CsvCases("noquote", bad, valid, defaults, Apis(), FerruleCsvError.UnquotedFieldBoundary, 0, "Text'\n\U0001F600"); }
+    var late = new FerruleRepeated(new FerruleInstance[] { Row("bad\tvalue", -7, 1.25, true, true, 2), Row("late", -7, double.PositiveInfinity, true, true, 1) });
+    CsvCases("late-invalid", late, valid, defaults, Apis(), FerruleCsvError.ValueType, 1, "Number", "non-finite float");
+    RuntimeCases("missing-before-row", late, Array.Empty<NamedInput>(), fail, Apis(), FerruleRuntimeError.MissingNamedSource, "Settings");
+    var nil = new FerruleRepeated(new FerruleInstance[] { RowValue(FerruleValue.XmlNil, -7, 1.25, true, true, 1) });
+    CsvCases("nil", nil, valid, defaults, Apis(), FerruleCsvError.ValueType, 0, "Text'\n\U0001F600", "xml nil");
+    // Null source/context/list errors retain ordinary public API argument precedence.
+    foreach (var (tag, ordinary, csv, parameter) in new (string, Func<object>, Func<object>, string)[]
+    {
+        ("null-source", () => GeneratedMapping.ExecuteWithSources(null!, valid), () => GeneratedMapping.ExecuteCsvWithSources(null!, valid), "source"),
+        ("null-list", () => GeneratedMapping.ExecuteWithSources(source, null!), () => GeneratedMapping.ExecuteCsvBytesWithSources(source, null!), "extraSources"),
+        ("null-context-before-source", () => GeneratedMapping.ExecuteWithSources(null!, valid, null!), () => GeneratedMapping.ExecuteCsvWithSources(null!, valid, null!), "executionContext"),
+    })
+    {
+        File.WriteAllText(Path.Combine("evidence", tag + ".arguments.json"), System.Text.Json.JsonSerializer.Serialize(new {
+            tag, sourceNull = tag is "null-source" or "null-context-before-source", listNull = tag == "null-list",
+            executionContextNull = tag == "null-context-before-source", expectedOrdinaryParameter = parameter,
+        }));
+        var direct = Capture(tag + "-ordinary", ordinary); var result = Capture(tag + "-csv", csv);
+        Assert(direct.Error is ArgumentNullException && result.Error is ArgumentNullException, "ordinary argument category changed");
+        Assert(((ArgumentNullException)direct.Error!).ParamName == parameter && ((ArgumentNullException)result.Error!).ParamName == parameter, "ordinary argument name/order changed");
+    }
+}
+
+static void Large()
+{
+    var extra = int.Parse(File.ReadAllText("large-extra.txt"), System.Globalization.CultureInfo.InvariantCulture);
+    var source = new FerruleRepeated(new FerruleInstance[] { Row("safe", -7, 1.25, true, true, 2) });
+    var defaults = Context("large-defaults");
+    {
+        var valid = Inputs(FerruleValue.FromString("\"" + new string('x', extra)));
+        Success("maximum", source, valid, defaults, new[] { "bytes" }, "expected-maximum.csv");
+    }
+    {
+        var valid = Inputs(FerruleValue.FromString("\"" + new string('x', extra + 1)));
+        CsvCases("plus-one", source, valid, defaults, Apis(), FerruleCsvError.OutputTooLarge);
+        var late = new FerruleRepeated(new FerruleInstance[] { Row("safe", -7, 1.25, true, true, 2), Row("late", -7, double.PositiveInfinity, true, true, 1) });
+        CsvCases("large-late-invalid", late, valid, defaults, new[] { "text", "bytes" }, FerruleCsvError.ValueType, 1, "Number", "non-finite float");
+        var required = Context("large-required", ("Require", FerruleValue.FromBoolean(true)));
+        RuntimeCases("large-required", late, valid, required, ContextApis(), FerruleRuntimeError.MissingRuntimeParameter, node: 15);
+        RuntimeCases("large-missing-before-row-budget", late, new[] { valid[0] }, required, Apis(), FerruleRuntimeError.MissingNamedSource, "Catalog");
+    }
+}
+
+static void Assert(bool condition, string message) { if (!condition) { throw new InvalidOperationException(message); } }
+sealed record Original(object? Value, Exception? Error);
+
+static class ContextOriginals
+{
+    internal static readonly Dictionary<FerruleExecutionContext, string> Files = new();
+}
