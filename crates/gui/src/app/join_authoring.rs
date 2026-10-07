@@ -27,9 +27,8 @@ struct Owner {
 enum Edit {
     Create {
         left: Vec<String>,
-        left_key: Vec<String>,
         right: Vec<String>,
-        right_key: Vec<String>,
+        keys: Vec<EqualityPair>,
     },
     Project {
         join: JoinId,
@@ -38,6 +37,12 @@ enum Edit {
         target: String,
         position: bool,
     },
+}
+
+#[derive(Clone)]
+struct EqualityPair {
+    left: Vec<String>,
+    right: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -147,6 +152,77 @@ fn pick_collection(
             .into_iter()
             .next()
             .unwrap_or_default();
+    }
+}
+
+fn pick_key_collection(
+    ui: &mut egui::Ui,
+    id: &str,
+    collection: &mut Vec<String>,
+    keys: &mut [EqualityPair],
+    left: bool,
+    choices: &[Collection],
+) {
+    let before = collection.clone();
+    let mut first = keys.first().map_or_else(Vec::new, |key| {
+        if left {
+            key.left.clone()
+        } else {
+            key.right.clone()
+        }
+    });
+    pick_collection(ui, id, collection, &mut first, choices);
+    if *collection != before {
+        for key in keys {
+            if left {
+                key.left = first.clone();
+            } else {
+                key.right = first.clone();
+            }
+        }
+    }
+}
+
+fn key_controls(ui: &mut egui::Ui, keys: &mut Vec<EqualityPair>) {
+    let mut remove = None;
+    let mut move_pair = None;
+    let count = keys.len();
+    for index in 0..count {
+        ui.horizontal(|ui| {
+            ui.label(format!("Equality pair {}", index + 1));
+            if ui
+                .add_enabled(
+                    count > 1,
+                    egui::Button::new(format!("Remove key pair {}", index + 1)),
+                )
+                .clicked()
+            {
+                remove = Some(index);
+            }
+            if ui
+                .add_enabled(
+                    index > 0,
+                    egui::Button::new(format!("Move key pair {} up", index + 1)),
+                )
+                .clicked()
+            {
+                move_pair = Some((index, index - 1));
+            }
+            if ui
+                .add_enabled(
+                    index + 1 < count,
+                    egui::Button::new(format!("Move key pair {} down", index + 1)),
+                )
+                .clicked()
+            {
+                move_pair = Some((index, index + 1));
+            }
+        });
+    }
+    if let Some(index) = remove {
+        keys.remove(index);
+    } else if let Some((from, to)) = move_pair {
+        keys.swap(from, to);
     }
 }
 
@@ -336,9 +412,11 @@ impl FerruleApp {
                 let right = &available[1];
                 start = Some(Edit::Create {
                     left: left.path.clone(),
-                    left_key: left.fields[0].clone(),
                     right: right.path.clone(),
-                    right_key: right.fields[0].clone(),
+                    keys: vec![EqualityPair {
+                        left: left.fields[0].clone(),
+                        right: right.fields[0].clone(),
+                    }],
                 });
             }
             let project = parts.as_ref().ok().and_then(|(scope, schema)| {
@@ -398,13 +476,33 @@ impl FerruleApp {
         let mut cancel = false;
         ui.add_enabled_ui(enabled, |ui| {
             match &mut draft.edit {
-                Edit::Create { left, left_key, right, right_key } => {
+                Edit::Create { left, right, keys } => {
                     ui.strong("Join rows with equal keys");
-                    ui.horizontal(|ui| { ui.label("Left collection:"); pick_collection(ui, "join_left", left, left_key, &available); });
-                    ui.horizontal(|ui| { ui.label("Left key:"); picker(ui, "join_left_key", left_key, &field_paths(&available, left)); });
-                    ui.horizontal(|ui| { ui.label("Right collection:"); pick_collection(ui, "join_right", right, right_key, &available); });
-                    ui.horizontal(|ui| { ui.label("Right key:"); picker(ui, "join_right_key", right_key, &field_paths(&available, right)); });
-                    ui.weak("Duplicate matches retain left-row order. Missing and nil keys do not match.");
+                    ui.horizontal(|ui| { ui.label("Left collection:"); pick_key_collection(ui, "join_left", left, keys, true, &available); });
+                    if let Some(first) = keys.first_mut() {
+                        ui.horizontal(|ui| { ui.label("Left key:"); picker(ui, "join_left_key", &mut first.left, &field_paths(&available, left)); });
+                    }
+                    ui.horizontal(|ui| { ui.label("Right collection:"); pick_key_collection(ui, "join_right", right, keys, false, &available); });
+                    if let Some(first) = keys.first_mut() {
+                        ui.horizontal(|ui| { ui.label("Right key:"); picker(ui, "join_right_key", &mut first.right, &field_paths(&available, right)); });
+                    }
+                    for (index, key) in keys.iter_mut().enumerate().skip(1) {
+                        ui.label(format!("Additional equality pair {}", index + 1));
+                        ui.horizontal(|ui| {
+                            ui.label("Left key:");
+                            picker(ui, &format!("join_left_key_{index}"), &mut key.left, &field_paths(&available, left));
+                            ui.label("Right key:");
+                            picker(ui, &format!("join_right_key_{index}"), &mut key.right, &field_paths(&available, right));
+                        });
+                    }
+                    key_controls(ui, keys);
+                    if ui.button("Add equality pair").clicked() {
+                        keys.push(EqualityPair {
+                            left: field_paths(&available, left).into_iter().next().unwrap_or_default(),
+                            right: field_paths(&available, right).into_iter().next().unwrap_or_default(),
+                        });
+                    }
+                    ui.weak("Every pair must match. Duplicate matches retain left-row order. Missing and nil keys do not match.");
                     commit = ui.button("Create inner join").clicked();
                 }
                 Edit::Project { join, collection, field, target, position } => {
@@ -489,28 +587,39 @@ impl FerruleApp {
         let available = choices(&self.project);
         let mut project = self.project.clone();
         let (iteration, binding) = match &draft.edit {
-            Edit::Create {
-                left,
-                left_key,
-                right,
-                right_key,
-            } => {
+            Edit::Create { left, right, keys } => {
                 if !empty(scope) {
                     return Err("Choose an empty target scope".into());
                 }
-                if !field_paths(&available, left).contains(left_key)
-                    || !field_paths(&available, right).contains(right_key)
-                {
-                    return Err("Choose exact collection keys from the source schema".into());
+                let Some((first, rest)) = keys.split_first() else {
+                    return Err("Choose at least one equality pair".into());
+                };
+                let left_fields = field_paths(&available, left);
+                let right_fields = field_paths(&available, right);
+                for (index, key) in keys.iter().enumerate() {
+                    if !left_fields.contains(&key.left) || !right_fields.contains(&key.right) {
+                        return Err(format!(
+                            "Equality pair {}: choose exact collection keys from the source schema",
+                            index + 1
+                        ));
+                    }
+                }
+                let mut conditions = JoinConditions::new(JoinKey::new(
+                    left.clone(),
+                    first.left.clone(),
+                    first.right.clone(),
+                ));
+                for key in rest {
+                    conditions = conditions.and(JoinKey::new(
+                        left.clone(),
+                        key.left.clone(),
+                        key.right.clone(),
+                    ));
                 }
                 let plan = JoinPlan::new(
                     JoinSource::new(left.clone()),
                     JoinSource::new(right.clone()),
-                    JoinConditions::new(JoinKey::new(
-                        left.clone(),
-                        left_key.clone(),
-                        right_key.clone(),
-                    )),
+                    conditions,
                 )
                 .map_err(|error| error.to_string())?;
                 (
