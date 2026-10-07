@@ -1,0 +1,134 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 2 || args[0] is not ("fixed" or "literal"))
+{
+    throw new ArgumentException("MODE NATIVE_ORACLE_DIRECTORY");
+}
+var mode = args[0];
+var native = args[1];
+Directory.CreateDirectory("evidence");
+foreach (var (name, failArgument, failMessage, failTarget) in new (string, bool, bool, bool)[]
+{
+    ("cap-before-mapping-failure", false, false, true),
+    ("cap-before-message", false, true, true),
+    ("selected-before-target", false, false, true),
+    ("selected-message-error", false, true, true),
+    ("null-skips-argument", true, true, false),
+    ("null-reaches-target", true, true, true),
+    ("empty-selects-empty-item", false, false, true),
+    ("empty-evaluates-argument", true, true, false),
+    ("empty-skips-message", false, true, false),
+    ("empty-reaches-target", false, true, true),
+})
+{
+    if ((mode == "literal" && (name is "empty-skips-message" or "empty-reaches-target")) ||
+        (mode == "fixed" && name == "empty-selects-empty-item"))
+    { continue; }
+    var text = name.StartsWith("null-", StringComparison.Ordinal) ? FerruleValue.Null : FerruleValue.FromString(
+        name.StartsWith("empty-", StringComparison.Ordinal) ? string.Empty :
+        name.StartsWith("cap-", StringComparison.Ordinal) ?
+            mode == "fixed" ? new string('x', 2_000_000) + "🙂" : new string(',', 1_000_000) + "🙂" :
+            mode == "fixed" ? "e\u0301🙂z!" : "e\u0301,🙂,tail");
+    var inputKind = text.Kind == FerruleValueKind.Null ? "Null" : "String";
+    File.WriteAllBytes($"evidence/{name}-input.utf8", text.Kind == FerruleValueKind.String
+        ? Encoding.UTF8.GetBytes(text.StringValue) : Array.Empty<byte>());
+    File.WriteAllText($"evidence/{name}-input-fields.txt",
+        $"kind={inputKind}\nFailArgument={Boolean(failArgument)}\nFailMessage={Boolean(failMessage)}\nFailTarget={Boolean(failTarget)}\n",
+        new UTF8Encoding(false));
+    var source = new FerruleGroup(new FerruleField[]
+    {
+        new("Text", new FerruleScalar(text)),
+        new("FailArgument", new FerruleScalar(FerruleValue.FromBoolean(failArgument))),
+        new("FailMessage", new FerruleScalar(FerruleValue.FromBoolean(failMessage))),
+        new("FailTarget", new FerruleScalar(FerruleValue.FromBoolean(failTarget))),
+    });
+    File.WriteAllText($"evidence/{name}-input.json", Snapshot(source), new UTF8Encoding(false));
+    FerruleInstance? output = null;
+    Exception? failure = null;
+    try { output = GeneratedMapping.Execute(source); }
+    catch (Exception error) { failure = error; }
+    // Preserve complete returned instance or exception/typed payload first.
+    if (failure is null)
+    {
+        File.WriteAllText($"evidence/{name}-output.json", output is null ? "null" : Snapshot(output),
+            new UTF8Encoding(false));
+    }
+    else
+    {
+        File.WriteAllText($"evidence/{name}-exception.txt", failure.ToString(), new UTF8Encoding(false));
+        if (failure is FerruleRuntimeException error)
+        {
+            File.WriteAllText($"evidence/{name}-typed-error.json", JsonSerializer.Serialize(new
+            {
+                Type = error.GetType().FullName, Error = error.Error.ToString(), error.Message,
+                error.Node, error.Function, error.ExpectedArity, error.ActualArity,
+                FoundKind = error.FoundKind?.ToString(), AggregateOperation = error.AggregateOperation?.ToString(),
+                error.Detail, RequestedItems = error.RequestedItems?.ToString(CultureInfo.InvariantCulture),
+                MaximumItems = error.MaximumItems?.ToString(CultureInfo.InvariantCulture), error.MaximumDepth,
+                RuntimeValue = error.RuntimeValue?.ToString(), error.FailureRule, error.MappingFailureMessage,
+                error.Join, error.UserFunction, error.FunctionParameter,
+                ExpectedScalarType = error.ExpectedScalarType?.ToString(), error.RuntimeParameter,
+                error.SourceField, error.FoundInstance, PrimaryRoot = error.PrimaryRoot?.ToString(),
+            }), new UTF8Encoding(false));
+        }
+    }
+    var semantic = Semantic(output, failure);
+    File.WriteAllText($"evidence/{name}-oracle.txt", semantic, new UTF8Encoding(false));
+    var expected = File.ReadAllText(Path.Combine(native, $"{name}-oracle.txt"), Encoding.UTF8);
+    if (!string.Equals(semantic, expected, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException($"Generated C# {mode}/{name} differs from native; complete originals retained.");
+    }
+    Console.WriteLine($"tokenizer original mode={mode} case={name} matches-native");
+}
+Console.WriteLine("generated tokenizer cap checks passed");
+
+static string Boolean(bool value) => value ? "true" : "false";
+
+static string Semantic(FerruleInstance? output, Exception? failure)
+{
+    if (failure is FerruleRuntimeException error)
+    {
+        if (error.Error == FerruleRuntimeError.GeneratedSequenceTooLarge &&
+            error.Node is null && error.Function is null && error.FailureRule is null &&
+            error.MappingFailureMessage is null && error.InnerException is null)
+        {
+            return $"GeneratedSequenceTooLarge\nrequested={error.RequestedItems?.ToString(CultureInfo.InvariantCulture)}\nmaximum={error.MaximumItems?.ToString(CultureInfo.InvariantCulture)}\n";
+        }
+        if (error.Error == FerruleRuntimeError.MappingFailure && error.RequestedItems is null &&
+            error.MaximumItems is null && error.MappingFailureMessage is not null)
+        {
+            return $"MappingFailure\nrule={error.FailureRule}\nmessage={error.MappingFailureMessage}\n";
+        }
+        if (error.Error == FerruleRuntimeError.DivideByZero && error.RequestedItems is null &&
+            error.MaximumItems is null && error.FailureRule is null)
+        {
+            return "Function.DivideByZero\n";
+        }
+    }
+    if (failure is null && output is FerruleGroup group && group.Fields.Count == 1 &&
+        group.Fields[0].Name == "Output" && group.Fields[0].Value is FerruleScalar scalar &&
+        scalar.Value == FerruleValue.FromString("ok"))
+    {
+        return "Success\nOutput=ok\n";
+    }
+    return $"Unexpected typed outcome: {failure?.ToString() ?? (output is null ? "null" : Snapshot(output))}\n";
+}
+
+static string Snapshot(FerruleInstance instance) => JsonSerializer.Serialize(Tree(instance));
+
+static object Tree(FerruleInstance instance) => instance switch
+{
+    FerruleScalar scalar => new { Kind = "Scalar", Tag = scalar.Value.Kind.ToString(), Text = scalar.Value.ToString() },
+    FerruleGroup group => new { Kind = "Group", Fields = group.Fields.Select(field =>
+        new { field.Name, Value = Tree(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { Kind = "Repeated", Items = repeated.Items.Select(Tree).ToArray() },
+    FerruleMappedSequence mapped => new { Kind = "MappedSequence", Items = mapped.Items.Select(Tree).ToArray() },
+    FerruleDocumentSet documents => new { Kind = "DocumentSet", Documents = documents.Documents.Select(document =>
+        new { document.Path, document.ResolvedSourcePath, Value = Tree(document.Value) }).ToArray() },
+    _ => throw new InvalidOperationException("Unknown typed instance in original snapshot."),
+};

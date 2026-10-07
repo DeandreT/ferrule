@@ -74,6 +74,25 @@ public static class FerruleSequences
             throw InvalidArgument("tokenize", "requires a non-empty delimiter");
         }
 
+        // Count literal fields without allocating substrings or output storage.
+        UInt128 requested = 1;
+        var search = 0;
+        while (true)
+        {
+            var next = text.IndexOf(separator, search, StringComparison.Ordinal);
+            if (next < 0) break;
+            requested++;
+            search = next + separator.Length;
+        }
+        if (requested > MaximumGeneratedSequenceItems)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.GeneratedSequenceTooLarge,
+                $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
+                requestedItems: requested,
+                maximumItems: MaximumGeneratedSequenceItems);
+        }
+
         var values = new List<FerruleValue>();
         var start = 0;
         while (true)
@@ -109,6 +128,19 @@ public static class FerruleSequences
             throw InvalidArgument(
                 "tokenize-by-length",
                 "requires a positive integer length");
+        }
+
+        // Count before allocating rune storage or any output items.
+        var scalarCount = (UInt128)text.EnumerateRunes().Count();
+        var requested = (scalarCount + (UInt128)chunkLength.Value - 1)
+            / (UInt128)chunkLength.Value;
+        if (requested > MaximumGeneratedSequenceItems)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.GeneratedSequenceTooLarge,
+                $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
+                requestedItems: requested,
+                maximumItems: MaximumGeneratedSequenceItems);
         }
 
         var runes = text.EnumerateRunes().ToArray();

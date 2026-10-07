@@ -1,0 +1,99 @@
+use std::error::Error as _;
+use std::fs::{self, File};
+use std::io::Write as _;
+use std::path::Path;
+
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+const CASES: [(&str, bool, bool, bool); 10] = [
+    ("cap-before-mapping-failure", false, false, true),
+    ("cap-before-message", false, true, true),
+    ("selected-before-target", false, false, true),
+    ("selected-message-error", false, true, true),
+    ("null-skips-argument", true, true, false),
+    ("null-reaches-target", true, true, true),
+    ("empty-selects-empty-item", false, false, true),
+    ("empty-evaluates-argument", true, true, false),
+    ("empty-skips-message", false, true, false),
+    ("empty-reaches-target", false, true, true),
+];
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    assert_eq!(arguments.len(), 2, "MODE NATIVE_ORACLE_DIRECTORY");
+    let mode = arguments[0].as_str();
+    assert!(matches!(mode, "fixed" | "literal"));
+    let native = Path::new(&arguments[1]);
+    fs::create_dir("evidence")?;
+    for (name, fail_argument, fail_message, fail_target) in CASES {
+        if (mode == "literal" && matches!(name, "empty-skips-message" | "empty-reaches-target"))
+            || (mode == "fixed" && name == "empty-selects-empty-item")
+        { continue; }
+        let text = if name.starts_with("null-") {
+            Value::Null
+        } else if name.starts_with("empty-") {
+            Value::String(String::new())
+        } else if name.starts_with("cap-") {
+            Value::String(if mode == "fixed" {
+                "x".repeat(2_000_000) + "🙂"
+            } else {
+                ",".repeat(1_000_000) + "🙂"
+            })
+        } else {
+            Value::String(if mode == "fixed" { "e\u{301}🙂z!" } else { "e\u{301},🙂,tail" }.into())
+        };
+        let input_kind = if matches!(&text, Value::Null) { "Null" } else { "String" };
+        let input_bytes = match &text { Value::String(value) => value.as_bytes(), _ => &[] };
+        fs::write(format!("evidence/{name}-input.utf8"), input_bytes)?;
+        fs::write(format!("evidence/{name}-input-fields.txt"), format!(
+            "kind={input_kind}\nFailArgument={fail_argument}\nFailMessage={fail_message}\nFailTarget={fail_target}\n"
+        ))?;
+        let source = group([
+            field("Text", scalar(text)),
+            field("FailArgument", scalar(Value::Bool(fail_argument))),
+            field("FailMessage", scalar(Value::Bool(fail_message))),
+            field("FailTarget", scalar(Value::Bool(fail_target))),
+        ]);
+        let mut input_original = File::create(format!("evidence/{name}-input-debug.txt"))?;
+        writeln!(input_original, "{source:#?}")?;
+        input_original.flush()?;
+        let result = execute(&source);
+        // Complete original return/error observations precede comparisons.
+        let mut original = File::create(format!("evidence/{name}-outcome.txt"))?;
+        writeln!(original, "{result:#?}")?;
+        if let Err(error) = &result {
+            writeln!(original, "Display: {error}")?;
+            let mut cause = error.source();
+            while let Some(error) = cause {
+                writeln!(original, "Cause Debug: {error:?}\nCause Display: {error}")?;
+                cause = error.source();
+            }
+        }
+        original.flush()?;
+        let semantic = semantic(&result);
+        fs::write(format!("evidence/{name}-oracle.txt"), &semantic)?;
+        assert_eq!(
+            semantic,
+            fs::read_to_string(native.join(format!("{name}-oracle.txt")))?,
+            "generated Rust {mode}/{name} differs from native; complete originals retained"
+        );
+        println!("tokenizer original mode={mode} case={name} matches-native");
+    }
+    println!("generated tokenizer cap checks passed");
+    Ok(())
+}
+
+fn semantic(result: &Result<Instance, RuntimeError>) -> String {
+    match result {
+        Err(RuntimeError::GeneratedSequenceTooLarge { requested, max }) =>
+            format!("GeneratedSequenceTooLarge\nrequested={requested}\nmaximum={max}\n"),
+        Err(RuntimeError::MappingFailure { rule, message: Some(message) }) =>
+            format!("MappingFailure\nrule={rule}\nmessage={message}\n"),
+        Err(RuntimeError::Function(FunctionError::DivideByZero)) =>
+            "Function.DivideByZero\n".into(),
+        Ok(value) if value == &group([field("Output", scalar(Value::String("ok".into())))]) =>
+            "Success\nOutput=ok\n".into(),
+        _ => format!("Unexpected typed outcome: {result:#?}\n"),
+    }
+}
