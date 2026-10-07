@@ -148,7 +148,7 @@ pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
                 Some(frame) => format!("explicit {}", frame.join("/")),
             };
             return format!(
-                "{title}\nOpen source object: {object}\nFrame: {frame}\nThe property name is supplied by the input.\nRead-only computed property"
+                "{title}\nOpen source object: {object}\nFrame: {frame}\nThe property name is supplied by the input.\nChoose a supported source object with the pencil."
             );
         }
         Some(Node::SourceRootField { path, required }) => {
