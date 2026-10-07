@@ -4,7 +4,7 @@ use serde_json::{Value as Json, json};
 #[path = "fixtures/typed_document_driver_native.rs.txt"]
 mod native;
 #[path = "fixtures/typed_document_driver_snapshot.rs.txt"]
-mod typed_snapshot;
+pub(super) mod typed_snapshot;
 
 const MARKER: &str = "typed-dispatch-original-second-host-failure";
 const CASES: [&str; 4] = [

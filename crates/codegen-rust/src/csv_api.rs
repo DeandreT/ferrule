@@ -55,6 +55,13 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
     {
         source.push_str(NAMED_ADAPTERS);
     }
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some())
+    {
+        source.push_str(DYNAMIC_ADAPTERS);
+    }
     Ok(source)
 }
 
@@ -132,6 +139,68 @@ pub fn execute_csv_bytes_with_sources_and_context(
     execution: &ExecutionContext<'_>,
 ) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
     let output = execute_with_sources_and_context(source, inputs, execution).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+"#;
+
+const DYNAMIC_ADAPTERS: &str = r#"
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_with_dynamic_source_loader(
+    source: &Instance,
+    loader: &dyn DynamicSourceLoader,
+) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_dynamic_source_loader(source, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_with_sources_and_dynamic_source_loader(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    loader: &dyn DynamicSourceLoader,
+) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_and_dynamic_source_loader(source, inputs, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_with_sources_context_and_dynamic_source_loader(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    execution: &ExecutionContext<'_>,
+    loader: &dyn DynamicSourceLoader,
+) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_context_and_dynamic_source_loader(source, inputs, execution, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_bytes_with_dynamic_source_loader(
+    source: &Instance,
+    loader: &dyn DynamicSourceLoader,
+) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_dynamic_source_loader(source, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_bytes_with_sources_and_dynamic_source_loader(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    loader: &dyn DynamicSourceLoader,
+) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_and_dynamic_source_loader(source, inputs, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Map with the existing per-driver typed loader, then serialize bounded CSV.
+pub fn execute_csv_bytes_with_sources_context_and_dynamic_source_loader(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    execution: &ExecutionContext<'_>,
+    loader: &dyn DynamicSourceLoader,
+) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_context_and_dynamic_source_loader(source, inputs, execution, loader).map_err(codegen_runtime::CsvBoundaryError::from)?;
     codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
 }
 "#;
@@ -361,5 +430,92 @@ mod tests {
         }
         assert_eq!(emit(&named, &options()).unwrap(), ordinary);
         assert_eq!(render(&plain, &CsvOutputPolicy::default()).unwrap(), before);
+    }
+    #[test]
+    fn dynamic_csv_companions_delegate_once_and_keep_plain_and_static_adapters_exact() {
+        let plain = program();
+        let before = render(&plain, &CsvOutputPolicy::default()).unwrap();
+        let mut dynamic = plain.clone();
+        dynamic.extra_sources.push(codegen::NamedSourceProgram {
+            name: "Dynamic".into(),
+            source: SchemaNode::group("Dynamic", Vec::new()),
+            dynamic: Some(codegen::DynamicSourceProgram {
+                path: 1,
+                driver: codegen::SourceIteration::new(Vec::new()),
+            }),
+        });
+        let after = render(&dynamic, &CsvOutputPolicy::default()).unwrap();
+        assert_eq!(after, format!("{before}{DYNAMIC_ADAPTERS}"));
+        assert!(!after.contains("pub fn execute_csv_with_sources("));
+        for suffix in [
+            "with_dynamic_source_loader",
+            "with_sources_and_dynamic_source_loader",
+            "with_sources_context_and_dynamic_source_loader",
+        ] {
+            assert_eq!(
+                DYNAMIC_ADAPTERS
+                    .matches(&format!("pub fn execute_csv_{suffix}("))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                DYNAMIC_ADAPTERS
+                    .matches(&format!("pub fn execute_csv_bytes_{suffix}("))
+                    .count(),
+                1
+            );
+        }
+        for call in [
+            "execute_with_dynamic_source_loader(source, loader)",
+            "execute_with_sources_and_dynamic_source_loader(source, inputs, loader)",
+            "execute_with_sources_context_and_dynamic_source_loader(source, inputs, execution, loader)",
+        ] {
+            assert_eq!(DYNAMIC_ADAPTERS.matches(call).count(), 2);
+        }
+        assert_eq!(
+            DYNAMIC_ADAPTERS
+                .matches("codegen_runtime::serialize_csv(")
+                .count(),
+            3
+        );
+        assert_eq!(
+            DYNAMIC_ADAPTERS
+                .matches("codegen_runtime::serialize_csv_bytes(")
+                .count(),
+            3
+        );
+        assert!(!DYNAMIC_ADAPTERS.contains("execute_outputs"));
+        assert!(!DYNAMIC_ADAPTERS.contains("execute_json"));
+        assert!(!DYNAMIC_ADAPTERS.contains("parse_json"));
+        let ordinary = emit(&dynamic, &options()).unwrap();
+        let opted =
+            emit_with_csv_output(&dynamic, &options(), &CsvOutputPolicy::default()).unwrap();
+        assert_eq!(ordinary.files().len(), opted.files().len());
+        for (old, new) in ordinary.files().iter().zip(opted.files()) {
+            assert_eq!(old.path, new.path);
+            if old.path.as_str() == "src/lib.rs" {
+                assert!(new.contents.starts_with(&old.contents));
+            } else {
+                assert_eq!(old.contents, new.contents);
+            }
+        }
+        assert_eq!(emit(&dynamic, &options()).unwrap(), ordinary);
+        dynamic.extra_sources.push(codegen::NamedSourceProgram {
+            name: "Static".into(),
+            source: SchemaNode::group("Static", Vec::new()),
+            dynamic: None,
+        });
+        let mut static_only = dynamic.clone();
+        static_only.extra_sources.remove(0);
+        let static_adapter = render(&static_only, &CsvOutputPolicy::default()).unwrap();
+        assert_eq!(
+            render(&dynamic, &CsvOutputPolicy::default()).unwrap(),
+            format!("{static_adapter}{DYNAMIC_ADAPTERS}")
+        );
+        assert_eq!(render(&plain, &CsvOutputPolicy::default()).unwrap(), before);
+        let mixed_ordinary = emit(&dynamic, &options()).unwrap();
+        let _mixed_opted =
+            emit_with_csv_output(&dynamic, &options(), &CsvOutputPolicy::default()).unwrap();
+        assert_eq!(emit(&dynamic, &options()).unwrap(), mixed_ordinary);
     }
 }

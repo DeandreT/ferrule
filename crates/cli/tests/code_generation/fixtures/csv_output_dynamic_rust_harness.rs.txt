@@ -1,0 +1,213 @@
+use std::cell::RefCell;
+use std::error::Error as _;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use codegen_runtime::{CsvBoundaryError, CsvFormatError, DynamicSourceLoader, ExecutionContext,
+    FunctionError, Instance, NamedInput, RuntimeError, RuntimeParameters, Value,
+    field, group, repeated, scalar};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+mod typed_snapshot;
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+const MARKER: &str = "dynamic-csv-original-second-loader-failure";
+const APIS: [&str; 6] = ["text-loader", "bytes-loader", "text-sources", "bytes-sources", "text-context", "bytes-context"];
+enum Returned { Text(String), Bytes(Vec<u8>) }
+impl Returned {
+    fn bytes(&self) -> &[u8] { match self { Self::Text(v) => v.as_bytes(), Self::Bytes(v) => v } }
+}
+struct Loader<'a> {
+    first: &'a Instance, second: &'a Instance, fail: bool, directory: PathBuf,
+    calls: RefCell<Vec<Json>>,
+}
+impl DynamicSourceLoader for Loader<'_> {
+    fn load(&self, source: &str, path: &str) -> std::result::Result<Instance, String> {
+        let result = match (source, path) {
+            ("catalog", "a.xml") => Ok(self.first.clone()),
+            ("catalog", "b.xml") if self.fail => Err(MARKER.to_string()),
+            ("catalog", "b.xml") => Ok(self.second.clone()),
+            _ => Err("dynamic-csv-unexpected-path".to_string()),
+        };
+        let ordinal = self.calls.borrow().len() + 1;
+        let outcome = match &result {
+            Ok(value) => {
+                let document = format!("callback-{ordinal}-document.txt");
+                if let Err(error) = File::create(self.directory.join(&document))
+                    .and_then(|mut file| writeln!(file, "{value:#?}")) {
+                    return Err(format!("raw callback evidence failed: {error}"));
+                }
+                json!({"kind":"returned","document":document})
+            }
+            Err(message) => json!({"kind":"error","message":message}),
+        };
+        self.calls.borrow_mut().push(json!({"ordinal":ordinal,"source":source,"path":path,"outcome":outcome}));
+        result
+    }
+}
+fn value(snapshot: &Json) -> Value {
+    let value = &snapshot["value"];
+    match value["kind"].as_str().unwrap() {
+        "Null" => Value::Null, "JsonNull" => Value::json_null(), "XmlNil" => Value::xml_nil(),
+        "Bool" => Value::Bool(value["value"].as_bool().unwrap()),
+        "Int64" => Value::Int(value["value"].as_str().unwrap().parse().unwrap()),
+        "Double" => Value::Float(f64::from_bits(u64::from_str_radix(value["bits"].as_str().unwrap(),16).unwrap())),
+        "String" => Value::String(value["value"].as_str().unwrap().to_string()),
+        _ => panic!("unsupported authored input scalar"),
+    }
+}
+fn document(file: &str, value: Value, empty: bool) -> Instance {
+    group([field("Row", repeated(if empty { Vec::new() } else { vec![group([
+        field("File", scalar(Value::String(file.to_string()))), field("Value", scalar(value)),
+    ])] }))])
+}
+fn runtime_error(error: &RuntimeError) -> Json {
+    match error {
+        RuntimeError::MissingNamedSource { name } => json!({"kind":"missing-name","source":name}),
+        RuntimeError::DuplicateNamedSource { name } => json!({"kind":"duplicate-name","source":name}),
+        RuntimeError::UnexpectedNamedSource { name } => json!({"kind":"unexpected-name","source":name}),
+        RuntimeError::MissingDynamicSourceLoader { source } => json!({"kind":"missing-loader","source":source}),
+        RuntimeError::DynamicSourcePath { source, node, found } => json!({"kind":"path","source":source,"node":node,"found":found}),
+        RuntimeError::DynamicSourcePathTooLong { source, maximum } => json!({"kind":"path-limit","source":source,"maximum":maximum}),
+        RuntimeError::DynamicSourceLoad { source, path, message } => json!({"kind":"load","source":source,"path":path,"message":message}),
+        RuntimeError::MappingFailure { rule, message } => json!({"kind":"failure","rule":rule,"message":message}),
+        RuntimeError::Function(FunctionError::DivideByZero) => json!({"kind":"divide"}),
+        RuntimeError::RuntimeParameterType { node, name, expected, found } => json!({"kind":"parameter","node":node,"name":name,"expected":format!("{expected:?}"),"found":found}),
+        _ => panic!("unexpected original runtime error, full Debug already retained: {error:?}"),
+    }
+}
+fn csv_error(error: &CsvBoundaryError) -> Json {
+    match error {
+        CsvBoundaryError::Format(CsvFormatError::ValueType { row, field, expected, got }) =>
+            json!({"kind":"value-type","row":row,"field":field,"expected":format!("{expected:?}"),"got":got}),
+        CsvBoundaryError::OutputTooLarge { maximum } => json!({"kind":"output-limit","maximum":maximum}),
+        _ => panic!("unexpected original CSV error, full Debug already retained: {error:?}"),
+    }
+}
+fn call(api: &str, enabled: bool, source: &Instance, inputs: &[NamedInput<'_>], context: &ExecutionContext<'_>, loader: &dyn DynamicSourceLoader)
+    -> std::result::Result<Returned, CsvBoundaryError> {
+    if !enabled {
+        return match api {
+            "text-context" => __NO_LOADER_TEXT_CONTEXT__.map(Returned::Text),
+            "bytes-context" => __NO_LOADER_BYTES_CONTEXT__.map(Returned::Bytes),
+            "text-loader" | "text-sources" => __NO_LOADER_TEXT__.map(Returned::Text),
+            "bytes-loader" | "bytes-sources" => __NO_LOADER_BYTES__.map(Returned::Bytes),
+            _ => unreachable!(),
+        };
+    }
+    match api {
+        "text-loader" => generated::execute_csv_with_dynamic_source_loader(source, loader).map(Returned::Text),
+        "bytes-loader" => generated::execute_csv_bytes_with_dynamic_source_loader(source, loader).map(Returned::Bytes),
+        "text-sources" => generated::execute_csv_with_sources_and_dynamic_source_loader(source, inputs, loader).map(Returned::Text),
+        "bytes-sources" => generated::execute_csv_bytes_with_sources_and_dynamic_source_loader(source, inputs, loader).map(Returned::Bytes),
+        "text-context" => generated::execute_csv_with_sources_context_and_dynamic_source_loader(source, inputs, context, loader).map(Returned::Text),
+        "bytes-context" => generated::execute_csv_bytes_with_sources_context_and_dynamic_source_loader(source, inputs, context, loader).map(Returned::Bytes),
+        _ => unreachable!(),
+    }
+}
+fn ordinary(api: &str, enabled: bool, source: &Instance, inputs: &[NamedInput<'_>], context: &ExecutionContext<'_>, loader: &dyn DynamicSourceLoader)
+    -> std::result::Result<Instance, RuntimeError> {
+    if !enabled {
+        return if api.ends_with("context") { generated::execute_with_sources_and_context(source, inputs, context) }
+            else { generated::execute_with_sources(source, inputs) };
+    }
+    match api {
+        "text-loader" | "bytes-loader" => generated::execute_with_dynamic_source_loader(source, loader),
+        "text-sources" | "bytes-sources" => generated::execute_with_sources_and_dynamic_source_loader(source, inputs, loader),
+        "text-context" | "bytes-context" => generated::execute_with_sources_context_and_dynamic_source_loader(source, inputs, context, loader),
+        _ => unreachable!(),
+    }
+}
+fn retain_csv(directory: &Path, result: &std::result::Result<Returned, CsvBoundaryError>) -> Result<bool> {
+    match result {
+        Ok(value) => { fs::write(directory.join("csv-original.csv"), value.bytes())?; Ok(true) }
+        Err(error) => {
+            // Complete original Debug/display/chain precedes domain-restricted semantic comparison.
+            writeln!(File::create(directory.join("csv-original-debug.txt"))?, "{error:#?}")?;
+            writeln!(File::create(directory.join("csv-original-display.txt"))?, "{error}")?;
+            let mut file = File::create(directory.join("csv-original-causes.txt"))?;
+            let mut cause = error.source();
+            while let Some(current) = cause { writeln!(file, "Debug={current:?}\nDisplay={current}")?; cause = current.source(); }
+            let same = match error {
+                CsvBoundaryError::Execution(inner) => error.source().and_then(|v| v.downcast_ref::<RuntimeError>()).is_some_and(|v| std::ptr::eq(v, inner)),
+                CsvBoundaryError::Format(inner) => error.source().and_then(|v| v.downcast_ref::<CsvFormatError>()).is_some_and(|v| std::ptr::eq(v, inner)),
+                CsvBoundaryError::RootShape { .. } | CsvBoundaryError::OutputTooLarge { .. } => error.source().is_none(),
+            };
+            fs::write(directory.join("direct-cause-identity.txt"),format!("{same}\n"))?;
+            Ok(same)
+        }
+    }
+}
+fn selected_apis(case: &Json, mode: &str) -> Vec<&'static str> {
+    if mode == "large" { return vec!["bytes-context"]; }
+    if case["static_names"] == "loader-only" { return APIS[..2].to_vec(); }
+    if case["context_only"].as_bool().unwrap() { return APIS[4..].to_vec(); }
+    if mode == "mixed" { APIS[2..].to_vec() } else { APIS.to_vec() }
+}
+fn main() -> Result<()> {
+    let mode = std::env::args().nth(1).expect("explicit pure/mixed/large mode");
+    assert!(matches!(mode.as_str(),"pure"|"mixed"|"large"));
+    let cases: Vec<Json> = serde_json::from_slice(&fs::read(if mode == "large" {"dynamic-large-cases.json"} else {"dynamic-cases.json"})?)?;
+    let evidence = PathBuf::from(format!("dynamic-{mode}-evidence")); fs::create_dir(&evidence)?;
+    let mut records = Vec::new();
+    let mut csv_calls = 0; let mut ordinary_calls = 0;
+    for case in &cases {
+        let name = case["name"].as_str().unwrap();
+        let source = group([field("Driver", repeated(case["paths"].as_array().unwrap().iter().map(|v| group([field("Path",scalar(value(v)))]))))]);
+        let first_value = if mode == "large" { Value::String("x".repeat(case["first"]["repeat_x"].as_u64().unwrap() as usize)) } else { value(&case["first"]) };
+        let first = document("same.xml",first_value,case["empty_first"].as_bool().unwrap());
+        let second = document("../雪😀.xml",Value::String("  B  ".into()),false);
+        let rates = group([field("Rate",scalar(Value::Int(7)))]);
+        let names: Vec<&str> = if mode != "mixed" {vec![]} else { match case["static_names"].as_str().unwrap() {
+            "missing" | "loader-only" => vec![], "duplicate" => vec!["Rates","Rates"],
+            "unexpected" => vec!["Rates","Other"], "dynamic-name" => vec!["Rates","catalog"], _ => vec!["Rates"],
+        }};
+        let inputs: Vec<_> = names.iter().map(|name| NamedInput { name, instance: &rates }).collect();
+        let mut parameters = RuntimeParameters::new();
+        for parameter in case["parameters"].as_array().unwrap() { parameters.insert(parameter["name"].as_str().unwrap(),value(&parameter["value"]))?; }
+        let context = ExecutionContext::new(Path::new("dynamic-csv.json")).with_parameters(&parameters);
+        let enabled = case["loader"].as_bool().unwrap();
+        for api in selected_apis(case,&mode) {
+            let directory = evidence.join(format!("{name}-{api}")); fs::create_dir(&directory)?;
+            writeln!(File::create(directory.join("prepared-inputs.txt"))?, "source={source:#?}\nfirst={first:#?}\nsecond={second:#?}\ninputs={inputs:#?}\nparameters={parameters:#?}\nexecution=dynamic-csv.json\napi={api}\nloader={enabled}")?;
+            let wanted = &case["expected"][usize::from(api.ends_with("context"))];
+            let csv_loader = Loader { first: &first, second: &second, fail: case["fail_second"].as_bool().unwrap(), directory: directory.clone(), calls: Default::default() };
+            let actual = call(api,enabled,&source,&inputs,&context,&csv_loader); csv_calls += 1;
+            let direct_cause = retain_csv(&directory,&actual)?;
+            let actual_callbacks = csv_loader.calls.into_inner();
+            fs::write(directory.join("callbacks.json"),serde_json::to_vec_pretty(&actual_callbacks)?)?;
+            // Ordinary mapping controls are small. Large refusals make only one CSV call.
+            let control = if mode != "large" {
+                let ordinary_dir = directory.join("ordinary"); fs::create_dir(&ordinary_dir)?;
+                let loader = Loader { first: &first,second: &second,fail: case["fail_second"].as_bool().unwrap(),directory:ordinary_dir.clone(),calls:Default::default() };
+                let result = ordinary(api,enabled,&source,&inputs,&context,&loader); ordinary_calls += 1;
+                writeln!(File::create(ordinary_dir.join("result-original-debug.txt"))?,"{result:#?}")?;
+                if let Err(error) = &result { writeln!(File::create(ordinary_dir.join("error-display.txt"))?,"{error}")?; }
+                let calls = loader.calls.into_inner();
+                fs::write(ordinary_dir.join("callbacks.json"),serde_json::to_vec_pretty(&calls)?)?;
+                Some((result,calls))
+            } else {None};
+            assert!(direct_cause,"original cause identity changed {name}/{api}");
+            assert_eq!(serde_json::to_value(&actual_callbacks)?,wanted["callbacks"],"CSV callback order/count {name}/{api}");
+            if let Some((result,calls)) = &control {
+                assert_eq!(serde_json::to_value(calls)?,wanted["callbacks"],"ordinary callback order/count {name}/{api}");
+                if !wanted["runtime_error"].is_null() { assert_eq!(runtime_error(result.as_ref().expect_err("ordinary must fail")),wanted["runtime_error"]); }
+                else { assert_eq!(typed_snapshot::snapshot(result.as_ref().expect("ordinary must return mapped tree")),wanted["mapped"],"complete ordinary mapped tree {name}/{api}"); }
+            }
+            if !wanted["runtime_error"].is_null() {
+                let Err(CsvBoundaryError::Execution(error)) = &actual else { panic!("mapping must precede CSV {name}/{api}; originals retained") };
+                assert_eq!(runtime_error(error),wanted["runtime_error"],"typed mapping error {name}/{api}");
+            } else if !wanted["csv_error"].is_null() {
+                assert_eq!(csv_error(actual.as_ref().err().expect("CSV must fail")),wanted["csv_error"],"typed format/budget error {name}/{api}");
+            } else {
+                let returned = actual.as_ref().map_err(|v| format!("unexpected CSV failure {name}/{api}: {v:?}"))?;
+                let label = if api.ends_with("context") {"context"} else {"default"};
+                assert_eq!(returned.bytes(),fs::read(format!("expected-{name}-{label}.csv"))?,"whole CSV including EOF {name}/{api}");
+            }
+            records.push(json!({"case":name,"api":api,"csv_calls":1,"ordinary_calls":usize::from(mode!="large")}));
+        }
+    }
+    fs::write(format!("dynamic-{mode}-complete.json"),serde_json::to_vec_pretty(&json!({"mode":mode,"cases":cases.len(),"csv_calls":csv_calls,"ordinary_calls":ordinary_calls,"calls":records}))?)?;
+    println!("generated CSV checks passed");
+    Ok(())
+}
