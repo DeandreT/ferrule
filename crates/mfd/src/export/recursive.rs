@@ -411,6 +411,7 @@ fn collect_filter_contexts(scope: &Scope, contexts: &mut Vec<(NodeId, Vec<String
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::SourceField { .. }
         | Node::SourceDocumentPath

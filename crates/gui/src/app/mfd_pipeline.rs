@@ -77,10 +77,7 @@ impl FerruleApp {
         {
             return;
         }
-        let options = match &self.mfd_package_manifest {
-            Some(path) => mfd::ImportOptions::default().with_package_manifest(Path::new(path)),
-            None => Ok(mfd::ImportOptions::default()),
-        };
+        let options = self.mfd_import_options();
         match options {
             Ok(options) => self.request_pipeline_editor_action(
                 pipeline_editor_ui::PipelineEditorAction::ImportMfd(options),

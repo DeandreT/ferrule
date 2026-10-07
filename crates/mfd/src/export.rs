@@ -25,6 +25,7 @@ mod decimal_input;
 mod dynamic_json;
 mod edi;
 mod exception;
+mod exception_ordering;
 mod external_source;
 mod first_presence;
 mod flextext;
@@ -52,6 +53,7 @@ mod recursive;
 mod schema;
 mod scope;
 mod scope_variable;
+mod scoped_exception;
 mod sequence;
 mod simple_content;
 mod source;
@@ -303,6 +305,7 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    let mut scoped_exception_branches = scoped_exception::Branches::build(project)?;
     if let Some(prepared) = qualified_root_view::prepare_export(project, path)? {
         return Ok(prepared);
     }
@@ -343,6 +346,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         )?);
     }
     let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets);
+    scoped_exception_branches.validate_ports(&sources, &targets[0].ports)?;
+
     let native_datetime_casts = native_datetime_cast::NativeDatetimeCasts::plan(project, &targets);
     for (name, options) in sources
         .iter()
@@ -403,6 +408,8 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         warnings: &mut warnings,
     });
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
+    blocked_nodes.extend(exception::absorbed_filter_nodes(project));
+    blocked_nodes.extend(scoped_exception_branches.owned_nodes());
     if let Some(plan) = &native_database_where {
         blocked_nodes.extend(plan.absorbed_nodes());
     }
@@ -625,6 +632,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 joins: &joins,
                 target_branches: &target.branches,
                 exception_branches: &mut exception_branches,
+                scoped_exception_branches: &mut scoped_exception_branches,
             });
         }
         if let Some(plan) = &target.dynamic_json {
@@ -677,6 +685,15 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         plan.render_catalog(&mut uid, &mut components, &mut edges, &node_out_key)?;
     }
     exception_branches.render(exception::RenderArgs {
+        graph: &project.graph,
+        node_out_key: &node_out_key,
+        position_contexts: &position_contexts,
+        keys: &mut keys,
+        uid: &mut uid,
+        components: &mut scope_components,
+        edges: &mut edges,
+    })?;
+    scoped_exception_branches.render(exception::RenderArgs {
         graph: &project.graph,
         node_out_key: &node_out_key,
         position_contexts: &position_contexts,
@@ -1074,6 +1091,12 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
     crate::design::validate_export(&out)?;
     let root_view_issues = xml_root_view::issues(&out, &sources, &targets)?;
     let mut report = compatibility::profile(&out, warnings, path, &artifacts)?;
+    if let Some(issue) = exception_ordering::issue(project) {
+        report.issues.push(issue);
+        if report.compatibility == ExportCompatibility::NativeMfd {
+            report.compatibility = ExportCompatibility::FerruleExtensions;
+        }
+    }
     if !first_presence_issues.is_empty() || !text_issues.is_empty() || !root_view_issues.is_empty()
     {
         report.issues.extend(root_view_issues);

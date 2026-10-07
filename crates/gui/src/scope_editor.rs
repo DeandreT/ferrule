@@ -952,6 +952,7 @@ fn node_label(node: &mapping::Node) -> String {
             format!("user function {}", function.get())
         }
         mapping::Node::If { .. } => "if".to_string(),
+        mapping::Node::Raise { .. } => "raise error".to_string(),
         mapping::Node::ValueMap { .. } => "value map".to_string(),
         mapping::Node::Lookup { collection, .. } => {
             format!("lookup {}", display_path(collection))

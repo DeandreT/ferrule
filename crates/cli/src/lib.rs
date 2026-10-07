@@ -804,14 +804,45 @@ pub fn import_mfd(
     edi_catalog_roots: &[PathBuf],
     json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
+    import_mfd_with_exception_order(
+        mfd_path,
+        out_path,
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+        false,
+    )
+}
+
+/// Imports a project with an explicit row-error-order choice. Opting in
+/// requires executable import before any project file is written.
+pub fn import_mfd_with_exception_order(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+    item_ordered_exceptions: bool,
+) -> anyhow::Result<Vec<String>> {
     let options = mfd_import_options(
         package_root,
         package_manifest,
         edi_catalog_roots,
         json_schema_catalog_roots,
     )?;
-    let mut imported = mfd::import_with_options(mfd_path, &options)
-        .with_context(|| format!("importing {}", mfd_path.display()))?;
+    let imported = if item_ordered_exceptions {
+        mfd::import_with_profile(
+            mfd_path,
+            &options.with_item_ordered_exceptions(),
+            mfd::ImportProfile::Executable,
+        )
+        .map(|outcome| outcome.imported)
+    } else {
+        mfd::import_with_options(mfd_path, &options)
+    };
+    let mut imported = imported.with_context(|| format!("importing {}", mfd_path.display()))?;
     rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
     let json = mapping::project_file::encode_pretty(&imported.project)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
@@ -828,12 +859,39 @@ pub fn import_mfd_pipeline(
     edi_catalog_roots: &[PathBuf],
     json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
+    import_mfd_pipeline_with_exception_order(
+        mfd_path,
+        out_path,
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+        false,
+    )
+}
+
+/// Imports a pipeline with the same explicit row-error-order choice.
+/// Unsupported exception stages refuse without single-project fallback.
+pub fn import_mfd_pipeline_with_exception_order(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+    item_ordered_exceptions: bool,
+) -> anyhow::Result<Vec<String>> {
     let options = mfd_import_options(
         package_root,
         package_manifest,
         edi_catalog_roots,
         json_schema_catalog_roots,
     )?;
+    let options = if item_ordered_exceptions {
+        options.with_item_ordered_exceptions()
+    } else {
+        options
+    };
     let mut imported = mfd::import_pipeline_with_options(mfd_path, &options)
         .with_context(|| format!("importing {} as a pipeline", mfd_path.display()))?;
     let active_mapping_path =

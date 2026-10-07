@@ -91,6 +91,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::JoinPosition { .. }
         | Node::XmlSerialize { .. } => vec![],
         Node::RuntimeParameterDefault { default, .. } => vec![Some(*default)],
+        Node::Raise { message } => vec![*message],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
             args.iter().copied().map(Some).collect()
         }
@@ -183,6 +184,7 @@ fn node_title(node: &Node) -> String {
             format!("user function {}", function.get())
         }
         Node::If { .. } => "if".to_string(),
+        Node::Raise { .. } => "Raise error".to_string(),
         Node::ValueMap { .. } => "value-map".to_string(),
         Node::Lookup { collection, .. } => format!("lookup · {}", collection.join("/")),
         Node::DynamicSourceField { object, .. } => {
@@ -366,6 +368,7 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
                     ["expr", "arg"][pin.id.input.min(1)].to_string()
                 }
                 Some(Node::If { .. }) => ["cond", "then", "else"][pin.id.input.min(2)].to_string(),
+                Some(Node::Raise { .. }) => "message (optional)".to_string(),
                 Some(Node::SequenceExists { sequence, .. }) => {
                     sequence_pin_label(sequence, pin.id.input)
                 }

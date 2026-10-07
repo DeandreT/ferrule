@@ -281,6 +281,13 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 ));
                 output.push_str(&format!("        return Node_{else_}(context);\n    }}\n"));
             }
+            Expression::Raise { message } => {
+                let message = message.map_or_else(
+                    || "null".to_string(),
+                    |message| format!("Node_{message}(context)"),
+                );
+                output.push_str(&format!(" =>\n        throw global::Ferrule.Runtime.FerruleFailures.MappingException({node}U, {message});\n"));
+            }
             Expression::ValueMap {
                 input,
                 input_type,
@@ -831,6 +838,10 @@ fn render_user_function_expression(
                 call(*then)
             ));
             output.push_str(&format!("        return {};\n    }}\n", call(*else_)));
+        }
+        Expression::Raise { message } => {
+            let message = message.map_or_else(|| "null".to_string(), &call);
+            output.push_str(&format!(" =>\n        throw global::Ferrule.Runtime.FerruleFailures.MappingException({node}U, {message});\n"));
         }
         Expression::ValueMap {
             input,

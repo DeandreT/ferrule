@@ -1166,6 +1166,7 @@ fn blocked_nodes(
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
+        Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::If {
             condition,

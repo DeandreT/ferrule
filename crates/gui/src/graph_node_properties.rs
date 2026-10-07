@@ -247,6 +247,14 @@ impl GraphViewer<'_> {
                 Node::If { .. } => {
                     ui.label("condition ? then : else");
                 }
+                Node::Raise { message } => {
+                    ui.label("Stops execution when reached.");
+                    ui.label(if message.is_some() {
+                        "Uses the connected message input."
+                    } else {
+                        "No message is set."
+                    });
+                }
                 Node::ValueMap { table, default, .. } => {
                     show_value_map_editor(ui, table, default, None);
                 }

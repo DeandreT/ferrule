@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use mapping::{
-    FailureIteration, FailureSelection, Graph, IterationOutput, NodeId, Project, Scope,
-    ScopeIteration, SortFilterOrder,
+    FailureIteration, FailureSelection, Graph, IterationOutput, Node, NodeId, Project, Scope,
+    ScopeConstruction, ScopeIteration, SortFilterOrder,
 };
 
 use crate::MfdError;
@@ -28,11 +28,10 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                     "unconditional failures have no executable native exception representation",
                 ));
             }
-            FailureSelection::WhenTrue { .. } => {
-                return Err(unsupported_rule(
-                    index,
-                    "when-true failures need a complementary false-branch target consumer",
-                ));
+            FailureSelection::WhenTrue { predicate } => {
+                validate_node(project, index, "predicate", predicate)?;
+                validate_true_branch(project, index, predicate)?;
+                continue;
             }
         };
         let collection = match &rule.iteration {
@@ -66,6 +65,212 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         }
     }
     Ok(())
+}
+
+/// Omit only a complementary negation whose sole use becomes a native filter
+/// branch. Keep every other graph consumer, even a disconnected one, intact.
+/// Called after preflight has validated the original, unchanged project.
+pub(super) fn absorbed_filter_nodes(project: &Project) -> BTreeSet<NodeId> {
+    let [rule] = project.failure_rules.as_slice() else {
+        return BTreeSet::new();
+    };
+    let (FailureIteration::Source { collection }, FailureSelection::WhenTrue { predicate }) =
+        (&rule.iteration, rule.selection)
+    else {
+        return BTreeSet::new();
+    };
+    let filters = complementary_filters(project, collection, predicate);
+    let [filter] = filters.as_slice() else {
+        return BTreeSet::new();
+    };
+    if project
+        .graph
+        .nodes
+        .values()
+        .any(|node| node.dependencies().contains(filter))
+        || std::iter::once(&project.source_options)
+            .chain(project.extra_sources.iter().map(|source| &source.options))
+            .chain(std::iter::once(&project.target_options))
+            .chain(project.extra_targets.iter().map(|target| &target.options))
+            .any(|options| options.mfd_decimal_input_names.contains_key(filter))
+    {
+        return BTreeSet::new();
+    }
+    // The existing project-root traversal covers scalar bindings, every scope
+    // control, failure predicates/messages, and dynamic source path expressions.
+    // Use it only as a proof; neither the caller's graph nor its roots are pruned.
+    let mut ordinary = project.clone();
+    let uses = clear_filter_references(&mut ordinary.root, *filter)
+        + ordinary
+            .extra_targets
+            .iter_mut()
+            .map(|target| clear_filter_references(&mut target.root, *filter))
+            .sum::<usize>();
+    if uses != 1 {
+        return BTreeSet::new();
+    }
+    ordinary.prune_unreachable_nodes();
+    if ordinary.graph.nodes.contains_key(filter) {
+        BTreeSet::new()
+    } else {
+        BTreeSet::from([*filter])
+    }
+}
+
+fn clear_filter_references(scope: &mut Scope, filter: NodeId) -> usize {
+    let mut uses = 0;
+    if scope.filter == Some(filter) {
+        scope.filter = None;
+        uses += 1;
+    }
+    if let Some(segments) = scope.concatenated_mut() {
+        uses += segments
+            .iter_mut()
+            .map(|segment| clear_filter_references(segment, filter))
+            .sum::<usize>();
+    }
+    uses += scope
+        .children
+        .iter_mut()
+        .map(|child| clear_filter_references(child, filter))
+        .sum::<usize>();
+    uses += scope
+        .dynamic_children
+        .iter_mut()
+        .map(|child| clear_filter_references(&mut child.scope, filter))
+        .sum::<usize>();
+    uses
+}
+
+fn validate_true_branch(
+    project: &Project,
+    index: usize,
+    predicate: NodeId,
+) -> Result<(), MfdError> {
+    if project.failure_rules.len() != 1 {
+        return Err(unsupported_rule(
+            index,
+            "when-true failures require exactly one failure rule",
+        ));
+    }
+    let FailureIteration::Source { collection } = &project.failure_rules[index].iteration else {
+        return Err(unsupported_rule(
+            index,
+            "generated-sequence failures cannot share a target filter branch yet",
+        ));
+    };
+    if project
+        .extra_sources
+        .iter()
+        .any(|source| collection.first() == Some(&source.name))
+    {
+        return Err(unsupported_rule(
+            index,
+            "secondary-source failures cannot own native exception filters",
+        ));
+    }
+    if !collection
+        .iter()
+        .try_fold(&project.source, |schema, segment| schema.child(segment))
+        .is_some_and(|schema| schema.repeating)
+    {
+        return Err(unsupported_rule(
+            index,
+            "when-true failures require an exact repeating primary-source schema path",
+        ));
+    }
+    let matches = complementary_filters(project, collection, predicate).len();
+    if matches != 1 {
+        return Err(unsupported_rule(
+            index,
+            &format!(
+                "when-true failures need a complementary false-branch target consumer: requires exactly one plain repeated scope over `{}` with unary not(node {predicate}); found {matches}",
+                display_collection(collection)
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn complementary_filters(
+    project: &Project,
+    collection: &[String],
+    predicate: NodeId,
+) -> Vec<NodeId> {
+    let mut filters = Vec::new();
+    for root in std::iter::once(&project.root)
+        .chain(project.extra_targets.iter().map(|target| &target.root))
+    {
+        collect_complementary_filters(
+            root,
+            &[],
+            collection,
+            predicate,
+            &project.graph,
+            true,
+            &mut filters,
+        );
+    }
+    filters
+}
+
+fn collect_complementary_filters(
+    scope: &Scope,
+    parent_collection: &[String],
+    expected_collection: &[String],
+    predicate: NodeId,
+    graph: &Graph,
+    ancestors_preserve_items: bool,
+    filters: &mut Vec<NodeId>,
+) {
+    if scope.concatenated().is_some() {
+        return;
+    }
+    let collection = scope.source().map(|source| {
+        let mut collection = parent_collection.to_vec();
+        collection.extend(source.iter().cloned());
+        collection
+    });
+    let current = collection.as_deref().unwrap_or(parent_collection);
+    let plain = scope.construction == ScopeConstruction::Constructed
+        && matches!(
+            scope.iteration,
+            ScopeIteration::None | ScopeIteration::Source(_)
+        )
+        && scope.post_group_filter.is_none()
+        && !scope.has_sort()
+        && scope.group_by.is_none()
+        && scope.group_starting_with.is_none()
+        && scope.group_adjacent_by.is_none()
+        && scope.group_ending_with.is_none()
+        && scope.group_into_blocks.is_none()
+        && scope.windows.is_empty()
+        && scope.iteration_output == IterationOutput::Repeated
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
+        && !scope.merge_dynamic_fields;
+    if scope.source().is_some()
+        && ancestors_preserve_items
+        && plain
+        && current == expected_collection
+        && let Some(filter) = scope.filter
+        && matches!(graph.nodes.get(&filter), Some(Node::Call { function, args })
+            if function == "not" && args.as_slice() == std::slice::from_ref(&predicate))
+    {
+        filters.push(filter);
+    }
+    let descendants_preserve_items = ancestors_preserve_items && plain && scope.filter.is_none();
+    for child in &scope.children {
+        collect_complementary_filters(
+            child,
+            current,
+            expected_collection,
+            predicate,
+            graph,
+            descendants_preserve_items,
+            filters,
+        );
+    }
 }
 
 fn validate_node(
@@ -180,6 +385,7 @@ struct Sink {
 
 pub(super) struct Branches {
     by_key: BTreeMap<BranchKey, Vec<usize>>,
+    true_predicates: BTreeMap<BranchKey, NodeId>,
     sinks: Vec<Sink>,
 }
 
@@ -196,6 +402,7 @@ pub(super) struct RenderArgs<'a> {
 impl Branches {
     pub(super) fn new(project: &Project) -> Self {
         let mut by_key = BTreeMap::<BranchKey, Vec<usize>>::new();
+        let mut true_predicates = BTreeMap::new();
         let mut sinks = Vec::with_capacity(project.failure_rules.len());
         for (index, rule) in project.failure_rules.iter().enumerate() {
             if let (
@@ -208,13 +415,40 @@ impl Branches {
                     .or_default()
                     .push(index);
             }
+            if let (
+                FailureIteration::Source { collection },
+                FailureSelection::WhenTrue { predicate },
+            ) = (&rule.iteration, rule.selection)
+            {
+                for filter in complementary_filters(project, collection, predicate) {
+                    let key = (collection.clone(), filter);
+                    by_key.entry(key.clone()).or_default().push(index);
+                    true_predicates.insert(key, predicate);
+                }
+            }
             sinks.push(Sink {
                 predicate: rule.selection.predicate(),
                 message: rule.message,
                 trigger_output: None,
             });
         }
-        Self { by_key, sinks }
+        Self {
+            by_key,
+            true_predicates,
+            sinks,
+        }
+    }
+
+    pub(super) fn filter_predicate(&self, collection: &[String], filter: NodeId) -> NodeId {
+        self.true_predicates
+            .get(&(collection.to_vec(), filter))
+            .copied()
+            .unwrap_or(filter)
+    }
+
+    pub(super) fn target_is_false_branch(&self, collection: &[String], filter: NodeId) -> bool {
+        self.true_predicates
+            .contains_key(&(collection.to_vec(), filter))
     }
 
     pub(super) fn has_branch(&self, collection: &[String], predicate: NodeId) -> bool {
