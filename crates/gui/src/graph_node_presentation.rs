@@ -77,6 +77,33 @@ pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
                 replacements.len(),
             );
         }
+        Some(Node::ValueMap {
+            input_type,
+            table,
+            default,
+            ..
+        }) => {
+            let input_type = input_type.map_or_else(
+                || "automatic (runtime type)".to_owned(),
+                |ty| format!("{ty:?}").to_lowercase(),
+            );
+            let unmatched = match default {
+                None => "null (no default)".to_owned(),
+                Some(ir::Value::Null) => "null (stored default)".to_owned(),
+                Some(ir::Value::String(value)) if value.is_empty() => {
+                    "empty string (stored default)".to_owned()
+                }
+                Some(value) => format!(
+                    "{}: {} (stored default)",
+                    value.type_name(),
+                    crate::value_editor::display_string(value),
+                ),
+            };
+            return format!(
+                "{title}\nEntries: {}\nInput type: {input_type}\nUnmatched value: {unmatched}\nFirst matching entry wins. Edit the table with the pencil.",
+                table.len(),
+            );
+        }
         Some(Node::DynamicSourceField { object, frame, .. }) => {
             let object = if object.is_empty() {
                 "<current> (empty path)".to_owned()
@@ -297,6 +324,17 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 SUMMARY_CHAR_LIMIT,
             ),
         ),
+        Node::ValueMap { table, .. } => (
+            Icon::ArrowRightLeft,
+            compact(
+                &format!(
+                    "{} {}",
+                    table.len(),
+                    if table.len() == 1 { "entry" } else { "entries" }
+                ),
+                SUMMARY_CHAR_LIMIT,
+            ),
+        ),
         Node::Lookup { collection, .. } => (
             Icon::Search,
             if collection.is_empty() {
@@ -360,6 +398,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::SourceRootField { .. }
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::DynamicSourceField { .. }
+            | Node::ValueMap { .. }
             | Node::JoinField { .. }
             | Node::Lookup { .. }
             | Node::Position { .. }
