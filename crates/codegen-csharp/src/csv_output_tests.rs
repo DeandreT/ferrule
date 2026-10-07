@@ -305,9 +305,14 @@ fn csv_emission_keeps_typed_dialect_and_named_boundary_refusals() {
         source: SchemaNode::group("Secondary", Vec::new()),
         dynamic: None,
     });
+    assert!(emit_with_csv_output(&named, &CsvOutputPolicy::default()).is_ok());
+    named.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
+        path: 0,
+        driver: codegen::SourceIteration::new(Vec::new()),
+    });
     assert!(matches!(
         emit_with_csv_output(&named, &CsvOutputPolicy::default()),
-        Err(EmitError::CsvOutput(CsvOutputError::NamedInputs))
+        Err(EmitError::CsvOutput(CsvOutputError::DynamicInputs { name })) if name == "Secondary"
     ));
     named.extra_sources.clear();
     named.extra_targets.push(NamedTargetProgram {
@@ -357,4 +362,69 @@ fn invalid_mapping_retains_original_cause_before_csv_policy() {
             .is_some()
     );
     assert_eq!(error.clone(), error);
+}
+
+#[test]
+fn named_csv_companions_reuse_ordinary_context_and_keep_no_name_bytes_exact() {
+    let plain = program();
+    let before = emit_with_csv_output(&plain, &CsvOutputPolicy::default()).unwrap();
+    let old_adapter = text(&before, "GeneratedMapping.Csv.cs");
+    assert!(!old_adapter.contains("ExecuteCsvWithSources("));
+    let mut named = plain.clone();
+    named.extra_sources.push(NamedSourceProgram {
+        name: "Settings".into(),
+        source: SchemaNode::group("Settings", Vec::new()),
+        dynamic: None,
+    });
+    let opted = emit_with_csv_output(&named, &CsvOutputPolicy::default()).unwrap();
+    let adapter = text(&opted, "GeneratedMapping.Csv.cs");
+    let legacy_prefix = old_adapter.strip_suffix("}\n").unwrap();
+    assert!(adapter.starts_with(legacy_prefix));
+    assert!(adapter.ends_with("}\n"));
+    let added = &adapter[legacy_prefix.len()..adapter.len() - 2];
+    assert_eq!(added.matches("public static ").count(), 4);
+    assert_eq!(
+        adapter
+            .matches("public static string ExecuteCsvWithSources(")
+            .count(),
+        2
+    );
+    assert_eq!(
+        adapter
+            .matches("public static byte[] ExecuteCsvBytesWithSources(")
+            .count(),
+        2
+    );
+    assert_eq!(
+        adapter
+            .matches("var primary = ExecuteWithSources(source, extraSources);")
+            .count(),
+        2
+    );
+    assert_eq!(
+        adapter
+            .matches("var primary = ExecuteWithSources(source, extraSources, executionContext);")
+            .count(),
+        2
+    );
+    assert!(!adapter.contains("ExecuteOutputs"));
+    assert!(!adapter.contains("catch"));
+    assert!(!adapter.contains("ExecuteJson"));
+    let ordinary = emit(&named).unwrap();
+    for old in ordinary.files() {
+        let expected = match old.path.as_str() {
+            "GeneratedMapping.cs" => std::str::from_utf8(&old.contents).unwrap().replacen(
+                "public static class GeneratedMapping\n{", "public static partial class GeneratedMapping\n{", 1).into_bytes(),
+            "Ferrule.Generated.csproj" => std::str::from_utf8(&old.contents).unwrap().replacen(
+                "    <Compile Include=\"GeneratedMapping.cs\" />\n",
+                "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.Csv.cs\" />\n", 1).into_bytes(),
+            _ => old.contents.clone(),
+        };
+        assert_eq!(contents(&opted, old.path.as_str()), expected);
+    }
+    assert_eq!(emit(&named).unwrap(), ordinary);
+    assert_eq!(
+        emit_with_csv_output(&plain, &CsvOutputPolicy::default()).unwrap(),
+        before
+    );
 }

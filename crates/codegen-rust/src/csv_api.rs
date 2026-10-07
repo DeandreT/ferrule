@@ -48,6 +48,13 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
     source.push_str(&format!("        utf8_bom: {},\n", policy.utf8_bom));
     source.push_str("        repair_dependency: None,\n    }\n}\n\n");
     source.push_str(ADAPTERS);
+    if program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_none())
+    {
+        source.push_str(NAMED_ADAPTERS);
+    }
     Ok(source)
 }
 
@@ -85,6 +92,46 @@ pub fn execute_csv_bytes_with_context(
     execution: &ExecutionContext<'_>,
 ) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
     let output = execute_with_context(source, execution).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+"#;
+
+const NAMED_ADAPTERS: &str = r#"
+/// Validate and map static named inputs, then return bounded CSV text.
+pub fn execute_csv_with_sources(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources(source, inputs).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Use the same named inputs and the caller's fixed execution context.
+pub fn execute_csv_with_sources_and_context(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    execution: &ExecutionContext<'_>,
+) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_and_context(source, inputs, execution).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Return complete bounded CSV bytes after validating and mapping named inputs.
+pub fn execute_csv_bytes_with_sources(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources(source, inputs).map_err(codegen_runtime::CsvBoundaryError::from)?;
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+
+/// Return named-input CSV bytes using the caller's fixed execution context.
+pub fn execute_csv_bytes_with_sources_and_context(
+    source: &Instance,
+    inputs: &[NamedInput<'_>],
+    execution: &ExecutionContext<'_>,
+) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_sources_and_context(source, inputs, execution).map_err(codegen_runtime::CsvBoundaryError::from)?;
     codegen_runtime::serialize_csv_bytes(&csv_output_schema(), &output, &csv_output_options())
 }
 "#;
@@ -257,5 +304,62 @@ mod tests {
             Err(EmitError::CsvOutput(CsvOutputError::PrimaryRows))
         ));
         assert!(emit(&program, &options()).is_ok());
+    }
+
+    #[test]
+    fn named_csv_companions_are_conditional_and_preserve_the_complete_legacy_adapter() {
+        let plain = program();
+        let before = render(&plain, &CsvOutputPolicy::default()).unwrap();
+        assert!(before.ends_with(ADAPTERS));
+        assert!(!before.contains("pub fn execute_csv_with_sources("));
+        let mut named = plain.clone();
+        named.extra_sources.push(codegen::NamedSourceProgram {
+            name: "Settings".into(),
+            source: SchemaNode::group("Settings", Vec::new()),
+            dynamic: None,
+        });
+        let after = render(&named, &CsvOutputPolicy::default()).unwrap();
+        assert_eq!(after, format!("{before}{NAMED_ADAPTERS}"));
+        for declaration in [
+            "pub fn execute_csv_with_sources(",
+            "pub fn execute_csv_with_sources_and_context(",
+            "pub fn execute_csv_bytes_with_sources(",
+            "pub fn execute_csv_bytes_with_sources_and_context(",
+        ] {
+            assert_eq!(NAMED_ADAPTERS.matches(declaration).count(), 1);
+        }
+        for call in [
+            "execute_with_sources(source, inputs).map_err",
+            "execute_with_sources_and_context(source, inputs, execution).map_err",
+        ] {
+            assert_eq!(NAMED_ADAPTERS.matches(call).count(), 2);
+        }
+        assert_eq!(
+            NAMED_ADAPTERS
+                .matches("codegen_runtime::serialize_csv(")
+                .count(),
+            2
+        );
+        assert_eq!(
+            NAMED_ADAPTERS
+                .matches("codegen_runtime::serialize_csv_bytes(")
+                .count(),
+            2
+        );
+        assert!(!NAMED_ADAPTERS.contains("execute_outputs"));
+        assert!(!NAMED_ADAPTERS.contains("execute_json"));
+        let ordinary = emit(&named, &options()).unwrap();
+        let opted = emit_with_csv_output(&named, &options(), &CsvOutputPolicy::default()).unwrap();
+        for (old, new) in ordinary.files().iter().zip(opted.files()) {
+            assert_eq!(old.path, new.path);
+            if old.path.as_str() == "src/lib.rs" {
+                assert!(new.contents.starts_with(&old.contents));
+                assert!(new.contents.ends_with(after.as_bytes()));
+            } else {
+                assert_eq!(old.contents, new.contents);
+            }
+        }
+        assert_eq!(emit(&named, &options()).unwrap(), ordinary);
+        assert_eq!(render(&plain, &CsvOutputPolicy::default()).unwrap(), before);
     }
 }
