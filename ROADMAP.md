@@ -51,9 +51,8 @@ Physical workbook cell tests and desktop persistence are separate evidence.
 
 ### 2. Close exception-ordering and integer edge qualification
 
-- [ ] Finish strict saved-design replay of the signed-integer edge cohort.
-- [ ] Qualify the corresponding generated public APIs with independent full
-  typed/serialized results, lazy messages, and wrapper-cause checks.
+- [ ] Resolve native XML root schema annotations and retain the separately
+  observed failure-publication differences.
 - [ ] Expand accepted shapes only with a concrete owner/order proof and
   counterexamples for ambiguous, shared, or fallible branches.
 
@@ -64,10 +63,6 @@ an unrestricted publication-parity promise.
 
 ### 3. Finish generated boundary cohorts
 
-- [ ] Verify optional adapters against actual emitted schemas and APIs;
-  `.xml` path hints alone do not enable XML companions.
-- [ ] Preserve exact names, wrapper causes, lazy failures, full output bytes,
-  and complete original outcomes before assertions.
 
 Exit: compiled public calls agree with independent oracles under their declared
 adapter profile. Neither a lowering pass nor one host cohort certifies every
@@ -86,8 +81,6 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 
 ### 5. Deepen memory and authoring coverage without changing contracts
 
-- [ ] Maintain representative many-row and wide-row trials, individual repeats,
-  late errors, full outputs, and regressions under clearly named build profiles.
 - [ ] Choose the next GUI authoring gap from an existing executable mapping;
   preserve compact headers, complete hover/pin identities, locks, and history.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
