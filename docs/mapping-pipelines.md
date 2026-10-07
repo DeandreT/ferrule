@@ -239,6 +239,21 @@ edit. A loaded pipeline with missing static named-source bindings can add host
 bindings for them from the selected stage. The editor shows whole-pipeline
 validation issues and saves only a valid pipeline. It detects external file
 changes before an atomic save and asks before discarding unsaved pipeline edits.
+
+To edit an embedded stage's mapping, select the stage and choose **Edit mapping
+on canvas**. The stage opens a separate draft with primary and named target
+canvases and its existing functions. Edit node properties or wires and use
+**Undo stage edit** / **Redo stage edit** within that draft. Boundary schemas,
+instance paths, and stage input links stay fixed. **Apply stage mapping**
+validates the complete pipeline before replacing only the selected embedded
+mapping. **Cancel stage editing** offers to apply, discard, or keep an edited
+draft. The open main mapping and other stages retain their state.
+
+After applying a stage draft, use **Save pipeline** before opening the Run
+Pipeline dialog for Preview or Run. Stage canvas layout is temporary, and its
+local Undo/Redo history ends when the draft closes. Closing the application
+resolves an edited stage draft before the pipeline and main mapping save guards.
+
 The **Run Pipeline** dialog prepopulates a host input path when stored paths
 from its bound stages resolve to one file relative to the pipeline location.
 Conflicting path hints leave that input blank. Output selection remains
