@@ -5,6 +5,7 @@ use mapping::{FailureIteration, FailureRule, FailureSelection, Node, SequenceExp
 enum RuleAction {
     Add,
     AddSequence(GeneratedRuleKind),
+    EnableRegexFlags(usize),
     Remove(usize),
     Move { from: usize, to: usize },
 }
@@ -14,6 +15,7 @@ enum GeneratedRuleKind {
     IntegerRange,
     SplitText,
     SplitTextByLength,
+    SplitTextByRegex,
 }
 
 fn editable_generated_rule(project: &Project, rule: &FailureRule) -> bool {
@@ -25,6 +27,7 @@ fn editable_generated_rule(project: &Project, rule: &FailureRule) -> bool {
         SequenceExpr::Generate { .. }
             | SequenceExpr::Tokenize { .. }
             | SequenceExpr::TokenizeByLength { .. }
+            | SequenceExpr::TokenizeRegex { .. }
     ) {
         return false;
     }
@@ -77,9 +80,14 @@ impl FerruleApp {
                         action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitText));
                     }
                 });
-                if ui.add_enabled(editing_enabled, egui::Button::new("Add fixed-length text rule")).clicked() {
-                    action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength));
-                }
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(editing_enabled, egui::Button::new("Add fixed-length text rule")).clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength));
+                    }
+                    if ui.add_enabled(editing_enabled, egui::Button::new("Add regex text rule")).clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex));
+                    }
+                });
                 if self.project.failure_rules.is_empty() {
                     ui.weak("No failure rules.");
                 }
@@ -122,7 +130,9 @@ impl FerruleApp {
                             action = Some(RuleAction::Remove(index));
                         }
                     });
-                    self.show_selected_failure_rule(ui, index, editing_enabled);
+                    if let Some(flags_action) = self.show_selected_failure_rule(ui, index, editing_enabled) {
+                        action = Some(flags_action);
+                    }
                 }
             });
         if let Some(index) = selection {
@@ -139,7 +149,8 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         index: usize,
         editing_enabled: bool,
-    ) {
+    ) -> Option<RuleAction> {
+        let mut flags_action = None;
         let static_sources = self
             .project
             .extra_sources
@@ -223,6 +234,33 @@ impl FerruleApp {
                             });
                             ui.weak("Counts Unicode characters. Combining marks count separately; the last item may be shorter.");
                         }
+                        SequenceExpr::TokenizeRegex { input, pattern, flags, .. } => {
+                            ui.label("Split text using a regular expression");
+                            ui.horizontal(|ui| {
+                                ui.label("Text:");
+                                crate::scope_editor::node_picker(ui, ("failure_regex_text", index), input, graph);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Pattern:");
+                                crate::scope_editor::node_picker(ui, ("failure_regex_pattern", index), pattern, graph);
+                            });
+                            let mut custom_flags = flags.is_some();
+                            if ui.checkbox(&mut custom_flags, "Custom flags expression").changed() {
+                                if custom_flags {
+                                    flags_action = Some(RuleAction::EnableRegexFlags(index));
+                                } else {
+                                    *flags = None;
+                                }
+                            }
+                            if let Some(flags) = flags {
+                                ui.horizontal(|ui| {
+                                    ui.label("Flags:");
+                                    crate::scope_editor::node_picker(ui, ("failure_regex_flags", index), flags, graph);
+                                });
+                            }
+                            ui.weak("Flags: i ignores case, m enables line anchors, s includes line breaks, x ignores pattern spacing.");
+                            ui.weak("Patterns must consume at least one character.");
+                        }
                         _ => unreachable!("editable generated rule kind"),
                     }
                     ui.label(format!("Generated item: node {item}"))
@@ -248,6 +286,7 @@ impl FerruleApp {
             self.clear_diagnostic_navigation();
             self.selected_failure_rule = Some(index);
         }
+        flags_action
     }
 
     fn apply_failure_rule_action(&mut self, action: RuleAction, editing_enabled: bool) {
@@ -304,6 +343,16 @@ impl FerruleApp {
                             item,
                         },
                     ),
+                    GeneratedRuleKind::SplitTextByRegex => (
+                        ir::Value::String("first,second".into()),
+                        ir::Value::String("[,;]+".into()),
+                        SequenceExpr::TokenizeRegex {
+                            input: first,
+                            pattern: second,
+                            flags: None,
+                            item,
+                        },
+                    ),
                 };
                 self.project.graph.nodes.extend([
                     (first, Node::Const { value: first_value }),
@@ -328,6 +377,57 @@ impl FerruleApp {
                 });
                 self.rebuild_mapping_canvases_after_retirement();
                 Some(self.project.failure_rules.len() - 1)
+            }
+            RuleAction::EnableRegexFlags(index) => {
+                let Some(rule) = self.project.failure_rules.get(index) else {
+                    return;
+                };
+                if !editable_generated_rule(&self.project, rule)
+                    || !matches!(
+                        &rule.iteration,
+                        FailureIteration::Sequence {
+                            sequence: SequenceExpr::TokenizeRegex { flags: None, .. },
+                        }
+                    )
+                {
+                    return;
+                }
+                let existing = self.project.graph.nodes.iter().find_map(|(&id, node)| {
+                    matches!(node, Node::Const { value: ir::Value::String(value) } if value.is_empty())
+                        .then_some(id)
+                });
+                let (flags_node, created) = match existing {
+                    Some(id) => (id, false),
+                    None => {
+                        let ids =
+                            match crate::graph_viewer::reserve_project_node_ids(&self.project, 1) {
+                                Ok(ids) => ids,
+                                Err(message) => {
+                                    self.failure_rule_edit_failed(message);
+                                    return;
+                                }
+                            };
+                        let id = ids[0];
+                        self.project.graph.nodes.insert(
+                            id,
+                            Node::Const {
+                                value: ir::Value::String(String::new()),
+                            },
+                        );
+                        (id, true)
+                    }
+                };
+                let FailureIteration::Sequence {
+                    sequence: SequenceExpr::TokenizeRegex { flags, .. },
+                } = &mut self.project.failure_rules[index].iteration
+                else {
+                    unreachable!("validated regex flags action");
+                };
+                *flags = Some(flags_node);
+                if created {
+                    self.rebuild_mapping_canvases_after_retirement();
+                }
+                Some(index)
             }
             RuleAction::Remove(index) => {
                 let Some(rule) = self.project.failure_rules.get(index) else {
