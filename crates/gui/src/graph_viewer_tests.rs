@@ -1064,6 +1064,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             NodeTemplate::Constant
             | NodeTemplate::SourceField
             | NodeTemplate::SourceDocumentPath
+            | NodeTemplate::XmlSerialize
             | NodeTemplate::SourceRootField
             | NodeTemplate::SourceRootXmlTypeEquals
             | NodeTemplate::Position
@@ -1079,6 +1080,16 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             (NodeTemplate::Constant, Node::Const { value: Value::Null })
             | (NodeTemplate::SourceField, Node::SourceField { .. })
             | (NodeTemplate::SourceDocumentPath, Node::SourceDocumentPath)
+            | (
+                NodeTemplate::XmlSerialize,
+                Node::XmlSerialize {
+                    frame: None,
+                    declaration: false,
+                    indent: true,
+                    namespace: None,
+                    ..
+                },
+            )
             | (NodeTemplate::DynamicSourceField, Node::DynamicSourceField { frame: None, .. })
             | (NodeTemplate::SourceRootField, Node::SourceRootField { .. })
             | (NodeTemplate::SourceRootXmlTypeEquals, Node::SourceRootXmlTypeEquals { .. })
@@ -1121,6 +1132,15 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
                 &SchemaNode::group("object", Vec::new())
                     .with_dynamic_fields(SchemaNode::scalar("value", ScalarType::String))
                     .unwrap(),
+                &[],
+            );
+        }
+        if template == NodeTemplate::XmlSerialize {
+            fx.source_paths = SourcePathCatalog::new(
+                &SchemaNode::group(
+                    "Input",
+                    vec![SchemaNode::scalar("Value", ScalarType::String)],
+                ),
                 &[],
             );
         }

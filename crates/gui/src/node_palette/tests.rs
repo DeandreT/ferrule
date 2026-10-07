@@ -11,7 +11,7 @@ fn source_document_path_keyboard_creation_follows_the_primary_file_set_capabilit
                     events,
                     ..Default::default()
                 },
-                |ui| selected = show_available(ui, true, true, true, allowed),
+                |ui| selected = show_available(ui, true, true, true, allowed, true),
             );
             eprintln!(
                 "Document-path palette capability={allowed}, original selection={selected:?}, shapes={}",
@@ -205,7 +205,7 @@ fn keyboard_root_creation_choices_follow_the_active_canvas_policy() {
                         events,
                         ..Default::default()
                     },
-                    |ui| selected = show_available(ui, allowed, allowed, allowed, allowed),
+                    |ui| selected = show_available(ui, allowed, allowed, allowed, allowed, allowed),
                 );
             };
             run(Vec::new());
@@ -233,7 +233,7 @@ fn palette_frame(context: &egui::Context, events: Vec<egui::Event>) -> Option<No
             events,
             ..Default::default()
         },
-        |ui| selected = show_available(ui, true, true, true, true),
+        |ui| selected = show_available(ui, true, true, true, true, true),
     );
     selected
 }
@@ -415,7 +415,7 @@ fn overflow_palette_frame(
         |ui| {
             let canvas = ui.allocate_rect(ui.max_rect(), egui::Sense::click());
             canvas.context_menu(|ui| {
-                chosen = show_available(ui, true, true, true, true);
+                chosen = show_available(ui, true, true, true, true, true);
                 if chosen.is_some() {
                     ui.close();
                 }
@@ -550,7 +550,7 @@ fn keyboard_navigation_reveals_real_overflow_results_down_and_up_before_return()
         visible_selected_palette_row(&context, &initial).label,
         "Constant"
     );
-    for _ in 0..23 {
+    for _ in 0..24 {
         let moved = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
         assert_eq!(moved.chosen, None);
         let settled = settle_overflow_palette(&context, &mut time);
@@ -561,7 +561,7 @@ fn keyboard_navigation_reveals_real_overflow_results_down_and_up_before_return()
         visible_selected_palette_row(&context, &bottom).label,
         "Item at"
     );
-    for _ in 0..15 {
+    for _ in 0..16 {
         let moved = overflow_palette_frame(&context, vec![key(Key::ArrowUp)], &mut time);
         assert_eq!(moved.chosen, None);
         let settled = settle_overflow_palette(&context, &mut time);
@@ -625,7 +625,7 @@ fn manual_wheel_and_pointer_selection_remain_free_after_keyboard_reveal() {
     let context = overflow_palette_context();
     let mut time = 0.0;
     open_overflow_palette(&context, &mut time);
-    for _ in 0..23 {
+    for _ in 0..24 {
         overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
         settle_overflow_palette(&context, &mut time);
     }

@@ -560,6 +560,31 @@ impl GraphViewer<'_> {
                 }
                 self.insert(snarl, pos, Node::SourceDocumentPath)
             }
+            NodeTemplate::XmlSerialize => {
+                if self.function_output.is_some() {
+                    return Err(
+                        "Source XML serialization is unavailable in isolated functions.".into(),
+                    );
+                }
+                let (path, schema) =
+                    self.source_paths
+                        .first_xml_source_element()
+                        .ok_or_else(|| {
+                            "No supported primary source element is available.".to_owned()
+                        })?;
+                self.insert(
+                    snarl,
+                    pos,
+                    Node::XmlSerialize {
+                        path,
+                        frame: None,
+                        schema,
+                        declaration: false,
+                        indent: true,
+                        namespace: None,
+                    },
+                )
+            }
             NodeTemplate::DynamicSourceField => {
                 if self.function_output.is_some() {
                     return Err("Source properties are unavailable in isolated functions.".into());
@@ -2211,6 +2236,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 && self.source_paths.first_open_scalar_object().is_some(),
             self.function_output.is_none()
                 && self.source_paths.primary_source_document_path_available(),
+            self.function_output.is_none() && self.source_paths.xml_source_elements_available(),
         ) {
             self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();
