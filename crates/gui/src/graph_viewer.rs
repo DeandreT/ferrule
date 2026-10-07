@@ -44,9 +44,90 @@ use graph_node_ids::NodeIdReservation;
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
-    references_outside_scope, sequence_item_ids,
+    references_outside_failure_rule, references_outside_scope, sequence_item_ids,
 };
 use node_palette::NodeTemplate;
+
+pub(crate) fn reserve_project_node_ids(
+    project: &mapping::Project,
+    count: usize,
+) -> Result<Vec<NodeId>, String> {
+    let owned_items = project_sequence_item_ids(project);
+    NodeIdReservation::new(&project.graph, &owned_items).reserve(count)
+}
+
+pub(crate) fn failure_rule_is_only_item_owner(
+    project: &mapping::Project,
+    rule: &mapping::FailureRule,
+    item: NodeId,
+) -> bool {
+    let Some(index) = project
+        .failure_rules
+        .iter()
+        .position(|candidate| std::ptr::eq(candidate, rule))
+    else {
+        return false;
+    };
+    let owners = graph_references::sequence_item_owners(
+        &project.graph,
+        &project.root,
+        &project.extra_targets,
+        &[],
+        ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
+        item,
+    );
+    matches!(
+        owners.as_slice(),
+        [graph_sequence_ownership::SequenceItemOwner::FailureRule { index: owner }]
+            if *owner == index
+    )
+}
+
+pub(crate) fn sequence_arguments_have_no_private_items(
+    project: &mapping::Project,
+    sequence: &mapping::SequenceExpr,
+) -> bool {
+    let owned = project_sequence_item_ids(project);
+    let mut pending = sequence
+        .inputs()
+        .into_iter()
+        .map(|id| (id, false))
+        .collect::<Vec<_>>();
+    let mut active = std::collections::BTreeSet::new();
+    let mut complete = std::collections::BTreeSet::new();
+    while let Some((id, exiting)) = pending.pop() {
+        if exiting {
+            active.remove(&id);
+            complete.insert(id);
+            continue;
+        }
+        if complete.contains(&id) {
+            continue;
+        }
+        if owned.contains(&id) || !active.insert(id) {
+            return false;
+        }
+        let Some(node) = project.graph.nodes.get(&id) else {
+            return false;
+        };
+        if matches!(node, Node::Unconnected) {
+            return false;
+        }
+        pending.push((id, true));
+        // Reducers own their private predicate/value context. Only their
+        // sequence arguments and parent argument reach this root context,
+        // matching the native validator's context dependency boundary.
+        let inputs = match node {
+            Node::SequenceExists { sequence, .. } => sequence.inputs(),
+            Node::SequenceAggregate { sequence, arg, .. } => {
+                sequence.inputs().into_iter().chain(*arg).collect()
+            }
+            _ => node_inputs(node),
+        };
+        pending.extend(inputs.into_iter().map(|input| (input, false)));
+    }
+    true
+}
 
 #[cfg(test)]
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
