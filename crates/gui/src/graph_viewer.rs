@@ -403,46 +403,6 @@ impl GraphViewer<'_> {
             .last()
     }
 
-    fn value_map_at(
-        &self,
-        graph_position: egui::Pos2,
-        snarl: &Snarl<CanvasNode>,
-    ) -> Option<NodeId> {
-        let sizes = self.node_sizes.as_deref()?;
-        snarl
-            .nodes_pos_ids()
-            .filter_map(|(_, position, &node)| {
-                let CanvasNode::Graph(id) = node else {
-                    return None;
-                };
-                if !matches!(self.graph.nodes.get(&id), Some(Node::ValueMap { .. })) {
-                    return None;
-                }
-                let size = sizes.get(&node)?;
-                egui::Rect::from_min_size(position, *size)
-                    .expand(4.0)
-                    .contains(graph_position)
-                    .then_some(id)
-            })
-            .last()
-    }
-
-    pub fn queue_value_map_wheel_at(
-        &mut self,
-        graph_position: egui::Pos2,
-        delta_y: f32,
-        snarl: &Snarl<CanvasNode>,
-    ) -> bool {
-        if delta_y == 0.0 || self.camera_focus.is_some() {
-            return false;
-        }
-        let Some(node) = self.value_map_at(graph_position, snarl) else {
-            return false;
-        };
-        self.value_map_wheel = Some((node, delta_y));
-        true
-    }
-
     pub fn scroll_endpoint_at(
         &mut self,
         graph_position: egui::Pos2,
@@ -1634,9 +1594,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
     }
 
-    fn has_body(&mut self, node: &CanvasNode) -> bool {
-        Self::mapping_id(*node)
-            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::ValueMap { .. })))
+    fn has_body(&mut self, _node: &CanvasNode) -> bool {
+        false
     }
 
     fn show_body(
@@ -1935,17 +1894,29 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             } else {
                 egui::PopupCloseBehavior::CloseOnClickOutside
             };
+            let properties_width = match self.graph.nodes.get(&node_id) {
+                Some(Node::ValueMap { table, .. }) => {
+                    crate::value_editor::value_map_editor_width(table.len()) + 22.0
+                }
+                _ => PATH_EDITOR_WIDTH,
+            };
             egui::Popup::from_response(&edit)
                 .id(popup_id)
                 .open_bool(&mut open)
-                .width(PATH_EDITOR_WIDTH)
+                .width(properties_width)
                 .layout(egui::Layout::top_down(egui::Align::Min))
                 .close_behavior(close_behavior)
                 .show(|ui| {
-                    ui.set_max_width(PATH_EDITOR_WIDTH);
+                    ui.set_max_width(properties_width);
                     ui.add(egui::Label::new(&full_title).wrap());
                     ui.separator();
-                    self.show_node_properties(pin, ui, snarl);
+                    if matches!(self.graph.nodes.get(&node_id), Some(Node::ValueMap { .. })) {
+                        ui.add_enabled_ui(edit.enabled(), |ui| {
+                            self.show_node_properties(pin, ui, snarl);
+                        });
+                    } else {
+                        self.show_node_properties(pin, ui, snarl);
+                    }
                 });
             ui.ctx().data_mut(|data| {
                 if open {
