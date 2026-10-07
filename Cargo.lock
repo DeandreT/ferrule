@@ -2188,6 +2188,7 @@ name = "gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "calamine",
  "cli",
  "editor-ui",
  "eframe",
@@ -2196,6 +2197,7 @@ dependencies = [
  "engine",
  "format-edi",
  "format-protobuf",
+ "format-xlsx",
  "functions",
  "ir",
  "lucide-icons",

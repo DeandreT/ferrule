@@ -1115,11 +1115,11 @@ recorded separately without inferring broader runtime coverage.
 
 ## Primary References
 
-- [2026r2 release changes](https://www.altova.com/mapforce/whatsnew)
-- [Reference product and format scope](https://www.altova.com/mapforce)
-- [Edition comparison](https://www.altova.com/mapforce/editions)
-- [Database mapping](https://www.altova.com/mapforce/database-mapping)
-- [Function library](https://www.altova.com/manual/Mapforce/mapforceenterprise/mf_func_lib.html)
-- [Multiple targets and chaining](https://www.altova.com/manual/mapforce/mapforceprofessional/mf_rules_multtargets.html)
-- [Debugger](https://www.altova.com/manual/Mapforce/mapforceprofessional/mff_debug.html)
-- [User-defined functions](https://www.altova.com/manual/Mapforce/mapforceenterprise/mf_func_udf.html)
+- 2026r2 release changes
+- Reference product and format scope
+- Edition comparison
+- Database mapping
+- Function library
+- Multiple targets and chaining
+- Debugger
+- User-defined functions
