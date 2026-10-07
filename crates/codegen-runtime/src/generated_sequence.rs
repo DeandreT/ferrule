@@ -88,7 +88,10 @@ pub fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, Run
     .ok_or(FunctionError::InvalidArgument {
         function: "tokenize-by-length",
         message: "requires a positive integer length",
-    })? as usize;
+    })?;
+    // A wider positive length exceeds every addressable character buffer.
+    // Saturating avoids wrapping to zero on narrower platforms.
+    let length = usize::try_from(length).unwrap_or(usize::MAX);
 
     // Count before allocating character storage or any output items.
     let requested = (input.chars().count() as u128).div_ceil(length as u128);
@@ -780,5 +783,62 @@ mod tests {
             );
             assert_eq!(context.position(&[]), index + 1);
         }
+    }
+
+    #[test]
+    fn length_tokenize_platform_wide_positive_widths_keep_whole_unicode_chunk() {
+        for width in [1_i64 << 32, (1_i64 << 32) + 1, i64::MAX] {
+            // The final float rounds to 2^63 and retains the existing saturating
+            // float-to-i64 coercion; it is not an exact i64::MAX representation.
+            for length in [
+                Value::Int(width),
+                Value::String(format!(" \u{2003}+{width}\u{85} ")),
+                Value::Float(width as f64),
+            ] {
+                for input in ["", "e\u{301}🙂z!"] {
+                    let original = tokenize_by_length(Value::String(input.into()), length.clone());
+                    eprintln!(
+                        "platform-wide tokenize-by-length original width={length:?} input={input:?}: {original:?}"
+                    );
+                    let expected = if input.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![Value::String(input.into())]
+                    };
+                    assert_eq!(original, Ok(expected));
+                }
+            }
+        }
+        for length in [
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Float(0.9),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::String("4294967296.0".into()),
+            Value::String("9223372036854775808".into()),
+            Value::Bool(true),
+        ] {
+            let original = tokenize_by_length(Value::String("e\u{301}🙂z!".into()), length.clone());
+            eprintln!(
+                "platform-wide tokenize-by-length invalid original width={length:?}: {original:?}"
+            );
+            assert_eq!(
+                original,
+                Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                    function: "tokenize-by-length",
+                    message: "requires a positive integer length",
+                }))
+            );
+        }
+        let original = tokenize_by_length(Value::Bool(true), Value::Int(1_i64 << 32));
+        eprintln!("platform-wide tokenize-by-length input-type original: {original:?}");
+        assert_eq!(
+            original,
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize-by-length",
+                got: "bool",
+            }))
+        );
     }
 }
