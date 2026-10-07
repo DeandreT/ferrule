@@ -152,13 +152,13 @@ fn write_record<'a>(
     sink.write_all(&buffer[..written]).map_err(bounded_io_error)
 }
 
-struct ValidatedCsv<'a> {
-    fields: Vec<(&'a str, ScalarType)>,
-    delimiter: u8,
-    quote: Option<u8>,
+pub(super) struct ValidatedCsv<'a> {
+    pub(super) fields: Vec<(&'a str, ScalarType)>,
+    pub(super) delimiter: u8,
+    pub(super) quote: Option<u8>,
 }
 
-fn validate_bounded_csv<'a>(
+pub(super) fn validate_csv<'a>(
     schema: &'a SchemaNode,
     rows: &[Instance],
     options: &CsvWriteOptions,
@@ -223,7 +223,7 @@ pub fn to_bytes_with_options_bounded(
         fields,
         delimiter,
         quote,
-    } = validate_bounded_csv(schema, rows, options)?;
+    } = validate_csv(schema, rows, options)?;
     let mut sink = BoundedBytes::new(maximum);
     if options.utf8_bom {
         sink.write_all(b"\xef\xbb\xbf").map_err(bounded_io_error)?;

@@ -446,12 +446,11 @@ pub fn to_string_with_options(
     rows: &[Instance],
     options: &CsvWriteOptions,
 ) -> Result<String, CsvFormatError> {
-    let PreparedCsv {
+    let bounded::ValidatedCsv {
         fields,
         delimiter,
         quote,
-        records,
-    } = prepare_csv(schema, rows, options)?;
+    } = bounded::validate_csv(schema, rows, options)?;
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
         .quote(quote.unwrap_or(b'"'))
@@ -464,7 +463,8 @@ pub fn to_string_with_options(
     if options.has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
     }
-    for record in records {
+    for (row, instance) in rows.iter().enumerate() {
+        let record = format_row(row, instance, &fields)?;
         writer.write_record(record)?;
     }
     writer.flush()?;
@@ -475,59 +475,6 @@ pub fn to_string_with_options(
         text.insert(0, '\u{feff}');
     }
     Ok(text)
-}
-
-struct PreparedCsv<'a> {
-    fields: Vec<(&'a str, ScalarType)>,
-    delimiter: u8,
-    quote: Option<u8>,
-    records: Vec<Vec<String>>,
-}
-
-fn prepare_csv<'a>(
-    schema: &'a SchemaNode,
-    rows: &[Instance],
-    options: &CsvWriteOptions,
-) -> Result<PreparedCsv<'a>, CsvFormatError> {
-    require_executable_dependency(options.repair_dependency)?;
-    let fields = row_fields(schema)?;
-    let (delimiter, quote) =
-        dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;
-    // Validate and materialize every record before producing output. A
-    // shape/type error must not truncate a previously valid output file.
-    let records = rows
-        .iter()
-        .enumerate()
-        .map(|(row, instance)| format_row(row, instance, &fields))
-        .collect::<Result<Vec<_>, _>>()?;
-    if options.quote_disabled {
-        for (name, _) in &fields {
-            if options.has_headers && requires_quoting(name, delimiter) {
-                return Err(CsvFormatError::UnquotedHeaderBoundary {
-                    field: (*name).to_string(),
-                });
-            }
-        }
-        for (row, record) in records.iter().enumerate() {
-            if record.len() == 1 && record[0].is_empty() {
-                return Err(CsvFormatError::UnquotedSingleEmptyRow { row });
-            }
-            for ((field, _), value) in fields.iter().zip(record) {
-                if requires_quoting(value, delimiter) {
-                    return Err(CsvFormatError::UnquotedFieldBoundary {
-                        row,
-                        field: (*field).to_string(),
-                    });
-                }
-            }
-        }
-    }
-    Ok(PreparedCsv {
-        fields,
-        delimiter,
-        quote,
-        records,
-    })
 }
 
 fn requires_quoting(value: &str, delimiter: u8) -> bool {
