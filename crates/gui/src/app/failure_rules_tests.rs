@@ -633,9 +633,9 @@ fn source_failure_rule_sequence_owners_and_stale_navigation_survive_list_changes
     );
     let sequence_rule = FailureRule {
         iteration: FailureIteration::Sequence {
-            sequence: SequenceExpr::Generate {
-                from: None,
-                to: 4,
+            sequence: SequenceExpr::TokenizeByLength {
+                input: 3,
+                length: 4,
                 item: 10,
             },
         },
