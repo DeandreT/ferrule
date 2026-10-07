@@ -57,6 +57,26 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
 
 pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
     match node {
+        Some(Node::XmlMixedContent {
+            path,
+            frame,
+            replacements,
+        }) => {
+            let path = if path.is_empty() {
+                "<current> (empty path)".to_owned()
+            } else {
+                path.join("/")
+            };
+            let frame = match frame {
+                None => "automatic".to_owned(),
+                Some(frame) if frame.is_empty() => "explicit (empty path)".to_owned(),
+                Some(frame) => format!("explicit {}", frame.join("/")),
+            };
+            return format!(
+                "{title}\nPath: {path}\nFrame: {frame}\nReplacements: {}\nRead-only ordered XML content",
+                replacements.len(),
+            );
+        }
         Some(Node::DynamicSourceField { object, frame, .. }) => {
             let object = if object.is_empty() {
                 "<current> (empty path)".to_owned()
@@ -291,6 +311,16 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         Node::Aggregate { function, .. }
         | Node::SequenceAggregate { function, .. }
         | Node::JoinAggregate { function, .. } => (Icon::Sigma, aggregate_label(*function).into()),
+        Node::XmlMixedContent { path, .. } => (
+            Icon::FileCode,
+            format!(
+                "mixed {}",
+                path.last().map_or_else(
+                    || "current".into(),
+                    |field| compact(field, SUMMARY_CHAR_LIMIT),
+                ),
+            ),
+        ),
         Node::XmlSerialize { .. } => (Icon::FileCode, "serialize".into()),
         _ => return None,
     };
@@ -337,6 +367,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::RuntimeParameterDefault { .. }
             | Node::Aggregate { .. }
             | Node::CollectionFind { .. }
+            | Node::XmlMixedContent { .. }
             | Node::XmlSerialize { .. }
     )
 }
