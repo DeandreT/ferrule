@@ -117,6 +117,7 @@ impl FerruleApp {
             )
             .is_some(),
         };
+        let joined_subtree = selected.is_some_and(join_authoring::subtree_has_join);
         let can_expand = !whole_group_copy
             && selected.is_some_and(|scope| {
                 matches!(scope.construction, mapping::ScopeConstruction::Constructed)
@@ -154,14 +155,18 @@ impl FerruleApp {
             }
             if ui
                 .add_enabled(
-                    !self.selected_scope.is_empty(),
+                    !self.selected_scope.is_empty() && !joined_subtree,
                     egui::Button::new("Remove scope"),
                 )
+                .on_disabled_hover_text(join_authoring::JOIN_REMOVAL_REASON)
                 .clicked()
             {
                 action = Some(ScopeAction::Remove);
             }
         });
+        if joined_subtree {
+            ui.weak(join_authoring::JOIN_REMOVAL_REASON);
+        }
 
         if matches!(action, Some(ScopeAction::Expand)) {
             self.expand_selected_target_subtree();
