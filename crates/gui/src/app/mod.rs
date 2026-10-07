@@ -56,6 +56,7 @@ mod failure_rules;
 mod function_workspace;
 #[path = "host_parameters.rs"]
 pub(crate) mod host_parameters;
+mod join_authoring;
 mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
@@ -484,6 +485,7 @@ pub struct FerruleApp {
     pending_scope_scroll: bool,
     selected_failure_rule: Option<usize>,
     pending_failure_rule_scroll: bool,
+    join_authoring_draft: Option<join_authoring::JoinAuthoringDraft>,
     status: String,
     diagnostics: Diagnostics,
     run_report: Option<crate::run_report::RunReportView>,
@@ -649,6 +651,7 @@ impl Default for FerruleApp {
             pending_scope_scroll: false,
             selected_failure_rule: None,
             pending_failure_rule_scroll: false,
+            join_authoring_draft: None,
             status: String::new(),
             diagnostics: Diagnostics::default(),
             run_report: None,
