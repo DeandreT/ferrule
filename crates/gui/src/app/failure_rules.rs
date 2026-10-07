@@ -13,6 +13,7 @@ enum RuleAction {
 enum GeneratedRuleKind {
     IntegerRange,
     SplitText,
+    SplitTextByLength,
 }
 
 fn editable_generated_rule(project: &Project, rule: &FailureRule) -> bool {
@@ -21,7 +22,9 @@ fn editable_generated_rule(project: &Project, rule: &FailureRule) -> bool {
     };
     if !matches!(
         sequence,
-        SequenceExpr::Generate { .. } | SequenceExpr::Tokenize { .. }
+        SequenceExpr::Generate { .. }
+            | SequenceExpr::Tokenize { .. }
+            | SequenceExpr::TokenizeByLength { .. }
     ) {
         return false;
     }
@@ -74,6 +77,9 @@ impl FerruleApp {
                         action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitText));
                     }
                 });
+                if ui.add_enabled(editing_enabled, egui::Button::new("Add fixed-length text rule")).clicked() {
+                    action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength));
+                }
                 if self.project.failure_rules.is_empty() {
                     ui.weak("No failure rules.");
                 }
@@ -205,6 +211,18 @@ impl FerruleApp {
                                 crate::scope_editor::node_picker(ui, ("failure_delimiter", index), delimiter, graph);
                             });
                         }
+                        SequenceExpr::TokenizeByLength { input, length, .. } => {
+                            ui.label("Split text by character count");
+                            ui.horizontal(|ui| {
+                                ui.label("Text:");
+                                crate::scope_editor::node_picker(ui, ("failure_fixed_text", index), input, graph);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Characters per item:");
+                                crate::scope_editor::node_picker(ui, ("failure_fixed_length", index), length, graph);
+                            });
+                            ui.weak("Counts Unicode characters. Combining marks count separately; the last item may be shorter.");
+                        }
                         _ => unreachable!("editable generated rule kind"),
                     }
                     ui.label(format!("Generated item: node {item}"))
@@ -274,6 +292,15 @@ impl FerruleApp {
                         SequenceExpr::Tokenize {
                             input: first,
                             delimiter: second,
+                            item,
+                        },
+                    ),
+                    GeneratedRuleKind::SplitTextByLength => (
+                        ir::Value::String("aé🙂z".into()),
+                        ir::Value::Int(2),
+                        SequenceExpr::TokenizeByLength {
+                            input: first,
+                            length: second,
                             item,
                         },
                     ),

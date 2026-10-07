@@ -631,11 +631,18 @@ fn source_failure_rule_sequence_owners_and_stale_navigation_survive_list_changes
             frame: None,
         },
     );
+    app.project.graph.nodes.insert(
+        13,
+        Node::Const {
+            value: Value::String(",".into()),
+        },
+    );
     let sequence_rule = FailureRule {
         iteration: FailureIteration::Sequence {
-            sequence: SequenceExpr::TokenizeByLength {
+            sequence: SequenceExpr::TokenizeRegex {
                 input: 3,
-                length: 4,
+                pattern: 13,
+                flags: None,
                 item: 10,
             },
         },
@@ -643,6 +650,10 @@ fn source_failure_rule_sequence_owners_and_stale_navigation_survive_list_changes
         message: Some(10),
     };
     app.project.failure_rules.push(sequence_rule.clone());
+    assert!(
+        cli::validate(&app.project).is_empty(),
+        "the retained sequence is valid, but not editable here"
+    );
     let graph = serde_json::to_value(&app.project.graph).unwrap();
     let owners = crate::graph_viewer::project_sequence_item_ids(&app.project);
     app.observe_editor_history(std::time::Instant::now(), false);
