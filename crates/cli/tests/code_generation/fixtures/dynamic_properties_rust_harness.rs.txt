@@ -1,0 +1,150 @@
+use std::error::Error;
+use std::path::Path;
+use codegen_runtime::{ExecutionContext, FunctionError, Instance, JsonBoundaryError, RuntimeError, RuntimeParameters, Value};
+use ferrule_generated_mapping::{execute, execute_with_context, execute_json, execute_json_with_context, execute_json_bytes, execute_json_bytes_with_context};
+use serde_json::{Value as Json, json};
+
+type HostResult<T> = Result<T, Box<dyn Error>>;
+
+fn read_instance(value: &Json) -> Instance {
+    match value["kind"].as_str().unwrap() {
+        "group" => Instance::Group(value["fields"].as_array().unwrap().iter().map(|field|
+            (field["name"].as_str().unwrap().into(), read_instance(&field["value"]))).collect::<Vec<_>>().into()),
+        kind => Instance::Scalar(match kind {
+            "null" => Value::Null, "json-null" => Value::json_null(), "xml-nil" => Value::xml_nil(),
+            "string" => Value::String(value["value"].as_str().unwrap().into()),
+            "int" => Value::Int(value["value"].as_i64().unwrap()),
+            "bool" => Value::Bool(value["value"].as_bool().unwrap()),
+            _ => panic!("unknown authored fixture tag {kind}"),
+        }),
+    }
+}
+fn wire(instance: &Instance) -> Json {
+    match instance {
+        Instance::Group(fields) => json!({"kind":"group","fields":fields.iter().map(|(name,value)|
+            json!({"name":name,"value":wire(value)})).collect::<Vec<_>>() }),
+        Instance::Scalar(value) => match value {
+            Value::Null => json!({"kind":"null"}), Value::JsonNull(_) => json!({"kind":"json-null"}),
+            Value::XmlNil(_) => json!({"kind":"xml-nil"}),
+            Value::String(value) => json!({"kind":"string","value":value}),
+            Value::Int(value) => json!({"kind":"int","value":value}),
+            Value::Bool(value) => json!({"kind":"bool","value":value}),
+            _ => panic!("unexpected output scalar"),
+        },
+        _ => panic!("unexpected output structure"),
+    }
+}
+fn normalized(error: &RuntimeError) -> Json {
+    match error {
+        RuntimeError::DynamicPropertyName { node, found } => json!({"kind":"name","node":node,"found":found}),
+        RuntimeError::DuplicateDynamicProperty(name) => json!({"kind":"duplicate","name":name}),
+        RuntimeError::Function(FunctionError::DivideByZero) => json!({"kind":"divide"}),
+        _ => panic!("unexpected runtime error: {error:?}"),
+    }
+}
+fn chains(error: &(dyn Error + 'static)) -> Vec<String> {
+    let mut values = vec![error.to_string()];
+    let mut next = error.source();
+    while let Some(error) = next { values.push(error.to_string()); next = error.source(); }
+    values
+}
+fn ordered_json(actual: &Json, expected: &Json) {
+    match (actual, expected) {
+        (Json::Object(actual), Json::Object(expected)) => {
+            assert_eq!(actual.keys().collect::<Vec<_>>(), expected.keys().collect::<Vec<_>>());
+            for (name, value) in expected { ordered_json(&actual[name], value); }
+        }
+        (Json::Array(actual), Json::Array(expected)) => {
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(expected) { ordered_json(actual, expected); }
+        }
+        _ => assert_eq!(actual, expected),
+    }
+}
+fn typed(directory: &Path, label: &str, actual: Result<Instance, RuntimeError>, wanted: &Json) -> HostResult<()> {
+    // Save the complete runtime domain before the fixture's restricted wire conversion.
+    std::fs::write(directory.join(format!("{label}-raw.txt")), format!("{actual:#?}"))?;
+    // Preserve complete result/error and source chain before matching any expected category.
+    let record = match &actual {
+        Ok(value) => json!({"result":wire(value),"debug":format!("{value:#?}")}),
+        Err(error) => json!({"debug":format!("{error:#?}"),"display":error.to_string(),"chain":chains(error)}),
+    };
+    std::fs::write(directory.join(format!("{label}.json")), serde_json::to_vec_pretty(&record)?)?;
+    match actual {
+        Ok(value) => { assert!(wanted["runtime_error"].is_null()); assert_eq!(wire(&value), wanted["mapped"]); }
+        Err(error) => { assert!(!wanted["runtime_error"].is_null()); assert_eq!(normalized(&error), wanted["runtime_error"]); }
+    }
+    Ok(())
+}
+fn boundary(directory: &Path, label: &str, actual: Result<Vec<u8>, JsonBoundaryError>, wanted: &Json) -> HostResult<Option<Vec<u8>>> {
+    let record = match &actual {
+        Ok(bytes) => {
+            std::fs::write(directory.join(format!("{label}-output.json")), bytes)?;
+            json!({"bytes":bytes})
+        }
+        Err(error) => json!({"debug":format!("{error:#?}"),"display":error.to_string(),"chain":chains(error)}),
+    };
+    std::fs::write(directory.join(format!("{label}.json")), serde_json::to_vec_pretty(&record)?)?;
+    match actual {
+        Ok(bytes) => {
+            assert!(wanted["boundary_error"].is_null() && wanted["runtime_error"].is_null());
+            ordered_json(&serde_json::from_slice(&bytes)?, &wanted["output_json"]);
+            Ok(Some(bytes))
+        }
+        Err(error) => {
+            match wanted["boundary_error"].as_str() {
+                Some("input") => assert!(matches!(error, JsonBoundaryError::InvalidInput { .. })),
+                Some("output") => assert!(matches!(error, JsonBoundaryError::InvalidOutput { ref message } if message.contains("forbidden") && message.contains("property name"))),
+                None => {
+                    let JsonBoundaryError::Execution(ref runtime) = error else { panic!("mapping error lost category: {error:?}"); };
+                    assert_eq!(normalized(runtime), wanted["runtime_error"]);
+                    let source = error.source().expect("execution retains original runtime error");
+                    assert!(std::ptr::eq(source.downcast_ref::<RuntimeError>().unwrap(), runtime));
+                }
+                _ => panic!("unknown expected boundary category"),
+            }
+            Ok(None)
+        }
+    }
+}
+fn main() -> HostResult<()> {
+    let directory = std::env::args_os().nth(1).expect("owned originals path");
+    let root = Path::new(&directory);
+    let fixture = std::fs::read(root.join("cases.json"))?;
+    let cases: Json = serde_json::from_slice(&fixture)?;
+    let evidence = root.join("rust-evidence");
+    std::fs::create_dir(&evidence)?;
+    std::fs::write(evidence.join("cases.json"), &fixture)?;
+    std::fs::write(evidence.join("context.json"), br#"{"mapping":"dynamic-properties.json","Child":"context-child"}"#)?;
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Child", Value::String("context-child".into()))?;
+    let execution = ExecutionContext::new(Path::new("dynamic-properties.json")).with_parameters(&parameters);
+    let mut calls = 0;
+    for case in cases.as_array().unwrap() {
+        let path = evidence.join(case["name"].as_str().unwrap());
+        std::fs::create_dir(&path)?;
+        let source = read_instance(&case["source"]);
+        for index in 0..2 {
+            let label = if index == 0 { "default" } else { "context" };
+            let expected = &case["expected"][index];
+            let actual = if index == 0 { execute(&source) } else { execute_with_context(&source, &execution) };
+            calls += 1;
+            typed(&path, &format!("typed-{label}"), actual, expected)?;
+            if !case["json"].as_bool().unwrap() { continue; }
+            let input = std::fs::read(root.join(case["name"].as_str().unwrap()).join("input.json"))?;
+            std::fs::write(path.join("input.json"), &input)?;
+            let text_result = if case["text"].as_bool().unwrap() {
+                let input = std::str::from_utf8(&input)?;
+                let actual = if index == 0 { execute_json(input) } else { execute_json_with_context(input, &execution) };
+                calls += 1;
+                boundary(&path, &format!("text-{label}"), actual.map(String::into_bytes), expected)?
+            } else { None };
+            let actual = if index == 0 { execute_json_bytes(&input) } else { execute_json_bytes_with_context(&input, &execution) };
+            calls += 1;
+            let bytes_result = boundary(&path, &format!("bytes-{label}"), actual, expected)?;
+            if case["text"].as_bool().unwrap() { assert_eq!(text_result, bytes_result, "text/bytes ownership boundary {label}"); }
+        }
+    }
+    std::fs::write(root.join("rust-complete.json"), serde_json::to_vec_pretty(&json!({"cases":cases.as_array().unwrap().len(),"calls":calls}))?)?;
+    Ok(())
+}
