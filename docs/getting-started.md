@@ -56,6 +56,33 @@ flowchart LR
     R --> O[Inspect artifacts and reopen]
 ```
 
+## Add compact source and runtime nodes
+
+Right-click empty canvas space and search the node palette. Connect the node's
+output to a target or another expression; use its pencil to open the settings.
+Availability follows the selected source and mapping context.
+
+| Palette entry | Use |
+| --- | --- |
+| **Mapping path** | Path of the mapping currently executing |
+| **Main mapping path** | Path of the top-level mapping for the run |
+| **Run date and time** | One timestamp captured at the start of the run |
+| **Source document path** | XML file-set member path: its resolved location when available, otherwise its stored portable path |
+| **Source property by name** | Connect a computed property name and choose a supported open scalar source object |
+| **Serialize source as XML** | Choose a supported source element and produce XML text with declaration and indentation settings |
+
+Document-path nodes require a primary local XML file set. Document-path,
+source-property and source-serialization creation are available on the main
+and named-target canvases, outside isolated functions. Preview a multi-document
+example to check which document is active in the scope where the node is used.
+
+The XML source picker offers bounded ordinary groups without crossing a
+repeating ancestor; a selected element can contain repeated child values.
+Serialization uses the active mapping context. Opening details preserves
+imported settings; explicitly choosing an element replaces the source selection
+while retaining declaration, indentation and namespace settings. Preview the
+result in its intended scope before running the complete mapping.
+
 ## Set up a flat workbook table
 
 The New Mapping workbook setup covers one flat worksheet table per boundary.

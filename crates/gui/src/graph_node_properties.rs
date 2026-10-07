@@ -341,10 +341,11 @@ impl GraphViewer<'_> {
                 }
                 Node::XmlSerialize {
                     path,
+                    frame,
+                    schema,
                     declaration,
                     indent,
                     namespace,
-                    ..
                 } => {
                     let source = if path.is_empty() {
                         "<current>".to_string()
@@ -352,6 +353,15 @@ impl GraphViewer<'_> {
                         path.join("/")
                     };
                     ui.label(format!("source: {source}"));
+                    ui.add_enabled_ui(self.function_output.is_none(), |ui| {
+                        if let Some((selected_path, selected_schema)) =
+                            self.source_paths.show_xml_source_element_picker(ui, path)
+                        {
+                            *path = selected_path;
+                            *schema = selected_schema;
+                            *frame = None;
+                        }
+                    });
                     ui.checkbox(declaration, "XML declaration");
                     ui.checkbox(indent, "indent output");
                     if let Some(namespace) = namespace {

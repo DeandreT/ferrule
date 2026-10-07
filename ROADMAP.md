@@ -125,6 +125,9 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 - [x] Author current-document-path reads for primary local XML file sets on
   primary and named-target canvases, with compact presentation, real wiring,
   exact resolved/portable path behavior, edit locks, and undo/redo.
+- [x] Author XML text serialization from supported primary source groups, with
+  an explicit source picker, compact presentation, real wiring and settings,
+  preserved imported metadata, edit locks, and undo/redo.
 - [x] Record matched many-row and wide-row trials for input lifetime under a
   normal debug profile, retaining both repeats, full outputs and regressions;
   [report the workload-dependent results](docs/performance/filesystem-input-lifetime-2026-10-07.md).

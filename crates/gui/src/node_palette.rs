@@ -42,6 +42,7 @@ pub(super) enum NodeTemplate {
     If,
     Raise,
     ValueMap,
+    XmlSerialize,
     Lookup,
     CollectionFind,
     Aggregate(AggregateOp),
@@ -89,7 +90,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 24] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 25] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -180,6 +181,13 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 24] = [
         keywords: "lookup table translate replace default",
         documentation: "Translates scalar values through an editable table.",
         template: NodeTemplate::ValueMap,
+    },
+    PaletteEntry {
+        category: Category::Transform,
+        label: "Serialize source as XML",
+        keywords: "xml element serialize fragment structured",
+        documentation: "Serializes a supported primary source element as XML text. Choose its source in the node settings.",
+        template: NodeTemplate::XmlSerialize,
     },
     PaletteEntry {
         category: Category::Logic,
@@ -286,6 +294,7 @@ pub(super) fn show_available(
     root_types: bool,
     open_objects: bool,
     source_document_paths: bool,
+    xml_source_elements: bool,
 ) -> Option<NodeTemplate> {
     #[cfg(test)]
     tests::begin_palette_response_capture();
@@ -319,6 +328,7 @@ pub(super) fn show_available(
         .filter(|entry| match entry.template {
             NodeTemplate::DynamicSourceField => open_objects,
             NodeTemplate::SourceDocumentPath => source_document_paths,
+            NodeTemplate::XmlSerialize => xml_source_elements,
             NodeTemplate::SourceRootField => root_fields,
             NodeTemplate::SourceRootXmlTypeEquals => root_types,
             _ => true,
