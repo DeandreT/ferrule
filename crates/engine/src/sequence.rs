@@ -652,6 +652,15 @@ pub(super) fn tokenize(input: Value, delimiter: Value) -> Result<Vec<Value>, Eng
         }
         .into());
     }
+    // Count borrowed fields before creating any owned output items.
+    let requested = input.split(&delimiter).count() as u128;
+    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
+        return Err(EngineError::GeneratedSequenceTooLarge {
+            requested,
+            max: MAX_GENERATED_SEQUENCE_ITEMS,
+        });
+    }
+
     Ok(input
         .split(&delimiter)
         .map(|value| Value::String(value.to_string()))
@@ -671,6 +680,15 @@ pub(super) fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Valu
         function: "tokenize-by-length",
         message: "requires a positive integer length",
     })? as usize;
+
+    // Count before allocating character storage or any output items.
+    let requested = (input.chars().count() as u128).div_ceil(length as u128);
+    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
+        return Err(EngineError::GeneratedSequenceTooLarge {
+            requested,
+            max: MAX_GENERATED_SEQUENCE_ITEMS,
+        });
+    }
 
     let chars: Vec<char> = input.chars().collect();
     Ok(chars
