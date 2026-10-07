@@ -6,7 +6,7 @@ use mapping::{JoinSource, JoinSourceCardinality};
 use super::super::source::SourceExports;
 use super::schema_node_at;
 
-pub(super) fn resolved_three_source_paths(
+pub(super) fn resolved_correlated_source_paths(
     join_sources: &[&JoinSource],
     anchor: &[String],
     sources: &SourceExports<'_>,
@@ -16,10 +16,12 @@ pub(super) fn resolved_three_source_paths(
             .iter()
             .any(|source| source.cardinality() != JoinSourceCardinality::Repeating)
     {
-        return Err(
+        let reason = if join_sources.len() == 3 {
             "nested three-input join requires a primary singleton followed by two static named repeating sources"
-                .to_string(),
-        );
+        } else {
+            "nested multi-input join requires a primary singleton followed by static named repeating sources"
+        };
+        return Err(reason.to_string());
     }
     for source in &join_sources[1..] {
         if source.collection().starts_with(anchor) {
