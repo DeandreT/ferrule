@@ -1904,3 +1904,6 @@ mod compact_dynamic_property_node_tests;
 
 #[path = "graph_viewer_tests/compact_xml_mixed_content_nodes.rs"]
 mod compact_xml_mixed_content_node_tests;
+
+#[path = "graph_viewer_tests/compact_value_map_nodes.rs"]
+mod compact_value_map_node_tests;
