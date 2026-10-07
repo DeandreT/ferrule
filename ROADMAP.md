@@ -63,9 +63,12 @@ Physical workbook cell tests and desktop persistence are separate evidence.
   preserve raw message positions separately from filtered target positions.
 - [x] Admit the bounded transparent XML scope-variable shape only after exact
   owner, branch, schema, consumer, and position checks.
-- [ ] Finish strict saved-design replay of the signed-integer edge cohort.
-- [ ] Qualify the corresponding generated public APIs with independent full
+- [x] Replay nine strict saved signed-integer edge designs: three successful
+  typed/content results and six exact global failure messages.
+- [x] Qualify the corresponding generated public APIs with independent full
   typed/serialized results, lazy messages, and wrapper-cause checks.
+- [ ] Resolve native XML root schema annotations and retain the separately
+  observed failure-publication differences.
 - [ ] Expand accepted shapes only with a concrete owner/order proof and
   counterexamples for ambiguous, shared, or fallible branches.
 
@@ -81,10 +84,12 @@ an unrestricted publication-parity promise.
 - [x] Qualify the bounded strict-imported item-ordered public-host cohort:
   14 cases across ten public routes in each of Rust and C#, with four fresh
   XML success writer oracles.
-- [ ] Verify optional adapters against actual emitted schemas and APIs;
+- [x] Verify the seven-design integer-edge cohort's original default formats
+  and separate explicit XML adapters against actual emitted schemas and APIs:
+  312 calls across Rust/C#, 28 hosts, and six fresh full writer oracles.
   `.xml` path hints alone do not enable XML companions.
-- [ ] Preserve exact names, wrapper causes, lazy failures, full output bytes,
-  and complete original outcomes before assertions.
+- [x] Preserve exact names, wrapper causes, lazy failures, full output bytes,
+  and complete original outcomes for those qualified cohorts.
 
 Exit: compiled public calls agree with independent oracles under their declared
 adapter profile. Neither a lowering pass nor one host cohort certifies every
@@ -109,14 +114,17 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   64 MiB output cap or changing validation/publication order.
 - [x] Document materialization and route-specific limits rather than a universal
   memory ceiling.
+- [x] Release filesystem inputs and dynamic-source caches after evaluation and
+  the publication check, before selected/all-target serialization.
 - [x] Add searchable mapping-path, main-mapping-path, and stable run-time values
   to primary, named-target, and function canvases, with compact presentation,
   edit locks, history, and checked node-ID allocation.
 - [x] Author computed source-property reads from supported open scalar objects
   on primary and named-target canvases, with compact icons, explicit object
   selection, real wire interactions, edit locks, and undo/redo.
-- [ ] Maintain representative many-row and wide-row trials, individual repeats,
-  late errors, full outputs, and regressions under clearly named build profiles.
+- [x] Record matched many-row and wide-row trials for input lifetime under a
+  normal debug profile, retaining both repeats, full outputs and regressions;
+  [report the workload-dependent results](docs/performance/filesystem-input-lifetime-2026-10-07.md).
 - [ ] Choose the next GUI authoring gap from an existing executable mapping;
   preserve compact headers, complete hover/pin identities, locks, and history.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
