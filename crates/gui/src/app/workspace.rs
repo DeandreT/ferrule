@@ -907,6 +907,7 @@ impl FerruleApp {
         }
         self.pending_scope_scroll = false;
         ui.add_enabled_ui(editing_enabled, |ui| self.show_scope_controls(ui));
+        self.show_join_authoring(ui, editing_enabled);
 
         ui.separator();
         let source_paths =
