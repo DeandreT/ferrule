@@ -118,3 +118,107 @@ fn rejects_ambiguous_or_unsupported_join_metadata() {
         assert!(error.contains(expected), "expected `{expected}`, got `{error}`");
     }
 }
+
+const CORRELATED_THREE: &str = r#"<mapping version="26"><component name="map"><structure><children>
+<component name="join" library="core" kind="32"><data>
+<root><entry name="document"><entry name="tuple" outkey="90">
+<entry name="dynamic_tree_node0"><entry name="CustomerNumber" inpkey="10"/></entry>
+<entry name="dynamic_tree_node1"><entry name="Customer" inpkey="20"><entry name="Name" outkey="22"/></entry></entry>
+<entry name="dynamic_tree_node2"><entry name="Offer" inpkey="30"><entry name="Promo" outkey="32"/></entry></entry>
+</entry></entry></root>
+<join><joinkeys>
+<keypair><first-key path-id="1" input-index="0"/><second-key path-id="2" input-index="1"/></keypair>
+<keypair><first-key path-id="3" input-index="1"/><second-key path-id="3" input-index="2"/></keypair>
+<keypair><first-key path-id="1" input-index="0"/><second-key path-id="2" input-index="2"/></keypair>
+</joinkeys><keypaths><entry outkey="1"><condition/>
+<entry name="Number" outkey="2"><condition/></entry><entry name="Region" outkey="3"><condition/></entry>
+</entry></keypaths></join></data></component>
+</children></structure></component></mapping>"#;
+
+#[test]
+fn correlated_three_input_metadata_keeps_both_earlier_owners_and_condition_order() {
+    let parsed = parse_fixture(CORRELATED_THREE);
+    eprintln!("correlated three input XML: {CORRELATED_THREE}\nparsed: {parsed:#?}");
+    let parsed = parsed.unwrap();
+    assert_eq!(
+        parsed
+            .equalities
+            .iter()
+            .map(|key| (key.first.input_index, key.second.input_index))
+            .collect::<Vec<_>>(),
+        [(0, 1), (1, 2), (0, 2)]
+    );
+    let sources = [
+        JoinSource::singleton(vec!["CustomerNumber".into()]),
+        JoinSource::new(vec!["Customers".into(), "Customer".into()]),
+        JoinSource::new(vec!["Offers".into(), "Offer".into()]),
+    ];
+    let planned = parsed.to_plan_sources(&sources);
+    eprintln!("correlated three planned sources: {sources:#?}\nplanned: {planned:#?}");
+    let planned = planned.unwrap();
+    let stages = planned.plan.stages().collect::<Vec<_>>();
+    assert_eq!(planned.plan.sources().cloned().collect::<Vec<_>>(), sources);
+    assert_eq!(stages.len(), 2);
+    assert_eq!(
+        stages[0].1.iter().cloned().collect::<Vec<_>>(),
+        [MappingJoinKey::new(
+            vec!["CustomerNumber".into()],
+            vec![],
+            vec!["Number".into()]
+        )]
+    );
+    assert_eq!(
+        stages[1].1.iter().cloned().collect::<Vec<_>>(),
+        [
+            MappingJoinKey::new(
+                vec!["Customers".into(), "Customer".into()],
+                vec!["Region".into()],
+                vec!["Region".into()]
+            ),
+            MappingJoinKey::new(vec!["CustomerNumber".into()], vec![], vec!["Number".into()]),
+        ]
+    );
+    assert_eq!(planned.tuple_output, Some(90));
+    assert_eq!(
+        planned.outputs,
+        [
+            PlannedJoinOutput {
+                port: 22,
+                input_index: 1,
+                collection: vec!["Customers".into(), "Customer".into()],
+                path: vec!["Name".into()]
+            },
+            PlannedJoinOutput {
+                port: 32,
+                input_index: 2,
+                collection: vec!["Offers".into(), "Offer".into()],
+                path: vec!["Promo".into()]
+            },
+        ]
+    );
+}
+
+#[test]
+fn correlated_three_input_metadata_refuses_future_owners_and_unknown_inputs() {
+    for (xml, expected) in [
+        (
+            CORRELATED_THREE.replacen(
+                "<first-key path-id=\"1\" input-index=\"0\"/>",
+                "<first-key path-id=\"1\" input-index=\"2\"/>",
+                1,
+            ),
+            "join input 1 must have an equality with an earlier input",
+        ),
+        (
+            CORRELATED_THREE.replace(
+                "<first-key path-id=\"3\" input-index=\"1\"/>",
+                "<first-key path-id=\"3\" input-index=\"3\"/>",
+            ),
+            "input index 3 is out of range for 3 inputs",
+        ),
+    ] {
+        let parsed = parse_fixture(&xml);
+        eprintln!("rejected correlated three input XML: {xml}\nparsed: {parsed:#?}");
+        assert!(matches!(parsed, Err(reason) if reason.contains(expected)));
+    }
+}
