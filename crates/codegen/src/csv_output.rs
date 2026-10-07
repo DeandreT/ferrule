@@ -99,6 +99,7 @@ pub enum CsvOutputError {
     XmlBoundary,
     /// Retained compatibility refusal; static named inputs are now admitted.
     NamedInputs,
+    /// Retained compatibility refusal; validated per-driver typed loaders are admitted.
     DynamicInputs {
         name: String,
     },
@@ -170,7 +171,7 @@ impl std::error::Error for CsvOutputError {
     }
 }
 
-/// Prove the first generated CSV adapter's complete static output contract.
+/// Prove the generated CSV adapter's complete flat primary output contract.
 /// Existing mapping validation retains its typed failure and runs first.
 pub fn validate_csv_output(
     program: &Program,
@@ -180,15 +181,6 @@ pub fn validate_csv_output(
     policy.validate_dialect()?;
     if program.xml_boundary.is_some() {
         return Err(CsvOutputError::XmlBoundary);
-    }
-    if let Some(source) = program
-        .extra_sources
-        .iter()
-        .find(|source| source.dynamic.is_some())
-    {
-        return Err(CsvOutputError::DynamicInputs {
-            name: source.name.clone(),
-        });
     }
     if !program.extra_targets.is_empty() {
         return Err(CsvOutputError::NamedOutputs);
@@ -459,9 +451,7 @@ mod tests {
         });
         assert_eq!(
             validate_csv_output(&candidate, &CsvOutputPolicy::default()),
-            Err(CsvOutputError::DynamicInputs {
-                name: "Other".into()
-            })
+            Ok(())
         );
         candidate.extra_sources.clear();
         candidate.extra_targets.push(NamedTargetProgram {
@@ -511,7 +501,14 @@ mod tests {
                 }),
             });
         }
-        let error = validate_csv_output(&candidate, &CsvOutputPolicy::default()).unwrap_err();
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Ok(())
+        );
+        // Public compatibility payload/display remain available after active admission expands.
+        let error = CsvOutputError::DynamicInputs {
+            name: "First".into(),
+        };
         assert_eq!(
             error,
             CsvOutputError::DynamicInputs {
@@ -554,5 +551,40 @@ mod tests {
             validate_csv_output(&candidate, &CsvOutputPolicy::default()),
             Ok(())
         );
+    }
+    #[test]
+    fn dynamic_loader_admission_keeps_reachable_document_output_refusal() {
+        let mut candidate = program();
+        candidate.extra_sources.push(NamedSourceProgram {
+            name: "Dynamic".into(),
+            source: SchemaNode::group("Dynamic", Vec::new()),
+            dynamic: Some(crate::DynamicSourceProgram {
+                path: 9,
+                driver: SourceIteration::new(Vec::new()),
+            }),
+        });
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Ok(())
+        );
+        candidate.root.iteration = Some(IterationPlan::dynamic_documents(Vec::new(), 9));
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Err(CsvOutputError::DynamicDocuments)
+        );
+        candidate.extra_targets.push(NamedTargetProgram {
+            name: "Other".into(),
+            target: candidate.target.clone(),
+            root: candidate.root.clone(),
+        });
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Err(CsvOutputError::NamedOutputs)
+        );
+        candidate.root.bindings[0].expression = 999;
+        assert!(matches!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Err(CsvOutputError::InvalidProgram(_))
+        ));
     }
 }

@@ -111,13 +111,32 @@ once, validates every output row, and returns one complete CSV text or byte
 buffer. Existing typed, JSON and XML generation is unchanged when the flag is
 absent.
 
+Mappings with static named inputs also add `execute_csv_with_sources` and
+`execute_csv_bytes_with_sources`, with their context counterparts. C# provides
+`ExecuteCsvWithSources` and `ExecuteCsvBytesWithSources`, each with an optional
+execution-context overload. The complete static input-name set is validated by
+the ordinary mapping API before any mapping or CSV output is evaluated.
+
+Mappings with per-driver dynamic named sources add text and byte methods for
+three existing typed-loader forms: loader only, static named inputs plus loader,
+and static named inputs plus execution context plus loader. Rust uses
+`execute_csv_with_dynamic_source_loader`,
+`execute_csv_with_sources_and_dynamic_source_loader`, and
+`execute_csv_with_sources_context_and_dynamic_source_loader`, with parallel
+`execute_csv_bytes_` names. C# uses the corresponding `ExecuteCsvWith...` and
+`ExecuteCsvBytesWith...` methods. These methods execute the ordinary typed mapping
+once, then serialize its complete primary row result. Loader resolution,
+confinement, caching and side effects remain the host's responsibility; these
+methods do not parse JSON documents or impose JSON input byte limits.
+
 Each CSV document is limited to 64 MiB of UTF-8 output, including BOM, headers,
 delimiters, doubled quotes and LF record endings. This output limit does not
 bound the input tree, mapped rows, formatted records or total memory use.
 Mapping failures and native CSV row/type/dialect failures retain typed causes;
-no partial buffer is returned. Named inputs, named outputs, dynamic document
-iteration, scalar unions and conflicting physical adapters are currently
-refused before any generated files are published.
+no partial buffer is returned. Named outputs, dynamic document iteration,
+scalar unions and conflicting physical adapters are refused before any
+generated files are published. Dynamic loaded documents and mapped rows remain
+materialized, so the CSV output limit is not a total memory limit.
 
 ## Dynamic Source Host Boundary
 
