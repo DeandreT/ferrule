@@ -692,9 +692,10 @@ fn generated_rule_other_kinds_missing_invalid_and_shared_items_remain_unchanged(
             },
         );
         let sequence = if case == 0 {
-            SequenceExpr::TokenizeByLength {
+            SequenceExpr::TokenizeRegex {
                 input: 10,
-                length: 3,
+                pattern: 11,
+                flags: None,
                 item: 42,
             }
         } else {
@@ -982,6 +983,7 @@ fn generated_rule_id_exhaustion_and_missing_owned_ids_reserve_atomically() {
                 match kind {
                     GeneratedRuleKind::IntegerRange => "Add integer range rule",
                     GeneratedRuleKind::SplitText => "Add split text rule",
+                    GeneratedRuleKind::SplitTextByLength => "Add fixed-length text rule",
                 },
             );
             app.apply_failure_rule_action(RuleAction::AddSequence(kind), true);
@@ -1070,4 +1072,835 @@ fn generated_rule_locked_widgets_and_direct_actions_preserve_graph_history_and_c
     assert!(!app.is_dirty());
     assert!(!app.can_undo());
     assert!(!app.history.can_redo());
+}
+
+fn fixed_recorded_run(
+    directory: &Directory,
+    name: &str,
+    app: &FerruleApp,
+    input: &Instance,
+) -> Result<Instance, engine::EngineError> {
+    std::fs::write(
+        directory.0.join(format!("{name}-project.json")),
+        encoded(app),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.0.join(format!("{name}-input.txt")),
+        format!("{input:#?}"),
+    )
+    .unwrap();
+    let validation = cli::validate(&app.project);
+    std::fs::write(
+        directory.0.join(format!("{name}-validation.txt")),
+        format!("{validation:#?}"),
+    )
+    .unwrap();
+    assert!(
+        validation.is_empty(),
+        "valid native oracle fixture {name}: {validation:?}"
+    );
+    let actual = engine::run(&app.project, input);
+    std::fs::write(
+        directory.0.join(format!("{name}-outcome.txt")),
+        format!("{actual:#?}"),
+    )
+    .unwrap();
+    eprintln!("fixed-length failure rule original {name}: {actual:?}");
+    actual
+}
+
+fn fixed_arguments(app: &mut FerruleApp, input: Value, length: Value) {
+    app.project
+        .graph
+        .nodes
+        .insert(12, Node::Const { value: input });
+    app.project
+        .graph
+        .nodes
+        .insert(13, Node::Const { value: length });
+}
+
+fn fixed_failure(message: &str) -> Result<Instance, engine::EngineError> {
+    Err(engine::EngineError::MappingFailure {
+        rule: 1,
+        message: Some(message.into()),
+    })
+}
+
+#[test]
+fn generated_fixed_length_real_controls_count_unicode_scalars_and_short_last_item() {
+    let directory = Directory::new();
+    let mut app = fixture();
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    assert_eq!(app.project.graph.nodes.len(), 10);
+    assert_eq!(item(&app, 0), 14);
+    assert_eq!(
+        app.project.failure_rules[0].iteration,
+        FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeByLength {
+                input: 12,
+                length: 13,
+                item: 14
+            },
+        }
+    );
+    item_message(&mut app, &context, 0);
+    assert!(cli::validate(&app.project).is_empty());
+    assert_eq!(
+        fixed_recorded_run(&directory, "default", &app, &source()),
+        fixed_failure("aé")
+    );
+
+    // Hand-enumerated chunks: [aé, 🙂z], [ab, 🙂z, é], [e + combining acute, 🙂z].
+    // Selecting a literal proves both the non-BMP boundary and the short tail.
+    for (case, text, selected) in [
+        ("non-bmp", "aé🙂z", "🙂z"),
+        ("short-tail", "ab🙂zé", "é"),
+        ("combining", "e\u{301}🙂z", "e\u{301}"),
+    ] {
+        fixed_arguments(&mut app, Value::String(text.into()), Value::Int(2));
+        app.project.graph.nodes.insert(
+            15,
+            Node::Const {
+                value: Value::String(selected.into()),
+            },
+        );
+        app.project.graph.nodes.insert(
+            16,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![14, 15],
+            },
+        );
+        app.project.failure_rules[0].selection = FailureSelection::WhenTrue { predicate: 16 };
+        assert!(cli::validate(&app.project).is_empty());
+        assert_eq!(
+            fixed_recorded_run(&directory, case, &app, &source()),
+            fixed_failure(selected)
+        );
+    }
+    app.project.graph.nodes.remove(&15);
+    app.project.graph.nodes.remove(&16);
+    app.project.failure_rules[0].selection = FailureSelection::All;
+    fixed_arguments(&mut app, Value::String("aé🙂z".into()), Value::Int(2));
+    pick(
+        &mut app,
+        &context,
+        "13: constant Int(2)",
+        0,
+        "3: constant Int(1)",
+    );
+    assert_eq!(item(&app, 0), 14);
+    assert_eq!(
+        fixed_recorded_run(&directory, "real-length-picker", &app, &source()),
+        fixed_failure("a")
+    );
+    pick(
+        &mut app,
+        &context,
+        "12: constant String(\"aé🙂z\")",
+        0,
+        "10: constant String(\"red,green\")",
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "real-text-picker", &app, &source()),
+        fixed_failure("r")
+    );
+    assert!(app.is_dirty());
+}
+
+#[test]
+fn generated_fixed_length_first_selected_item_rule_order_and_message_evaluation_are_lazy() {
+    let directory = Directory::new();
+    let mut app = fixture();
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    item_message(&mut app, &context, 0);
+    fixed_arguments(&mut app, Value::String("ab🙂zé".into()), Value::Int(2));
+    app.project.graph.nodes.insert(
+        15,
+        Node::Const {
+            value: Value::String("ab".into()),
+        },
+    );
+    app.project.graph.nodes.insert(
+        16,
+        Node::Call {
+            function: "not_equal".into(),
+            args: vec![14, 15],
+        },
+    );
+    app.project.failure_rules[0].selection = FailureSelection::WhenTrue { predicate: 16 };
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert!(cli::validate(&app.project).is_empty());
+    assert_eq!(
+        fixed_recorded_run(&directory, "first-selected-of-two", &app, &source()),
+        fixed_failure("🙂z")
+    );
+    click(&mut app, &context, "Expression is true");
+    click(&mut app, &context, "Expression is false");
+    assert_eq!(
+        fixed_recorded_run(&directory, "false-selection", &app, &source()),
+        fixed_failure("ab")
+    );
+    app.project.failure_rules[0].selection = FailureSelection::WhenTrue { predicate: 1 };
+    app.project.graph.nodes.remove(&16);
+    app.project.failure_rules[0].message = Some(2);
+    assert_eq!(
+        fixed_recorded_run(&directory, "unselected-divide-message", &app, &source()),
+        Ok(success())
+    );
+    app.project.failure_rules[0].selection = FailureSelection::WhenFalse { predicate: 1 };
+    assert_eq!(
+        fixed_recorded_run(&directory, "selected-divide-message", &app, &source()),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+    app.project.failure_rules[0].selection = FailureSelection::All;
+    app.project.failure_rules[0].message = Some(14);
+    app.observe_editor_history(std::time::Instant::now(), false);
+    click(&mut app, &context, "Add integer range rule");
+    click(&mut app, &context, "Custom message expression");
+    pick(&mut app, &context, SUCCESS, 0, "2: divide");
+    assert_eq!(
+        fixed_recorded_run(&directory, "later-rule-message-skipped", &app, &source()),
+        fixed_failure("ab")
+    );
+    click(&mut app, &context, "Move up");
+    assert_eq!(
+        fixed_recorded_run(&directory, "reordered-rule-message", &app, &source()),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+    app.undo_project();
+    assert_eq!(
+        fixed_recorded_run(&directory, "undo-order", &app, &source()),
+        fixed_failure("ab")
+    );
+    app.redo_project();
+    assert_eq!(
+        fixed_recorded_run(&directory, "redo-order", &app, &source()),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+}
+
+#[test]
+fn generated_fixed_length_domain_empty_null_and_large_chunk_lengths_follow_native_errors() {
+    let directory = Directory::new();
+    let mut app = fixture();
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    item_message(&mut app, &context, 0);
+    for (name, input, length, expected) in [
+        (
+            "empty",
+            Value::String(String::new()),
+            Value::Int(2),
+            Ok(success()),
+        ),
+        (
+            "one",
+            Value::String("🙂".into()),
+            Value::Int(1),
+            fixed_failure("🙂"),
+        ),
+        (
+            "max-chunk",
+            Value::String("aé🙂z".into()),
+            Value::Int(i64::MAX),
+            fixed_failure("aé🙂z"),
+        ),
+        (
+            "fraction-truncated",
+            Value::String("aé🙂z".into()),
+            Value::Float(2.9),
+            fixed_failure("aé"),
+        ),
+        (
+            "trimmed-integer-string",
+            Value::String("aé🙂z".into()),
+            Value::String(" 2 ".into()),
+            fixed_failure("aé"),
+        ),
+        ("null-input", Value::Null, Value::Int(0), Ok(success())),
+        (
+            "json-null-input",
+            Value::json_null(),
+            Value::Int(0),
+            Ok(success()),
+        ),
+        (
+            "null-length",
+            Value::String("abc".into()),
+            Value::Null,
+            Ok(success()),
+        ),
+        (
+            "json-null-length",
+            Value::String("abc".into()),
+            Value::json_null(),
+            Ok(success()),
+        ),
+    ] {
+        fixed_arguments(&mut app, input, length);
+        assert!(cli::validate(&app.project).is_empty());
+        assert_eq!(
+            fixed_recorded_run(&directory, name, &app, &source()),
+            expected,
+            "{name}"
+        );
+    }
+    for (name, length) in [
+        ("zero", Value::Int(0)),
+        ("negative", Value::Int(-2)),
+        ("small-fraction", Value::Float(0.9)),
+        ("negative-fraction", Value::Float(-2.9)),
+        ("boolean-length", Value::Bool(true)),
+        ("bad-string", Value::String("bad".into())),
+        ("decimal-string", Value::String("2.0".into())),
+        ("xml-nil-length", Value::xml_nil()),
+    ] {
+        fixed_arguments(&mut app, Value::String("abc".into()), length);
+        assert_eq!(
+            fixed_recorded_run(&directory, name, &app, &source()),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::InvalidArgument {
+                    function: "tokenize-by-length",
+                    message: "requires a positive integer length"
+                }
+            ))
+        );
+    }
+    for (name, input, got) in [
+        ("boolean-input", Value::Bool(true), "bool"),
+        ("integer-input", Value::Int(7), "int"),
+        ("float-input", Value::Float(7.0), "float"),
+        ("xml-nil-input", Value::xml_nil(), "xml nil"),
+    ] {
+        fixed_arguments(&mut app, input, Value::Int(2));
+        assert_eq!(
+            fixed_recorded_run(&directory, name, &app, &source()),
+            Err(engine::EngineError::Function(
+                functions::FunctionError::TypeMismatch {
+                    function: "tokenize-by-length",
+                    got
+                }
+            ))
+        );
+    }
+    fixed_arguments(&mut app, Value::Null, Value::Int(2));
+    if let FailureIteration::Sequence {
+        sequence: SequenceExpr::TokenizeByLength { length, .. },
+    } = &mut app.project.failure_rules[0].iteration
+    {
+        *length = 2;
+    } else {
+        panic!("fixed-length rule");
+    }
+    assert_eq!(
+        fixed_recorded_run(&directory, "null-skips-failing-length", &app, &source()),
+        Ok(success())
+    );
+    app.project.graph.nodes.insert(
+        12,
+        Node::Const {
+            value: Value::String(String::new()),
+        },
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "empty-still-evaluates-length", &app, &source()),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+    app.project.graph.nodes.insert(
+        12,
+        Node::Const {
+            value: Value::String("abc".into()),
+        },
+    );
+    app.project.graph.nodes.insert(
+        13,
+        Node::Const {
+            value: Value::Int(0),
+        },
+    );
+    if let FailureIteration::Sequence {
+        sequence: SequenceExpr::TokenizeByLength { input, length, .. },
+    } = &mut app.project.failure_rules[0].iteration
+    {
+        *input = 2;
+        *length = 13;
+    }
+    assert_eq!(
+        fixed_recorded_run(
+            &directory,
+            "input-error-before-invalid-length",
+            &app,
+            &source()
+        ),
+        Err(engine::EngineError::Function(
+            functions::FunctionError::DivideByZero
+        ))
+    );
+}
+
+#[test]
+fn generated_fixed_length_root_arguments_and_imported_nested_reducer_keep_private_item_identity() {
+    let directory = Directory::new();
+    let mut app = fixture();
+    app.project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar("Text", ScalarType::String),
+            SchemaNode::scalar("Length", ScalarType::Int),
+        ],
+    );
+    app.project.graph.nodes.insert(
+        5,
+        Node::SourceField {
+            path: vec!["Text".into()],
+            frame: None,
+        },
+    );
+    app.project.graph.nodes.insert(
+        6,
+        Node::SourceField {
+            path: vec!["Length".into()],
+            frame: None,
+        },
+    );
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    pick(
+        &mut app,
+        &context,
+        "12: constant String(\"aé🙂z\")",
+        0,
+        "5: field Text",
+    );
+    pick(
+        &mut app,
+        &context,
+        "13: constant Int(2)",
+        0,
+        "6: field Length",
+    );
+    item_message(&mut app, &context, 0);
+    let input = Instance::Group(
+        vec![
+            (
+                "Text".into(),
+                Instance::Scalar(Value::String("🙂éxy".into())),
+            ),
+            ("Length".into(), Instance::Scalar(Value::Int(2))),
+        ]
+        .into(),
+    );
+    assert!(cli::validate(&app.project).is_empty());
+    assert_eq!(
+        fixed_recorded_run(&directory, "root-field-arguments", &app, &input),
+        fixed_failure("🙂é")
+    );
+    assert_eq!(item(&app, 0), 14);
+
+    let mut imported = fixture();
+    for id in [42, 51] {
+        imported.project.graph.nodes.insert(
+            id,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        );
+    }
+    imported.project.graph.nodes.insert(
+        50,
+        Node::SequenceAggregate {
+            function: mapping::AggregateOp::Sum,
+            sequence: SequenceExpr::Generate {
+                from: None,
+                to: 3,
+                item: 51,
+            },
+            predicate: None,
+            expression: Some(51),
+            arg: None,
+        },
+    );
+    imported.project.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeByLength {
+                input: 10,
+                length: 50,
+                item: 42,
+            },
+        },
+        selection: FailureSelection::All,
+        message: None,
+    });
+    imported.main_canvas = CanvasDocumentState::main(&imported.project);
+    imported.mark_clean();
+    imported.rebase_history();
+    assert!(cli::validate(&imported.project).is_empty());
+    assert!(editable_generated_rule(
+        &imported.project,
+        &imported.project.failure_rules[0]
+    ));
+    click(&mut imported, &context, "Rule 1: generated sequence");
+    item_message(&mut imported, &context, 0);
+    assert_eq!(
+        fixed_recorded_run(&directory, "imported-private-reducer", &imported, &source()),
+        fixed_failure("r")
+    );
+    assert_eq!(item(&imported, 0), 42);
+    assert!(imported.project.graph.nodes.contains_key(&51));
+    // Direct self-item and a second owner retain the exact imported rule read-only.
+    let supported_imported = imported.project.clone();
+    for shared in [false, true] {
+        let mut protected = supported_imported.clone();
+        if shared {
+            protected
+                .failure_rules
+                .push(protected.failure_rules[0].clone());
+        } else if let FailureIteration::Sequence {
+            sequence: SequenceExpr::TokenizeByLength { length, .. },
+        } = &mut protected.failure_rules[0].iteration
+        {
+            *length = 42;
+        }
+        imported.project = protected;
+        imported.mark_clean();
+        imported.rebase_history();
+        let before = encoded(&imported);
+        click(&mut imported, &context, "Rule 1: generated sequence");
+        click(&mut imported, &context, "Remove rule");
+        imported.apply_failure_rule_action(RuleAction::Remove(0), true);
+        assert_eq!(encoded(&imported), before);
+        assert!(!imported.can_undo());
+        assert!(!editable_generated_rule(
+            &imported.project,
+            &imported.project.failure_rules[0]
+        ));
+    }
+}
+
+#[test]
+fn generated_fixed_length_retirement_save_history_and_all_canvases_preserve_boundary_identity() {
+    let directory = Directory::new();
+    let origin = directory.0.join("origin");
+    let destination = directory.0.join("saved");
+    std::fs::create_dir_all(&origin).unwrap();
+    std::fs::create_dir_all(&destination).unwrap();
+    for name in ["input.json", "output.json", "other.json"] {
+        std::fs::write(origin.join(name), b"{}").unwrap();
+    }
+    let mut app = fixture();
+    app.document = DocumentLocation::untitled(origin.join("mapping.json"));
+    open_named_canvas(&mut app);
+    let main_positions = CanvasLayout::capture_nodes(&app.main_canvas.snarl);
+    let named_positions =
+        CanvasLayout::capture_nodes(&app.mapping_workspace.target_canvases[&0].snarl);
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    item_message(&mut app, &context, 0);
+    let owned = item(&app, 0);
+    for snarl in [
+        &app.main_canvas.snarl,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+    ] {
+        assert!(snarl.nodes().any(|node| *node == CanvasNode::Graph(owned)));
+    }
+    assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+    assert_surviving_positions(
+        &named_positions,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+        None,
+    );
+    let authored = encoded(&app);
+    let path = destination.join("mapping.json");
+    let before_save = app.project.clone();
+    app.save_document_to(&path).unwrap();
+    let saved = encoded(&app);
+    let saved_layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    std::fs::write(directory.0.join("authored-before-save.json"), &authored).unwrap();
+    std::fs::write(directory.0.join("saved-editor.json"), &saved).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    let mut nonpaths = app.project.clone();
+    nonpaths.source_path = before_save.source_path.clone();
+    nonpaths.target_path = before_save.target_path.clone();
+    nonpaths.extra_targets[0].path = before_save.extra_targets[0].path.clone();
+    assert_eq!(
+        mapping::project_file::encode_pretty(&nonpaths).unwrap(),
+        authored
+    );
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&path);
+    assert_eq!(encoded(&reopened), saved);
+    assert_eq!(item(&reopened, 0), owned);
+    assert!(editable_generated_rule(
+        &reopened.project,
+        &reopened.project.failure_rules[0]
+    ));
+    assert_eq!(
+        fixed_recorded_run(&directory, "saved-reopened", &reopened, &source()),
+        fixed_failure("aé")
+    );
+    for (stored, name) in [
+        (
+            reopened.project.source_path.as_deref().unwrap(),
+            "input.json",
+        ),
+        (
+            reopened.project.target_path.as_deref().unwrap(),
+            "output.json",
+        ),
+        (
+            reopened.project.extra_targets[0].path.as_deref().unwrap(),
+            "other.json",
+        ),
+    ] {
+        assert!(!Path::new(stored).is_absolute());
+        assert_eq!(
+            std::fs::canonicalize(destination.join(stored)).unwrap(),
+            std::fs::canonicalize(origin.join(name)).unwrap()
+        );
+        assert_eq!(std::fs::read(origin.join(name)).unwrap(), b"{}");
+    }
+    // A surviving ordinary graph consumer blocks retirement before any canvas changes.
+    app.project.graph.nodes.insert(
+        30,
+        Node::Call {
+            function: "string".into(),
+            args: vec![owned],
+        },
+    );
+    app.rebuild_mapping_canvases_after_retirement();
+    app.mark_clean();
+    app.rebase_history();
+    click(&mut app, &context, "Rule 1: generated sequence");
+    let referenced = encoded(&app);
+    let referenced_layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    click(&mut app, &context, "Remove rule");
+    assert_eq!(encoded(&app), referenced);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        referenced_layout
+    );
+    assert!(!app.can_undo());
+    assert!(
+        app.diagnostics
+            .items()
+            .iter()
+            .any(|entry| entry.message.contains("disconnect those references"))
+    );
+    app.project.graph.nodes.remove(&30);
+    app.rebuild_mapping_canvases_after_retirement();
+    app.mark_clean();
+    app.rebase_history();
+    // Retiring the one private item retains both ordinary arguments and all other canvas positions.
+    click(&mut app, &context, "Rule 1: generated sequence");
+    click(&mut app, &context, "Remove rule");
+    let removed = encoded(&app);
+    assert!(app.project.failure_rules.is_empty());
+    assert!(!app.project.graph.nodes.contains_key(&owned));
+    assert!(app.project.graph.nodes.contains_key(&12));
+    assert!(app.project.graph.nodes.contains_key(&13));
+    for snarl in [
+        &app.main_canvas.snarl,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+    ] {
+        assert!(snarl.nodes().all(|node| *node != CanvasNode::Graph(owned)));
+    }
+    assert_surviving_positions(&main_positions, &app.main_canvas.snarl, None);
+    assert_surviving_positions(
+        &named_positions,
+        &app.mapping_workspace.target_canvases[&0].snarl,
+        None,
+    );
+    assert_eq!(
+        fixed_recorded_run(&directory, "removed", &app, &source()),
+        Ok(success())
+    );
+    app.undo_project();
+    assert_eq!(encoded(&app), saved);
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        saved_layout
+    );
+    app.redo_project();
+    assert_eq!(encoded(&app), removed);
+}
+
+#[test]
+fn generated_fixed_length_preview_busy_and_id_exhaustion_preserve_atomic_graph_history() {
+    let directory = Directory::new();
+    let mut app = fixture();
+    open_named_canvas(&mut app);
+    let context = context();
+    click(&mut app, &context, "Add fixed-length text rule");
+    item_message(&mut app, &context, 0);
+    app.mark_clean();
+    app.rebase_history();
+    click(&mut app, &context, "Rule 1: generated sequence");
+    app.begin_preview();
+    let before = encoded(&app);
+    let layout =
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+    for label in [
+        "Add fixed-length text rule",
+        "Remove rule",
+        "Custom message expression",
+        "13: constant Int(2)",
+    ] {
+        click(&mut app, &context, label);
+        assert_eq!(encoded(&app), before);
+    }
+    for action in [
+        RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength),
+        RuleAction::Remove(0),
+    ] {
+        app.apply_failure_rule_action(action, true);
+        assert_eq!(encoded(&app), before);
+    }
+    assert_eq!(
+        CanvasLayout::capture(&app.project, &app.main_canvas.snarl, &app.mapping_workspace),
+        layout
+    );
+    assert!(!app.can_undo());
+    assert!(!app.history.can_redo());
+    assert!(!app.is_dirty());
+    let output = directory.0.join("must-not-write.json");
+    let draft = app.preview_draft.as_mut().unwrap();
+    draft.input_text = "{}".into();
+    draft.input_identity = "input.json".into();
+    draft.output_identity = output.display().to_string();
+    std::fs::write(directory.0.join("preview-editor.json"), &before).unwrap();
+    app.execute_preview();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_preview.is_some() && std::time::Instant::now() < deadline {
+        app.poll_preview(&context);
+        if app.pending_preview.is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    std::fs::write(
+        directory.0.join("preview-outcome.txt"),
+        format!(
+            "status={} diagnostics={:?}",
+            app.status,
+            app.diagnostics.items()
+        ),
+    )
+    .unwrap();
+    assert!(app.pending_preview.is_none());
+    assert_eq!(app.status, "preview failed");
+    assert!(
+        app.diagnostics
+            .items()
+            .iter()
+            .any(|entry| entry.message.contains("aé"))
+    );
+    assert!(!output.exists());
+    assert_eq!(encoded(&app), before);
+    assert!(app.document.saved_path().is_none());
+    for maximum in [NodeId::MAX, NodeId::MAX - 2] {
+        let mut exhausted = fixture();
+        exhausted.project.graph.nodes.insert(
+            maximum,
+            Node::Const {
+                value: Value::Int(0),
+            },
+        );
+        exhausted.main_canvas = CanvasDocumentState::main(&exhausted.project);
+        exhausted.mark_clean();
+        exhausted.rebase_history();
+        let before = encoded(&exhausted);
+        let layout = CanvasLayout::capture(
+            &exhausted.project,
+            &exhausted.main_canvas.snarl,
+            &exhausted.mapping_workspace,
+        );
+        click(&mut exhausted, &context, "Add fixed-length text rule");
+        exhausted.apply_failure_rule_action(
+            RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength),
+            true,
+        );
+        assert_eq!(encoded(&exhausted), before);
+        assert_eq!(
+            CanvasLayout::capture(
+                &exhausted.project,
+                &exhausted.main_canvas.snarl,
+                &exhausted.mapping_workspace
+            ),
+            layout
+        );
+        assert!(!exhausted.can_undo());
+        assert!(!exhausted.is_dirty());
+        assert!(
+            exhausted
+                .diagnostics
+                .items()
+                .iter()
+                .any(|entry| entry.message == "mapping node IDs are exhausted")
+        );
+    }
+    let mut reserved = fixture();
+    reserved.project.graph.nodes.insert(
+        NodeId::MAX - 4,
+        Node::Const {
+            value: Value::Int(0),
+        },
+    );
+    reserved.project.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Sequence {
+            sequence: SequenceExpr::Generate {
+                from: None,
+                to: 3,
+                item: NodeId::MAX - 1,
+            },
+        },
+        selection: FailureSelection::All,
+        message: None,
+    });
+    let retained = reserved.project.failure_rules[0].clone();
+    reserved.apply_failure_rule_action(
+        RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength),
+        true,
+    );
+    assert_eq!(reserved.project.failure_rules[0], retained);
+    assert!(
+        !reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 1)),
+        "missing owned identity stays reserved"
+    );
+    assert!(
+        reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 3))
+    );
+    assert!(
+        reserved
+            .project
+            .graph
+            .nodes
+            .contains_key(&(NodeId::MAX - 2))
+    );
+    assert_eq!(item(&reserved, 1), NodeId::MAX);
 }
