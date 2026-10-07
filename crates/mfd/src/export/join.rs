@@ -1,3 +1,5 @@
+mod correlated_three;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -11,6 +13,8 @@ use super::schema::{KeyAlloc, PortMatch, PortTree, xml_escape};
 use super::source::SourceExports;
 
 use crate::MfdError;
+
+use correlated_three::resolved_three_source_paths;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     let dynamic_sources = project
@@ -363,6 +367,12 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         };
         match result {
             Ok(rendered) => {
+                if owner.nested
+                    && owner.plan.sources().count() == 3
+                    && let Some(edge) = rendered.input_edges.first()
+                {
+                    structural_edges.insert(*edge);
+                }
                 components.push_str(&rendered.xml);
                 edges.extend(rendered.input_edges);
                 structural_edges.extend(rendered.structural_input_edges);
@@ -461,6 +471,9 @@ fn resolved_source_paths(
         .as_deref()
         .filter(|anchor| !anchor.is_empty())
         .ok_or("nested join is not enclosed by one ordinary source iteration")?;
+    if join_sources.len() == 3 {
+        return resolved_three_source_paths(&join_sources, anchor, sources);
+    }
     if join_sources.len() != 2
         || join_sources
             .iter()
