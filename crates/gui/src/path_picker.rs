@@ -35,6 +35,7 @@ pub struct SourcePathCatalog {
     primary_root_types: Vec<String>,
     open_scalar_objects: Vec<PathChoice>,
     primary_source_document_path: bool,
+    xml_source_elements: Vec<XmlSourceElement>,
 }
 
 impl SourcePathCatalog {
@@ -63,6 +64,7 @@ impl SourcePathCatalog {
             })
             .collect();
         let open_scalar_objects = open_scalar_object_choices(source);
+        let xml_source_elements = xml_source_element_choices(source);
         let primary_root_types = source
             .alternatives()
             .iter()
@@ -120,6 +122,7 @@ impl SourcePathCatalog {
             primary_root_types,
             open_scalar_objects,
             primary_source_document_path: false,
+            xml_source_elements,
         }
     }
 
@@ -130,6 +133,42 @@ impl SourcePathCatalog {
 
     pub(crate) fn primary_source_document_path_available(&self) -> bool {
         self.primary_source_document_path
+    }
+
+    pub(crate) fn xml_source_elements_available(&self) -> bool {
+        !self.xml_source_elements.is_empty()
+    }
+
+    pub(crate) fn first_xml_source_element(&self) -> Option<(Vec<String>, Box<SchemaNode>)> {
+        self.xml_source_elements
+            .first()
+            .map(|choice| (choice.path.path.clone(), choice.schema.clone()))
+    }
+
+    // Return a replacement only after an explicit click, including a click on
+    // the current path. Inspection never normalizes imported frame/schema data.
+    pub(crate) fn show_xml_source_element_picker(
+        &self,
+        ui: &mut Ui,
+        path: &[String],
+    ) -> Option<(Vec<String>, Box<SchemaNode>)> {
+        let mut chosen = None;
+        ui.add_enabled_ui(self.xml_source_elements_available(), |ui| {
+            egui::ComboBox::from_id_salt(ui.id().with("xml_source_element"))
+                .selected_text("Choose source element")
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    for choice in &self.xml_source_elements {
+                        if ui
+                            .selectable_label(choice.path.path == path, &choice.path.label)
+                            .clicked()
+                        {
+                            chosen = Some((choice.path.path.clone(), choice.schema.clone()));
+                        }
+                    }
+                });
+        });
+        chosen
     }
 
     pub(crate) fn first_open_scalar_object(&self) -> Option<Vec<String>> {
@@ -258,6 +297,136 @@ impl SourcePathCatalog {
             .map_or_else(Vec::new, |choice| choice.values.iter().collect());
         show_path_picker(ui, id_salt, path, &choices, value_label);
     }
+}
+
+#[derive(Debug, Clone)]
+struct XmlSourceElement {
+    path: PathChoice,
+    schema: Box<SchemaNode>,
+}
+
+// These are conservative authoring limits, not XML writer limits. Census the
+// complete primary tree before the recursive public input-policy check or any
+// schema clone. Owned metadata outside this small ordinary subset is refused
+// without walking or copying it. Existing imported serializer nodes stay valid.
+const XML_CHOICE_SCHEMA_NODES: usize = 256;
+const XML_CHOICE_SCHEMA_DEPTH: usize = 16;
+const XML_CHOICE_SCHEMA_TEXT_BYTES: usize = 64 * 1024;
+const XML_SOURCE_CHOICES: usize = 32;
+
+fn xml_choice_tree_is_bounded(source: &SchemaNode) -> bool {
+    let mut pending = vec![(source, 1)];
+    let mut nodes = 0;
+    let mut text_bytes = 0usize;
+    while let Some((schema, depth)) = pending.pop() {
+        nodes += 1;
+        if nodes > XML_CHOICE_SCHEMA_NODES
+            || depth > XML_CHOICE_SCHEMA_DEPTH
+            || !xml_choice_metadata_is_small(schema)
+        {
+            return false;
+        }
+        let namespace_bytes = schema
+            .xml_namespace
+            .as_ref()
+            .and_then(ir::XmlNamespace::uri)
+            .map_or(0, str::len);
+        if schema.name.len() > 4096 || namespace_bytes > 4096 {
+            return false;
+        }
+        text_bytes += schema.name.len() + namespace_bytes;
+        if text_bytes > XML_CHOICE_SCHEMA_TEXT_BYTES {
+            return false;
+        }
+        if let SchemaKind::Group {
+            children,
+            alternatives,
+            required,
+            xml_restricted_alternatives,
+            dynamic,
+        } = &schema.kind
+        {
+            if !alternatives.is_empty()
+                || !required.is_empty()
+                || !xml_restricted_alternatives.is_empty()
+                || dynamic.is_some()
+                || children.len() > XML_CHOICE_SCHEMA_NODES - nodes
+                || pending.len() + children.len() > XML_CHOICE_SCHEMA_NODES - nodes
+            {
+                return false;
+            }
+            pending.extend(children.iter().map(|child| (child, depth + 1)));
+        }
+    }
+    true
+}
+
+fn xml_choice_metadata_is_small(schema: &SchemaNode) -> bool {
+    schema.xml_name_alternatives.is_empty()
+        && schema.xml_wildcard_namespace.is_none()
+        && schema.recursive_ref.is_none()
+        && schema.fixed.is_none()
+        && schema.default.is_none()
+        && schema.json_allowed_values.is_none()
+        && schema.numeric_range.is_none()
+        && schema.json_multiple_of.is_none()
+        && schema.item_count_range.is_none()
+        && schema.json_contains.is_none()
+        && schema.json_dependent_schemas.is_none()
+        && schema.property_count_range.is_none()
+        && schema.json_property_dependencies.is_none()
+        && schema.json_pattern_property_names.is_none()
+        && schema.json_property_names.is_none()
+        && schema.string_length_range.is_none()
+        && schema.json_patterns.is_none()
+        && schema.json_formats.is_empty()
+        && schema.value_generation.is_none()
+        && schema.xml_default_type.is_none()
+        && schema.xml_repeating_sequences.is_empty()
+        && schema.xml_repeating_choices.is_empty()
+        && schema.database_relation.is_none()
+}
+
+fn xml_source_element_choices(source: &SchemaNode) -> Vec<XmlSourceElement> {
+    if !xml_choice_tree_is_bounded(source)
+        || !ir::xml_structured_document_input_is_supported(source)
+    {
+        return Vec::new();
+    }
+    let mut pending = vec![(source, Vec::new())];
+    let mut selected = Vec::new();
+    while let Some((schema, path)) = pending.pop() {
+        // Descendants beyond a repeated ancestor require an explicit frame and
+        // are not offered by this primary-source creation route.
+        if schema.repeating {
+            continue;
+        }
+        if let SchemaKind::Group { children, .. } = &schema.kind {
+            if ir::xml_structured_document_input_is_supported(schema) {
+                if selected.len() == XML_SOURCE_CHOICES {
+                    return Vec::new();
+                }
+                selected.push((schema, path.clone()));
+            }
+            for child in children.iter().rev() {
+                let mut child_path = path.clone();
+                child_path.push(child.name.clone());
+                pending.push((child, child_path));
+            }
+        }
+    }
+    // At most 32 clones of a census-bounded 256-node/64-KiB tree: no clone
+    // precedes either bound, including the public policy's recursive walk.
+    selected
+        .into_iter()
+        .map(|(schema, path)| XmlSourceElement {
+            path: PathChoice {
+                label: open_object_label(&path),
+                path,
+            },
+            schema: Box::new((*schema).clone()),
+        })
+        .collect()
 }
 
 fn open_object_label(path: &[String]) -> String {

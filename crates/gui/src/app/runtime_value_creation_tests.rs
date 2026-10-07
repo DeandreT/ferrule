@@ -529,3 +529,4 @@ fn runtime_value_menu_reserves_one_final_id_or_refuses_without_hidden_nodes() {
 
 mod dynamic_property;
 mod source_document_path;
+mod xml_serializer;
