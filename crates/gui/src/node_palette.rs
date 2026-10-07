@@ -239,6 +239,8 @@ pub(super) fn show_available(
     root_fields: bool,
     root_types: bool,
 ) -> Option<NodeTemplate> {
+    #[cfg(test)]
+    tests::begin_palette_response_capture();
     let state_id = ui.id().with("node_palette");
     let frame = ui.ctx().cumulative_frame_nr();
     let mut state = ui
@@ -275,6 +277,7 @@ pub(super) fn show_available(
     if search.changed() {
         state.selected = 0;
     }
+    let mut keyboard_navigation = false;
     if search.has_focus() {
         let (up, down) = ui.input_mut(|input| {
             (
@@ -288,8 +291,10 @@ pub(super) fn show_available(
         if down {
             state.move_selection(1, matches.len());
         }
+        keyboard_navigation = up || down;
     }
     state.selected = state.selected.min(matches.len().saturating_sub(1));
+    let reveal_selection = keyboard_navigation.then_some(state.selected);
     let enter = search.has_focus()
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter));
     let mut chosen = enter
@@ -305,6 +310,7 @@ pub(super) fn show_available(
             .max_height(340.0)
             .show(ui, |ui| {
                 let mut previous_category = None;
+                let mut selected_response = None;
                 for (index, entry) in matches.iter().enumerate() {
                     if previous_category != Some(entry.category) {
                         if previous_category.is_some() {
@@ -320,12 +326,23 @@ pub(super) fn show_available(
                     let response = ui
                         .selectable_label(index == state.selected, label)
                         .on_hover_ui(|ui| show_entry_documentation(ui, entry));
+                    #[cfg(test)]
+                    tests::observe_palette_response(entry.label, &response, ui.clip_rect());
+                    if reveal_selection == Some(index) {
+                        selected_response = Some(response.clone());
+                    }
                     if response.hovered() {
                         state.selected = index;
                     }
                     if response.clicked() {
                         chosen = Some(entry.template);
                     }
+                }
+                // Keep pointer selection authoritative when it differs from navigation.
+                if reveal_selection == Some(state.selected)
+                    && let Some(response) = selected_response
+                {
+                    response.scroll_to_me(None);
                 }
             });
     }
@@ -740,5 +757,369 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[derive(Clone, Debug)]
+    struct PaletteRowObservation {
+        label: &'static str,
+        response: egui::Response,
+        clip: egui::Rect,
+    }
+
+    thread_local! {
+        static PALETTE_RESPONSE_CAPTURE:
+            std::cell::RefCell<Option<Vec<PaletteRowObservation>>> = const {
+                std::cell::RefCell::new(None)
+            };
+    }
+
+    pub(super) fn begin_palette_response_capture() {
+        PALETTE_RESPONSE_CAPTURE.with(|capture| {
+            if let Some(rows) = capture.borrow_mut().as_mut() {
+                rows.clear();
+            }
+        });
+    }
+
+    pub(super) fn observe_palette_response(
+        label: &'static str,
+        response: &egui::Response,
+        clip: egui::Rect,
+    ) {
+        PALETTE_RESPONSE_CAPTURE.with(|capture| {
+            if let Some(rows) = capture.borrow_mut().as_mut() {
+                rows.push(PaletteRowObservation {
+                    label,
+                    response: response.clone(),
+                    clip,
+                });
+            }
+        });
+    }
+
+    struct OverflowPaletteFrame {
+        chosen: Option<NodeTemplate>,
+        rows: Vec<PaletteRowObservation>,
+        output: egui::FullOutput,
+    }
+
+    fn overflow_palette_frame(
+        context: &egui::Context,
+        events: Vec<egui::Event>,
+        time: &mut f64,
+    ) -> OverflowPaletteFrame {
+        *time += 0.1;
+        PALETTE_RESPONSE_CAPTURE.with(|capture| *capture.borrow_mut() = Some(Vec::new()));
+        let mut chosen = None;
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 240.0),
+                )),
+                time: Some(*time),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                let canvas = ui.allocate_rect(ui.max_rect(), egui::Sense::click());
+                canvas.context_menu(|ui| {
+                    chosen = show_available(ui, true, true);
+                    if chosen.is_some() {
+                        ui.close();
+                    }
+                });
+            },
+        );
+        let rows = PALETTE_RESPONSE_CAPTURE.with(|capture| capture.borrow_mut().take().unwrap());
+        OverflowPaletteFrame {
+            chosen,
+            rows,
+            output,
+        }
+    }
+
+    fn pointer_button(pos: egui::Pos2, button: egui::PointerButton, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    fn open_overflow_palette(context: &egui::Context, time: &mut f64) -> OverflowPaletteFrame {
+        let anchor = egui::pos2(360.0, 180.0);
+        // egui hit-tests widgets from the preceding pass before processing a press.
+        let registered = overflow_palette_frame(context, Vec::new(), time);
+        assert_eq!(registered.chosen, None);
+        let hovered =
+            overflow_palette_frame(context, vec![egui::Event::PointerMoved(anchor)], time);
+        assert_eq!(hovered.chosen, None);
+        let first = overflow_palette_frame(
+            context,
+            vec![
+                egui::Event::PointerMoved(anchor),
+                pointer_button(anchor, egui::PointerButton::Secondary, true),
+            ],
+            time,
+        );
+        assert_eq!(first.chosen, None);
+        let released = overflow_palette_frame(
+            context,
+            vec![pointer_button(
+                anchor,
+                egui::PointerButton::Secondary,
+                false,
+            )],
+            time,
+        );
+        assert_eq!(released.chosen, None);
+        let away = overflow_palette_frame(context, vec![egui::Event::PointerGone], time);
+        assert_eq!(away.chosen, None);
+        settle_overflow_palette(context, time)
+    }
+
+    fn settle_overflow_palette(context: &egui::Context, time: &mut f64) -> OverflowPaletteFrame {
+        for _ in 0..2 {
+            let frame = overflow_palette_frame(context, Vec::new(), time);
+            assert_eq!(frame.chosen, None);
+        }
+        overflow_palette_frame(context, Vec::new(), time)
+    }
+
+    fn visible_selected_palette_row<'a>(
+        context: &egui::Context,
+        frame: &'a OverflowPaletteFrame,
+    ) -> &'a PaletteRowObservation {
+        let update = frame
+            .output
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .expect("actual popup accessibility update");
+        let selected = frame
+            .rows
+            .iter()
+            .filter(|row| {
+                update.nodes.iter().any(|(id, node)| {
+                    *id == row.response.id.accesskit_id()
+                        && node.role() == egui::accesskit::Role::Button
+                        && node.toggled() == Some(egui::accesskit::Toggled::True)
+                })
+            })
+            .collect::<Vec<_>>();
+        eprintln!(
+            "real palette rows={}, selected={:?}",
+            frame.rows.len(),
+            selected
+                .iter()
+                .map(|row| (row.label, row.response.id, row.response.rect, row.clip))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(selected.len(), 1, "exactly one rendered selected result");
+        let row = selected[0];
+        let actual = context
+            .read_response(row.response.id)
+            .expect("registered result response");
+        assert_eq!(actual.rect, row.response.rect);
+        assert!(
+            row.clip.contains_rect(actual.rect),
+            "selected {} response {:?} must fit its actual scroll clip {:?}",
+            row.label,
+            actual.rect,
+            row.clip
+        );
+        row
+    }
+
+    fn overflow_palette_context() -> egui::Context {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        context
+            .all_styles_mut(|style| style.scroll_animation = egui::style::ScrollAnimation::none());
+        context
+    }
+
+    #[test]
+    fn keyboard_navigation_reveals_real_overflow_results_down_and_up_before_return() {
+        let context = overflow_palette_context();
+        let mut time = 0.0;
+        let initial = open_overflow_palette(&context, &mut time);
+        assert!(initial.rows.len() > 18, "actual full catalog must overflow");
+        let item_at = initial
+            .rows
+            .iter()
+            .find(|row| row.label == "Item at")
+            .unwrap();
+        eprintln!(
+            "initial offscreen Item at: {:?}, clip={:?}",
+            item_at.response.rect, item_at.clip
+        );
+        assert!(!item_at.clip.contains_rect(item_at.response.rect));
+        assert_eq!(
+            visible_selected_palette_row(&context, &initial).label,
+            "Constant"
+        );
+        for _ in 0..17 {
+            let moved = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
+            assert_eq!(moved.chosen, None);
+            let settled = settle_overflow_palette(&context, &mut time);
+            visible_selected_palette_row(&context, &settled);
+        }
+        let bottom = settle_overflow_palette(&context, &mut time);
+        assert_eq!(
+            visible_selected_palette_row(&context, &bottom).label,
+            "Item at"
+        );
+        for _ in 0..11 {
+            let moved = overflow_palette_frame(&context, vec![key(Key::ArrowUp)], &mut time);
+            assert_eq!(moved.chosen, None);
+            let settled = settle_overflow_palette(&context, &mut time);
+            visible_selected_palette_row(&context, &settled);
+        }
+        let top = settle_overflow_palette(&context, &mut time);
+        assert_eq!(
+            visible_selected_palette_row(&context, &top).label,
+            "Host input with default"
+        );
+        let returned = overflow_palette_frame(&context, vec![key(Key::Enter)], &mut time);
+        eprintln!("overflow Up/Down Return={:?}", returned.chosen);
+        assert_eq!(returned.chosen, Some(NodeTemplate::HostInputDefault));
+    }
+
+    #[test]
+    fn reopened_short_popup_reveals_partial_match_after_exact_query_navigation() {
+        let context = overflow_palette_context();
+        let mut time = 0.0;
+        open_overflow_palette(&context, &mut time);
+        let alias = overflow_palette_frame(
+            &context,
+            vec![egui::Event::Text("normalize_space".into())],
+            &mut time,
+        );
+        assert_eq!(alias.chosen, None);
+        let narrowed = settle_overflow_palette(&context, &mut time);
+        assert_eq!(narrowed.rows.len(), 1);
+        let returned = overflow_palette_frame(&context, vec![key(Key::Enter)], &mut time);
+        assert_eq!(
+            returned.chosen,
+            Some(NodeTemplate::Builtin("normalize_space"))
+        );
+        open_overflow_palette(&context, &mut time);
+        let query = overflow_palette_frame(
+            &context,
+            vec![egui::Event::Text("value map".into())],
+            &mut time,
+        );
+        assert_eq!(query.chosen, None);
+        let exact = settle_overflow_palette(&context, &mut time);
+        assert_eq!(exact.rows.len(), 2);
+        assert_eq!(
+            visible_selected_palette_row(&context, &exact).label,
+            "Value map"
+        );
+        let down = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
+        assert_eq!(down.chosen, None);
+        let revealed = settle_overflow_palette(&context, &mut time);
+        assert_eq!(
+            visible_selected_palette_row(&context, &revealed).label,
+            "Host input"
+        );
+        let returned = overflow_palette_frame(&context, vec![key(Key::Enter)], &mut time);
+        eprintln!("reopened exact-query Down/Return={:?}", returned.chosen);
+        assert_eq!(returned.chosen, Some(NodeTemplate::HostInput));
+    }
+
+    #[test]
+    fn manual_wheel_and_pointer_selection_remain_free_after_keyboard_reveal() {
+        let context = overflow_palette_context();
+        let mut time = 0.0;
+        open_overflow_palette(&context, &mut time);
+        for _ in 0..17 {
+            overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
+            settle_overflow_palette(&context, &mut time);
+        }
+        let before = settle_overflow_palette(&context, &mut time);
+        let item_at = visible_selected_palette_row(&context, &before);
+        assert_eq!(item_at.label, "Item at");
+        let before_constant = before
+            .rows
+            .iter()
+            .find(|row| row.label == "Constant")
+            .unwrap()
+            .response
+            .rect;
+        let wheel = overflow_palette_frame(
+            &context,
+            vec![
+                egui::Event::PointerMoved(item_at.response.rect.center()),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, 75.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            &mut time,
+        );
+        assert_eq!(wheel.chosen, None);
+        overflow_palette_frame(&context, vec![egui::Event::PointerGone], &mut time);
+        let scrolled = settle_overflow_palette(&context, &mut time);
+        let after_constant = scrolled
+            .rows
+            .iter()
+            .find(|row| row.label == "Constant")
+            .unwrap()
+            .response
+            .rect;
+        eprintln!("manual wheel: before={before_constant:?}, after={after_constant:?}");
+        assert!(after_constant.top() > before_constant.top() + 20.0);
+        let idle = settle_overflow_palette(&context, &mut time);
+        let idle_constant = idle
+            .rows
+            .iter()
+            .find(|row| row.label == "Constant")
+            .unwrap()
+            .response
+            .rect;
+        assert!(
+            (idle_constant.top() - after_constant.top()).abs() < 0.1,
+            "no-key idle frames must not force the keyboard-selected row back into view"
+        );
+        // Sum is five aggregate rows above the keyboard-revealed Item at.
+        // A 75-point wheel keeps its whole row inside this short popup.
+        let label = "Sum";
+        let expected = NodeTemplate::Aggregate(AggregateOp::Sum);
+        let row = idle
+            .rows
+            .iter()
+            .find(|row| row.label == label)
+            .expect("literal Sum creation row");
+        assert!(
+            row.clip.contains_rect(row.response.rect),
+            "literal Sum creation row {:?} must fit its actual scroll clip {:?}",
+            row.response.rect,
+            row.clip
+        );
+        let pos = row.response.rect.center();
+        overflow_palette_frame(
+            &context,
+            vec![
+                egui::Event::PointerMoved(pos),
+                pointer_button(pos, egui::PointerButton::Primary, true),
+            ],
+            &mut time,
+        );
+        let clicked = overflow_palette_frame(
+            &context,
+            vec![pointer_button(pos, egui::PointerButton::Primary, false)],
+            &mut time,
+        );
+        eprintln!(
+            "manual pointer label={label:?}, returned={:?}",
+            clicked.chosen
+        );
+        assert_eq!(clicked.chosen, Some(expected));
     }
 }
