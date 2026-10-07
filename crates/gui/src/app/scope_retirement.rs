@@ -63,6 +63,10 @@ impl FerruleApp {
             self.scope_removal_failed("The selected scope no longer exists".into());
             return;
         };
+        if join_authoring::subtree_has_join(removed) {
+            self.scope_removal_failed(join_authoring::JOIN_REMOVAL_REASON.into());
+            return;
+        }
         let items = match retirement_items(&self.project, removed) {
             Ok(items) => items,
             Err(error) => {
