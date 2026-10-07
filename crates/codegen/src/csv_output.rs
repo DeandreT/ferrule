@@ -97,7 +97,11 @@ pub enum CsvOutputError {
     ConflictingQuoteSettings,
     DelimiterQuoteConflict,
     XmlBoundary,
+    /// Retained compatibility refusal; static named inputs are now admitted.
     NamedInputs,
+    DynamicInputs {
+        name: String,
+    },
     NamedOutputs,
     TargetSchema {
         field: Option<String>,
@@ -130,6 +134,12 @@ impl fmt::Display for CsvOutputError {
             }
             Self::NamedInputs => {
                 f.write_str("generated CSV output does not yet support named inputs")
+            }
+            Self::DynamicInputs { name } => {
+                write!(
+                    f,
+                    "generated CSV output does not yet support dynamic named input {name:?}"
+                )
             }
             Self::NamedOutputs => {
                 f.write_str("generated CSV output does not yet support named outputs")
@@ -171,8 +181,14 @@ pub fn validate_csv_output(
     if program.xml_boundary.is_some() {
         return Err(CsvOutputError::XmlBoundary);
     }
-    if !program.extra_sources.is_empty() {
-        return Err(CsvOutputError::NamedInputs);
+    if let Some(source) = program
+        .extra_sources
+        .iter()
+        .find(|source| source.dynamic.is_some())
+    {
+        return Err(CsvOutputError::DynamicInputs {
+            name: source.name.clone(),
+        });
     }
     if !program.extra_targets.is_empty() {
         return Err(CsvOutputError::NamedOutputs);
@@ -433,10 +449,20 @@ mod tests {
             source: SchemaNode::group("Other", Vec::new()),
             dynamic: None,
         });
-        assert!(matches!(
+        assert_eq!(
             validate_csv_output(&candidate, &CsvOutputPolicy::default()),
-            Err(CsvOutputError::NamedInputs)
-        ));
+            Ok(())
+        );
+        candidate.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
+            path: 9,
+            driver: SourceIteration::new(Vec::new()),
+        });
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Err(CsvOutputError::DynamicInputs {
+                name: "Other".into()
+            })
+        );
         candidate.extra_sources.clear();
         candidate.extra_targets.push(NamedTargetProgram {
             name: "Other".into(),
@@ -469,6 +495,64 @@ mod tests {
                 .unwrap()
                 .downcast_ref::<ProgramValidationError>()
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn static_sources_admit_and_first_dynamic_name_is_precise_after_original_gates() {
+        let mut candidate = program();
+        for (name, dynamic) in [("Static", false), ("First", true), ("Second", true)] {
+            candidate.extra_sources.push(NamedSourceProgram {
+                name: name.into(),
+                source: SchemaNode::group(name, Vec::new()),
+                dynamic: dynamic.then(|| crate::DynamicSourceProgram {
+                    path: 9,
+                    driver: SourceIteration::new(Vec::new()),
+                }),
+            });
+        }
+        let error = validate_csv_output(&candidate, &CsvOutputPolicy::default()).unwrap_err();
+        assert_eq!(
+            error,
+            CsvOutputError::DynamicInputs {
+                name: "First".into()
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "generated CSV output does not yet support dynamic named input \"First\""
+        );
+        assert_eq!(
+            CsvOutputError::NamedInputs.to_string(),
+            "generated CSV output does not yet support named inputs"
+        );
+        assert_eq!(
+            validate_csv_output(
+                &candidate,
+                &CsvOutputPolicy {
+                    delimiter: Some('é'),
+                    ..Default::default()
+                }
+            ),
+            Err(CsvOutputError::BadDelimiter('é'))
+        );
+        candidate.root.bindings[0].expression = 999;
+        assert!(matches!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Err(CsvOutputError::InvalidProgram(
+                ProgramValidationError::MissingBindingExpression {
+                    expression: 999,
+                    ..
+                }
+            ))
+        ));
+        candidate.root.bindings[0].expression = 9;
+        for source in &mut candidate.extra_sources {
+            source.dynamic = None;
+        }
+        assert_eq!(
+            validate_csv_output(&candidate, &CsvOutputPolicy::default()),
+            Ok(())
         );
     }
 }
