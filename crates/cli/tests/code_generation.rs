@@ -22,6 +22,8 @@ mod copy_current_source;
 mod csv_output;
 #[path = "code_generation/disconnected_inputs.rs"]
 mod disconnected_inputs;
+#[path = "code_generation/dynamic_properties.rs"]
+mod dynamic_properties;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]
