@@ -1,18 +1,23 @@
+mod serialization;
+
+pub(crate) use serialization::render_payload;
+use serialization::{Limits, RenderedArtifact, render_target};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
-use mapping::{EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
+use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
 
 use super::{
-    TraceSink, absolute_mapping_path, extension_for_dispatch, extension_of, formatted_edi_output,
-    has_legacy_xlsx_layout, json5_selected, protobuf_layout, reject_edi_conflicts,
-    reject_external_source_conflicts, reject_fixed_width_csv_options, reject_flextext_conflicts,
-    reject_idoc_conflicts, reject_json_conflicts, reject_pdf_conflicts, reject_protobuf_conflicts,
-    reject_swift_conflicts, reject_xbrl_conflicts, reject_xml_conflicts, require_valid,
-    resolve_run_path, validate_tabular_fallback, x12_separators,
+    TraceSink, absolute_mapping_path, extension_for_dispatch, extension_of, has_legacy_xlsx_layout,
+    json5_selected, protobuf_layout, reject_edi_conflicts, reject_external_source_conflicts,
+    reject_fixed_width_csv_options, reject_flextext_conflicts, reject_idoc_conflicts,
+    reject_json_conflicts, reject_pdf_conflicts, reject_protobuf_conflicts, reject_swift_conflicts,
+    reject_xbrl_conflicts, reject_xml_conflicts, require_valid, resolve_run_path,
+    validate_tabular_fallback, x12_separators,
 };
 
 pub const MAX_PAYLOAD_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -240,6 +245,7 @@ pub fn run_project_value_payloads(
                 options.output_path,
                 &output,
                 &current_datetime,
+                Limits::PRODUCTION,
             )?
         }
         None => {
@@ -255,12 +261,12 @@ pub fn run_project_value_payloads(
                 options.output_path,
                 &output,
                 &current_datetime,
+                Limits::PRODUCTION,
             )?
         }
     };
 
-    validate_artifact_budget(&artifacts)?;
-    validate_artifact_paths(&artifacts)?;
+    let artifacts = serialization::finalize(artifacts, Limits::PRODUCTION)?;
     Ok(PayloadRunOutcome {
         records_written,
         artifacts,
@@ -273,7 +279,8 @@ fn render_all_targets(
     output_path: Option<&Path>,
     output: &engine::ExecutionOutputs,
     current_datetime: &str,
-) -> anyhow::Result<(usize, Vec<PayloadArtifact>)> {
+    limits: Limits,
+) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     if output.extras.len() != project.extra_targets.len() {
         bail!("engine returned an unexpected number of additional target values");
     }
@@ -293,6 +300,7 @@ fn render_all_targets(
         &output.primary,
         &project.target_options,
         current_datetime,
+        limits,
     )?;
     let records_written = artifacts
         .iter()
@@ -314,6 +322,7 @@ fn render_all_targets(
             &output.instance,
             &target.options,
             current_datetime,
+            limits,
         )
         .with_context(|| format!("rendering extra target `{}`", target.name))?;
         artifacts.extend(rendered);
@@ -327,7 +336,8 @@ fn render_selected_target(
     output_path: Option<&Path>,
     output: &engine::SelectedTargetOutput,
     current_datetime: &str,
-) -> anyhow::Result<(usize, Vec<PayloadArtifact>)> {
+    limits: Limits,
+) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     let (name, stored, scope, schema, instance, options, label) = match output {
         engine::SelectedTargetOutput::Primary(instance) => (
             project.target.name.as_str(),
@@ -373,6 +383,7 @@ fn render_selected_target(
         instance,
         options,
         current_datetime,
+        limits,
     )
     .with_context(|| format!("rendering {label}"))?;
     let records_written = artifacts
@@ -550,30 +561,6 @@ fn target_destination(
     Ok(PayloadDestination::Static(path))
 }
 
-pub(crate) fn render_target(
-    name: &str,
-    destination: &PayloadDestination,
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-    current_datetime: &str,
-) -> anyhow::Result<Vec<PayloadArtifact>> {
-    let mut artifacts = Vec::new();
-    visit_target_documents(destination, instance, |path, instance| {
-        let (bytes, records_written) =
-            render_payload(&path, schema, instance, options, current_datetime)
-                .with_context(|| format!("rendering target payload {}", path.display()))?;
-        artifacts.push(PayloadArtifact {
-            target: name.to_string(),
-            records_written,
-            path,
-            bytes,
-        });
-        Ok(())
-    })?;
-    Ok(artifacts)
-}
-
 /// Visit logical documents without materializing their serialized buffers.
 pub(crate) fn visit_target_documents(
     destination: &PayloadDestination,
@@ -634,29 +621,6 @@ pub(crate) fn target_artifact_count(instance: &Instance, dynamic: bool) -> anyho
         (true, Instance::DocumentSet(documents)) => Ok(documents.len()),
         (true, _) => bail!("dynamic target mapping did not produce a document set"),
     }
-}
-
-fn validate_artifact_budget(artifacts: &[PayloadArtifact]) -> anyhow::Result<()> {
-    let mut total = 0usize;
-    for artifact in artifacts {
-        if artifact.bytes.len() > MAX_PAYLOAD_DOCUMENT_BYTES {
-            bail!(
-                "output artifact `{}` exceeds the {} MiB per-document limit",
-                artifact.path.display(),
-                MAX_PAYLOAD_DOCUMENT_BYTES / (1024 * 1024)
-            );
-        }
-        total = total
-            .checked_add(artifact.bytes.len())
-            .context("payload output byte count overflowed")?;
-    }
-    if total > MAX_PAYLOAD_RUN_BYTES {
-        bail!(
-            "payload outputs exceed the {} MiB total limit",
-            MAX_PAYLOAD_RUN_BYTES / (1024 * 1024)
-        );
-    }
-    Ok(())
 }
 
 fn validate_artifact_paths(artifacts: &[PayloadArtifact]) -> anyhow::Result<()> {
@@ -949,286 +913,4 @@ fn read_xlsx_payload(
     }
     .context("parsing XLSX input payload")?;
     Ok(Instance::Repeated(rows))
-}
-
-pub(crate) fn render_payload(
-    path: &Path,
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-    current_datetime: &str,
-) -> anyhow::Result<(Vec<u8>, usize)> {
-    options
-        .validate_xml_schema_hint_options(true)
-        .map_err(anyhow::Error::msg)?;
-    super::validate_csv_metadata_identity(path, options, "output")?;
-    super::reject_inactive_root_xml_read_options(path, schema, options, "output")?;
-    if options.local_xml_file_set {
-        bail!("`local_xml_file_set` is input-only");
-    }
-    if options.xbrl.is_some() {
-        reject_xbrl_conflicts(options, "output")?;
-        let xbrl = options
-            .xbrl
-            .as_ref()
-            .context("missing XBRL target options")?;
-        let text = format_xbrl::to_string(schema, instance, xbrl)
-            .context("rendering XBRL output payload")?;
-        return Ok((text.into_bytes(), 1));
-    }
-    if let Some(layout) = &options.idoc {
-        reject_idoc_conflicts(options, "output")?;
-        let formatted = formatted_edi_output(instance, options)?;
-        let bytes = format_edi::idoc::to_bytes(schema, &formatted, layout)
-            .context("rendering SAP IDoc output payload")?;
-        return Ok((bytes, 1));
-    }
-    if options.swift_mt.is_some() {
-        reject_swift_conflicts(options, "output")?;
-        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
-    }
-    if options.pdf.is_some() {
-        reject_pdf_conflicts(options, "output")?;
-        bail!("PDF output is not supported; `pdf` is input-only");
-    }
-    if let Some(layout) = &options.flextext {
-        reject_flextext_conflicts(options, "output")?;
-        let text = format_flextext::to_string(schema, instance, layout)
-            .context("rendering FlexText output payload")?;
-        return Ok((text.into_bytes(), 1));
-    }
-    if let Some(protobuf) = &options.protobuf {
-        reject_protobuf_conflicts(options, "output")?;
-        let layout =
-            protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
-        let bytes = format_protobuf::to_vec(&layout, &protobuf.root_message, instance)
-            .context("rendering Protocol Buffers output payload")?;
-        return Ok((bytes, 1));
-    }
-    if let Some(kind) = options.edi_kind {
-        reject_edi_conflicts(options, "output")?;
-        let formatted = formatted_edi_output(instance, options)?;
-        let text = render_edi_payload(schema, &formatted, options, kind, current_datetime)?;
-        return Ok((text.into_bytes(), 1));
-    }
-    if options.xml_document {
-        reject_xml_conflicts(options, "output")?;
-        return format_xml::to_string_with_options(
-            schema,
-            instance,
-            &super::xml_write_options(options),
-        )
-        .map(|text| (text.into_bytes(), 1))
-        .context("rendering XML output payload");
-    }
-    if options.json_document || options.json5 || options.json_lines {
-        reject_json_conflicts(options, "output")?;
-        let json5 = json5_selected(path, options)?;
-        let text = if options.json_lines {
-            format_json::to_lines(schema, instance)
-        } else if json5 {
-            format_json::to_json5_string(schema, instance)
-        } else {
-            format_json::to_string(schema, instance)
-        }
-        .context("rendering JSON output payload")?;
-        return Ok((
-            text.into_bytes(),
-            instance.as_repeated().map_or(1, <[Instance]>::len),
-        ));
-    }
-    if let Some(layout) = &options.fixed_width {
-        reject_fixed_width_csv_options(options, "output")?;
-        let rows = instance
-            .as_repeated()
-            .context("mapping did not produce a repeating row set for a fixed-width output")?;
-        let text = format_csv::to_string_fixed_width(schema, rows, layout)
-            .context("rendering fixed-width output payload")?;
-        return Ok((text.into_bytes(), rows.len()));
-    }
-
-    validate_tabular_fallback(path, options, "output")?;
-    match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => {
-            let rows = instance
-                .as_repeated()
-                .context("mapping did not produce a repeating row set for a CSV output")?;
-            let text = format_csv::to_string_with_options(
-                schema,
-                rows,
-                &format_csv::CsvWriteOptions::from(options),
-            )
-            .context("rendering CSV output payload")?;
-            Ok((text.into_bytes(), rows.len()))
-        }
-        "xlsx" => render_xlsx_payload(schema, instance, options),
-        "xml" => {
-            format_xml::to_string_with_options(schema, instance, &super::xml_write_options(options))
-                .map(|text| (text.into_bytes(), 1))
-                .context("rendering XML output payload")
-        }
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            let lines =
-                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
-            let json5 = json5_selected(path, options)?;
-            if lines && json5 {
-                bail!("JSON5 cannot be combined with JSON Lines");
-            }
-            let text = if lines {
-                format_json::to_lines(schema, instance)
-            } else if json5 {
-                format_json::to_json5_string(schema, instance)
-            } else {
-                format_json::to_string(schema, instance)
-            }
-            .context("rendering JSON output payload")?;
-            Ok((
-                text.into_bytes(),
-                instance.as_repeated().map_or(1, <[Instance]>::len),
-            ))
-        }
-        "db" | "sqlite" | "sqlite3" => {
-            bail!("SQLite output requires a persistent database and is unavailable as a payload")
-        }
-        "edi" | "x12" | "edifact" | "hl7" => {
-            let formatted = formatted_edi_output(instance, options)?;
-            let text = match format_edi::dialect_of(schema)? {
-                format_edi::Dialect::X12 => render_edi_payload(
-                    schema,
-                    &formatted,
-                    options,
-                    EdiBoundaryKind::X12,
-                    current_datetime,
-                ),
-                format_edi::Dialect::Edifact => render_edi_payload(
-                    schema,
-                    &formatted,
-                    options,
-                    EdiBoundaryKind::Edifact,
-                    current_datetime,
-                ),
-                format_edi::Dialect::Hl7 => {
-                    format_edi::hl7::to_string(schema, &formatted).map_err(anyhow::Error::new)
-                }
-                format_edi::Dialect::Tradacoms => {
-                    format_edi::tradacoms::to_string(schema, &formatted).map_err(anyhow::Error::new)
-                }
-            }?;
-            Ok((text.into_bytes(), 1))
-        }
-        "pdf" => bail!("PDF output is not supported; PDF is input-only"),
-        other => bail!("unsupported output payload extension: .{other}"),
-    }
-}
-
-fn render_xlsx_payload(
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-) -> anyhow::Result<(Vec<u8>, usize)> {
-    if options.xlsx_update_existing {
-        bail!(
-            "update-existing XLSX output requires a persistent workbook and is unavailable as a payload"
-        );
-    }
-    if let Some(layout) = &options.xlsx_hierarchical {
-        if options.xlsx_grid.is_some()
-            || options.xlsx_composite.is_some()
-            || options.xlsx_worksheet_set.is_some()
-            || has_legacy_xlsx_layout(options)
-        {
-            bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
-        }
-        let (bytes, worksheets) = format_xlsx::to_bytes_hierarchical(schema, instance, layout)
-            .context("rendering hierarchical XLSX output payload")?;
-        return Ok((bytes, worksheets));
-    }
-    if options.xlsx_grid.is_some() {
-        bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
-    }
-    if options.xlsx_worksheet_set.is_some() {
-        bail!("worksheet-set XLSX output is not supported; `xlsx_worksheet_set` is input-only");
-    }
-    if options.xlsx_composite.is_some() {
-        bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
-    }
-    if !options.xlsx_rows.is_empty() {
-        bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
-    }
-    let rows = instance
-        .as_repeated()
-        .context("mapping did not produce a repeating row set for an XLSX output")?;
-    let bytes = format_xlsx::to_bytes_with_options(
-        schema,
-        rows,
-        format_xlsx::FlatTableWriteOptions {
-            sheet: options.xlsx_sheet.as_deref(),
-            start_row: options.xlsx_start_row.unwrap_or(1),
-            columns: &options.xlsx_columns,
-            headers: &options.xlsx_headers,
-            has_header: options.has_header_row.unwrap_or(true),
-        },
-    )
-    .context("rendering XLSX output payload")?;
-    Ok((bytes, rows.len()))
-}
-
-fn render_edi_payload(
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-    kind: EdiBoundaryKind,
-    current_datetime: &str,
-) -> anyhow::Result<String> {
-    match kind {
-        EdiBoundaryKind::X12 => {
-            let separators = options
-                .x12_separators
-                .map(x12_separators)
-                .unwrap_or_default();
-            let version = options.x12_interchange_version.as_deref();
-            match options.edi_autocomplete.as_ref() {
-                Some(EdiAutocomplete::X12(config)) => {
-                    format_edi::x12::to_string_with_syntax_and_autocomplete(
-                        schema,
-                        instance,
-                        separators,
-                        version,
-                        format_edi::x12::Autocomplete {
-                            current_datetime,
-                            request_acknowledgement: config.request_acknowledgement,
-                            transaction_set: config.transaction_set.as_deref(),
-                        },
-                    )
-                }
-                _ => format_edi::x12::to_string_with_syntax(schema, instance, separators, version),
-            }
-        }
-        EdiBoundaryKind::Edifact => {
-            if let Some(EdiAutocomplete::Edifact(config)) = options.edi_autocomplete.as_ref() {
-                format_edi::edifact::to_string_with_autocomplete(
-                    schema,
-                    instance,
-                    format_edi::edifact::Autocomplete {
-                        current_datetime,
-                        syntax_level: config.syntax_level.as_deref(),
-                        syntax_version: config.syntax_version.as_deref(),
-                        controlling_agency: config.controlling_agency.as_deref(),
-                        message_type: config.message_type.as_deref(),
-                    },
-                )
-            } else {
-                format_edi::edifact::to_string(schema, instance)
-            }
-        }
-        EdiBoundaryKind::Hl7 => format_edi::hl7::to_string(schema, instance),
-        EdiBoundaryKind::Tradacoms => format_edi::tradacoms::to_string(schema, instance),
-        EdiBoundaryKind::Idoc => {
-            bail!("SAP IDoc output requires an embedded runtime layout")
-        }
-        EdiBoundaryKind::SwiftMt => {
-            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
-        }
-    }
-    .context("rendering EDI output payload")
 }
