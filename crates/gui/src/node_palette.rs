@@ -1,6 +1,6 @@
 use egui::{Key, Ui};
 use functions::{BuiltinCategory, BuiltinDefinition, BuiltinExposure};
-use mapping::{AggregateOp, Node, NodeId};
+use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
 pub(super) const AGGREGATE_OPS: [(AggregateOp, &str); 7] = [
     (AggregateOp::Count, "Count"),
@@ -35,6 +35,7 @@ pub(super) enum NodeTemplate {
     Position,
     HostInput,
     HostInputDefault,
+    RuntimeValue(RuntimeValue),
     Builtin(&'static str),
     If,
     Raise,
@@ -86,7 +87,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 19] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 22] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -135,6 +136,27 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 19] = [
         keywords: "host runtime parameter run value optional fallback default named input",
         documentation: "Uses a named run value when supplied, otherwise its connected default.",
         template: NodeTemplate::HostInputDefault,
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Mapping path",
+        keywords: "runtime active current mapping file path location",
+        documentation: "Reads the path of the mapping currently being executed.",
+        template: NodeTemplate::RuntimeValue(RuntimeValue::MappingFilePath),
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Main mapping path",
+        keywords: "runtime main top level caller mapping file path location",
+        documentation: "Reads the path of the top-level mapping for this run.",
+        template: NodeTemplate::RuntimeValue(RuntimeValue::MainMappingFilePath),
+    },
+    PaletteEntry {
+        category: Category::Input,
+        label: "Run date and time",
+        keywords: "runtime run timestamp date time clock now",
+        documentation: "Reads the stable date and time captured once at the start of a run.",
+        template: NodeTemplate::RuntimeValue(RuntimeValue::CurrentDateTime),
     },
     PaletteEntry {
         category: Category::Transform,
@@ -539,6 +561,34 @@ mod tests {
             vec![NodeTemplate::Builtin("normalize_space")]
         );
         assert!(matching_entries("does-not-exist").is_empty());
+    }
+
+    #[test]
+    fn runtime_query_discovers_exact_run_values_and_existing_host_inputs() {
+        for query in ["runtime", "RuNtImE"] {
+            let matches = matching_entries(query);
+            let values = matches
+                .iter()
+                .filter_map(|entry| match entry.template {
+                    NodeTemplate::RuntimeValue(value) => Some((entry.label, value)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(values.len(), 3, "{query}: {values:?}");
+            for expected in [
+                ("Mapping path", RuntimeValue::MappingFilePath),
+                ("Main mapping path", RuntimeValue::MainMappingFilePath),
+                ("Run date and time", RuntimeValue::CurrentDateTime),
+            ] {
+                assert!(values.contains(&expected), "{query}: missing {expected:?}");
+            }
+            for expected in [NodeTemplate::HostInput, NodeTemplate::HostInputDefault] {
+                assert!(
+                    matches.iter().any(|entry| entry.template == expected),
+                    "{query}: missing {expected:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -969,7 +1019,7 @@ mod tests {
             visible_selected_palette_row(&context, &initial).label,
             "Constant"
         );
-        for _ in 0..18 {
+        for _ in 0..21 {
             let moved = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             assert_eq!(moved.chosen, None);
             let settled = settle_overflow_palette(&context, &mut time);
@@ -980,7 +1030,7 @@ mod tests {
             visible_selected_palette_row(&context, &bottom).label,
             "Item at"
         );
-        for _ in 0..12 {
+        for _ in 0..15 {
             let moved = overflow_palette_frame(&context, vec![key(Key::ArrowUp)], &mut time);
             assert_eq!(moved.chosen, None);
             let settled = settle_overflow_palette(&context, &mut time);
@@ -1022,7 +1072,7 @@ mod tests {
         );
         assert_eq!(query.chosen, None);
         let exact = settle_overflow_palette(&context, &mut time);
-        assert_eq!(exact.rows.len(), 2);
+        assert_eq!(exact.rows.len(), 4);
         assert_eq!(
             visible_selected_palette_row(&context, &exact).label,
             "Value map"
@@ -1044,7 +1094,7 @@ mod tests {
         let context = overflow_palette_context();
         let mut time = 0.0;
         open_overflow_palette(&context, &mut time);
-        for _ in 0..18 {
+        for _ in 0..21 {
             overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             settle_overflow_palette(&context, &mut time);
         }
