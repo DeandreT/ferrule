@@ -14,7 +14,7 @@ use super::source::SourceExports;
 
 use crate::MfdError;
 
-use correlated_three::resolved_three_source_paths;
+use correlated_three::resolved_correlated_source_paths;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     let dynamic_sources = project
@@ -368,7 +368,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         match result {
             Ok(rendered) => {
                 if owner.nested
-                    && owner.plan.sources().count() == 3
+                    && owner.plan.sources().count() >= 3
                     && let Some(edge) = rendered.input_edges.first()
                 {
                     structural_edges.insert(*edge);
@@ -471,8 +471,8 @@ fn resolved_source_paths(
         .as_deref()
         .filter(|anchor| !anchor.is_empty())
         .ok_or("nested join is not enclosed by one ordinary source iteration")?;
-    if join_sources.len() == 3 {
-        return resolved_three_source_paths(&join_sources, anchor, sources);
+    if join_sources.len() >= 3 {
+        return resolved_correlated_source_paths(&join_sources, anchor, sources);
     }
     if join_sources.len() != 2
         || join_sources

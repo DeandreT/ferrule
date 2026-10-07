@@ -1011,7 +1011,7 @@ fn nested_three_input_export_refuses_primary_prefix_shadowing_and_anchor_strippi
 }
 
 #[test]
-fn nested_three_input_export_keeps_named_singleton_fourth_input_and_joined_parent_refusals()
+fn nested_three_input_export_keeps_named_and_additional_singleton_and_joined_parent_refusals()
 -> Result<(), Box<dyn Error>> {
     let mut named = three_project()?;
     append_schema_field(
@@ -1047,22 +1047,22 @@ fn nested_three_input_export_keeps_named_singleton_fourth_input_and_joined_paren
     four.extra_sources.push(NamedSource {
         name: "Flags".into(),
         path: "flags.xml".into(),
-        schema: SchemaNode::group("Flags", vec![string_fields("Flag", &["Promo"]).repeating()]),
+        schema: string_fields("Flags", &["Promo"]),
         options: Default::default(),
         dynamic_path: None,
     });
     let plan = three_plan()?.then(
-        JoinSource::new(vec!["Flags".into(), "Flag".into()]),
+        JoinSource::singleton(vec!["Flags".into(), "Promo".into()]),
         JoinConditions::new(JoinKey::new(
             vec!["Offers".into(), "Offer".into()],
             vec!["Promo".into()],
-            vec!["Promo".into()],
+            vec![],
         )),
     )?;
     replace_plan(&mut four, plan);
     assert_refused(
         &four,
-        "exactly one correlated singleton and one repeating source",
+        "nested multi-input join requires a primary singleton followed by static named repeating sources",
         0,
     )?;
     let mut joined_parent = three_project()?;
@@ -1131,3 +1131,6 @@ fn nested_three_input_dynamic_source_is_a_hard_prepublication_refusal() -> Resul
     }
     Ok(())
 }
+
+#[path = "correlated_scalar_join/four_plus.rs"]
+mod four_plus;
