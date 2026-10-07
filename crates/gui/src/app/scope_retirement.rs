@@ -93,7 +93,7 @@ impl FerruleApp {
         self.diagnostics.error("Scope edit failed", message);
     }
 
-    fn rebuild_mapping_canvases_after_retirement(&mut self) {
+    pub(super) fn rebuild_mapping_canvases_after_retirement(&mut self) {
         // Retired item nodes belong to the shared mapping graph. Every open
         // mapping canvas must forget them while retaining surviving positions.
         let layout = CanvasLayout::capture(
