@@ -44,6 +44,7 @@ mod json_serializer;
 mod materialize;
 mod mixed_content;
 mod output_parameter;
+mod pipeline_exception;
 mod protobuf_target;
 mod recursive;
 mod scalar_anchor;
@@ -154,9 +155,20 @@ pub struct ImportOptions {
     package_manifest: Option<PathBuf>,
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
+    item_ordered_exceptions: bool,
 }
 
 impl ImportOptions {
+    /// Imports a supported native exception branch as a lazy per-item guard.
+    ///
+    /// The default preserves legacy pre-target failure rules. Unsupported
+    /// opted-in branches produce diagnostics rather than falling back to a
+    /// global rule; the executable import profile refuses those diagnostics.
+    pub fn with_item_ordered_exceptions(mut self) -> Self {
+        self.item_ordered_exceptions = true;
+        self
+    }
+
     /// Confines all mapping resources to this trusted directory.
     pub fn with_package_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.package_root = Some(root.into());
@@ -316,7 +328,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
     let resources = resolved_resources(path, options)?;
-    Ok(import_resolved(&resources, StageSelection::Ordinary)?.imported)
+    Ok(import_resolved(
+        &resources,
+        StageSelection::Ordinary,
+        options.item_ordered_exceptions,
+    )?
+    .imported)
 }
 
 /// Import a connected, file-based design as a typed pipeline.
@@ -344,6 +361,7 @@ pub fn import_pipeline_with_options(
             label: &first_intermediate.label,
             target_inputs: &first_intermediate.inputs,
         },
+        options.item_ordered_exceptions,
     )?];
     for pair in chain.intermediates.windows(2) {
         let [first_intermediate, second_intermediate] = pair else {
@@ -357,6 +375,7 @@ pub fn import_pipeline_with_options(
                 target_key: second_intermediate.key,
                 target_inputs: &second_intermediate.inputs,
             },
+            options.item_ordered_exceptions,
         )?);
     }
     let last_intermediate = chain
@@ -372,6 +391,7 @@ pub fn import_pipeline_with_options(
             label: &last_intermediate.label,
             final_inputs: &chain.final_inputs,
         },
+        options.item_ordered_exceptions,
     )?);
 
     let warnings = lowered
@@ -976,6 +996,15 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             "pipeline import needs an XML source component".into(),
         ));
     }
+    let exception_terminals = pipeline_exception::classify(
+        &structure,
+        &wrapper,
+        &components,
+        &edge_from,
+        &consumers,
+        &function_outputs,
+        &connected_outputs,
+    )?;
     let (order, final_named_source) = strict_serial_stage_order(
         &components,
         &intermediates,
@@ -983,6 +1012,7 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
         &connected_outputs,
         &consumers,
         &function_outputs,
+        &exception_terminals.inputs,
     )?;
     Ok(DiscoveredPipelineChain {
         final_named_source_key: final_named_source.map(|index| intermediate_keys[index]),
@@ -1197,6 +1227,7 @@ fn strict_serial_stage_order(
     connected_outputs: &BTreeSet<u32>,
     consumers: &BTreeMap<u32, Vec<u32>>,
     function_outputs: &BTreeMap<u32, Vec<u32>>,
+    exception_inputs: &BTreeSet<u32>,
 ) -> Result<(Vec<usize>, Option<usize>), MfdError> {
     let intermediate_indices = intermediates
         .iter()
@@ -1256,6 +1287,7 @@ fn strict_serial_stage_order(
             consumers,
             function_outputs,
             &target_input_owners,
+            exception_inputs,
         )?;
         if sinks.is_empty() {
             return Err(MfdError::UnsupportedImport(
@@ -1380,6 +1412,7 @@ fn trace_xml_sinks(
     consumers: &BTreeMap<u32, Vec<u32>>,
     function_outputs: &BTreeMap<u32, Vec<u32>>,
     target_input_owners: &BTreeMap<u32, usize>,
+    exception_inputs: &BTreeSet<u32>,
 ) -> Result<BTreeSet<usize>, MfdError> {
     let mut sinks = BTreeSet::new();
     let mut active = BTreeSet::new();
@@ -1411,6 +1444,10 @@ fn trace_xml_sinks(
         for input in consumers.get(&output).into_iter().flatten() {
             if let Some(&owner) = target_input_owners.get(input) {
                 sinks.insert(owner);
+            } else if exception_inputs.contains(input) {
+                // A validated terminal side effect is not an XML document sink.
+                // Other branches must still reach one serial target owner.
+                continue;
             } else if let Some(next_outputs) = function_outputs.get(input) {
                 let next_outputs = next_outputs
                     .iter()
@@ -1436,6 +1473,7 @@ fn trace_xml_sinks(
 fn import_resolved(
     resources: &ResourceResolver,
     selection: StageSelection<'_>,
+    item_ordered_exceptions: bool,
 ) -> Result<LoweredStage, MfdError> {
     let path = resources.mapping_path();
     let text = crate::design::read(path)?;
@@ -1476,12 +1514,18 @@ fn import_resolved(
     let mut external_udf_candidates = Vec::new();
     let mut external_scalar_recipes = Vec::new();
     let mut external_xslt_aggregates = Vec::new();
+    let pipeline_exceptions = if matches!(selection, StageSelection::Ordinary) {
+        None
+    } else {
+        Some(pipeline_exception::read_for_stages(&structure, &wrapper)?)
+    };
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if matches!(selection, StageSelection::Ordinary)
+        && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
             crate::export::qualified_root_view::import_project(&text, structure, resources)?
     {
@@ -1796,7 +1840,12 @@ fn import_resolved(
                     pending_joins.read(component, &mut warnings);
                 }
                 "core" if component.attribute("kind") == Some("18") => {
-                    exception_recipes.push(exception::read(&component));
+                    if pipeline_exceptions
+                        .as_ref()
+                        .is_none_or(|terminals| terminals.applies_to(&component, selection))
+                    {
+                        exception_recipes.push(exception::read(&component));
+                    }
                 }
                 "core"
                     if component.attribute("kind") == Some("29")
@@ -2417,7 +2466,22 @@ fn import_resolved(
             .or_else(|| builder.static_target_document_path(target))
             .or_else(|| default_pass_through_output_path(target))
     };
-    let failure_rules = exception::lower(exception_recipes, &mut builder);
+    let (failure_rules, item_exception) = if item_ordered_exceptions {
+        let pending = exception::item_ordered::attach(
+            exception_recipes,
+            &mut builder,
+            &mut root,
+            target,
+            structure,
+            matches!(selection, StageSelection::Ordinary)
+                && extra_sources.is_empty()
+                && extra_targets.is_empty()
+                && user_functions.is_empty(),
+        );
+        (Vec::new(), pending)
+    } else {
+        (exception::lower(exception_recipes, &mut builder), None)
+    };
     warnings.extend(builder.warnings);
     let mut source_options = primary.options.clone();
     source_options.mfd_decimal_input_names =
@@ -2436,6 +2500,7 @@ fn import_resolved(
         graph: builder.graph,
         root,
     };
+    exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     project.prune_unreachable_nodes();
     enrich_unresolved_edi_source_schemas(&mut project);
     if matches!(selection, StageSelection::Ordinary) {

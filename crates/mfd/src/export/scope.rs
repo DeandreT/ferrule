@@ -11,6 +11,7 @@ use super::join::JoinExports;
 use super::mapped_sequence::{ScopePlan, ScopePlans};
 use super::position::connect_scope_position_roots;
 use super::schema::{KeyAlloc, PortTree};
+use super::scoped_exception::Branches as ScopedExceptionBranches;
 use super::source::SourceExports;
 
 pub(super) struct ConnectArgs<'a> {
@@ -32,6 +33,7 @@ pub(super) struct ConnectArgs<'a> {
     pub(super) joins: &'a JoinExports,
     pub(super) target_branches: &'a TargetBranches,
     pub(super) exception_branches: &'a mut ExceptionBranches,
+    pub(super) scoped_exception_branches: &'a mut ScopedExceptionBranches,
 }
 
 pub(super) fn connect(args: ConnectArgs<'_>) {
@@ -54,6 +56,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         joins,
         target_branches,
         exception_branches,
+        scoped_exception_branches,
     } = args;
     collect_scope_edges(
         scope,
@@ -77,6 +80,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         joins,
         target_branches,
         exception_branches,
+        scoped_exception_branches,
         None,
     );
 }
@@ -246,6 +250,7 @@ fn append_scope_controls(
     edges: &mut Vec<(u32, u32)>,
     warnings: &mut Vec<String>,
     exception_branches: &mut ExceptionBranches,
+    scoped_exception_branches: &mut ScopedExceptionBranches,
     mut from: u32,
     absorbed_filter: Option<NodeId>,
 ) -> u32 {
@@ -271,15 +276,36 @@ fn append_scope_controls(
     if let Some(filter) = scope.filter
         && Some(filter) != absorbed_filter
     {
+        let scoped_predicate = source_collection
+            .and_then(|collection| scoped_exception_branches.predicate(chain, collection, filter));
+        let predicate = scoped_predicate.unwrap_or_else(|| {
+            source_collection
+                .map(|collection| exception_branches.filter_predicate(collection, filter))
+                .unwrap_or(filter)
+        });
+        let target_is_false = source_collection.is_some_and(|collection| {
+            if scoped_predicate.is_some() {
+                scoped_exception_branches.target_is_false(chain, collection, filter)
+            } else {
+                exception_branches.target_is_false_branch(collection, filter)
+            }
+        });
         let message_nodes = source_collection
             .map(|collection| {
-                exception_branches
-                    .message_nodes(collection, filter)
-                    .collect::<Vec<_>>()
+                if scoped_predicate.is_some() {
+                    scoped_exception_branches
+                        .message(chain, collection, filter)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                } else {
+                    exception_branches
+                        .message_nodes(collection, filter)
+                        .collect::<Vec<_>>()
+                }
             })
             .unwrap_or_default();
         connect_scope_position_roots(
-            std::iter::once(filter).chain(message_nodes),
+            std::iter::once(predicate).chain(message_nodes),
             source_stages,
             source_collection,
             join,
@@ -291,13 +317,16 @@ fn append_scope_controls(
             edges,
             warnings,
         );
-        match node_out_key.get(&filter) {
+        match node_out_key.get(&predicate) {
             Some(&bool_key_src) => {
                 let in_node = keys.next();
                 let in_bool = keys.next();
                 let out_true = keys.next();
                 let out_false = source_collection
-                    .filter(|collection| exception_branches.has_branch(collection, filter))
+                    .filter(|collection| {
+                        scoped_predicate.is_some()
+                            || exception_branches.has_branch(collection, filter)
+                    })
                     .map(|_| keys.next());
                 *uid += 1;
                 let _ = write!(
@@ -319,9 +348,14 @@ fn append_scope_controls(
                 edges.push((from, in_node));
                 edges.push((bool_key_src, in_bool));
                 if let (Some(collection), Some(out_false)) = (source_collection, out_false) {
-                    exception_branches.claim(collection, filter, out_false);
+                    let trigger_output = if target_is_false { out_true } else { out_false };
+                    if scoped_predicate.is_some() {
+                        scoped_exception_branches.claim(chain, collection, filter, trigger_output);
+                    } else {
+                        exception_branches.claim(collection, filter, trigger_output);
+                    }
                 }
-                from = out_true;
+                from = out_false.filter(|_| target_is_false).unwrap_or(out_true);
             }
             None => warnings.push(format!(
                 "scope `{}` filter references an unexported node; filter dropped",
@@ -779,6 +813,7 @@ fn collect_scope_edges(
     joins: &JoinExports,
     target_branches: &TargetBranches,
     exception_branches: &mut ExceptionBranches,
+    scoped_exception_branches: &mut ScopedExceptionBranches,
     target_branch: Option<(&[String], usize)>,
 ) {
     if let Some(segments) = scope.concatenated() {
@@ -808,6 +843,7 @@ fn collect_scope_edges(
                 joins,
                 target_branches,
                 exception_branches,
+                scoped_exception_branches,
                 Some((&branch_root, index)),
             );
         }
@@ -853,6 +889,7 @@ fn collect_scope_edges(
                 edges,
                 warnings,
                 exception_branches,
+                scoped_exception_branches,
                 from,
                 None,
             );
@@ -907,6 +944,7 @@ fn collect_scope_edges(
                         edges,
                         warnings,
                         exception_branches,
+                        scoped_exception_branches,
                         from,
                         None,
                     );
@@ -1007,6 +1045,7 @@ fn collect_scope_edges(
                     edges,
                     warnings,
                     exception_branches,
+                    scoped_exception_branches,
                     from,
                     mapped_plan.and_then(ScopePlan::absorbed_filter),
                 );
@@ -1093,6 +1132,7 @@ fn collect_scope_edges(
             joins,
             target_branches,
             exception_branches,
+            scoped_exception_branches,
             target_branch,
         );
         chain.pop();

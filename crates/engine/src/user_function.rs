@@ -337,6 +337,30 @@ fn evaluate_body_node_inner(
                 found: value.type_name(),
             }),
         },
+        Node::Raise { message } => {
+            let message = message
+                .map(|message| {
+                    evaluate_body_input(
+                        functions,
+                        function_id,
+                        function,
+                        node_id,
+                        message,
+                        0,
+                        parameters,
+                        runtime,
+                        trace,
+                        call_stack,
+                        in_progress,
+                    )
+                    .map(crate::failure::scalar_text)
+                })
+                .transpose()?;
+            Err(EngineError::MappingException {
+                node: node_id,
+                message,
+            })
+        }
         Node::ValueMap {
             input,
             input_type,

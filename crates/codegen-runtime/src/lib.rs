@@ -41,7 +41,7 @@ pub use dynamic_source::{
     MAX_DYNAMIC_SOURCE_LOADS, MAX_DYNAMIC_SOURCE_PATH_BYTES, MAX_DYNAMIC_SOURCE_TOTAL_BYTES,
 };
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
-pub use failure::mapping_failure;
+pub use failure::{mapping_exception, mapping_failure};
 pub use format_csv::{CsvFormatError, CsvWriteOptions};
 pub use functions::FunctionError;
 pub use generated_sequence::{
@@ -227,6 +227,11 @@ pub enum RuntimeError {
     /// are one-based and follow declaration order.
     MappingFailure {
         rule: usize,
+        message: Option<String>,
+    },
+    /// A reached graph Raise expression, distinct from a global failure rule.
+    MappingException {
+        node: u32,
         message: Option<String>,
     },
     NotABool {
@@ -445,6 +450,11 @@ impl fmt::Display for RuntimeError {
                 "mapping failure rule {rule}: {}",
                 message.as_deref().unwrap_or("mapping exception was raised")
             ),
+            Self::MappingException { node, message } => write!(
+                formatter,
+                "node {node}: mapping exception: {}",
+                message.as_deref().unwrap_or("mapping exception was raised")
+            ),
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
@@ -546,6 +556,7 @@ impl std::error::Error for RuntimeError {
             | Self::DynamicSourceTooMany { .. }
             | Self::DynamicSourceLoad { .. }
             | Self::MappingFailure { .. }
+            | Self::MappingException { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. }
             | Self::InvalidBlockSize { .. }

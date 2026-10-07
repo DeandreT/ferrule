@@ -402,6 +402,16 @@ pub enum EngineError {
         rule: usize,
         message: Option<String>,
     },
+    /// A graph expression raised an exception at this exact node. This is
+    /// independent of the ordered pre-target failure-rule scan.
+    #[error(
+        "node {node}: mapping exception: {text}",
+        text = message.as_deref().unwrap_or("mapping exception was raised")
+    )]
+    MappingException {
+        node: NodeId,
+        message: Option<String>,
+    },
     #[error("{function:?} aggregate overflowed the integer range")]
     AggregateIntegerOverflow { function: mapping::AggregateOp },
     #[error("{function:?} aggregate encountered or produced a non-finite number")]
@@ -786,6 +796,9 @@ mod join_tests;
 #[cfg(test)]
 #[path = "tests/path_hierarchy.rs"]
 mod path_hierarchy_tests;
+#[cfg(test)]
+#[path = "tests/raise.rs"]
+mod raise_tests;
 #[cfg(test)]
 #[path = "tests/recursive_filter.rs"]
 mod recursive_filter_tests;

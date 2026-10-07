@@ -284,6 +284,26 @@ fn eval_expr_inner(
                 found: other.type_name(),
             }),
         },
+        Node::Raise { message } => {
+            let message = message
+                .map(|message| {
+                    eval_node_input(
+                        program,
+                        node_id,
+                        message,
+                        0,
+                        context,
+                        positions,
+                        in_progress,
+                    )
+                    .map(crate::failure::scalar_text)
+                })
+                .transpose()?;
+            Err(EngineError::MappingException {
+                node: node_id,
+                message,
+            })
+        }
         Node::ValueMap {
             input,
             input_type,

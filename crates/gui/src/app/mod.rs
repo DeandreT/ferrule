@@ -60,6 +60,7 @@ mod join_authoring;
 mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
+mod mfd_import;
 mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
@@ -479,6 +480,7 @@ pub struct FerruleApp {
     theme: ThemeState,
     appearance: EditorAppearance,
     mfd_package_manifest: Option<String>,
+    mfd_item_ordered_exceptions: bool,
     palette: Palette,
     document: DocumentLocation,
     input_path: String,
@@ -650,6 +652,7 @@ impl Default for FerruleApp {
             theme: ThemeState::default(),
             appearance: EditorAppearance::default(),
             mfd_package_manifest: None,
+            mfd_item_ordered_exceptions: false,
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
@@ -1279,16 +1282,6 @@ impl FerruleApp {
         }
     }
 
-    fn import_mfd_with_resources(&self, path: &str) -> Result<mfd::Imported, mfd::MfdError> {
-        let mapping_path = std::path::Path::new(path);
-        let Some(manifest_path) = &self.mfd_package_manifest else {
-            return mfd::import(mapping_path);
-        };
-        let options = mfd::ImportOptions::default()
-            .with_package_manifest(std::path::Path::new(manifest_path))?;
-        mfd::import_with_options(mapping_path, &options)
-    }
-
     /// Cancel the selected file action before dropping its result receiver.
     pub(super) fn cancel_pending_file_dialog(&mut self) {
         let Some(kind) = self.pending_dialog.as_ref().map(|(kind, _)| *kind) else {
@@ -1687,3 +1680,6 @@ mod target_xml_type_tests;
 
 #[cfg(test)]
 mod pipeline_stage_canvas_tests;
+
+#[cfg(test)]
+mod raise_creation_tests;

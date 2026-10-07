@@ -90,7 +90,7 @@ fn is_selected(
     }
 }
 
-fn scalar_text(value: Value) -> String {
+pub(super) fn scalar_text(value: Value) -> String {
     match value {
         Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => String::new(),
         Value::Bool(value) => value.to_string(),

@@ -27,6 +27,7 @@ mod extra_targets;
 mod failure_rules;
 mod grouping;
 mod host_target;
+mod raise;
 
 use host_target::GeneratedHostCommand;
 mod joins;

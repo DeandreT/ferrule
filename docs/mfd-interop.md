@@ -658,7 +658,26 @@ component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
 Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
-retain their ownership in the exported design. Structured XML string serializers
+retain their ownership in the exported design. A complementary source-backed
+exception representation is limited to one `WhenTrue(P)` rule and one plain repeated
+target scope over the same exact repeating primary schema path with the unary filter
+`not(P)`. Its native filter evaluates the original `P`: the true output drives
+the exception and the false output drives the target. Optional messages and
+original predicate error identity remain distinct; ordinary consumers of
+`not(P)` remain connected. Sorting, grouping, windows, post-group filters,
+first/mapped output, generated or named failure iterations, transformed
+ancestors, ambiguous consumers, and multiple true-rule ordering reject before
+publication. Local regression tests cover this route. Native compatibility
+remains subject to design-specific checks and the error/publication limits
+described below. Export omits a complementary `not(P)` component
+only when that filter is its sole use; other graph consumers, target/control
+roots, failure messages, and dynamic source expressions retain it. This
+narrow omission is intended to avoid an observed unused-output validation
+warning; warning-free native validation still requires a fresh native check.
+Empty XML controls must satisfy the emitted source XSD; repeating collections
+use `minOccurs="0"` without the singular optional-element flag. Schema-root names are not stripped from collection paths, and an
+empty path requires the primary schema root itself to be repeating; implicit
+flat-row formats are outside this new route. Structured XML string serializers
 with default indentation round-trip as native components with generated XSD
 siblings and structural source connections. Explicit compact serialization
 still uses a Ferrule extension and is rejected by the native export profile.
@@ -890,3 +909,104 @@ behavior.
 
 ferrule is an independent project and is not affiliated with or endorsed by
 the developer of the reference application.
+
+
+### Global failure priority and strict native export
+
+Failure rules scan their complete collections in declaration order before any
+target is evaluated. A native exception attached to a filtered item branch does
+not establish that global priority: an earlier passing item's target can fail
+before a later selected item reaches the exception. Multiple rules can also
+select in a different order when executed item by item.
+
+Strict native export reports `global_failure_ordering` and publishes no design
+or schema siblings unless a conservative totality proof succeeds. The initial
+subset has one primary source rule, local closed String/Int/Bool XML boundaries,
+one direct repeating source collection and its plain repeated target branch.
+It allows constants, exact frame-pinned singular fields, the matching position,
+Boolean negation, and comparisons of present integers. Targets require matching
+scalar types and compatible presence, without conversions. Additional sources
+or targets, other calls, fallible messages, grouping, sorting, windows, dynamic
+construction and other unproved controls are refused. Connected pipelines with
+global rules also require a separate ordering proof and are refused in strict
+native mode. These restrictions are
+conservative; a refused expression is not necessarily fallible on every input.
+The proof is bounded to 4096 graph nodes, 4096 nodes per boundary schema or scope
+tree, 128 dependency or nesting levels, and 100,000 expression visits. Shared
+expression results are memoized. Designs exceeding those budgets, or containing
+a user-defined function registry, retain the extension profile and are refused
+in strict native mode.
+
+The proof applies to schema-conforming inputs in the IR scalar domains and
+mapping evaluation errors,
+with positions within the signed integer domain. It does not certify native
+output publication, I/O, serialization, resource limits or arbitrary host-owned
+typed values. The default extension profile continues to preserve global rules
+for local round-trips, including refused strict-native cases. Existing exported
+global rules have no item-order marker. Item-ordered import requires the explicit
+opt-in described below and does not reinterpret legacy global rules.
+
+
+Native exception import has an explicit item-order option:
+`ImportOptions::with_item_ordered_exceptions()`. The CLI exposes it as
+`ferrule import-mfd --mfd design.mfd --out project.json --item-ordered-exceptions`.
+In the GUI, select **Preserve row error order** in the File menu before
+**Import MFD...** or **Import MFD as Pipeline...**. The choice is unchecked at
+startup and lasts only for the current session; it is not saved in a project or
+preferences. An opted-in single-project import requires an executable result
+before writing a CLI project or replacing the GUI mapping. Unsupported shapes
+produce an error rather than silently using a global rule. The same choice is
+passed through `--pipeline` and the GUI pipeline workflow, which currently refuse
+exception stages outside the single-mapping subset. Without the flag or checked
+choice, the existing import and warning behavior remains available.
+
+Default imports continue to retain legacy ordered pre-target failure rules. The option initially accepts
+one ordinary two-branch filter over one directly connected repeated primary
+XML group. The opposite branch must have one exact primary target structural
+port and one plain repeated scope owner. It replaces only that owner's filter
+with a lazy graph `Raise` guard using the original predicate. A selected
+message is evaluated in the raw item context; target bindings retain their
+existing context and node identities.
+
+This mode evaluates a surviving item's target before testing the next item.
+An earlier target error can therefore precede a later selected exception.
+It is distinct from a global failure rule, which scans before any target.
+Extra boundaries, shared branch consumers, chained controls, controlled
+ancestors, independent target evaluation, generated or joined iteration,
+recursive/open schemas, ambiguous physical ports, and over-budget expression
+shapes produce import diagnostics. Executable import refuses them; best-effort
+import never silently substitutes a global failure rule. The attachment is
+validated as a complete project before pruning. The option propagates to
+pipeline imports, whose exception stages remain outside this initial subset.
+
+Finite regressions and saved-design checks cover admitted direct guards, lazy
+messages, and earlier-target/later-exception priority. Resaved Position-variable
+shapes currently refuse strict item-ordered import without falling back to
+global rules. `Raise` has a node-identified `MappingException` error, while
+legacy globals retain rule-identified `MappingFailure`. These categories and
+native output publication are separate compatibility boundaries; this option
+does not promise identical exception categories or partial-file behavior.
+
+Serial XML pipeline import recognizes a core exception terminal only when it has
+no outputs, one connected throw input at position 0, at most one message input
+at position 1, and one exception marker. The throw must be one exclusive branch
+of an ordinary two-output filter; the opposite branch must reach one XML stage
+target owner. That terminal is a side effect, not a document sink: every
+connected XML source still needs a downstream stage target. Ordinary dead
+functions, cycles, ambiguous owners, duplicate physical feeds and malformed
+terminals remain unsupported. The default import retains the existing global
+failure rule only on its owning stage, including a final named XML target. It
+does not convert global rules to item-ordered expressions or promise native
+exception ordering or output-publication agreement. The item-ordered import
+option continues to refuse pipeline boundaries outside its single-mapping
+subset. CLI pipeline output publication waits for every stage to succeed.
+
+The item-ordered exception opt-in additionally confines reachable predicate,
+message and owner/descendant binding expressions to scalar fields in the exact
+owner item, with no further repeated element crossed. Explicit owner frame pins
+and owner-prefixed absolute paths are accepted; sibling repetitions, unframed
+relative broadcasts and singular root broadcasts remain outside this first
+subset. Position must identify that owner collection, or the one current item
+in the already admitted tree without other iterations or private frames.
+Unsupported projections produce an opt-in warning before a guard is published;
+strict executable import refuses it without using a global failure-rule fallback.

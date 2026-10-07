@@ -111,6 +111,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
+        Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {

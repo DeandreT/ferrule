@@ -60,6 +60,8 @@ pub enum ExportCompatibilityFeature {
     XmlAttributeRequiredUse,
     /// Newly emitted metadata is conservative until its native behavior is known.
     UnknownExtension,
+    /// Native per-item branches do not prove global pre-target error priority.
+    GlobalFailureOrdering,
 }
 
 /// One deterministic compatibility finding attached to its emitted component.

@@ -98,6 +98,7 @@ pub(super) fn validate(
                     | Expression::SourceRootField { .. }
                     | Expression::Call { .. }
                     | Expression::If { .. }
+                    | Expression::Raise { .. }
                     | Expression::ValueMap { .. }
             )
         {

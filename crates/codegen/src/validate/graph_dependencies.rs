@@ -29,6 +29,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
             then,
             else_,
         } => vec![*condition, *then, *else_],
+        Expression::Raise { message } => message.iter().copied().collect(),
         Expression::ValueMap { input, .. } => vec![*input],
         Expression::Lookup { matches, .. } => vec![*matches],
         Expression::CollectionFind {

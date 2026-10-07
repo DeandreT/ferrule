@@ -51,6 +51,7 @@ pub(super) fn validate_primary_root_primitives(
                 | Node::SourceRootField { .. }
                 | Node::Call { .. }
                 | Node::If { .. }
+                | Node::Raise { .. }
                 | Node::ValueMap { .. }
         ) {
             continue;

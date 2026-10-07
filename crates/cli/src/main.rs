@@ -179,6 +179,9 @@ enum Command {
         /// Import a connected serial XML design as a typed pipeline.
         #[arg(long)]
         pipeline: bool,
+        /// Preserve supported row error order; refuse unsupported exception shapes.
+        #[arg(long)]
+        item_ordered_exceptions: bool,
         /// Trusted root containing the mapping and all referenced resources.
         #[arg(long, conflicts_with = "package_manifest")]
         package_root: Option<PathBuf>,
@@ -648,15 +651,16 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             mfd,
             out,
             pipeline,
+            item_ordered_exceptions,
             package_root,
             package_manifest,
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
             let import = if pipeline {
-                cli::import_mfd_pipeline
+                cli::import_mfd_pipeline_with_exception_order
             } else {
-                cli::import_mfd
+                cli::import_mfd_with_exception_order
             };
             let warnings = import(
                 &mfd,
@@ -665,6 +669,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 package_manifest.as_deref(),
                 &edi_catalog_roots,
                 &json_schema_catalog_roots,
+                item_ordered_exceptions,
             )?;
             for warning in &warnings {
                 diagnostics.warning("import-mfd", warning);

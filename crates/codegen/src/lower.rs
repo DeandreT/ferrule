@@ -1077,6 +1077,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             then: *then,
             else_: *else_,
         },
+        Node::Raise { message } => Expression::Raise { message: *message },
         Node::ValueMap {
             input,
             input_type,

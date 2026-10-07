@@ -898,6 +898,11 @@ pub enum Expression {
         then: NodeId,
         else_: NodeId,
     },
+    /// Raises a typed mapping exception when reached. Its optional message
+    /// is evaluated in the current expression context before the exception.
+    Raise {
+        message: Option<NodeId>,
+    },
     /// Applies optional scalar coercion, then selects the first exactly
     /// matching row. A failed coercion retains the original input value.
     ValueMap {

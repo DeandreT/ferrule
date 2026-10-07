@@ -115,6 +115,7 @@ impl FerruleApp {
                             }
                             ui.close();
                         }
+                        let _ = self.show_mfd_import_options(ui);
                         if ui.button("Import MFD as Pipeline...").clicked() {
                             self.begin_mfd_pipeline_import();
                             ui.close();

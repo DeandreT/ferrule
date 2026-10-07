@@ -11,6 +11,15 @@ pub fn mapping_failure(rule: usize, message: Option<Value>) -> RuntimeError {
     }
 }
 
+/// Creates the typed exception raised by one reached graph expression.
+/// Message evaluation belongs to emitted code, so its original errors propagate.
+pub fn mapping_exception(node: u32, message: Option<Value>) -> RuntimeError {
+    RuntimeError::MappingException {
+        node,
+        message: message.map(scalar_text),
+    }
+}
+
 fn scalar_text(value: Value) -> String {
     match value {
         Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => String::new(),
@@ -70,5 +79,47 @@ mod tests {
             mapping_failure(3, Some(Value::Null)).to_string(),
             "mapping failure rule 3: "
         );
+    }
+
+    #[test]
+    fn graph_exception_keeps_node_and_message_presence_separate_from_rules() {
+        let absent = mapping_exception(70, None);
+        println!("original absent graph exception: {absent:#?}");
+        assert_eq!(
+            absent,
+            RuntimeError::MappingException {
+                node: 70,
+                message: None
+            }
+        );
+        assert_eq!(
+            absent.to_string(),
+            "node 70: mapping exception: mapping exception was raised"
+        );
+        assert!(std::error::Error::source(&absent).is_none());
+        let cases = [
+            (Value::Null, ""),
+            (Value::json_null(), ""),
+            (Value::xml_nil(), ""),
+            (Value::Bool(true), "true"),
+            (Value::Int(-7), "-7"),
+            (Value::Float(1.25), "1.25"),
+            (Value::String("Unicode 雪".into()), "Unicode 雪"),
+        ];
+        for (value, expected) in cases {
+            let actual = mapping_exception(71, Some(value));
+            println!("original graph exception: {actual:#?}");
+            assert_eq!(
+                actual,
+                RuntimeError::MappingException {
+                    node: 71,
+                    message: Some(expected.into())
+                }
+            );
+            assert_eq!(
+                actual.to_string(),
+                format!("node 71: mapping exception: {expected}")
+            );
+        }
     }
 }

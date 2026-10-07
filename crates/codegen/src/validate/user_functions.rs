@@ -106,6 +106,7 @@ fn validate_definition(
             | Expression::Call { .. }
             | Expression::DelimitedTextField { .. }
             | Expression::If { .. }
+            | Expression::Raise { .. }
             | Expression::ValueMap { .. } => {}
             Expression::UserFunctionCall {
                 function: called,

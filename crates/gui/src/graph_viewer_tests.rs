@@ -1067,6 +1067,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             | NodeTemplate::SourceRootXmlTypeEquals
             | NodeTemplate::Position
             | NodeTemplate::HostInput
+            | NodeTemplate::Raise
             | NodeTemplate::Aggregate(_) => 0,
         }
     }
@@ -1080,6 +1081,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
             | (NodeTemplate::Position, Node::Position { .. })
             | (NodeTemplate::HostInput, Node::RuntimeParameter { .. })
             | (NodeTemplate::HostInputDefault, Node::RuntimeParameterDefault { .. })
+            | (NodeTemplate::Raise, Node::Raise { message: None })
             | (NodeTemplate::If, Node::If { .. })
             | (NodeTemplate::ValueMap, Node::ValueMap { .. })
             | (NodeTemplate::Lookup, Node::Lookup { .. })
@@ -1907,3 +1909,6 @@ mod compact_xml_mixed_content_node_tests;
 
 #[path = "graph_viewer_tests/compact_value_map_nodes.rs"]
 mod compact_value_map_node_tests;
+
+#[path = "graph_viewer_tests/compact_raise_nodes.rs"]
+mod compact_raise_node_tests;

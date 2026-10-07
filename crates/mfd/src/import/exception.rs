@@ -1,3 +1,5 @@
+pub(super) mod item_ordered;
+
 use std::collections::BTreeSet;
 
 use mapping::{FailureIteration, FailureRule, FailureSelection};

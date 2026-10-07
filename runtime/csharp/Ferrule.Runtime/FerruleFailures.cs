@@ -3,6 +3,18 @@ namespace Ferrule.Runtime;
 /// <summary>Structured mapping-failure construction shared by generated mappings.</summary>
 public static class FerruleFailures
 {
+    public static FerruleRuntimeException MappingException(
+        uint node,
+        FerruleValue? message)
+    {
+        var text = message.HasValue ? FerruleFunctions.ScalarText(message.Value) : null;
+        return new FerruleRuntimeException(
+            FerruleRuntimeError.MappingException,
+            $"node {node}: mapping exception: {text ?? "mapping exception was raised"}",
+            node: node,
+            mappingExceptionMessage: text);
+    }
+
     public static FerruleRuntimeException MappingFailure(
         int rule,
         FerruleValue? message)
