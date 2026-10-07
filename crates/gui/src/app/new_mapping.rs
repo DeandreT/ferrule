@@ -9,6 +9,8 @@ mod fixed_width;
 mod flextext;
 #[path = "new_mapping/protobuf.rs"]
 mod protobuf;
+#[path = "new_mapping/xlsx.rs"]
+mod xlsx;
 
 impl FerruleApp {
     pub(super) fn begin_new_mapping(&mut self) {
@@ -171,6 +173,7 @@ impl FerruleApp {
         egui::Window::new("New Mapping")
             .collapsible(false)
             .resizable(true)
+            .vscroll(true)
             .default_width(680.0)
             .min_width(520.0)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -199,6 +202,15 @@ impl FerruleApp {
                     {
                         action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Source));
                     }
+                    if setup.source.as_ref().is_some_and(|boundary| {
+                        matches!(boundary, MappingBoundary::Schema(imported)
+                            if crate::new_mapping::XlsxBoundaryDraft::supports_schema(&imported.schema))
+                    }) && ui
+                        .add_enabled(dialog_idle, egui::Button::new("Configure workbook"))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ConfigureXlsx(SchemaSide::Source));
+                    }
                     if ui
                         .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
                         .clicked()
@@ -217,6 +229,11 @@ impl FerruleApp {
                     && fixed_width::show_options(ui, draft, false)
                 {
                     action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Source));
+                }
+                if let Some(MappingBoundary::Xlsx(draft)) = setup.source.as_mut()
+                    && ui.add_enabled_ui(dialog_idle, |ui| xlsx::show_options(ui, draft, false)).inner
+                {
+                    action = Some(NewMappingAction::AbandonXlsx(SchemaSide::Source));
                 }
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.source.as_mut() {
                     protobuf::show_options(ui, draft, "source", false);
@@ -255,6 +272,15 @@ impl FerruleApp {
                         .clicked()
                     {
                         action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Target));
+                    }
+                    if setup.target.as_ref().is_some_and(|boundary| {
+                        matches!(boundary, MappingBoundary::Schema(imported)
+                            if crate::new_mapping::XlsxBoundaryDraft::supports_schema(&imported.schema))
+                    }) && ui
+                        .add_enabled(dialog_idle, egui::Button::new("Configure workbook"))
+                        .clicked()
+                    {
+                        action = Some(NewMappingAction::ConfigureXlsx(SchemaSide::Target));
                     }
                     if ui
                         .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
@@ -301,6 +327,11 @@ impl FerruleApp {
                     && fixed_width::show_options(ui, draft, true)
                 {
                     action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Target));
+                }
+                if let Some(MappingBoundary::Xlsx(draft)) = setup.target.as_mut()
+                    && ui.add_enabled_ui(dialog_idle, |ui| xlsx::show_options(ui, draft, true)).inner
+                {
+                    action = Some(NewMappingAction::AbandonXlsx(SchemaSide::Target));
                 }
                 if let Some(MappingBoundary::Protobuf(draft)) = setup.target.as_mut() {
                     protobuf::show_options(ui, draft, "target", true);
@@ -402,6 +433,12 @@ impl FerruleApp {
                     setup.target = Some(MappingBoundary::Csv(CsvBoundaryDraft::target()));
                 }
             }
+            Some(NewMappingAction::ConfigureXlsx(side)) => {
+                self.configure_mapping_xlsx(side);
+            }
+            Some(NewMappingAction::AbandonXlsx(side)) => {
+                self.abandon_mapping_xlsx(side);
+            }
             Some(NewMappingAction::ConfigureFixedWidth(side)) => {
                 self.configure_mapping_fixed_width(side);
             }
@@ -417,6 +454,7 @@ impl FerruleApp {
                         MappingBoundary::Csv(draft) => Some(draft.path.as_str()),
                         MappingBoundary::Schema(_)
                         | MappingBoundary::FixedWidth(_)
+                        | MappingBoundary::Xlsx(_)
                         | MappingBoundary::Sqlite(_)
                         | MappingBoundary::Protobuf(_)
                         | MappingBoundary::FlexText(_) => None,
@@ -488,6 +526,9 @@ fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
     match boundary {
         None => "Not selected".to_owned(),
         Some(MappingBoundary::Schema(imported)) => imported.path.display().to_string(),
+        Some(MappingBoundary::Xlsx(draft)) => {
+            format!("Workbook: {}", draft.schema_path.display())
+        }
         Some(MappingBoundary::FixedWidth(draft)) => {
             format!("Fixed-width: {}", draft.schema_path.display())
         }
@@ -776,6 +817,8 @@ enum NewMappingAction {
     LoadSqliteTable(SchemaSide),
     ConfigureCsvTarget,
     ConfigureFixedWidth(SchemaSide),
+    ConfigureXlsx(SchemaSide),
+    AbandonXlsx(SchemaSide),
     AbandonFixedWidth(SchemaSide),
     ChooseCsvTargetOutput,
     ChooseSqliteTargetOutput,

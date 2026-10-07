@@ -9,6 +9,7 @@ mod fixed_width;
 mod flextext;
 mod format_options;
 mod protobuf;
+mod xlsx;
 pub(crate) use csv_dialect::{CsvDialectDraft, validate_existing_csv_options};
 pub(super) use fixed_width::FixedWidthBoundaryDraft;
 pub(super) use flextext::FlexTextBoundaryDraft;
@@ -21,6 +22,7 @@ pub(super) use protobuf::ProtobufBoundaryDraft;
 pub(crate) use protobuf::{
     is_protobuf_schema, show_protobuf_root_message, validate_schema_replacement,
 };
+pub(super) use xlsx::XlsxBoundaryDraft;
 
 #[derive(Default)]
 pub(super) struct NewMappingSetup {
@@ -36,6 +38,7 @@ pub(super) struct ImportedSchema {
 pub(super) enum MappingBoundary {
     Schema(Box<ImportedSchema>),
     FixedWidth(Box<FixedWidthBoundaryDraft>),
+    Xlsx(Box<XlsxBoundaryDraft>),
     Csv(CsvBoundaryDraft),
     Sqlite(Box<SqliteBoundaryDraft>),
     Protobuf(Box<ProtobufBoundaryDraft>),
@@ -358,6 +361,7 @@ impl NewMappingSetup {
         let ready = |boundary: &MappingBoundary, target| match boundary {
             MappingBoundary::Schema(_) => true,
             MappingBoundary::FixedWidth(draft) => draft.validate().is_ok(),
+            MappingBoundary::Xlsx(draft) => draft.validate().is_ok(),
             MappingBoundary::Csv(draft) => draft.validate().is_ok(),
             MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
             MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),
@@ -378,6 +382,11 @@ impl NewMappingSetup {
         let mut project = blank_project();
         match source {
             MappingBoundary::Schema(imported) => project.source = imported.schema.clone(),
+            MappingBoundary::Xlsx(draft) => {
+                project.source_options = draft.options(false)?;
+                project.source = draft.schema.clone();
+                project.source_path = draft.instance_path();
+            }
             MappingBoundary::FixedWidth(draft) => {
                 project.source = draft.schema.clone();
                 project.source_options = draft.options()?;
@@ -405,6 +414,11 @@ impl NewMappingSetup {
         }
         match target {
             MappingBoundary::Schema(imported) => project.target = imported.schema.clone(),
+            MappingBoundary::Xlsx(draft) => {
+                project.target_options = draft.options(true)?;
+                project.target = draft.schema.clone();
+                project.target_path = draft.instance_path();
+            }
             MappingBoundary::FixedWidth(draft) => {
                 project.target = draft.schema.clone();
                 project.target_options = draft.options()?;
