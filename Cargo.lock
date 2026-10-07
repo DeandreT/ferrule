@@ -2196,6 +2196,7 @@ dependencies = [
  "egui-snarl",
  "engine",
  "format-edi",
+ "format-json",
  "format-protobuf",
  "format-xlsx",
  "functions",

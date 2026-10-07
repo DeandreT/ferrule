@@ -30,5 +30,6 @@ lucide-icons = { workspace = true }
 rfd = { workspace = true }
 
 [dev-dependencies]
+format-json = { workspace = true }
 format-xlsx = { workspace = true }
 calamine = { workspace = true }
