@@ -767,10 +767,10 @@ fn helper_sharing_unowned_raise_and_boundary_owner_controls_refuse_atomically() 
     candidate.graph.nodes.insert(
         3,
         Node::Position {
-            collection: Vec::new(),
+            collection: vec!["Other".into()],
         },
     );
-    cases.push(("unidentified-position", candidate));
+    cases.push(("wrong-owner-position", candidate));
     let mut candidate = baseline.clone();
     candidate.source = SchemaNode::group(
         "Input",
@@ -1386,8 +1386,8 @@ fn direct_same_type_integer_string_boolean_and_owner_position_comparisons_are_ad
         ("not_equal", "not-equal", 10, 9),
         ("less_than", "less", 10, 9),
         ("greater_than", "greater", 10, 11),
-        ("less_or_equal", "less-equal", 11, 10),
-        ("greater_or_equal", "greater-equal", 9, 10),
+        ("less_or_equal", "equal-or-less", 11, 10),
+        ("greater_or_equal", "equal-or-greater", 9, 10),
     ] {
         let mut candidate = project(Some(3), true);
         candidate.graph.nodes.insert(
@@ -1719,3 +1719,6 @@ fn nonboolean_computed_nullable_and_optional_predicates_refuse_before_publicatio
         predicate_refusal(&dir.child(label), &candidate);
     }
 }
+
+#[path = "scoped_exception_export/empty_position.rs"]
+mod empty_position;
