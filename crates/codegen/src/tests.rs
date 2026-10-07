@@ -23,6 +23,7 @@ mod failures;
 mod grouping;
 mod joins;
 mod path_hierarchy;
+mod raise;
 mod recursive_filter;
 mod scalar_functions;
 mod sequence_context;

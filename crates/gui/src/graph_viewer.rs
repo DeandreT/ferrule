@@ -622,6 +622,7 @@ impl GraphViewer<'_> {
                     args: args.to_vec(),
                 })
             }
+            NodeTemplate::Raise => self.insert(snarl, pos, Node::Raise { message: None }),
             NodeTemplate::If => {
                 self.insert_with_unconnected_inputs(snarl, pos, 3, |inputs| Node::If {
                     condition: inputs[0],
@@ -733,6 +734,7 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
                 args[idx] = from_id;
             }
+            Node::Raise { message } => *message = Some(from_id),
             Node::RuntimeParameterDefault { default, .. } => *default = from_id,
             Node::If {
                 condition,
@@ -858,7 +860,7 @@ impl GraphViewer<'_> {
             };
             if !matches!(
                 node,
-                Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. }
+                Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. } | Node::Raise { .. }
             ) {
                 return Err(format!(
                     "Primary root expressions cannot feed mapping node {id}, which changes evaluation ownership"
@@ -881,6 +883,7 @@ impl GraphViewer<'_> {
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
         match self.graph.nodes.get(&node_id)? {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
+            Node::Raise { message } => (idx == 0).then_some(*message).flatten(),
             Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
             Node::If {
                 condition,
@@ -1055,15 +1058,32 @@ impl GraphViewer<'_> {
             .collect()
     }
 
+    fn clear_raise_message(&mut self, node_id: NodeId, input: usize) -> bool {
+        if input == 0
+            && let Some(Node::Raise { message }) = self.graph.nodes.get_mut(&node_id)
+        {
+            *message = None;
+            true
+        } else {
+            false
+        }
+    }
+
     fn disconnect_graph_consumers(
         &mut self,
         consumers: &[(NodeId, usize)],
         ids: &[NodeId],
         snarl: &mut Snarl<CanvasNode>,
     ) {
-        for (&(owner, input), &unconnected) in consumers.iter().zip(ids) {
-            self.graph.nodes.insert(unconnected, Node::Unconnected);
-            self.set_input(owner, input, unconnected);
+        let mut replacements = ids.iter();
+        for &(owner, input) in consumers {
+            if !self.clear_raise_message(owner, input) {
+                let &unconnected = replacements
+                    .next()
+                    .expect("one reserved ID per required input");
+                self.graph.nodes.insert(unconnected, Node::Unconnected);
+                self.set_input(owner, input, unconnected);
+            }
             let Some(node) = snarl.node_ids().find_map(|(node, canvas)| {
                 (Self::mapping_id(*canvas) == Some(owner)).then_some(node)
             }) else {
@@ -1122,7 +1142,7 @@ impl GraphViewer<'_> {
             | Node::RuntimeValue { .. }
             | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => 0,
-            Node::RuntimeParameterDefault { .. } => 1,
+            Node::RuntimeParameterDefault { .. } | Node::Raise { .. } => 1,
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
@@ -1295,6 +1315,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         )
                     }
                     Some(Node::If { .. }) => "If".to_string(),
+                    Some(Node::Raise { .. }) => "Raise error".to_string(),
                     Some(Node::ValueMap { .. }) => "Value Map".to_string(),
                     Some(Node::Lookup { collection, .. }) => {
                         format!("Lookup: {}", collection.join("/"))
@@ -1653,6 +1674,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .cloned()
                         .unwrap_or_else(|| format!("input {}", idx + 1)),
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
+                    Some(Node::Raise { .. }) => "message".to_string(),
                     Some(Node::RuntimeParameterDefault { .. }) => "default".to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
@@ -2102,6 +2124,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         "input {} does not exist on mapping node {to_id}",
                         to.id.input
                     ));
+                    return;
+                }
+                if self.clear_raise_message(to_id, to.id.input) {
+                    snarl.disconnect(from.id, to.id);
+                    if let Some(disconnected) = disconnected {
+                        self.remove_orphaned_input(disconnected, snarl);
+                    }
                     return;
                 }
                 let unconnected = match self.fresh_unconnected() {

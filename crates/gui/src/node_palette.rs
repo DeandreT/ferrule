@@ -37,6 +37,7 @@ pub(super) enum NodeTemplate {
     HostInputDefault,
     Builtin(&'static str),
     If,
+    Raise,
     ValueMap,
     Lookup,
     CollectionFind,
@@ -85,7 +86,7 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 18] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 19] = [
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -148,6 +149,13 @@ const STRUCTURAL_ENTRIES: [PaletteEntry; 18] = [
         keywords: "condition then else branch conditional",
         documentation: "Evaluates only the selected conditional branch.",
         template: NodeTemplate::If,
+    },
+    PaletteEntry {
+        category: Category::Logic,
+        label: "Raise error",
+        keywords: "exception abort fail optional message",
+        documentation: "Stops the mapping with an error only when this expression is reached. Its message input is optional.",
+        template: NodeTemplate::Raise,
     },
     PaletteEntry {
         category: Category::Collection,
@@ -961,7 +969,7 @@ mod tests {
             visible_selected_palette_row(&context, &initial).label,
             "Constant"
         );
-        for _ in 0..17 {
+        for _ in 0..18 {
             let moved = overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             assert_eq!(moved.chosen, None);
             let settled = settle_overflow_palette(&context, &mut time);
@@ -972,7 +980,7 @@ mod tests {
             visible_selected_palette_row(&context, &bottom).label,
             "Item at"
         );
-        for _ in 0..11 {
+        for _ in 0..12 {
             let moved = overflow_palette_frame(&context, vec![key(Key::ArrowUp)], &mut time);
             assert_eq!(moved.chosen, None);
             let settled = settle_overflow_palette(&context, &mut time);
@@ -1036,7 +1044,7 @@ mod tests {
         let context = overflow_palette_context();
         let mut time = 0.0;
         open_overflow_palette(&context, &mut time);
-        for _ in 0..17 {
+        for _ in 0..18 {
             overflow_palette_frame(&context, vec![key(Key::ArrowDown)], &mut time);
             settle_overflow_palette(&context, &mut time);
         }

@@ -65,6 +65,7 @@ public enum FerruleRuntimeError
     XmlSerialization,
     JsonBoundary,
     PrimaryRoot,
+    MappingException,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -93,7 +94,8 @@ public sealed class FerruleRuntimeException : Exception
         string? runtimeParameter = null,
         string? sourceField = null,
         string? foundInstance = null,
-        FerrulePrimaryRootFailure? primaryRoot = null)
+        FerrulePrimaryRootFailure? primaryRoot = null,
+        string? mappingExceptionMessage = null)
         : base(message)
     {
         Error = error;
@@ -118,6 +120,7 @@ public sealed class FerruleRuntimeException : Exception
         SourceField = sourceField;
         FoundInstance = foundInstance;
         PrimaryRoot = primaryRoot;
+        MappingExceptionMessage = mappingExceptionMessage;
     }
 
     public FerruleRuntimeException(
@@ -144,7 +147,8 @@ public sealed class FerruleRuntimeException : Exception
         string? runtimeParameter = null,
         string? sourceField = null,
         string? foundInstance = null,
-        FerrulePrimaryRootFailure? primaryRoot = null)
+        FerrulePrimaryRootFailure? primaryRoot = null,
+        string? mappingExceptionMessage = null)
         : base(message, innerException)
     {
         Error = error;
@@ -169,6 +173,7 @@ public sealed class FerruleRuntimeException : Exception
         SourceField = sourceField;
         FoundInstance = foundInstance;
         PrimaryRoot = primaryRoot;
+        MappingExceptionMessage = mappingExceptionMessage;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -198,6 +203,8 @@ public sealed class FerruleRuntimeException : Exception
     public int? FailureRule { get; }
 
     public string? MappingFailureMessage { get; }
+
+    public string? MappingExceptionMessage { get; }
 
     public ulong? Join { get; }
 

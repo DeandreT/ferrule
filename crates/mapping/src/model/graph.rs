@@ -226,6 +226,13 @@ pub enum Node {
         #[serde(rename = "else")]
         else_: NodeId,
     },
+    /// Raises a node-identified mapping exception when this expression is evaluated.
+    /// The optional message is evaluated only when reached; an absent message
+    /// remains distinct from a message expression that produces an empty string.
+    Raise {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<NodeId>,
+    },
     /// Looks `input` up in `table` (first matching entry wins) and returns
     /// its paired value, falling back to `default` if there's no match.
     ValueMap {
@@ -373,6 +380,7 @@ impl Node {
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => Vec::new(),
             Self::RuntimeParameterDefault { default, .. } => vec![*default],
+            Self::Raise { message } => message.iter().copied().collect(),
             Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
             Self::If {
                 condition,

@@ -556,6 +556,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             then,
             else_,
         } => vec![*condition, *then, *else_],
+        Expression::Raise { message } => message.iter().copied().collect(),
         Expression::Lookup { matches, .. } => vec![*matches],
         Expression::CollectionFind {
             predicate, value, ..
@@ -1411,6 +1412,13 @@ fn render_expression(
             format!(
                 "{{\n        let condition = {condition_call}?;\n        if require_bool({condition}, condition)? {{\n            {then_call}\n        }} else {{\n            {else_call}\n        }}\n    }}"
             )
+        }
+        Expression::Raise { message } => {
+            let message = message.map_or_else(
+                || "None".to_string(),
+                |message| format!("Some({}?)", call_expression(message, "context")),
+            );
+            format!("Err(codegen_runtime::mapping_exception({id}, {message}))")
         }
         Expression::ValueMap {
             input,

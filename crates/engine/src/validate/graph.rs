@@ -655,6 +655,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }
+        | Node::Raise { .. }
         | Node::ValueMap { .. } => {}
     }
     sources.into_iter()
@@ -1168,6 +1169,10 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             ("then branch".into(), *then),
             ("else branch".into(), *else_),
         ],
+        Node::Raise { message } => message
+            .iter()
+            .map(|&message| ("message".to_string(), message))
+            .collect(),
         Node::ValueMap { input, .. } => vec![("input".into(), *input)],
         Node::Lookup { matches, .. } => vec![("matches".into(), *matches)],
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],

@@ -61,6 +61,28 @@ pub fn export_pipeline_with_profile(
 }
 
 fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedExport, MfdError> {
+    // Flattening serial stages does not prove cross-stage exception priority.
+    for stage in &pipeline.stages {
+        if stage
+            .project
+            .graph
+            .nodes
+            .values()
+            .chain(
+                stage
+                    .project
+                    .user_functions
+                    .values()
+                    .flat_map(|function| function.body.nodes.values()),
+            )
+            .any(|node| matches!(node, mapping::Node::Raise { .. }))
+        {
+            return Err(MfdError::Unsupported(format!(
+                "pipeline stage `{}` contains Raise; native item ordering across stages is unsupported",
+                stage.id
+            )));
+        }
+    }
     validate_serial_shape(pipeline)?;
     let mut key_offset = 0u32;
     let mut uid_offset = 0u32;
@@ -112,7 +134,13 @@ fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedE
     }) {
         crate::import::validate_pipeline_export_graph(&xml)?;
     }
-    let report = compatibility::profile(&xml, warnings, path, &artifacts)?;
+    let mut report = compatibility::profile(&xml, warnings, path, &artifacts)?;
+    if let Some(issue) = super::exception_ordering::pipeline_issue(pipeline) {
+        report.issues.push(issue);
+        if report.compatibility == super::ExportCompatibility::NativeMfd {
+            report.compatibility = super::ExportCompatibility::FerruleExtensions;
+        }
+    }
     artifacts.push((path.to_path_buf(), xml));
     Ok(PreparedExport { artifacts, report })
 }

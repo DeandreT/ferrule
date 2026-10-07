@@ -146,7 +146,11 @@ impl GraphViewer<'_> {
             return Ok(false);
         }
         let consumers = self.graph_consumers(mapping_id);
-        let replacements = ids.reserve(consumers.len())?;
+        let required_inputs = consumers
+            .iter()
+            .filter(|(owner, _)| !matches!(self.graph.nodes.get(owner), Some(Node::Raise { .. })))
+            .count();
+        let replacements = ids.reserve(required_inputs)?;
         self.disconnect_graph_consumers(&consumers, &replacements, snarl);
         graph_references::remove_bindings_to(self.root_scope, mapping_id);
         let inputs = self

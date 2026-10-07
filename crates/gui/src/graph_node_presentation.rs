@@ -230,6 +230,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             ),
         ),
         Node::If { .. } => (Icon::GitBranch, String::new()),
+        Node::Raise { .. } => (Icon::CircleX, "error".into()),
         Node::Position { .. } | Node::JoinPosition { .. } => (Icon::ListOrdered, String::new()),
         Node::SourceField { path, .. } => {
             if let Some(item) = title.strip_prefix("Generated item #") {
@@ -399,6 +400,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::DynamicSourceField { .. }
             | Node::ValueMap { .. }
+            | Node::Raise { .. }
             | Node::JoinField { .. }
             | Node::Lookup { .. }
             | Node::Position { .. }
@@ -426,6 +428,14 @@ pub(super) fn hint(node: &Node, full_title: &str) -> String {
                     builtin.native_name, builtin.documentation
                 )
             },
+        ),
+        Node::Raise { message } => format!(
+            "{full_title}\nStops execution when this expression is reached.\n{}",
+            if message.is_some() {
+                "Reads the message input only when reached."
+            } else {
+                "No message is set. Connect the optional message input to supply one."
+            }
         ),
         Node::If { .. } => format!(
             "{full_title}\nSelects then or else using the condition input. Only the selected branch is evaluated."

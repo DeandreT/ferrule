@@ -222,6 +222,7 @@ impl<'a> Analysis<'a> {
             | Node::Call { .. }
             | Node::UserFunctionCall { .. }
             | Node::If { .. }
+            | Node::Raise { .. }
             | Node::ValueMap { .. } => {}
         }
     }

@@ -296,7 +296,10 @@ fn writer_collision_keeps_existing_file_and_returns_no_payload_artifact() {
 #[test]
 fn both_generated_targets_and_mapping_export_refuse_before_artifacts() {
     let directory = Dir::new("export");
-    let p = project();
+    let mut p = project();
+    // Literal hints are supported by the explicit XML input adapter. Keep this
+    // rejection case outside that adapter while retaining all atomicity checks.
+    p.source_options.xml_document = false;
     assert!(engine::validate(&p).is_empty());
     let path = directory.0.join("project.json");
     std::fs::write(&path, serde_json::to_vec_pretty(&p).unwrap()).unwrap();
