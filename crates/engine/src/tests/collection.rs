@@ -1603,3 +1603,749 @@ fn aggregate_flattens_nested_repeating_collection_paths() {
         Some(&Value::String("Ana, Bo, Cy".into()))
     );
 }
+
+fn length_tokenize_unicode_input(ascii: usize) -> Value {
+    let mut text = String::with_capacity(ascii + '🙂'.len_utf8());
+    for _ in 0..ascii {
+        text.push('x');
+    }
+    text.push('🙂');
+    Value::String(text)
+}
+
+#[test]
+fn length_tokenize_enforces_exact_generated_item_cap_before_materialization() {
+    let maximum = MAX_GENERATED_SEQUENCE_ITEMS as usize;
+    {
+        // One million scalars, but more UTF-8 bytes and UTF-16 code units.
+        // There is no second million-item expected vector.
+        let original =
+            tokenize_by_length(length_tokenize_unicode_input(maximum - 1), Value::Int(1));
+        let values = match original {
+            Ok(values) => values,
+            Err(error) => panic!("exact-cap original refusal: {error:?}"),
+        };
+        eprintln!(
+            "tokenize-by-length exact-cap original count={} last={:?}",
+            values.len(),
+            values.last()
+        );
+        assert_eq!(values.len(), maximum);
+        assert!(
+            values[..maximum - 1]
+                .iter()
+                .all(|value| matches!(value, Value::String(text) if text == "x"))
+        );
+        assert_eq!(values.last(), Some(&Value::String("🙂".into())));
+    }
+    // Drop the accepted million-item result before refusal cases. Fresh owned
+    // inputs are only1–2MiB; each refusal must avoid the character/output arrays.
+    for (ascii, length) in [
+        (maximum, Value::Int(1)),
+        (maximum * 2, Value::Int(2)),
+        (maximum * 2, Value::Float(2.9)),
+        (maximum * 2, Value::String(" \u{2003}+2\u{85} ".into())),
+    ] {
+        let original = tokenize_by_length(length_tokenize_unicode_input(ascii), length);
+        let error = match original {
+            Err(error) => error,
+            Ok(values) => panic!(
+                "over-cap original unexpectedly returned {} items",
+                values.len()
+            ),
+        };
+        eprintln!("tokenize-by-length over-cap original: {error:?}");
+        assert_eq!(
+            error,
+            EngineError::GeneratedSequenceTooLarge {
+                requested: MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                max: MAX_GENERATED_SEQUENCE_ITEMS,
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "generate-sequence requested {} items; maximum is {}",
+                MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                MAX_GENERATED_SEQUENCE_ITEMS,
+            )
+        );
+    }
+}
+
+#[test]
+fn length_tokenize_preserves_coercion_unicode_and_error_precedence() {
+    let text = "e\u{301}🙂z!";
+    for length in [
+        Value::Int(2),
+        Value::Float(2.9),
+        Value::String(" \u{2003}+2\u{85} ".into()),
+    ] {
+        assert_eq!(
+            tokenize_by_length(Value::String(text.into()), length).unwrap(),
+            vec![
+                Value::String("e\u{301}".into()),
+                Value::String("🙂z".into()),
+                Value::String("!".into()),
+            ]
+        );
+    }
+    for length in [
+        Value::Int(i64::MAX),
+        Value::Float(f64::MAX),
+        Value::String(i64::MAX.to_string()),
+    ] {
+        assert_eq!(
+            tokenize_by_length(Value::String(text.into()), length).unwrap(),
+            vec![Value::String(text.into())]
+        );
+    }
+    assert!(
+        tokenize_by_length(Value::String(String::new()), Value::Int(1))
+            .unwrap()
+            .is_empty()
+    );
+    for length in [
+        Value::Int(0),
+        Value::Int(-1),
+        Value::Float(0.9),
+        Value::Float(f64::NAN),
+        Value::Float(f64::INFINITY),
+        Value::String("2.0".into()),
+        Value::Bool(true),
+        Value::Null,
+        Value::JsonNull(ir::JsonNull),
+        Value::XmlNil(ir::XmlNil),
+    ] {
+        assert_eq!(
+            tokenize_by_length(Value::String(String::new()), length),
+            Err(EngineError::Function(
+                functions::FunctionError::InvalidArgument {
+                    function: "tokenize-by-length",
+                    message: "requires a positive integer length",
+                }
+            ))
+        );
+    }
+    assert_eq!(
+        tokenize_by_length(Value::Bool(true), Value::Int(0)),
+        Err(EngineError::Function(
+            functions::FunctionError::TypeMismatch {
+                function: "tokenize-by-length",
+                got: "bool",
+            }
+        ))
+    );
+    assert_eq!(
+        tokenize_by_length(
+            length_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+            Value::String("2.0".into())
+        ),
+        Err(EngineError::Function(
+            functions::FunctionError::InvalidArgument {
+                function: "tokenize-by-length",
+                message: "requires a positive integer length",
+            }
+        )),
+        "invalid width keeps precedence over the new cap"
+    );
+}
+
+#[test]
+fn length_tokenize_dispatch_keeps_left_to_right_null_short_circuiting() {
+    fn evaluate(input: Value, length: Node) -> Result<Vec<Value>, EngineError> {
+        let graph = graph_from(vec![
+            (0, Node::Const { value: input }),
+            (1, length),
+            (
+                2,
+                Node::Const {
+                    value: Value::Int(0),
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+        ]);
+        let user_functions = Default::default();
+        let reported = std::cell::Cell::new(false);
+        crate::sequence::eval_sequence(
+            crate::eval_expr::EvalProgram::new(&graph, &user_functions, None, &reported),
+            &SequenceExpr::TokenizeByLength {
+                input: 0,
+                length: 1,
+                item: 3,
+            },
+            &[],
+            &[],
+        )
+    }
+    let invalid_length = Node::Call {
+        function: "divide".into(),
+        args: vec![2, 2],
+    };
+    for input in [Value::Null, Value::JsonNull(ir::JsonNull)] {
+        assert_eq!(
+            evaluate(input, invalid_length.clone()),
+            Ok(Vec::new()),
+            "first Null skips the failing length expression"
+        );
+    }
+    assert_eq!(
+        evaluate(Value::String(String::new()), invalid_length),
+        Err(EngineError::Function(
+            functions::FunctionError::DivideByZero
+        )),
+        "empty text still evaluates the length expression"
+    );
+    assert_eq!(
+        evaluate(
+            length_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+            Node::Const { value: Value::Null }
+        ),
+        Ok(Vec::new()),
+        "second Null skips the cap even for an oversized input"
+    );
+    assert_eq!(
+        evaluate(
+            Value::Bool(true),
+            Node::Const {
+                value: Value::JsonNull(ir::JsonNull)
+            }
+        ),
+        Ok(Vec::new()),
+        "second Null retains the existing suppression of input type validation"
+    );
+}
+
+fn literal_tokenize_unicode_input(delimiters: usize) -> Value {
+    let mut text = String::with_capacity(delimiters * "🙂|".len() + 3);
+    for _ in 0..delimiters {
+        text.push_str("🙂|");
+    }
+    text.push_str("end");
+    Value::String(text)
+}
+
+#[test]
+fn literal_tokenize_enforces_exact_item_cap_before_output_materialization() {
+    let maximum = MAX_GENERATED_SEQUENCE_ITEMS as usize;
+    {
+        // One accepted million-item result; no million-item expected collection.
+        let original = tokenize(
+            literal_tokenize_unicode_input(maximum - 1),
+            Value::String("🙂|".into()),
+        );
+        let values = match original {
+            Ok(values) => values,
+            Err(error) => panic!("exact-cap original refusal: {error:?}"),
+        };
+        eprintln!(
+            "tokenize exact-cap original count={} last={:?}",
+            values.len(),
+            values.last()
+        );
+        assert_eq!(values.len(), maximum);
+        assert!(
+            values[..maximum - 1]
+                .iter()
+                .all(|value| matches!(value, Value::String(text) if text.is_empty()))
+        );
+        assert_eq!(values.last(), Some(&Value::String("end".into())));
+    }
+    // Accepted output is dropped before fresh, bounded refusal inputs.
+    for (input, delimiter, requested) in [
+        (
+            literal_tokenize_unicode_input(maximum),
+            "🙂|",
+            MAX_GENERATED_SEQUENCE_ITEMS + 1,
+        ),
+        (
+            Value::String("x".repeat(maximum * 2)),
+            "x",
+            MAX_GENERATED_SEQUENCE_ITEMS * 2 + 1,
+        ),
+    ] {
+        let original = tokenize(input, Value::String(delimiter.into()));
+        let error = match original {
+            Err(error) => error,
+            Ok(values) => panic!(
+                "over-cap original unexpectedly returned {} items",
+                values.len()
+            ),
+        };
+        eprintln!("tokenize over-cap original: {error:?}");
+        assert_eq!(
+            error,
+            EngineError::GeneratedSequenceTooLarge {
+                requested,
+                max: MAX_GENERATED_SEQUENCE_ITEMS
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "generate-sequence requested {requested} items; maximum is {MAX_GENERATED_SEQUENCE_ITEMS}"
+            )
+        );
+    }
+}
+
+#[test]
+fn literal_tokenize_preserves_unicode_empty_nonoverlap_and_error_order() {
+    for (input, delimiter, expected) in [
+        ("", ",", vec![""]),
+        (",", ",", vec!["", ""]),
+        ("a,,b,", ",", vec!["a", "", "b", ""]),
+        ("🙂|a🙂|🙂|b🙂|", "🙂|", vec!["", "a", "", "b", ""]),
+        ("ababa", "aba", vec!["", "ba"]),
+        ("e\u{301}🙂", "e\u{301}", vec!["", "🙂"]),
+        ("x", "🙂|longer", vec!["x"]),
+    ] {
+        assert_eq!(
+            tokenize(Value::String(input.into()), Value::String(delimiter.into())).unwrap(),
+            expected
+                .into_iter()
+                .map(|text| Value::String(text.into()))
+                .collect::<Vec<_>>()
+        );
+    }
+    for input in [
+        Value::String(String::new()),
+        literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+    ] {
+        assert_eq!(
+            tokenize(input, Value::String(String::new())),
+            Err(EngineError::Function(
+                functions::FunctionError::InvalidArgument {
+                    function: "tokenize",
+                    message: "requires a non-empty delimiter",
+                }
+            )),
+            "invalid delimiter retains precedence over the item cap"
+        );
+    }
+    assert_eq!(
+        tokenize(Value::Int(1), Value::Bool(false)),
+        Err(EngineError::Function(
+            functions::FunctionError::TypeMismatch {
+                function: "tokenize",
+                got: "int"
+            }
+        )),
+        "input type failure precedes delimiter type failure"
+    );
+    assert_eq!(
+        tokenize(
+            literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+            Value::Bool(false)
+        ),
+        Err(EngineError::Function(
+            functions::FunctionError::TypeMismatch {
+                function: "tokenize",
+                got: "bool"
+            }
+        )),
+        "delimiter type failure precedes the cap"
+    );
+}
+
+#[test]
+fn literal_tokenize_dispatch_preserves_null_short_circuit_and_empty_input() {
+    fn evaluate(input: Value, delimiter: Node) -> Result<Vec<Value>, EngineError> {
+        let graph = graph_from(vec![
+            (0, Node::Const { value: input }),
+            (1, delimiter),
+            (
+                2,
+                Node::Const {
+                    value: Value::Int(0),
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+        ]);
+        let user_functions = Default::default();
+        let reported = std::cell::Cell::new(false);
+        crate::sequence::eval_sequence(
+            crate::eval_expr::EvalProgram::new(&graph, &user_functions, None, &reported),
+            &SequenceExpr::Tokenize {
+                input: 0,
+                delimiter: 1,
+                item: 3,
+            },
+            &[],
+            &[],
+        )
+    }
+    let invalid_delimiter = Node::Call {
+        function: "divide".into(),
+        args: vec![2, 2],
+    };
+    for input in [Value::Null, Value::JsonNull(ir::JsonNull)] {
+        assert_eq!(
+            evaluate(input, invalid_delimiter.clone()),
+            Ok(Vec::new()),
+            "first Null skips the failing delimiter expression"
+        );
+    }
+    assert_eq!(
+        evaluate(Value::String(String::new()), invalid_delimiter),
+        Err(EngineError::Function(
+            functions::FunctionError::DivideByZero
+        )),
+        "empty text still evaluates the delimiter expression"
+    );
+    assert_eq!(
+        evaluate(
+            literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize),
+            Node::Const { value: Value::Null }
+        ),
+        Ok(Vec::new()),
+        "second Null skips the cap"
+    );
+    assert_eq!(
+        evaluate(
+            Value::Bool(true),
+            Node::Const {
+                value: Value::JsonNull(ir::JsonNull)
+            }
+        ),
+        Ok(Vec::new()),
+        "second Null still suppresses helper type checking"
+    );
+}
+
+fn capped_tokenize_project(fixed_length: bool) -> Project {
+    let sequence = if fixed_length {
+        SequenceExpr::TokenizeByLength {
+            input: 0,
+            length: 1,
+            item: 2,
+        }
+    } else {
+        SequenceExpr::Tokenize {
+            input: 0,
+            delimiter: 1,
+            item: 2,
+        }
+    };
+    Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar("Text", ir::ScalarType::String),
+                SchemaNode::scalar("Parent", ir::ScalarType::String),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group(
+                    "Token",
+                    vec![
+                        SchemaNode::scalar("Value", ir::ScalarType::String),
+                        SchemaNode::scalar("Parent", ir::ScalarType::String),
+                        SchemaNode::scalar("Position", ir::ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Text".into()],
+                    frame: None,
+                },
+            ),
+            (
+                1,
+                Node::Const {
+                    value: if fixed_length {
+                        Value::Int(1)
+                    } else {
+                        Value::String("🙂|".into())
+                    },
+                },
+            ),
+            (
+                2,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: vec!["Parent".into()],
+                    frame: None,
+                },
+            ),
+            (
+                4,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            ),
+            (
+                5,
+                Node::Const {
+                    value: Value::Int(0),
+                },
+            ),
+            (
+                6,
+                Node::Call {
+                    function: "divide".into(),
+                    args: vec![5, 5],
+                },
+            ),
+            (
+                7,
+                Node::Call {
+                    function: "equal".into(),
+                    args: vec![6, 5],
+                },
+            ),
+            (
+                8,
+                Node::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            (
+                9,
+                Node::Const {
+                    value: Value::Int(42),
+                },
+            ),
+            (
+                10,
+                Node::Const {
+                    value: Value::Int(1),
+                },
+            ),
+        ]),
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Token".into(),
+                iteration: mapping::ScopeIteration::Sequence(sequence),
+                bindings: vec![
+                    Binding {
+                        target_field: "Value".into(),
+                        node: 2,
+                    },
+                    Binding {
+                        target_field: "Parent".into(),
+                        node: 3,
+                    },
+                    Binding {
+                        target_field: "Position".into(),
+                        node: 4,
+                    },
+                ],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn capped_tokenize_source(text: Value) -> Instance {
+    Instance::Group(
+        (vec![
+            ("Text".into(), Instance::Scalar(text)),
+            (
+                "Parent".into(),
+                Instance::Scalar(Value::String("outer".into())),
+            ),
+        ])
+        .into(),
+    )
+}
+
+#[test]
+fn both_capped_tokenizers_preserve_parent_broadcast_and_refuse_before_first_window() {
+    for fixed_length in [false, true] {
+        let mut project = capped_tokenize_project(fixed_length);
+        let text = if fixed_length {
+            "é🙂z"
+        } else {
+            "🙂|a🙂|"
+        };
+        let expected = if fixed_length {
+            ["é", "🙂", "z"]
+        } else {
+            ["", "a", ""]
+        };
+        let issues = validate(&project);
+        assert!(issues.is_empty(), "{issues:#?}");
+        let original = run(
+            &project,
+            &capped_tokenize_source(Value::String(text.into())),
+        )
+        .unwrap();
+        let tokens = original
+            .field("Token")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(tokens.len(), 3);
+        for (index, token) in tokens.iter().enumerate() {
+            assert_eq!(
+                token.field("Value").and_then(Instance::as_scalar),
+                Some(&Value::String(expected[index].into()))
+            );
+            assert_eq!(
+                token.field("Parent").and_then(Instance::as_scalar),
+                Some(&Value::String("outer".into()))
+            );
+            assert_eq!(
+                token.field("Position").and_then(Instance::as_scalar),
+                Some(&Value::Int(index as i64 + 1))
+            );
+        }
+        project.root.children[0].windows = vec![SequenceWindow::First { count: 10 }];
+        let first = run(
+            &project,
+            &capped_tokenize_source(Value::String(text.into())),
+        )
+        .unwrap();
+        assert_eq!(
+            first
+                .field("Token")
+                .and_then(Instance::as_repeated)
+                .unwrap(),
+            &tokens[..1]
+        );
+        let oversized = if fixed_length {
+            length_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize)
+        } else {
+            literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize)
+        };
+        let original = run(&project, &capped_tokenize_source(oversized));
+        eprintln!("tokenizer first-window original fixed_length={fixed_length}: {original:?}");
+        assert_eq!(
+            original,
+            Err(EngineError::GeneratedSequenceTooLarge {
+                requested: MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                max: MAX_GENERATED_SEQUENCE_ITEMS,
+            }),
+            "First(1) must not turn an eager oversized sequence into a partial success"
+        );
+    }
+}
+
+#[test]
+fn both_capped_tokenizers_refuse_before_failure_selection_message_or_target() {
+    use mapping::{FailureIteration, FailureRule, FailureSelection};
+    for fixed_length in [false, true] {
+        let mut project = capped_tokenize_project(fixed_length);
+        let sequence = match &project.root.children[0].iteration {
+            mapping::ScopeIteration::Sequence(sequence) => sequence.clone(),
+            _ => unreachable!(),
+        };
+        project.root = Scope {
+            bindings: vec![Binding {
+                target_field: "Result".into(),
+                node: 6,
+            }],
+            ..Scope::default()
+        };
+        project.target = SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Result", ir::ScalarType::Float)],
+        );
+        project.failure_rules = vec![FailureRule {
+            iteration: FailureIteration::Sequence { sequence },
+            selection: FailureSelection::WhenTrue { predicate: 7 },
+            message: Some(6),
+        }];
+        let issues = validate(&project);
+        assert!(issues.is_empty(), "{issues:#?}");
+        // These controls independently reach the predicate, then lazy message,
+        // then target error with one small item. All must lose to the eager cap.
+        for selection in [
+            FailureSelection::WhenTrue { predicate: 7 },
+            FailureSelection::WhenTrue { predicate: 8 },
+            FailureSelection::WhenFalse { predicate: 8 },
+        ] {
+            project.failure_rules[0].selection = selection;
+            let small = if fixed_length { "x" } else { "end" };
+            assert_eq!(
+                run(
+                    &project,
+                    &capped_tokenize_source(Value::String(small.into()))
+                ),
+                Err(EngineError::Function(
+                    functions::FunctionError::DivideByZero
+                ))
+            );
+            let oversized = if fixed_length {
+                length_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize)
+            } else {
+                literal_tokenize_unicode_input(MAX_GENERATED_SEQUENCE_ITEMS as usize)
+            };
+            let original = run(&project, &capped_tokenize_source(oversized));
+            eprintln!(
+                "tokenizer pre-target original fixed_length={fixed_length} selection={selection:?}: {original:?}"
+            );
+            assert_eq!(
+                original,
+                Err(EngineError::GeneratedSequenceTooLarge {
+                    requested: MAX_GENERATED_SEQUENCE_ITEMS + 1,
+                    max: MAX_GENERATED_SEQUENCE_ITEMS,
+                })
+            );
+        }
+        // First Null skips a parameter that would divide by zero; empty text
+        // still evaluates it. Empty generated rules then allow the target.
+        project.graph.nodes.insert(
+            1,
+            Node::Call {
+                function: "divide".into(),
+                args: vec![5, 5],
+            },
+        );
+        project.root.bindings[0].node = 9;
+        project.target = SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Result", ir::ScalarType::Int)],
+        );
+        for input in [Value::Null, Value::JsonNull(ir::JsonNull)] {
+            let original = run(&project, &capped_tokenize_source(input)).unwrap();
+            assert_eq!(
+                original.field("Result").and_then(Instance::as_scalar),
+                Some(&Value::Int(42))
+            );
+        }
+        assert_eq!(
+            run(
+                &project,
+                &capped_tokenize_source(Value::String(String::new()))
+            ),
+            Err(EngineError::Function(
+                functions::FunctionError::DivideByZero
+            ))
+        );
+    }
+}
