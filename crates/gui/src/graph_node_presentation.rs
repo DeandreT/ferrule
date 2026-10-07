@@ -56,6 +56,34 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
 }
 
 pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
+    match node {
+        Some(Node::SourceRootField { path, required }) => {
+            let path = if path.is_empty() {
+                "<empty> (empty path)".to_owned()
+            } else {
+                path.join("/")
+            };
+            let (required, policy) = if *required {
+                (
+                    "yes",
+                    "A missing value stops execution when this field is read.",
+                )
+            } else {
+                ("no", "Missing values remain null.")
+            };
+            return format!(
+                "{title}\nPrimary source root\nPath: {path}\nRequired read: {required}\n{policy}"
+            );
+        }
+        Some(Node::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        }) => {
+            return format!(
+                "{title}\nPrimary source root\nXML type: {canonical_expanded_type}\nCompares the actual input XML type annotation."
+            );
+        }
+        _ => {}
+    }
     if let Some(Node::JoinField {
         join,
         collection,
@@ -157,6 +185,41 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 )
             }
         }
+        Node::SourceRootField { path, required } => (
+            Icon::ArrowRightFromLine,
+            compact(
+                &format!(
+                    "{} {}",
+                    if *required { "required" } else { "primary" },
+                    path.last()
+                        .filter(|field| !field.is_empty())
+                        .map_or("field?", String::as_str),
+                ),
+                SUMMARY_CHAR_LIMIT,
+            ),
+        ),
+        Node::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        } => {
+            let local_type = canonical_expanded_type
+                .strip_prefix('{')
+                .and_then(|expanded| expanded.split_once('}'))
+                .map_or(canonical_expanded_type.as_str(), |(_, local)| local);
+            (
+                Icon::Check,
+                compact(
+                    &format!(
+                        "type = {}",
+                        if local_type.is_empty() {
+                            "?"
+                        } else {
+                            local_type
+                        }
+                    ),
+                    SUMMARY_CHAR_LIMIT,
+                ),
+            )
+        }
         Node::JoinField { join, path, .. } => (
             Icon::ArrowRightFromLine,
             compact(
@@ -239,6 +302,8 @@ pub(super) fn has_properties(node: &Node) -> bool {
         Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }
+            | Node::SourceRootField { .. }
+            | Node::SourceRootXmlTypeEquals { .. }
             | Node::JoinField { .. }
             | Node::Lookup { .. }
             | Node::Position { .. }
