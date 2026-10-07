@@ -203,6 +203,7 @@ impl FerruleApp {
         self.pending_scope_scroll = false;
         self.selected_failure_rule = None;
         self.pending_failure_rule_scroll = false;
+        self.join_authoring_draft = None;
     }
 
     /// Revalidation makes a diagnostic's snapshot owner safe to use after edits.
