@@ -29,7 +29,7 @@ pub fn generate_project(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, false)
+    generate_project_impl(project_path, output_directory, target, Adapter::Ordinary)
 }
 
 /// Generate the ordinary mapping APIs plus an explicitly selected bounded flat
@@ -39,17 +39,51 @@ pub fn generate_project_with_csv_output(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, true)
+    generate_project_impl(project_path, output_directory, target, Adapter::Csv)
+}
+
+/// Generate the ordinary mapping APIs plus explicitly selected singular JSON5
+/// text and byte companions. File suffixes and stored identities do not select it.
+pub fn generate_project_with_json5_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    generate_project_impl(project_path, output_directory, target, Adapter::Json5)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Adapter {
+    Ordinary,
+    Csv,
+    Json5,
 }
 
 fn generate_project_impl(
     project_path: &Path,
     output_directory: &Path,
     target: GenerateTarget,
-    csv_output: bool,
+    adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
-    let csv_policy = if csv_output {
+    if adapter == Adapter::Json5 {
+        // Admission borrows the loaded schemas before ordinary lowering clones them.
+        // The shared policy owns every option/schema decision and original cause.
+        for (options, side) in [
+            (&project.source_options, codegen::Json5BoundarySide::Source),
+            (&project.target_options, codegen::Json5BoundarySide::Target),
+        ] {
+            codegen::validate_json5_format_options(options, side)?;
+        }
+        for (schema, side) in [
+            (&project.source, codegen::Json5BoundarySide::Source),
+            (&project.target, codegen::Json5BoundarySide::Target),
+        ] {
+            codegen_schema::json5_profile::validate_schema(schema)
+                .map_err(|error| codegen::Json5BoundaryPolicyError::Schema { side, error })?;
+        }
+    }
+    let csv_policy = if adapter == Adapter::Csv {
         let policy = codegen::CsvOutputPolicy::from_format_options(&project.target_options)?;
         if let Some(path) = &project.target_path {
             let path = Path::new(path);
@@ -89,15 +123,25 @@ fn generate_project_impl(
                 package_name: "ferrule-generated-mapping".to_string(),
                 runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime_path.to_owned()),
             };
-            match &csv_policy {
-                Some(policy) => codegen_rust::emit_with_csv_output(&program, &options, policy)?,
-                None => codegen_rust::emit(&program, &options)?,
+            if adapter == Adapter::Json5 {
+                codegen_rust::emit_with_json5(&program, &options)?
+            } else {
+                match &csv_policy {
+                    Some(policy) => codegen_rust::emit_with_csv_output(&program, &options, policy)?,
+                    None => codegen_rust::emit(&program, &options)?,
+                }
             }
         }
-        GenerateTarget::CSharp => match &csv_policy {
-            Some(policy) => codegen_csharp::emit_with_csv_output(&program, policy)?,
-            None => codegen_csharp::emit(&program)?,
-        },
+        GenerateTarget::CSharp => {
+            if adapter == Adapter::Json5 {
+                codegen_csharp::emit_with_json5(&program)?
+            } else {
+                match &csv_policy {
+                    Some(policy) => codegen_csharp::emit_with_csv_output(&program, policy)?,
+                    None => codegen_csharp::emit(&program)?,
+                }
+            }
+        }
     };
     write_artifacts(output_directory, &artifacts)?;
     Ok(GenerateOutcome {

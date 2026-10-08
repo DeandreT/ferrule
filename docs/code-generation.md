@@ -95,6 +95,27 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
 
+## Explicit JSON5 Companions
+
+Add `--json5-adapters` to either CLI generation command to include singular
+JSON5 document companions. The flag defaults to false and conflicts with
+`--csv-output`. The public writer also provides
+`generate_project_with_json5_adapters`; ordinary `generate_project` retains its
+existing artifact tree. File suffixes and stored JSON5 options do not select
+these methods.
+
+Rust adds `execute_json5`, `execute_json5_with_context`, `execute_json5_bytes`
+and `execute_json5_bytes_with_context`. C# adds `ExecuteJson5` and
+`ExecuteJson5Bytes`, each with source-only and execution-context overloads.
+They accept one closed, non-repeating object with supported scalar leaves and
+static nested groups, and return complete strict JSON with a final LF.
+Unsupported schemas, format options and mapping routes refuse before publication.
+See [the profile and syntax contract](generated-json5-contract.md) for admission,
+encoding, limits, typed causes and the current identifier restrictions. Named
+inputs or outputs, root arrays, JSON Lines and dynamic routes are outside this
+companion profile. Physical resource-boundary qualification is separate from
+the small public-host tests.
+
 ## Flat CSV Output
 
 Add `--csv-output` to either generation command to include CSV output methods.
