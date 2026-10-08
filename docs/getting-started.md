@@ -211,9 +211,13 @@ Data paths are optional during setup and can be supplied when running.
 Workbook setup preserves the selected schema and does not read a workbook to
 guess its fields. Check a real small workbook after creating the mapping;
 the physical columns, sheet, and header settings must agree with the file.
-The wizard and small-viewport controls have automated local coverage. Normal
-desktop file-chooser, save, and reopen qualification is still pending; that
-workflow is tracked in the [roadmap](../ROADMAP.md#current-priorities).
+The wizard and small-viewport controls have automated local coverage. The
+normal Linux desktop setup, create/save, and reopen workflow is also
+[qualified for one eight-field flat-row fixture](qualification/flat-workbook-desktop-2026-10-08.md)
+at 1200 × 800 and 1200 × 760 window sizes. The check preserves the complete
+project, worksheet settings, and layout; it does not execute the mapping or
+read or write a workbook. Other desktop workflows remain separate gates in
+the [roadmap](../ROADMAP.md#current-priorities).
 
 ## Import and generate deliberately
 

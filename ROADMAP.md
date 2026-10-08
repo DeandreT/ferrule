@@ -49,8 +49,11 @@ box does not close its later desktop, generated, or external-runtime gates.
   sheet, header/data row, physical columns, optional paths, and target headers.
 - [x] Keep New Mapping usable in a small viewport with outer scrolling; cover
   real control interaction and saved format options in local tests.
-- [ ] Complete the normal desktop create/save/reopen workflow using real file
-  choosers and an ordinary GUI executable; validate the saved complete project.
+- [x] Complete the normal Linux desktop schema-selection, configuration, and
+  create/save/reopen workflow for an eight-field flat workbook fixture. Real
+  file choosers, an ordinary GUI executable, 1200 × 800 / 1200 × 760 windows,
+  and complete saved-project/layout comparisons are covered in the
+  [desktop report](docs/qualification/flat-workbook-desktop-2026-10-08.md).
 - [ ] Retain failures and closure observations independently of a later success.
 
 Exit: a user can choose both schemas, reach Configure/Create without an enlarged
