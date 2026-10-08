@@ -263,7 +263,43 @@ impl GraphViewer<'_> {
                         "No message is set."
                     });
                 }
-                Node::ValueMap { table, default, .. } => {
+                Node::ValueMap {
+                    input_type,
+                    table,
+                    default,
+                    ..
+                } => {
+                    ui.horizontal(|ui| {
+                        let label = ui.label("Input conversion");
+                        egui::ComboBox::from_id_salt(ui.id().with("value_map_input_type"))
+                            .selected_text(input_type.map_or_else(
+                                || "unchanged".to_owned(),
+                                |ty| format!("{ty:?}").to_lowercase(),
+                            ))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(input_type, None, "unchanged");
+                                for candidate in [
+                                    ScalarType::String,
+                                    ScalarType::Int,
+                                    ScalarType::Float,
+                                    ScalarType::Bool,
+                                ] {
+                                    ui.selectable_value(
+                                        input_type,
+                                        Some(candidate),
+                                        format!("{candidate:?}").to_lowercase(),
+                                    );
+                                }
+                            })
+                            .response
+                            .labelled_by(label.id);
+                    });
+                    ui.add(
+                        egui::Label::new(
+                            "Edited keys are text. Conversion applies to the incoming value.",
+                        )
+                        .wrap(),
+                    );
                     show_value_map_editor(ui, table, default, None);
                 }
                 Node::Lookup {

@@ -1689,3 +1689,6 @@ mod runtime_value_creation_tests;
 
 #[cfg(test)]
 mod computed_aggregate_authoring_tests;
+
+#[cfg(test)]
+mod value_map_input_type_tests;

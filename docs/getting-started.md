@@ -108,6 +108,32 @@ Automated local checks cover computed-value editing, real wiring,
 persistence, and Preview. Normal desktop and broader authoring coverage
 remain tracked in the [roadmap](../ROADMAP.md#current-priorities).
 
+## Choose Value map input conversion
+
+On a main, named-target, or function canvas, open a **Value map** pencil and
+choose **Input conversion**: **unchanged**, **string**, **int**, **float**, or
+**bool**. The choice applies to the arriving value before table matching.
+Opening the properties or changing this choice preserves existing table values,
+their types, and the Default setting.
+
+For example, a table key entered as `1` is text. If the arriving value is the
+integer `1`, choose **string** to match that text key. Leave **unchanged** to
+keep its original type. Table cells edited here are text; **int**, **float**, and
+**bool** are also useful for matching imported maps whose keys already have
+those types. Choosing a conversion does not change the table's key types.
+
+Matching uses the first matching key in table order. If conversion cannot be
+made, matching uses the original arriving value. If no key matches, the result
+is **Default** when enabled, or an absent value when no Default is set. An
+empty-text Default is distinct from having no Default. An absent input remains
+absent and can match an existing absent-value key.
+
+Preview representative values, an unmatched value, and a missing value before
+running. Local checks cover the real conversion controls, imported-value
+preservation, locked editing, history, save/reopen, and Preview. Normal desktop
+and broader authoring coverage remain tracked in the
+[roadmap](../ROADMAP.md#current-priorities).
+
 ## Set up a flat workbook table
 
 The New Mapping workbook setup covers one flat worksheet table per boundary.
