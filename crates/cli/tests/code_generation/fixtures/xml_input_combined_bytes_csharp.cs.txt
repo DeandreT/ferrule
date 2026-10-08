@@ -1,0 +1,125 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 6) throw new InvalidOperationException("manifest corpus case api project originals");
+using var manifest = JsonDocument.Parse(File.ReadAllBytes(args[0]));
+var test = manifest.RootElement.GetProperty(args[2]);
+var original = args[5];
+var context = new FerruleExecutionContext(args[4], args[4], "2026-10-08T00:00:00Z", null);
+var named = test.GetProperty("named").EnumerateArray().ToArray();
+var primaryPath = InputPath(args[1], test.GetProperty("primary").GetString()!);
+var paths = named.Select(input => InputPath(args[1], input.GetProperty("path").GetString()!)).ToArray();
+File.WriteAllText(Path.Combine(original, "actual-input-paths-and-sizes.json"), JsonSerializer.Serialize(
+    new[] { primaryPath }.Concat(paths).Select(path => new { path, bytes = new FileInfo(path).Length })));
+var api = args[3];
+Dictionary<string, object?> row;
+if (api.StartsWith("bytes", StringComparison.Ordinal))
+{
+    var primary = File.ReadAllBytes(primaryPath);
+    var inputs = named.Select((input, index) => new NamedXmlBytesInput(input.GetProperty("name").GetString()!, File.ReadAllBytes(paths[index]))).ToArray();
+    row = api switch
+    {
+        "bytes-set" => Observe(() => GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, inputs), original, BytesSet),
+        "bytes-set-context" => Observe(() => GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, inputs, context), original, BytesSet),
+        "bytes-singular" => Observe(() => GeneratedMapping.ExecuteXmlBytesWithSources(primary, inputs), original, BytesSingle),
+        "bytes-singular-context" => Observe(() => GeneratedMapping.ExecuteXmlBytesWithSources(primary, inputs, context), original, BytesSingle),
+        _ => throw new InvalidOperationException("unknown byte route"),
+    };
+}
+else
+{
+    var utf8 = new UTF8Encoding(false, true);
+    var primary = File.ReadAllText(primaryPath, utf8);
+    var inputs = named.Select((input, index) => new NamedXmlInput(input.GetProperty("name").GetString()!, File.ReadAllText(paths[index], utf8))).ToArray();
+    row = api switch
+    {
+        "text-set" => Observe(() => GeneratedMapping.ExecuteXmlOutputsWithSources(primary, inputs), original, TextSet),
+        "text-set-context" => Observe(() => GeneratedMapping.ExecuteXmlOutputsWithSources(primary, inputs, context), original, TextSet),
+        "text-singular" => Observe(() => GeneratedMapping.ExecuteXmlWithSources(primary, inputs), original, TextSingle),
+        "text-singular-context" => Observe(() => GeneratedMapping.ExecuteXmlWithSources(primary, inputs, context), original, TextSingle),
+        _ => throw new InvalidOperationException("unknown text route"),
+    };
+}
+var observation = new { @case = args[2], api, result = row };
+var json = JsonSerializer.Serialize(observation);
+File.WriteAllText(Path.Combine(original, "actual-public-result.json"), json);
+Console.WriteLine(json);
+
+static string InputPath(string root, string name)
+{
+    if (name.Length is 0 or > 64 || !name.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '.'))
+        throw new InvalidOperationException("invalid fixed input basename");
+    var path = Path.Combine(root, name);
+    var file = new FileInfo(path);
+    if ((file.Attributes & FileAttributes.ReparsePoint) != 0 || file.Length > 64L * 1024 * 1024 + 1)
+        throw new InvalidOperationException("input is not a bounded ordinary file");
+    return path;
+}
+static Dictionary<string, object?> Observe<T>(Func<T> run, string original, Func<T, Dictionary<string, object?>> success)
+{
+    try
+    {
+        var value = run();
+        // Preserve the complete typed return before projection or comparison.
+        File.WriteAllText(Path.Combine(original, "original-typed-result.txt"), JsonSerializer.Serialize(value));
+        return success(value);
+    }
+    catch (FerruleXmlExecutionException error)
+    {
+        File.WriteAllText(Path.Combine(original, "original-typed-result.txt"), error.ToString());
+        var chain = new List<object>();
+        for (Exception? current = error; current is not null; current = current.InnerException)
+            chain.Add(new { type = current.GetType().FullName, detail = current.Message, full = current.ToString(), hresult = current.HResult, source = current.Source, stack = current.StackTrace, payload = Payload(current) });
+        File.WriteAllText(Path.Combine(original, "original-complete-error-chain.json"), JsonSerializer.Serialize(chain));
+        var resource = error.Boundary.InnerException as FerruleXmlInputSetResourceException;
+        var runtime = error.Boundary.InnerException as FerruleRuntimeException;
+        return new()
+        {
+            ["kind"] = error.Boundary.Kind.ToString(), ["returned"] = false,
+            ["input"] = error.Input is null ? null : new { kind = error.Input.Kind.ToString(), index = error.Input.Index, name = error.Input.Name },
+            ["output"] = error.Output, ["request"] = error.Request,
+            ["boundary_preserved"] = ReferenceEquals(error.Boundary, error.InnerException),
+            ["boundary_bytes"] = error.Boundary.Bytes, ["boundary_limit"] = error.Boundary.Limit,
+            ["boundary_has_source"] = error.Boundary.InnerException is not null,
+            ["resource"] = resource is null ? null : new { resource = resource.Resource, observed_count = resource.ObservedCount, limit = resource.Limit },
+            ["mapping_exception"] = runtime?.Error == FerruleRuntimeError.MappingException ? new { node = runtime.Node, message = runtime.MappingExceptionMessage } : null,
+            ["chain"] = chain,
+        };
+    }
+}
+static Dictionary<string, object?> TextSingle(string output) => new() { ["kind"] = "ok", ["returned"] = true, ["primary"] = output, ["extras"] = null };
+static Dictionary<string, object?> TextSet(XmlExecutionOutputs output) => new()
+{
+    ["kind"] = "ok", ["returned"] = true, ["primary"] = output.Primary,
+    ["extras"] = output.Extras.Select(extra => new { name = extra.Name, document = extra.Document }).ToArray(),
+};
+static Dictionary<string, object?> BytesSingle(byte[] output) => new()
+{
+    ["kind"] = "ok", ["returned"] = true, ["primary"] = new UTF8Encoding(false, true).GetString(output),
+    ["original_return_bytes"] = output.Select(value => (int)value).ToArray(), ["extras"] = null,
+};
+static Dictionary<string, object?> BytesSet(XmlBytesExecutionOutputs output) => new()
+{
+    ["kind"] = "ok", ["returned"] = true, ["primary"] = new UTF8Encoding(false, true).GetString(output.Primary),
+    ["original_return_bytes"] = output.Primary.Select(value => (int)value).ToArray(),
+    ["extras"] = output.Extras.Select(extra => new { name = extra.Name, document = new UTF8Encoding(false, true).GetString(extra.Document) }).ToArray(),
+};
+
+static object? Payload(Exception cause) => cause switch
+{
+    FerruleXmlExecutionException value => new { value.Input, value.Output, value.Request },
+    FerruleXmlBoundaryException value => new { value.Kind, value.Detail, value.Bytes, value.Limit },
+    FerruleXmlInputSetResourceException value => new { value.Resource, value.ObservedCount, value.Limit },
+    FerruleRuntimeException value => new
+    {
+        value.Error, value.Node, value.Function, value.ExpectedArity, value.ActualArity,
+        value.FoundKind, value.AggregateOperation, value.Detail, value.RequestedItems,
+        value.MaximumItems, value.MaximumDepth, value.RuntimeValue, value.FailureRule,
+        value.MappingFailureMessage, value.MappingExceptionMessage, value.Join, value.UserFunction,
+        value.FunctionParameter, value.ExpectedScalarType, value.RuntimeParameter,
+        value.SourceField, value.FoundInstance, value.PrimaryRoot,
+    },
+    _ => null,
+};
