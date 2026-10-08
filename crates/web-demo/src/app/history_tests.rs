@@ -364,10 +364,11 @@ fn browser_history_keyboard_keeps_text_undo_drafts_and_buffers_separate_from_mod
         app.canvas_view_generation, generation,
         "focused canvas field did not restore a project"
     );
+    let returned_to_baseline = whole(&app.project) == whole(&project("one"));
     assert_eq!(
         app.history.retained().0,
-        counts.0,
-        "text undo stays in the coalesced edit"
+        counts.0 - usize::from(returned_to_baseline),
+        "local text undo removes a reverted edit without restoring a project"
     );
     assert!(app.history.redo_json().is_none());
     // Settle the field's local undo, then explicitly re-enter the desired edit.
@@ -634,4 +635,89 @@ fn browser_history_restores_invalid_intermediates_exact_tags_and_enabled_absent_
         "existing failed-download serialization behavior retained"
     );
     assert_eq!(app.status, "Project serialization failed");
+}
+
+#[test]
+fn browser_history_coalesced_return_to_baseline_removes_only_that_transition() {
+    use history::ProjectHistory;
+    let mut history = ProjectHistory::default();
+    history.capture_and_record(&project("old"), None).unwrap();
+    history.capture_and_record(&project("one"), None).unwrap();
+    let before = history.retained();
+    history
+        .capture_and_record(&project("two"), Some(0))
+        .unwrap();
+    history
+        .capture_and_record(&project("six"), Some(0))
+        .unwrap();
+    history
+        .capture_and_record(&project("one"), Some(0))
+        .unwrap();
+    assert_eq!(history.retained(), before);
+    assert_eq!(
+        whole(&mapping::project_file::decode_str(history.undo_json().unwrap()).unwrap()),
+        whole(&project("old"))
+    );
+    assert!(history.undo());
+    assert!(history.redo());
+    history
+        .capture_and_record(&project("two"), Some(0))
+        .unwrap();
+    history.finish_focus(None);
+    history
+        .capture_and_record(&project("one"), Some(0))
+        .unwrap();
+    assert_eq!(
+        whole(&mapping::project_file::decode_str(history.undo_json().unwrap()).unwrap()),
+        whole(&project("two")),
+        "returning in a distinct focus session remains a separate edit"
+    );
+}
+
+#[test]
+fn browser_history_coalesced_reversion_keeps_limits_and_discarded_redo_explicit() {
+    use history::ProjectHistory;
+    let mut sizing = ProjectHistory::default();
+    sizing.capture_and_record(&project("one"), None).unwrap();
+    let bytes = sizing.retained().1;
+    let mut history = ProjectHistory::with_limits(2, 3 * bytes);
+    for value in ["old", "one", "two", "six"] {
+        history.capture_and_record(&project(value), None).unwrap();
+        assert!(history.retained().0 <= 2);
+        assert!(history.retained().1 <= 3 * bytes);
+    }
+    history
+        .capture_and_record(&project("ten"), Some(0))
+        .unwrap();
+    history
+        .capture_and_record(&project("six"), Some(0))
+        .unwrap();
+    assert_eq!(history.retained(), (1, 2 * bytes));
+    assert_eq!(
+        whole(&mapping::project_file::decode_str(history.undo_json().unwrap()).unwrap()),
+        whole(&project("two"))
+    );
+    assert!(history.undo());
+    assert!(history.redo_json().is_some());
+    history
+        .capture_and_record(&project("red"), Some(0))
+        .unwrap();
+    assert!(
+        history.redo_json().is_none(),
+        "transient changes discard redo"
+    );
+    history
+        .capture_and_record(&project("two"), Some(0))
+        .unwrap();
+    assert_eq!(history.retained(), (0, bytes));
+    assert!(history.undo_json().is_none() && history.redo_json().is_none());
+    history
+        .capture_and_record(&project("new"), Some(0))
+        .unwrap();
+    assert_eq!(history.retained(), (1, 2 * bytes));
+    assert_eq!(
+        whole(&mapping::project_file::decode_str(history.undo_json().unwrap()).unwrap()),
+        whole(&project("two")),
+        "a later edit starts a fresh transition after collapse"
+    );
 }
