@@ -104,12 +104,12 @@ The [37 proposal cases and two legacy controls](fixtures/scalar-filter-map-v1.js
 
 | Follow-on lane | Source ownership and dependency | Required completion evidence |
 | --- | --- | --- |
-| Model/codec/ownership | `crates/mapping` variant, UDF admission and wire fixtures; coordinated guard-only edits in every reached exhaustive consumer; depends on this design review | Buildable additive model, new/legacy round trips, both private owners and typed unsupported-capability refusals; no stage execution |
-| Native execution | `crates/engine` sequence/context/budget/checker integration; depends on model contract | Literal typed/error/position fixtures and whole outcomes, shared limits across scopes/targets, baseline suites |
-| Common lowering | `crates/codegen` model/lowering/validation plus guard-only Rust/C# consumer matches; depends on model and native oracle agreement | Buildable typed model, both stage FunctionId roots/transitive callees, complete source/owner/UDF/capture preservation; typed backend refusal until execution is qualified |
-| Rust generation/runtime | Rust emitter plus Rust runtime only; depends on lowering/native fixtures and #186 call-order qualification | Compiled ordinary mapping fixtures with original typed/byte/error comparisons, budgets/cancellation and warnings denied |
-| C# generation/runtime | C# emitter plus C# runtime only; same prerequisites | The same compiled fixtures, whole original exceptions/cause comparisons, budgets/cancellation and warnings denied |
-| GUI | Editor sequence presentation, ordered capture/stage wiring, save/reload/history; depends on model and native execution | Compact controls, correct ownership/positions, native preview qualification and explicit per-backend capability |
+| [#189 Model/codec/ownership](https://github.com/DeandreT/ferrule/issues/189) | `crates/mapping` variant, UDF admission and wire fixtures; coordinated guard-only edits in every reached exhaustive consumer; depends on this design review | Buildable additive model, new/legacy round trips, both private owners and typed unsupported-capability refusals; no stage execution |
+| [#190 Native execution](https://github.com/DeandreT/ferrule/issues/190) | `crates/engine` sequence/context/budget/checker integration; depends on model contract | Literal typed/error/position fixtures and whole outcomes, shared limits across scopes/targets, baseline suites |
+| [#191 Common lowering](https://github.com/DeandreT/ferrule/issues/191) | `crates/codegen` model/lowering/validation plus guard-only Rust/C# consumer matches; depends on model and native oracle agreement | Buildable typed model, both stage FunctionId roots/transitive callees, complete source/owner/UDF/capture preservation; typed backend refusal until execution is qualified |
+| [#192 Rust generation/runtime](https://github.com/DeandreT/ferrule/issues/192) | Rust emitter plus Rust runtime only; depends on lowering/native fixtures and #186 call-order qualification | Compiled ordinary mapping fixtures with original typed/byte/error comparisons, budgets/cancellation and warnings denied |
+| [#193 C# generation/runtime](https://github.com/DeandreT/ferrule/issues/193) | C# emitter plus C# runtime only; same prerequisites | The same compiled fixtures, whole original exceptions/cause comparisons, budgets/cancellation and warnings denied |
+| [#194 GUI](https://github.com/DeandreT/ferrule/issues/194) | Editor sequence presentation, ordered capture/stage wiring, save/reload/history; depends on model and native execution | Compact controls, correct ownership/positions, native preview qualification and explicit per-backend capability |
 
 The enums are closed and existing consumers match them exhaustively. A variant-introduction increment therefore owns the minimum coordinated guard-only changes required to keep the whole increment buildable: engine evaluation/validation, common lowering and other reached editor/consumer matches for `SequenceExpr`; both emitter admission/render paths and other reached matches for `GeneratedSequence`. Guards return a typed unsupported-capability diagnostic at a fallible admission boundary or use an explicitly reviewed staged representation. They do not execute the stage, silently substitute an old generator, emit partial mappings or panic on the new form. Actual native execution and each backend implementation remain in their separate lanes; the guard edits belong to the same cohesive enum-introduction PR rather than an unbuildable intermediate commit.
 
@@ -135,5 +135,5 @@ flowchart LR
 - [x] Describe legacy serialization and unsupported diagnostics.
 - [x] Map interpreter, lowering, Rust, C# and GUI follow-on ownership.
 - [x] Complete independent design/fixture review.
-- [ ] Create scoped follow-on issues after review.
+- [x] Create scoped follow-on issues after review: #189–#194.
 - [ ] Implement and qualify each lane; no implementation acceptance is recorded here.
