@@ -1,11 +1,12 @@
 //! Lossless, bounded schema descriptors shared by generated mapping hosts.
 //!
-//! Ordinary descriptors remain exactly the existing `SchemaNode` JSON. The
-//! default JSON parser can round some finite binary64 metadata to an adjacent
-//! value, so those exceptional schemas use a versioned descriptor. Its JSON
-//! tree has the same shape as the ordinary schema: only the three known
-//! `FiniteF64` metadata families become exact bit strings. This adds no JSON
-//! container depth and never changes ordinary string fields.
+//! Ordinary descriptors retain the existing `SchemaNode` JSON format. The
+//! shared parser correctly rounds finite binary64 metadata. The encoder checks
+//! complete schema equality and canonical text before choosing ordinary JSON.
+//! Versioned descriptors remain supported for exact-bit metadata: their JSON
+//! tree keeps the ordinary schema shape while the three known `FiniteF64`
+//! metadata families become bit strings. This adds no JSON container depth and
+//! never changes ordinary string fields.
 
 use ir::{SchemaKind, SchemaNode};
 use serde_json::{Number, Value};
