@@ -436,6 +436,7 @@ impl DemoApp {
         self.edited_constant = None;
         let mut viewer = DemoViewer::new(
             &mut self.project.graph,
+            &self.project.target.name,
             &self.bindings,
             &mut self.run_pending,
             &mut self.project_changed,
