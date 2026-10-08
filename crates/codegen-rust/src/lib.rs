@@ -392,7 +392,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
-    let retained_expressions = multi_source_expression_usage(program, &scopes);
+    let retained_expressions = expression_usage(program, &scopes);
     let item_ids: BTreeSet<_> = scopes
         .iter()
         .filter_map(|(_, scope, _, _)| {
@@ -424,14 +424,11 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
         )
         .collect();
     for node in &program.expressions {
-        // Render even an omitted path graph, preserving all emission validation
+        // Render even an omitted expression, preserving all emission validation
         // errors and their original expression order.
         let rendered =
             render_expression(node.id, &node.expression, "expression_", None, &functions)?;
-        if retained_expressions
-            .as_ref()
-            .is_some_and(|retained| !retained.contains(&node.id))
-        {
+        if !retained_expressions.contains(&node.id) {
             continue;
         }
         if item_ids.contains(&node.id) {
@@ -455,23 +452,14 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     Ok(source)
 }
 
-// Dynamic declaration paths remain in the portable program for validation and
-// adapter policy tables. With multiple declarations, a source may never be
-// walked by any target, so its path graph need not become unused Rust functions.
-// Keep the legacy zero/one-dynamic-source rendering byte-for-byte unchanged.
-fn multi_source_expression_usage(
+// Direct Programs may retain expressions that lowering would omit. Keep only
+// roots used by rendered scopes, failures and the existing user-function policy,
+// then follow their dependencies. Every expression is still rendered above for
+// validation before deciding whether to publish its function.
+fn expression_usage(
     program: &Program,
     scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
-) -> Option<BTreeSet<NodeId>> {
-    if program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_some())
-        .count()
-        < 2
-    {
-        return None;
-    }
+) -> BTreeSet<NodeId> {
     let mut pending = BTreeSet::new();
     for (_, scope, _, _) in scopes {
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
@@ -539,7 +527,7 @@ fn multi_source_expression_usage(
             pending.extend(expression_inputs(expression));
         }
     }
-    Some(retained)
+    retained
 }
 
 fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
@@ -2544,3 +2532,6 @@ fn toml_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod direct_program_tests;

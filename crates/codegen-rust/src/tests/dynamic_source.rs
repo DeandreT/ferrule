@@ -605,12 +605,12 @@ fn reached_second_source_retains_both_lazy_path_branches() {
 }
 
 #[test]
-fn zero_and_one_dynamic_source_keep_legacy_expression_emission() {
+fn zero_and_one_dynamic_source_omit_unused_expressions() {
     let mut program = unused_second_document_fixture();
     program.extra_sources.pop();
     validate_program(&program).unwrap();
     assert!(
-        render_source(&program)
+        !render_source(&program)
             .unwrap()
             .contains("fn expression_99(")
     );
@@ -622,7 +622,7 @@ fn zero_and_one_dynamic_source_keep_legacy_expression_emission() {
         },
     });
     validate_program(&zero).unwrap();
-    assert!(render_source(&zero).unwrap().contains("fn expression_99("));
+    assert!(!render_source(&zero).unwrap().contains("fn expression_99("));
 }
 
 #[test]

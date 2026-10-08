@@ -142,42 +142,42 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
             },
         },
     ]);
-    let selected = program
-        .root
-        .bindings
-        .iter_mut()
-        .find(|binding| binding.target_field == "Selected")
-        .expect("test program has a selected binding");
-    selected.expression = 105;
-
-    let artifacts = emit(
-        &program,
-        &Options {
-            package_name: "scalar-functions".into(),
-            runtime_dependency: RuntimeDependency::Version("0.1.0".into()),
-        },
-    )
-    .expect("supported scalar calls emit");
-    let source = artifacts
-        .files()
-        .iter()
-        .find(|file| file.path.as_str() == "src/lib.rs")
-        .and_then(|file| std::str::from_utf8(&file.contents).ok())
-        .expect("generated Rust source");
-
-    for name in [
-        "trim",
-        "is_numeric",
-        "to_number",
-        "delay_passthrough",
-        "matches",
-        "replace",
-        "json_parse_field",
-        "json_serialize_object",
-        "flextext_parse_field",
-        "duration_from_parts",
-        "sqlite_multiply",
+    for (expression, name) in [
+        (102, "trim"),
+        (103, "is_numeric"),
+        (104, "to_number"),
+        (105, "delay_passthrough"),
+        (107, "matches"),
+        (109, "replace"),
+        (112, "json_parse_field"),
+        (115, "json_serialize_object"),
+        (116, "flextext_parse_field"),
+        (117, "duration_from_parts"),
+        (118, "sqlite_multiply"),
     ] {
+        let selected = program
+            .root
+            .bindings
+            .iter_mut()
+            .find(|binding| binding.target_field == "Selected")
+            .expect("test program has a selected binding");
+        selected.expression = expression;
+
+        let artifacts = emit(
+            &program,
+            &Options {
+                package_name: "scalar-functions".into(),
+                runtime_dependency: RuntimeDependency::Version("0.1.0".into()),
+            },
+        )
+        .expect("supported scalar calls emit");
+        let source = artifacts
+            .files()
+            .iter()
+            .find(|file| file.path.as_str() == "src/lib.rs")
+            .and_then(|file| std::str::from_utf8(&file.contents).ok())
+            .expect("generated Rust source");
+
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }
 }
