@@ -82,6 +82,17 @@ mapping allocations. Buffer capacity can exceed logical length. Multiple live
 buffers, runtime overhead, JIT/GC, allocator behavior, and host-owned inputs
 remain outside an individual output-byte limit.
 
+<a id="compiled-xml-host-observations"></a>
+
+## XML boundary fixtures
+
+- [Combined static input bytes](../crates/cli/tests/code_generation/xml_input_sets/combined_bytes.rs)
+- [Combined primary-list output bytes](../crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs)
+- [Dynamic input request count](../crates/cli/tests/code_generation/xml_dynamic_inputs/request_count.rs)
+- [Late graph exception versus mixed-output count](../crates/cli/tests/code_generation/xml_mixed_named_outputs/late_mapping_count.rs)
+
+Byte limits and document-count limits measure different resources. Neither limits whole-process memory.
+
 ## Plan and measure a large-file run
 
 - [ ] Record the route, backend, build profile, input format, row count,
