@@ -146,6 +146,14 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   Four interaction groups and the full 703-test GUI suite pass, along with
   formatting, fresh workspace warning checks, and the normal GUI build. Edited
   table cells remain text, so this does not add typed table-cell authoring.
+- [x] Add and locally qualify **Computed properties** editing for singular
+  ordinary JSON target objects with String, Int, Float, or Bool additional
+  values on main and named-target canvases, including static constructed
+  descendants. Preserve ordered names/values and read-only unsupported imported
+  shapes; check real controls, locks, history, save/reopen, and Preview.
+  Six interaction groups and the full 709-test GUI suite pass, along with
+  formatting, fresh workspace warning checks, and the normal GUI build.
+  Normal desktop workflow and broader target shapes remain pending.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 

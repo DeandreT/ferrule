@@ -134,6 +134,40 @@ preservation, locked editing, history, save/reopen, and Preview. Normal desktop
 and broader authoring coverage remain tracked in the
 [roadmap](../ROADMAP.md#current-priorities).
 
+## Add computed JSON properties
+
+On the main or a named-target canvas, select the target object in **Scopes**
+and use **Computed properties**. The target must be an ordinary JSON document
+whose object schema allows additional properties of one **String**, **Int**,
+**Float**, or **Bool** type. Nested target objects are supported along a static
+path whose parent scopes use ordinary construction without iteration,
+filtering, grouping, sorting, or windows.
+
+Prepare the source fields and expressions on the canvas first. Choose
+**+ property**, then select **Name expression** and **Value expression**.
+The name must evaluate to a String; an empty String is a valid property name.
+For example, a name expression producing `display_name` and a value expression
+producing `Ada` add the property `"display_name": "Ada"`. Choose
+**Remove property 1** (or the displayed row number) to remove a listed property.
+Each named target keeps its own property list.
+
+Properties evaluate in their listed order after the fixed field bindings.
+Names declared by fixed schema fields remain reserved even when those fields
+are not written. A duplicate or reserved name fails the mapping. An absent
+(`Null`) value is omitted from JSON, but its name still occupies a property
+entry during mapping, so a later duplicate still fails.
+
+Imported properties outside this subset remain visible and read-only rather
+than being repaired. Repeating owners, group/array/union or arbitrary JSON
+property values, and other scope construction or iteration controls are outside
+this editor. It is unavailable in isolated functions and embedded stage views.
+Save and reopen the project to check the property choices, then use **Preview...**
+with representative names, values, and duplicate-name cases before running.
+Automated local checks cover the real computed-property controls, ordered
+names and values, locked editing, history, save/reopen, and Preview. Normal
+desktop and broader target-shape coverage remain separate work in the
+[roadmap](../ROADMAP.md#current-priorities).
+
 ## Set up a flat workbook table
 
 The New Mapping workbook setup covers one flat worksheet table per boundary.
