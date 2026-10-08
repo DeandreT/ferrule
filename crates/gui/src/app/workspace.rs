@@ -916,6 +916,11 @@ impl FerruleApp {
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         let primary_root_bindings = crate::primary_root_authoring::available(&self.project);
+        let computed_property_owner = self.embedded_stage_namespace.is_none()
+            && matches!(
+                self.mapping_workspace.active,
+                MappingDocument::Main | MappingDocument::Target(_)
+            );
         let mut type_action = None;
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
@@ -956,6 +961,14 @@ impl FerruleApp {
                                 &target.options,
                                 target.path.as_deref(),
                             );
+                            let computed_property_profile =
+                                crate::scope_editor::computed_properties::profile(
+                                    &target.root,
+                                    &target.schema,
+                                    &self.selected_scope,
+                                    &target.options,
+                                    computed_property_owner,
+                                );
                             let scope = scope_at_mut(&mut target.root, &self.selected_scope);
                             type_action = show_scope_editor(
                                 ui,
@@ -971,6 +984,12 @@ impl FerruleApp {
                                     target_type_editable,
                                 },
                                 output_profile,
+                            );
+                            crate::scope_editor::computed_properties::show(
+                                ui,
+                                scope,
+                                &self.project.graph,
+                                computed_property_profile,
                             );
                         }
                         None => {
@@ -1007,6 +1026,14 @@ impl FerruleApp {
                                 &self.project.target_options,
                                 self.project.target_path.as_deref(),
                             );
+                            let computed_property_profile =
+                                crate::scope_editor::computed_properties::profile(
+                                    &self.project.root,
+                                    &self.project.target,
+                                    &self.selected_scope,
+                                    &self.project.target_options,
+                                    computed_property_owner,
+                                );
                             let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
                             type_action = show_scope_editor(
                                 ui,
@@ -1022,6 +1049,12 @@ impl FerruleApp {
                                     target_type_editable,
                                 },
                                 output_profile,
+                            );
+                            crate::scope_editor::computed_properties::show(
+                                ui,
+                                scope,
+                                &self.project.graph,
+                                computed_property_profile,
                             );
                         }
                     }
