@@ -130,12 +130,14 @@ fn check_both_layouts(definitions: &[(&str, NodeId)], target_wires: &[(NodeId, u
         let mut focused_constant = None;
         let mut viewer = DemoViewer::new(
             &mut project.graph,
+            &project.target.name,
             &bindings,
             &mut run_pending,
             &mut project_changed,
             &mut edited_constant,
             &mut focused_constant,
         );
+        let actual_target_title = viewer.title(&CanvasNode::Target);
         let actual_pin_counts = (
             viewer.inputs(&CanvasNode::Target),
             viewer.outputs(&CanvasNode::Target),
@@ -150,6 +152,7 @@ fn check_both_layouts(definitions: &[(&str, NodeId)], target_wires: &[(NodeId, u
         assert_eq!(actual_wires, expected_wires);
         // The missing and deliberately unconnected nodes create no placeholders.
         assert_eq!(actual_nodes, expected_nodes);
+        assert_eq!(actual_target_title, "Target (target)");
         assert_eq!(actual_pin_counts, (definitions.len(), 0, 2));
         assert_eq!(restored, original);
         assert!(!run_pending && !project_changed);
