@@ -406,6 +406,10 @@ have a 256 MiB combined budget per execution.
 
 ## XML Host Boundary
 
+The [generated XML qualification index](generated-xml-qualification-index.md) maps
+public route families, error ownership and source fixtures, and separates written
+controls from retained execution and remaining verification cells.
+
 Supported primary XML mappings expose XML document entry points:
 
 | Input and result | Rust | C# |
@@ -565,10 +569,15 @@ For zero-named-input `Structured` projects, the existing no-sources APIs
 use the same complete execution with an empty named-input list. They retain
 `XmlOutputSetError` / `FerruleXmlOutputSetException` for sets and the original
 `XmlBoundaryError` / `FerruleXmlBoundaryException` for singular results. The
-new with-sources APIs retain their source-aware wrapper. `RootView` keeps only
-its existing eight single-input methods and original observed parser; it does
-not gain the new with-sources APIs. Observed flags with named inputs remain
-strict refusals.
+new with-sources APIs retain their source-aware wrapper. An admitted `RootView`
+primary can also accept static `Structured` named inputs: its eight existing
+single-input methods and eight source-aware methods give sixteen signatures,
+with text/bytes, singular/output-set and context variants. Complete input
+preflight precedes the original observed primary parser; each named input uses
+its own Structured parser. The separately proved flat combined static-input
+and static-output shape is described under [Observed Root-View Input](#observed-root-view-input).
+Dynamic named inputs, document-list outputs and observed named-input profiles
+remain strict refusals; the sixteen signatures do not imply all combinations.
 
 An unproved ordinary input, unsupported format or schema, or excessive declared
 count omits the entire optional XML adapter,
