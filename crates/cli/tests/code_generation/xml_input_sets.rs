@@ -820,3 +820,6 @@ fn named_xml_source_admission_is_complete_and_root_view_apis_remain_unchanged() 
     directory.complete = true;
     Ok(())
 }
+
+#[path = "xml_input_sets/combined_bytes.rs"]
+mod combined_bytes;
