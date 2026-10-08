@@ -1050,3 +1050,6 @@ static class Program
     }
 }
 "#;
+
+#[path = "xml_mixed_named_outputs/late_mapping_count.rs"]
+mod late_mapping_count;
