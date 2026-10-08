@@ -20,6 +20,30 @@ pub fn value_map(
         .unwrap_or(Value::Null)
 }
 
+/// Applies an isolated user-function value map. An integer is converted to
+/// Float only when f64 retains its exact value; failed conversion keeps the
+/// original tag before the same ordered lookup and default handling.
+pub fn value_map_user_function(
+    input: Value,
+    input_type: Option<ScalarType>,
+    table: &[(Value, Value)],
+    default: Option<Value>,
+) -> Value {
+    let converted = match (input_type, &input) {
+        (Some(ScalarType::Float), Value::Int(value)) => {
+            let converted = *value as f64;
+            ((converted as i128) == i128::from(*value)).then_some(Value::Float(converted))
+        }
+        (Some(target), value) => coerce_input(value, target),
+        (None, _) => None,
+    };
+    let input = match converted {
+        Some(value) => value,
+        None => input,
+    };
+    value_map(input, None, table, default)
+}
+
 pub(crate) fn coerce_input(value: &Value, target: ScalarType) -> Option<Value> {
     match (target, value) {
         (_, Value::Null) => Some(Value::Null),
@@ -304,5 +328,100 @@ mod tests {
                 Value::String("retained".into())
             );
         }
+    }
+
+    #[test]
+    fn isolated_float_input_conversion_retains_inexact_integer_tags() {
+        for (integer, rounded, exact) in [
+            (9_007_199_254_740_991, 9_007_199_254_740_991.0, true),
+            (9_007_199_254_740_992, 9_007_199_254_740_992.0, true),
+            (9_007_199_254_740_993, 9_007_199_254_740_992.0, false),
+            (9_007_199_254_740_994, 9_007_199_254_740_994.0, true),
+            (-9_007_199_254_740_991, -9_007_199_254_740_991.0, true),
+            (-9_007_199_254_740_992, -9_007_199_254_740_992.0, true),
+            (-9_007_199_254_740_993, -9_007_199_254_740_992.0, false),
+            (i64::MIN, -9_223_372_036_854_775_808.0, true),
+            (i64::MIN + 1, -9_223_372_036_854_775_808.0, false),
+            (i64::MAX, 9_223_372_036_854_775_808.0, false),
+        ] {
+            let table = [
+                (Value::Int(integer), Value::String("original".into())),
+                (Value::Int(integer), Value::String("later duplicate".into())),
+                (Value::Float(rounded), Value::String("converted".into())),
+            ];
+            assert_eq!(
+                value_map(Value::Int(integer), Some(ScalarType::Float), &table, None),
+                Value::String("converted".into()),
+                "ordinary input {integer}"
+            );
+            assert_eq!(
+                value_map_user_function(Value::Int(integer), Some(ScalarType::Float), &table, None),
+                Value::String(if exact { "converted" } else { "original" }.into()),
+                "isolated input {integer}"
+            );
+        }
+    }
+
+    #[test]
+    fn isolated_lookup_preserves_presence_defaults_and_float_equality() {
+        for input in [
+            Value::Null,
+            Value::json_null(),
+            Value::xml_nil(),
+            Value::Bool(true),
+            Value::String("not-a-number".into()),
+            Value::Float(f64::INFINITY),
+        ] {
+            assert_eq!(
+                value_map_user_function(
+                    input.clone(),
+                    Some(ScalarType::Float),
+                    &[(input, Value::String("first".into()))],
+                    None
+                ),
+                Value::String("first".into())
+            );
+        }
+        let zeroes = [
+            (Value::Float(0.0), Value::String("first zero".into())),
+            (Value::Float(-0.0), Value::String("second zero".into())),
+        ];
+        assert_eq!(
+            value_map_user_function(Value::Float(-0.0), Some(ScalarType::Float), &zeroes, None),
+            Value::String("first zero".into())
+        );
+        assert_eq!(
+            value_map_user_function(
+                Value::Float(f64::NAN),
+                Some(ScalarType::Float),
+                &[(Value::Float(f64::NAN), Value::String("unreachable".into()))],
+                Some(Value::String("miss".into()))
+            ),
+            Value::String("miss".into())
+        );
+        assert_eq!(
+            value_map_user_function(
+                Value::Int(1),
+                None,
+                &[(Value::Float(1.0), Value::String("wrong tag".into()))],
+                None
+            ),
+            Value::Null
+        );
+        for default in [None, Some(Value::Null)] {
+            assert_eq!(
+                value_map_user_function(Value::Int(1), Some(ScalarType::Float), &[], default),
+                Value::Null
+            );
+        }
+        assert_eq!(
+            value_map_user_function(
+                Value::Int(1),
+                Some(ScalarType::Float),
+                &[],
+                Some(Value::String(String::new()))
+            ),
+            Value::String(String::new())
+        );
     }
 }

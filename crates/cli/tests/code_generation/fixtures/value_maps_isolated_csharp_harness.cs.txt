@@ -1,0 +1,167 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = new (long Integer, string Marker)[]
+{
+    (9_007_199_254_740_991, "converted"),
+    (9_007_199_254_740_992, "converted"),
+    (9_007_199_254_740_993, "original"),
+    (9_007_199_254_740_994, "converted"),
+    (-9_007_199_254_740_991, "converted"),
+    (-9_007_199_254_740_992, "converted"),
+    (-9_007_199_254_740_993, "original"),
+    (long.MinValue, "converted"),
+    (long.MinValue + 1, "original"),
+    (long.MaxValue, "original"),
+};
+for (var index = 0; index < cases.Length; index++)
+{
+    var (integer, marker) = cases[index];
+    var input = Source(integer, false, false);
+    File.WriteAllText($"host-case-{index}-input.txt", Dump(input));
+    var expected = Expected(marker);
+    File.WriteAllText($"host-case-{index}-literal-expected.txt", Dump(expected));
+    AssertInstance(Record($"host-case-{index}-typed", () => GeneratedMapping.Execute(input)), expected);
+    AssertInstance(Record($"host-case-{index}-typed-empty-named",
+        () => GeneratedMapping.ExecuteWithSources(input, Array.Empty<NamedInput>())), expected);
+}
+foreach (var (name, selected, functionSelected) in new[] { ("main", true, false), ("function", false, true) })
+{
+    var input = Source(9_007_199_254_740_993, selected, functionSelected);
+    File.WriteAllText($"host-{name}-selected-input.txt", Dump(input));
+    AssertDivide($"host-{name}-typed-selected", () => GeneratedMapping.Execute(input));
+    AssertDivide($"host-{name}-typed-empty-named-selected",
+        () => GeneratedMapping.ExecuteWithSources(input, Array.Empty<NamedInput>()));
+}
+
+static FerruleGroup Source(long integer, bool selected, bool functionSelected) => new(new[]
+{
+    F("Input", FerruleValue.FromInt64(integer)),
+    F("Selected", FerruleValue.FromBoolean(selected)),
+    F("FunctionSelected", FerruleValue.FromBoolean(functionSelected)),
+});
+static FerruleGroup Expected(string marker) => new(new[]
+{
+    F("Main", T("converted")), F("Function", T(marker)), F("Nested", T(marker)),
+    F("Lazy", T("safe")), F("LazyFunction", T("safe")), F("Duplicate", T("first")),
+    F("NoDefault", FerruleValue.Null), F("NullDefault", FerruleValue.Null),
+    F("EmptyDefault", T(string.Empty)), F("Null", T("null")), F("XmlNil", T("nil")),
+    F("JsonNull", T("json-null")), F("NoConversion", T("tagged")),
+    F("FailedText", T("retained")), F("SignedZero", T("first zero")),
+});
+static FerruleValue T(string text) => FerruleValue.FromString(text);
+static FerruleField F(string name, FerruleValue value) => new(name, new FerruleScalar(value));
+
+static FerruleInstance Record(string stem, Func<FerruleInstance> call)
+{
+    FerruleInstance? result = null;
+    Exception? error = null;
+    try { result = call(); }
+    catch (Exception caught) { error = caught; }
+    File.WriteAllText(stem + "-raw.txt", error is null ? Dump(result!) : DumpError(error));
+    if (error is not null) throw new InvalidOperationException("Unexpected mapping failure", error);
+    return result!;
+}
+static void AssertDivide(string stem, Func<FerruleInstance> call)
+{
+    FerruleInstance? result = null;
+    Exception? error = null;
+    try { result = call(); }
+    catch (Exception caught) { error = caught; }
+    File.WriteAllText(stem + "-raw.txt", error is null ? Dump(result!) : DumpError(error));
+    if (error is not FerruleRuntimeException { Error: FerruleRuntimeError.DivideByZero })
+        throw new InvalidOperationException("Selected mapping input must retain DivideByZero", error);
+}
+static void AssertInstance(FerruleInstance actual, FerruleInstance expected)
+{
+    if (actual is FerruleScalar a && expected is FerruleScalar e && a.Value == e.Value) return;
+    if (actual is FerruleGroup ag && expected is FerruleGroup eg && ag.Fields.Count == eg.Fields.Count)
+    {
+        for (var index = 0; index < ag.Fields.Count; index++)
+        {
+            if (ag.Fields[index].Name != eg.Fields[index].Name)
+                throw new InvalidOperationException("Output field order or identity differs");
+            AssertInstance(ag.Fields[index].Value, eg.Fields[index].Value);
+        }
+        return;
+    }
+    throw new InvalidOperationException("Complete output instance differs from literal expectation");
+}
+static string Dump(FerruleInstance instance)
+{
+    var text = new StringBuilder();
+    DumpInto(instance, text, 0);
+    return text.ToString();
+}
+static void DumpInto(FerruleInstance instance, StringBuilder text, int depth)
+{
+    var indent = new string(' ', depth * 2);
+    switch (instance)
+    {
+        case FerruleScalar scalar:
+            var value = scalar.Value;
+            text.Append(indent).Append("Scalar ").Append(value.Kind).Append(' ');
+            text.Append(value.Kind switch
+            {
+                FerruleValueKind.String => JsonSerializer.Serialize(value.StringValue),
+                FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
+                FerruleValueKind.Double => value.DoubleValue.ToString("R", CultureInfo.InvariantCulture) +
+                    " bits=" + BitConverter.DoubleToInt64Bits(value.DoubleValue).ToString("X16", CultureInfo.InvariantCulture),
+                FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
+                _ => string.Empty,
+            }).AppendLine();
+            break;
+        case FerruleGroup group:
+            text.Append(indent).Append("Group origin=").AppendLine(JsonSerializer.Serialize(group.XmlTypeOrigin));
+            foreach (var field in group.Fields)
+            {
+                text.Append(indent).Append("Field ").AppendLine(JsonSerializer.Serialize(field.Name));
+                DumpInto(field.Value, text, depth + 1);
+            }
+            break;
+        case FerruleRepeated repeated:
+            text.Append(indent).AppendLine("Repeated");
+            foreach (var item in repeated.Items) DumpInto(item, text, depth + 1);
+            break;
+        case FerruleMappedSequence sequence:
+            text.Append(indent).AppendLine("MappedSequence");
+            foreach (var item in sequence.Items) DumpInto(item, text, depth + 1);
+            break;
+        case FerruleDocumentSet documents:
+            text.Append(indent).AppendLine("DocumentSet");
+            foreach (var document in documents.Documents)
+            {
+                text.Append(indent).Append("Member ").Append(JsonSerializer.Serialize(document.Path))
+                    .Append(" resolved=").AppendLine(JsonSerializer.Serialize(document.ResolvedSourcePath));
+                DumpInto(document.Value, text, depth + 1);
+            }
+            break;
+        default:
+            text.Append(indent).Append("Unknown runtime instance ").AppendLine(instance.GetType().FullName);
+            break;
+    }
+}
+
+static string DumpError(Exception error)
+{
+    var text = new StringBuilder(error.ToString()).AppendLine();
+    for (Exception? current = error; current is not null; current = current.InnerException)
+    {
+        if (current is FerruleRuntimeException runtime)
+        {
+            text.AppendLine(JsonSerializer.Serialize(new
+            {
+                runtime.Error, runtime.Node, runtime.Function, runtime.ExpectedArity,
+                runtime.ActualArity, runtime.FoundKind, runtime.AggregateOperation, runtime.Detail,
+                runtime.RequestedItems, runtime.MaximumItems, runtime.MaximumDepth, runtime.RuntimeValue,
+                runtime.FailureRule, runtime.MappingFailureMessage, runtime.MappingExceptionMessage,
+                runtime.Join, runtime.UserFunction, runtime.FunctionParameter, runtime.ExpectedScalarType,
+                runtime.RuntimeParameter, runtime.SourceField, runtime.FoundInstance, runtime.PrimaryRoot,
+            }));
+        }
+    }
+    return text.ToString();
+}

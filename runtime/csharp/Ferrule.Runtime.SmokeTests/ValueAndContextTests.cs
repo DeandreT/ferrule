@@ -6,6 +6,7 @@ internal static partial class Program
 {
     private static void ValueMaps()
     {
+        IsolatedValueMapInputConversion();
         var duplicateRows = new[]
         {
             new FerruleValueMapEntry(Text("A"), Text("first")),
@@ -150,6 +151,63 @@ internal static partial class Program
         Equal((ulong?)7, functionType.UserFunction);
         Equal((ulong?)3, functionType.FunctionParameter);
         Equal(FerruleScalarType.Int64, functionType.ExpectedScalarType);
+    }
+
+    private static void IsolatedValueMapInputConversion()
+    {
+        foreach (var (integer, rounded, exact) in new (long, double, bool)[]
+        {
+            (9_007_199_254_740_991, 9_007_199_254_740_991.0, true),
+            (9_007_199_254_740_992, 9_007_199_254_740_992.0, true),
+            (9_007_199_254_740_993, 9_007_199_254_740_992.0, false),
+            (9_007_199_254_740_994, 9_007_199_254_740_994.0, true),
+            (-9_007_199_254_740_991, -9_007_199_254_740_991.0, true),
+            (-9_007_199_254_740_992, -9_007_199_254_740_992.0, true),
+            (-9_007_199_254_740_993, -9_007_199_254_740_992.0, false),
+            (long.MinValue, -9_223_372_036_854_775_808.0, true),
+            (long.MinValue + 1, -9_223_372_036_854_775_808.0, false),
+            (long.MaxValue, 9_223_372_036_854_775_808.0, false),
+        })
+        {
+            var table = new[]
+            {
+                new FerruleValueMapEntry(FerruleValue.FromInt64(integer), Text("original")),
+                new FerruleValueMapEntry(FerruleValue.FromInt64(integer), Text("later duplicate")),
+                new FerruleValueMapEntry(FerruleValue.FromDouble(rounded), Text("converted")),
+            };
+            Equal(Text("converted"), FerruleValueMaps.Apply(
+                FerruleValue.FromInt64(integer), FerruleScalarType.Double, table));
+            Equal(Text(exact ? "converted" : "original"), FerruleValueMaps.ApplyUserFunction(
+                FerruleValue.FromInt64(integer), FerruleScalarType.Double, table));
+        }
+        foreach (var input in new[] { FerruleValue.Null, FerruleValue.JsonNull, FerruleValue.XmlNil,
+            Bool(true), Text("not-a-number"), FerruleValue.FromDouble(double.PositiveInfinity) })
+        {
+            Equal(Text("first"), FerruleValueMaps.ApplyUserFunction(input, FerruleScalarType.Double,
+                new[] { new FerruleValueMapEntry(input, Text("first")) }));
+        }
+        Equal(Text("first zero"), FerruleValueMaps.ApplyUserFunction(
+            FerruleValue.FromDouble(-0.0), FerruleScalarType.Double,
+            new[]
+            {
+                new FerruleValueMapEntry(FerruleValue.FromDouble(0.0), Text("first zero")),
+                new FerruleValueMapEntry(FerruleValue.FromDouble(-0.0), Text("second zero")),
+            }));
+        Equal(Text("miss"), FerruleValueMaps.ApplyUserFunction(
+            FerruleValue.FromDouble(double.NaN), FerruleScalarType.Double,
+            new[] { new FerruleValueMapEntry(FerruleValue.FromDouble(double.NaN), Text("unreachable")) },
+            Text("miss")));
+        Equal(FerruleValue.Null, FerruleValueMaps.ApplyUserFunction(FerruleValue.FromInt64(1), null,
+            new[] { new FerruleValueMapEntry(FerruleValue.FromDouble(1), Text("wrong tag")) }));
+        Equal(FerruleValue.Null, FerruleValueMaps.ApplyUserFunction(
+            FerruleValue.FromInt64(1), FerruleScalarType.Double, Array.Empty<FerruleValueMapEntry>()));
+        Equal(FerruleValue.Null, FerruleValueMaps.ApplyUserFunction(
+            FerruleValue.FromInt64(1), FerruleScalarType.Double, Array.Empty<FerruleValueMapEntry>(),
+            FerruleValue.Null));
+        Equal(Text(string.Empty), FerruleValueMaps.ApplyUserFunction(
+            FerruleValue.FromInt64(1), FerruleScalarType.Double, Array.Empty<FerruleValueMapEntry>(),
+            Text(string.Empty)));
+        Throws<ArgumentNullException>(() => FerruleValueMaps.ApplyUserFunction(Text("input"), null, null!));
     }
 
     private static void RuntimeExecutionContext()
