@@ -44,8 +44,6 @@ box does not close its later desktop, generated, or external-runtime gates.
 
 ### 1. Complete the flat workbook user workflow
 
-- [ ] Complete the normal desktop create/save/reopen workflow using real file
-  choosers and an ordinary GUI executable; validate the saved complete project.
 - [ ] Retain failures and closure observations independently of a later success.
 
 Exit: a user can choose both schemas, reach Configure/Create without an enlarged
