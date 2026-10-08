@@ -58,6 +58,8 @@ mod reference_corpus_generic;
 mod regex_unicode;
 #[path = "code_generation/required_query_host.rs"]
 mod required_query_host;
+#[path = "code_generation/required_ref_boundaries.rs"]
+mod required_ref_boundaries;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
