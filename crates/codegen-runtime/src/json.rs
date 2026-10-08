@@ -22,6 +22,8 @@ mod pattern_properties;
 mod property_names;
 #[cfg(test)]
 mod required_property_precedence;
+#[cfg(test)]
+mod string_int_range;
 mod unique_items;
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;

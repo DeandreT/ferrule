@@ -1,0 +1,124 @@
+extern alias fixture_i;
+extern alias fixture_w;
+extern alias fixture_n;
+extern alias fixture_l;
+extern alias fixture_u;
+extern alias fixture_o;
+extern alias fixture_e;
+using System.Collections;
+using System.Text;
+using System.Text.Json;
+using I = fixture_i::Ferrule.Generated.GeneratedMapping;
+using W = fixture_w::Ferrule.Generated.GeneratedMapping;
+using N = fixture_n::Ferrule.Generated.GeneratedMapping;
+using L = fixture_l::Ferrule.Generated.GeneratedMapping;
+using U = fixture_u::Ferrule.Generated.GeneratedMapping;
+using O = fixture_o::Ferrule.Generated.GeneratedMapping;
+using E = fixture_e::Ferrule.Generated.GeneratedMapping;
+
+if (args.Length != 1) { throw new ArgumentException("One retained root required."); }
+var root = Path.GetFullPath(args[0]);
+using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "cases.json")));
+var counts = new int[3];
+var failures = new List<string>();
+foreach (var test in corpus.RootElement.GetProperty("cases").EnumerateArray())
+{
+    foreach (var bytes in new[] { false, true })
+    {
+        var stem = test.GetProperty("id").GetString()! + (bytes ? "-bytes" : "-text");
+        var input = test.GetProperty("input").GetString()!;
+        var raw = Encoding.UTF8.GetBytes(input);
+        var result = test.GetProperty("fixture").GetString() switch
+        {
+            "I" => bytes ? Retain(root, stem, () => I.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => I.ExecuteJsonOutputs(input)),
+            "W" => bytes ? Retain(root, stem, () => W.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => W.ExecuteJsonOutputs(input)),
+            "N" => bytes ? Retain(root, stem, () => N.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => N.ExecuteJsonOutputs(input)),
+            "L" => bytes ? Retain(root, stem, () => L.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => L.ExecuteJsonOutputs(input)),
+            "U" => bytes ? Retain(root, stem, () => U.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => U.ExecuteJsonOutputs(input)),
+            "O" => bytes ? Retain(root, stem, () => O.ExecuteJsonBytesOutputs(raw)) : Retain(root, stem, () => O.ExecuteJsonOutputs(input)),
+            "E" => bytes
+                ? Retain(root, stem, () => E.ExecuteJsonBytesOutputsWithSources(raw,
+                    new[] { new fixture_e::Ferrule.Generated.NamedJsonBytesInput("catalog", Encoding.UTF8.GetBytes(test.GetProperty("catalog").GetString()!)) }))
+                : Retain(root, stem, () => E.ExecuteJsonOutputsWithSources(input,
+                    new[] { new fixture_e::Ferrule.Generated.NamedJsonInput("catalog", test.GetProperty("catalog").GetString()!) })),
+            _ => throw new InvalidOperationException("Undeclared finite fixture."),
+        };
+        counts[0]++;
+        counts[result.Error is null ? 1 : 2]++;
+        try { Compare(result, test.GetProperty("expected"), bytes); }
+        catch (Exception original) { failures.Add(stem + ": " + original); }
+    }
+}
+var complete = JsonSerializer.Serialize(new { counts, failures }) + "\n";
+File.WriteAllText(Path.Combine(root, "CSHARP-COMPLETE-RESULT.json"), complete, new UTF8Encoding(false, true));
+Check(counts.SequenceEqual(corpus.RootElement.GetProperty("expected_counts").EnumerateArray().Select(value => value.GetInt32()))
+    && failures.Count == 0, "Complete generated String-or-Int comparison failed; originals retained.");
+
+static (JsonElement? Output, Exception? Error) Retain<T>(string root, string stem, Func<T> invoke)
+{
+    T original;
+    try { original = invoke(); }
+    catch (Exception originalError)
+    {
+        Save(root, stem, new { output = (object?)null, error = Cause(originalError) });
+        return (null, originalError);
+    }
+    // Public document-output records contain only complete text/byte documents
+    // and ordered named documents. Capture all public fields before comparison.
+    var output = JsonSerializer.SerializeToElement(original);
+    Save(root, stem, new { output, error = (object?)null });
+    return (output, null);
+}
+static object? Cause(Exception? error) => error is null ? null : new
+{
+    type = error.GetType().FullName,
+    completeOriginal = error.ToString(),
+    error.Message,
+    publicProperties = error.GetType().GetProperties()
+        .Where(property => property.Name != "InnerException" && property.GetIndexParameters().Length == 0)
+        .ToDictionary(property => property.Name, property => property.GetValue(error) is byte[] bytes
+            ? Convert.ToHexString(bytes) : property.GetValue(error)?.ToString()),
+    data = error.Data.Cast<DictionaryEntry>().Select(entry => new { key = entry.Key.ToString(), value = entry.Value?.ToString() }).ToArray(),
+    inner = Cause(error.InnerException),
+};
+static void Save(string root, string stem, object original)
+{
+    var text = JsonSerializer.Serialize(original) + "\n";
+    File.WriteAllText(Path.Combine(root, "CSHARP-" + stem + "-ORIGINAL.json"), text, new UTF8Encoding(false, true));
+    Console.WriteLine(text);
+}
+static void Compare((JsonElement? Output, Exception? Error) original, JsonElement expected, bool bytes)
+{
+    if (expected.TryGetProperty("primary_utf8", out var primary))
+    {
+        Check(original.Error is null && original.Output is not null, "Successful mapping raised an exception.");
+        var output = original.Output ?? throw new InvalidOperationException("Original complete output missing.");
+        EqualDocument(output.GetProperty("Primary"), primary.GetString()!, bytes);
+        var actualExtras = output.GetProperty("Extras").EnumerateArray().ToArray();
+        var wantedExtras = expected.GetProperty("extras").EnumerateArray().ToArray();
+        Check(actualExtras.Length == wantedExtras.Length, "Ordered named output count differs.");
+        for (var index = 0; index < actualExtras.Length; index++)
+        {
+            Check(actualExtras[index].GetProperty("Name").GetString() == wantedExtras[index].GetProperty("name").GetString(), "Named output identity differs.");
+            EqualDocument(actualExtras[index].GetProperty("Document"), wantedExtras[index].GetProperty("document_utf8").GetString()!, bytes);
+        }
+        return;
+    }
+    Check(original.Output is null && original.Error is not null, "Refusal returned success.");
+    var error = original.Error ?? throw new InvalidOperationException("Original public error missing.");
+    var wanted = expected.GetProperty("csharp");
+    Check(error.GetType().FullName == "Ferrule.Runtime.FerruleRuntimeException", "Wrong public error type.");
+    Check(error.GetType().GetProperty("Error")?.GetValue(error)?.ToString() == wanted.GetProperty("code").GetString(), "Wrong public category.");
+    Check(error.Message == wanted.GetProperty("message").GetString()
+        && error.GetType().GetProperty("Detail")?.GetValue(error)?.ToString() == wanted.GetProperty("detail").GetString(), "Complete public message/detail differs.");
+    Check(error.InnerException is null && error.Data.Count == 0, "Unexpected original public cause/data.");
+    Check(error.GetType().GetProperties().Where(property => property.DeclaringType == error.GetType()
+        && property.Name is not "Error" and not "Detail").All(property => property.GetValue(error) is null), "Unexpected runtime-owned payload metadata.");
+}
+static void EqualDocument(JsonElement actual, string wanted, bool bytes) =>
+    Check(bytes ? Convert.FromBase64String(actual.GetString()!).SequenceEqual(Encoding.UTF8.GetBytes(wanted))
+        : actual.GetString() == wanted, "Complete literal output including order and LF differs.");
+static void Check(bool condition, string message)
+{
+    if (!condition) { throw new InvalidOperationException(message); }
+}

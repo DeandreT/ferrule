@@ -207,6 +207,8 @@ fn parse_scalar_composition(
     let mut scalar_types = Vec::new();
     let mut nullable = false;
     let mut format_annotations = ir::JsonFormatAnnotations::default();
+    let mut string_branches = 0_usize;
+    let mut integer_branches = 0_usize;
     let mut numeric_types = Vec::new();
     let mut numeric_ranges = Vec::new();
     let mut numeric_multiples = Vec::new();
@@ -253,8 +255,12 @@ fn parse_scalar_composition(
                 }
                 formats::accumulate(name, &mut format_annotations, branch_formats.into_vec())?;
                 if ty == ScalarType::String {
+                    string_branches += 1;
                     string_lengths.push(string_length);
                     string_patterns.push(branch_patterns);
+                }
+                if ty == ScalarType::Int {
+                    integer_branches += 1;
                 }
                 if matches!(ty, ScalarType::Int | ScalarType::Float) {
                     numeric_types.push(ty);
@@ -306,8 +312,16 @@ fn parse_scalar_composition(
                 ),
             ));
         }
+        let exact_string_int_interval = node.is_string_int_union()
+            && string_branches == 1
+            && integer_branches == 1
+            && matches!(
+                numeric_ranges.as_slice(),
+                [Some(ir::NumericRange::Integer(_))]
+            );
         if matches!(node.kind, SchemaKind::ScalarUnion { .. })
             && numeric_ranges.iter().any(Option::is_some)
+            && !exact_string_int_interval
         {
             return Err(unsupported_union(
                 name,

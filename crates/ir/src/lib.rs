@@ -580,8 +580,9 @@ pub struct SchemaNode {
     pub json_allowed_values: Option<JsonAllowedValues>,
     /// An exact numeric interval for a JSON scalar.
     ///
-    /// Integer bounds are normalized to an inclusive `i64` interval. Number
-    /// bounds retain finite values and endpoint exclusivity.
+    /// Integer bounds are normalized to an inclusive `i64` interval. On an
+    /// exact String-or-Int union they constrain only its Int member. Number
+    /// bounds retain finite values and endpoint exclusivity on a Float scalar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub numeric_range: Option<NumericRange>,
     /// Exact JSON Schema `multipleOf` constraints for a numeric-capable
@@ -1256,6 +1257,18 @@ impl SchemaNode {
         )
     }
 
+    /// Whether this scalar domain contains exactly String and Int.
+    /// Nullability and repetition remain independent occurrence metadata.
+    pub fn is_string_int_union(&self) -> bool {
+        matches!(
+            self.kind,
+            SchemaKind::ScalarUnion { types }
+                if types.contains(ScalarType::String)
+                    && types.contains(ScalarType::Int)
+                    && types.iter().count() == 2
+        )
+    }
+
     pub fn accepts_scalar_type(&self, ty: ScalarType) -> bool {
         match self.kind {
             SchemaKind::Scalar { ty: expected } => expected == ty,
@@ -1508,7 +1521,8 @@ impl SchemaNode {
     }
 
     /// Checks that numeric-range metadata matches one concrete numeric scalar
-    /// and that an optional fixed lexical value lies inside the interval.
+    /// or the Int member of an exact String-or-Int union, and that an optional
+    /// fixed lexical value lies inside the interval.
     pub fn numeric_range_is_valid(&self) -> bool {
         let Some(range) = self.numeric_range else {
             return true;
@@ -1534,6 +1548,11 @@ impl SchemaNode {
                     .parse::<f64>()
                     .is_ok_and(|value| range.contains(value))
             }),
+            (NumericRange::Integer(_), SchemaKind::ScalarUnion { .. })
+                if self.is_string_int_union() =>
+            {
+                self.fixed.is_none() && !self.json_any
+            }
             _ => false,
         }
     }

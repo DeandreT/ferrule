@@ -950,7 +950,7 @@ public static partial class FerruleJson
             JsonValueKind.Object,
             $"schema node '{name}' numeric range",
             "object");
-        if (!IsSingleScalar(scalarDomain) || jsonAny)
+        if ((!IsSingleScalar(scalarDomain) && !IsStringIntUnion(scalarDomain)) || jsonAny)
         {
             throw Boundary(
                 $"Embedded JSON schema node '{name}' has a numeric range without one concrete numeric scalar type.");
@@ -961,7 +961,7 @@ public static partial class FerruleJson
         RequireKind(bounds, JsonValueKind.Object, $"schema node '{name}' numeric bounds", "object");
         JsonNumericRange range = kind switch
         {
-            "integer" when scalarDomain == JsonScalarDomain.Int64 =>
+            "integer" when scalarDomain == JsonScalarDomain.Int64 || IsStringIntUnion(scalarDomain) =>
                 ReadIntegerRange(name, bounds),
             "number" when scalarDomain == JsonScalarDomain.Double =>
                 ReadNumberRange(name, bounds, exactFloatMarkers),
@@ -1394,7 +1394,7 @@ public static partial class FerruleJson
         }
         if (value.Kind != FerruleValueKind.JsonNull &&
             schema.NumericRange is { } range &&
-            !range.Contains(value))
+            !NumericRangeContains(schema, range, value))
         {
             throw Boundary(
                 $"JSON scalar '{schema.Name}' is outside its numeric range: {element.GetRawText()}.");
@@ -2019,6 +2019,12 @@ public static partial class FerruleJson
         {
             writer.WriteNullValue();
             return;
+        }
+        if (schema.NumericRange is { } range &&
+            !NumericRangeContains(schema, range, normalized))
+        {
+            throw Boundary(
+                $"JSON scalar '{schema.Name}' is outside its numeric range: {normalized}.");
         }
         ValidateJsonMultipleOf(schema, normalized);
         ValidateStringLength(schema, normalized);
@@ -3126,6 +3132,17 @@ public static partial class FerruleJson
         var bits = (int)domain;
         return bits != 0 && (bits & (bits - 1)) == 0;
     }
+
+    private static bool IsStringIntUnion(JsonScalarDomain domain) =>
+        domain == (JsonScalarDomain.String | JsonScalarDomain.Int64);
+
+    private static bool NumericRangeContains(
+        JsonSchemaNode schema,
+        JsonNumericRange range,
+        FerruleValue value) =>
+        (IsStringIntUnion(schema.ScalarDomain) &&
+         range is JsonIntegerRange &&
+         value.Kind == FerruleValueKind.String) || range.Contains(value);
 
     private static string InstanceKind(FerruleInstance instance) => instance switch
     {
