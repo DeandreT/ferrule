@@ -906,3 +906,6 @@ fn flat_workbook_outer_scroll_reaches_configure_and_create_at_desktop_heights() 
     directory.completed = true;
     Ok(())
 }
+
+#[path = "xlsx_tests/transposed.rs"]
+mod transposed;

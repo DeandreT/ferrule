@@ -208,6 +208,21 @@ editable independently of the schema's field names. Blank source sheet names
 read the first sheet; blank target sheet names use the default sheet.
 Data paths are optional during setup and can be supplied when running.
 
+For Source, choose **Read layout → Columns as records (transposed)** to read
+selected worksheet rows as fields. Enter one distinct row per data field in
+schema order: for example, `Name` row `6`, then `Count` row `2`. The first selected
+row drives records; columns with no driver cell are skipped, and missing cells
+in other selected rows become absent values. A schema field named `n` must be an
+integer and receives the physical column number without a row selector, so gaps
+in the worksheet remain visible. Row coordinates run from 1 to 1,048,576; a valid
+row beyond populated cells is not a coordinate error. Switching back to **Rows
+as records** restores the parked ordinary source choices. Target settings stay
+ordinary. Changes remain in the wizard until **Create mapping**; creation uses
+the existing new-document workflow, while later edits have ordinary undo/redo.
+Local checks cover the controls and workbook reading/writing. A separate desktop
+check verifies configuration, saving, and reopening at 1200×800 and 1200×760;
+see [#98](https://github.com/DeandreT/ferrule/issues/98).
+
 Workbook setup preserves the selected schema and does not read a workbook to
 guess its fields. Check a real small workbook after creating the mapping;
 the physical columns, sheet, and header settings must agree with the file.
