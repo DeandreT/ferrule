@@ -17,6 +17,7 @@ mod failure;
 mod generated_sequence;
 mod iteration;
 mod json;
+mod json5;
 mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;
@@ -60,6 +61,10 @@ pub use iteration::{
 pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
     parse_json_bytes, serialize_json, serialize_json_bytes,
+};
+pub use json5::{
+    Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
+    Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
 pub use path_hierarchy::{MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, path_hierarchy};
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};

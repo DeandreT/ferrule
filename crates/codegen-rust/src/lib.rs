@@ -19,6 +19,9 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod csv_api;
 mod failure;
+mod json5_api;
+
+pub use json5_api::{Json5EmitError, emit_with_json5};
 mod xml_api;
 
 /// How a generated Cargo project locates ferrule's small Rust runtime.

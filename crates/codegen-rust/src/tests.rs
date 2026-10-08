@@ -31,6 +31,7 @@ mod raise;
 
 use host_target::GeneratedHostCommand;
 mod joins;
+mod json5;
 mod json_allowed_values;
 mod json_contains;
 mod json_dependent_schemas;
