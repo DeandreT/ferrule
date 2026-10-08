@@ -380,12 +380,12 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
 /// Reads JSON5 text into an [`Instance`] tree. JSON5 comments are syntax only;
 /// they are not represented in the mapping graph or reproduced on output.
 pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let text = strip_utf8_bom(text);
     if text.len() > MAX_JSON5_DOCUMENT_BYTES {
         return Err(JsonFormatError::Json5DocumentLimit {
             limit: MAX_JSON5_DOCUMENT_BYTES,
         });
     }
+    let text = strip_utf8_bom(text);
     check_json5_nesting(text)?;
     let value = json5_finite::from_str(text)?;
     json5_unique::validate(schema, text)?;
