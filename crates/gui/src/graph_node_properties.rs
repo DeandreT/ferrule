@@ -296,7 +296,7 @@ impl GraphViewer<'_> {
                     });
                     ui.add(
                         egui::Label::new(
-                            "Edited keys are text. Conversion applies to the incoming value.",
+                            "Text cells update as you type. Apply typed edits. Conversion applies to the incoming value.",
                         )
                         .wrap(),
                     );
