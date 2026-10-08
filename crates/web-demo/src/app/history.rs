@@ -82,6 +82,14 @@ impl ProjectHistory {
         if let Some(previous) = self.current.take() {
             if constant.is_some() && self.coalescing == constant && !self.undo.is_empty() {
                 self.bytes -= previous.len();
+                if self.undo.back().is_some_and(|baseline| baseline == &json) {
+                    // The retained baseline already belongs to the byte ledger.
+                    // Returning to it removes this edit without restoring redo
+                    // that a transient change has already discarded.
+                    self.current = self.undo.pop_back();
+                    self.coalescing = None;
+                    return RecordResult::Recorded;
+                }
             } else {
                 self.undo.push_back(previous);
             }
