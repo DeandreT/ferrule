@@ -11,6 +11,10 @@ pub fn value_map(
 ) -> Value {
     let input = input_type
         .and_then(|target| coerce_input(&input, target))
+        .map(|value| match value {
+            Value::JsonNull(_) => Value::Null,
+            value => value,
+        })
         .unwrap_or(input);
     table
         .iter()
@@ -423,5 +427,111 @@ mod tests {
             ),
             Value::String(String::new())
         );
+    }
+
+    #[test]
+    fn ordinary_declared_json_null_normalization_preserves_untyped_and_isolated_markers() {
+        let table = [
+            (Value::Null, Value::String("null-first".into())),
+            (Value::Null, Value::String("null-second".into())),
+            (Value::json_null(), Value::String("json-first".into())),
+            (Value::json_null(), Value::String("json-second".into())),
+            (Value::xml_nil(), Value::String("nil-first".into())),
+            (Value::xml_nil(), Value::String("nil-second".into())),
+        ];
+        for target in [
+            ScalarType::String,
+            ScalarType::Int,
+            ScalarType::Float,
+            ScalarType::Bool,
+        ] {
+            for (input, ordinary, preserved) in [
+                (Value::Null, "null-first", "null-first"),
+                (Value::json_null(), "null-first", "json-first"),
+                (Value::xml_nil(), "nil-first", "nil-first"),
+            ] {
+                let declared = value_map(
+                    input.clone(),
+                    Some(target),
+                    &table,
+                    Some(Value::String("miss".into())),
+                );
+                let untyped = value_map(
+                    input.clone(),
+                    None,
+                    &table,
+                    Some(Value::String("miss".into())),
+                );
+                let isolated = value_map_user_function(
+                    input.clone(),
+                    Some(target),
+                    &table,
+                    Some(Value::String("miss".into())),
+                );
+                eprintln!(
+                    "marker {input:?}, target {target:?}: declared={declared:?}, untyped={untyped:?}, isolated={isolated:?}"
+                );
+                assert_eq!(declared, Value::String(ordinary.into()));
+                assert_eq!(untyped, Value::String(preserved.into()));
+                assert_eq!(isolated, Value::String(preserved.into()));
+            }
+            let only_json = [
+                (Value::json_null(), Value::String("json-first".into())),
+                (Value::json_null(), Value::String("json-second".into())),
+            ];
+            let declared = value_map(
+                Value::json_null(),
+                Some(target),
+                &only_json,
+                Some(Value::String("miss".into())),
+            );
+            let untyped = value_map(
+                Value::json_null(),
+                None,
+                &only_json,
+                Some(Value::String("miss".into())),
+            );
+            let isolated = value_map_user_function(
+                Value::json_null(),
+                Some(target),
+                &only_json,
+                Some(Value::String("miss".into())),
+            );
+            eprintln!(
+                "only-json target {target:?}: declared={declared:?}, untyped={untyped:?}, isolated={isolated:?}"
+            );
+            assert_eq!(declared, Value::String("miss".into()));
+            assert_eq!(untyped, Value::String("json-first".into()));
+            assert_eq!(isolated, Value::String("json-first".into()));
+            for default in [
+                None,
+                Some(Value::Null),
+                Some(Value::json_null()),
+                Some(Value::xml_nil()),
+                Some(Value::String(String::new())),
+            ] {
+                let expected = default.clone().unwrap_or(Value::Null);
+                let declared = value_map(Value::json_null(), Some(target), &[], default.clone());
+                let untyped = value_map(Value::json_null(), None, &[], default.clone());
+                let isolated =
+                    value_map_user_function(Value::json_null(), Some(target), &[], default.clone());
+                eprintln!(
+                    "empty-table target {target:?}, default {default:?}: declared={declared:?}, untyped={untyped:?}, isolated={isolated:?}"
+                );
+                assert_eq!(declared, expected);
+                assert_eq!(untyped, expected);
+                assert_eq!(isolated, expected);
+            }
+            for output in [Value::json_null(), Value::xml_nil()] {
+                let actual = value_map(
+                    Value::json_null(),
+                    Some(target),
+                    &[(Value::Null, output.clone())],
+                    None,
+                );
+                eprintln!("selected-output target {target:?}: {actual:?}");
+                assert_eq!(actual, output);
+            }
+        }
     }
 }
