@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 ## Goal
 
@@ -154,6 +154,22 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   Six interaction groups and the full 709-test GUI suite pass, along with
   formatting, fresh workspace warning checks, and the normal GUI build.
   Normal desktop workflow and broader target shapes remain pending.
+- [x] Preserve finite project Float bits and align generated C# JSON rounding
+  in the separate [#111](https://github.com/DeandreT/ferrule/issues/111)/
+  [#112](https://github.com/DeandreT/ferrule/issues/112) increment, merged in
+  [#120](https://github.com/DeandreT/ferrule/pull/120). Focused persistence and
+  boundary checks, generated public hosts, C# runtime smoke, full workspace
+  tests, fresh lint, formatting, and the normal build pass. Other Value map,
+  desktop, and metadata gates remain separate.
+- [ ] Complete the Value map conversion/null increments: isolated integer
+  conversion in [#91](https://github.com/DeandreT/ferrule/issues/91) is locally
+  qualified and merged in [#123](https://github.com/DeandreT/ferrule/pull/123);
+  ordinary typed JSON-null matching in
+  [#113](https://github.com/DeandreT/ferrule/issues/113) remains pending. Preserve
+  their distinct contexts and complete interpreter/generated outcomes.
+- [ ] Preserve enabled absent Value map defaults through save/reload and history
+  in [#114](https://github.com/DeandreT/ferrule/issues/114), then qualify typed-cell
+  authoring in [#97](https://github.com/DeandreT/ferrule/issues/97) after #91/#114.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
