@@ -129,3 +129,89 @@ independent gates:
 The [generated XML boundary](../docs/code-generation.md#xml-host-boundary)
 documents the supported profile and limits. These catalog requirements do not
 change ledger statuses or imply that every gate has passed.
+
+## JSON object-schema inventory proposal
+
+[`json-object-schemas.proposal.json`](json-object-schemas.proposal.json) is a
+separate version-1 ledger for a bounded object family. It does not replace the
+canonical `formats.json` capability, change any historical assessment, or claim
+that the inventory is complete. Existing IDs keep their original scope. The
+new `json.objects.<operation>.native` and `.extensions` IDs are proposed child
+scopes, not renamed versions of that broad row. Any canonical split needs a
+separate review of the retained row and its other JSON/array/composition work.
+
+Each operation has one native candidate and one independent extension-profile
+cell for every dimension. The latter records unknown applicability until a
+distinct semantic extension dependency is identified. Ordinary schema and
+round-trip annotations alone do not imply such a dependency. Fixed fields here
+mean declared field names; this proposal does not assess a new computed-property
+editor or other ongoing product increments.
+
+| Operation ID segment | Exact bounded operation and discriminating cases | Source regression leads |
+| --- | --- | --- |
+| `closed-fields` | Named string/Int/Bool fields, nested closed objects; undeclared key refuses. | `explicit_closed_objects_reject_undeclared_input_at_every_native_boundary`; generated object-openness hosts |
+| `typed-extra-fields` | One scalar `additionalProperties` domain beside named fields; wrong-typed extra value refuses. | `typed_additional_properties_remain_typed_after_open_intersection`; `typed_additional_properties_roundtrip_as_dynamic_fields` |
+| `arbitrary-extra-fields` | Omitted/true/empty-object `additionalProperties`; extra scalar/object/array/null values retain their JSON shape. | `omitted_additional_properties_is_open_and_roundtrips_arbitrary_values`; `explicit_unconstrained_additional_properties_roundtrip_arbitrary_values` |
+| `declared-required` | Closed object with required `id` and nullable `note`; absent required value fails, explicit null is present, omitted required output fails. | `ordinary_required_properties_distinguish_absence_from_explicit_null` |
+| `runtime-required` | Open object with required runtime name `x-correlation-id`; absent name fails, present extra property satisfies presence. | `required_runtime_named_properties_work_for_open_objects` |
+| `nullable-object` | Optional nullable closed child: missing, explicit null, present empty and present nonempty remain distinct. Arrays are excluded. | Object cases in `nullable_objects_and_arrays_preserve_absent_null_and_empty_values` |
+| `exclusive-alternatives` | Compatible closed `oneOf` branches with shared field schemas and required sets; exact one-match, no-match and ambiguous-match controls. | `compatible_object_one_of_preserves_and_roundtrips_alternatives`; `object_one_of_subtypes_import_execute_and_select_xml_types` |
+| `inclusive-alternatives` | Compatible closed `anyOf` branches; one or several matches pass, no-match fails. | `compatible_object_any_of_preserves_inclusive_matching_and_roundtrips`; `incompatible_object_any_of_is_rejected_actionably` is a separate refusal control |
+
+The proposal's repository evidence entries identify the complete source files.
+They are leads for self-authored regressions, not new execution reports. Some
+hosts cover only part of a row; each eventual result must state which literal
+case, API and profile it exercised. General correlated compositions, incompatible
+shared-field schemas, arbitrary nested dynamic construction, arrays, schema
+reference dialects, JSON5/JSON Lines and additional validation keywords are not
+itemized by these eight operations. Compatible `anyOf` overlap is not generally
+classified as unsupported.
+
+The assessment table below applies separately to each exact operation. The
+proposal repeats the concrete missing proof in every cell, including each of
+the six vendor backends.
+
+| Dimension | Native candidate status and applicability | Extension-profile status and applicability |
+| --- | --- | --- |
+| `import` | `unverified`: candidate ordinary MFD JSON import; fresh complete schema/project/diagnostics missing. | `unassessed`: distinct extension fixture/dependency and import eligibility unknown. |
+| `interpreter` | `unverified`: typed decoding, mapping and output success/error proof missing; decoder-only tests are insufficient. | `unassessed`: extension semantics and interpreter contract unknown. |
+| `native_export` | `unverified`: exact pinned native eligibility unresolved; local render/preflight is separate from external open/validate/execute/save. | `unassessed`: no automatic exclusion; extension dependency and external interpretation unknown. |
+| `ferrule_roundtrip` | `unverified`: complete original/reimported schema and behavior proof missing. | `unassessed`: exact extension metadata/semantics fixture and retention proof missing. |
+| `gui` | `unassessed`: exact schema authoring/import/edit/save workflow and controls not inventoried. | `unassessed`: extension-specific reachable workflow unknown. |
+| `debug` | `unassessed`: exact Preview/trace/error-observation workflow not inventoried. | `unassessed`: extension-specific observation semantics unknown. |
+| `rust` | `unverified`: compiled generated public JSON text/bytes and typed/context/named-input case results missing. | `unassessed`: extension lowering/runtime eligibility unknown. |
+| `csharp` | `unverified`: separate compiled generated public JSON case results missing; Rust/emission results do not transfer. | `unassessed`: extension lowering/runtime eligibility unknown. |
+| `vendor_backends.xslt1` | `unassessed`: XSLT 1.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.xslt2` | `unassessed`: XSLT 2.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.xquery1` | `unassessed`: XQuery 1.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.cpp` | `unassessed`: C++ operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.java` | `unassessed`: Java operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.csharp` | `unassessed`: vendor C# operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+
+No external dependency is established as blocking these cells, so none is
+labelled `blocked`; lack of an assessment or run is stated as unknown or
+unverified. An actual unavailable tool/resource should later be named in a
+specific blocked cell. Historical import/self-reimport, lowering/emission and
+local execution surveys remain three distinct informational evidence scopes.
+None automatically supplies fresh behavioral or vendor proof for this proposal.
+
+Validate and inspect the proposal from the workspace root:
+
+```sh
+cargo run -p mfd-conformance -- conformance/json-object-schemas.proposal.json
+cargo run -p mfd-conformance -- conformance/json-object-schemas.proposal.json summary --format json
+cargo test -p mfd-conformance --test json_objects
+cargo run -p mfd-conformance -- conformance/json-object-schemas.proposal.json gate \
+  --profile mfd-2026r2-enterprise \
+  --capability json.objects.declared-required.native \
+  --dimension interpreter --format json
+```
+
+The focused gate intentionally fails while its cell is unverified. The new
+regression source checks this failure, empty/unknown selections, missing local
+evidence, unsupported proof promotion, evidence-only exclusions and incomplete
+full-profile gates. Its synthetic supported-cell control tests validator
+mechanics; it does not qualify JSON mapping behavior. Before changing a cell to
+`supported`, retain fresh complete operation/API/profile-specific values and
+causes. Native export and vendor-backend support require separate release-bound
+execution records, not a source test or a successfully emitted library.

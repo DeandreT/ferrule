@@ -1,0 +1,1802 @@
+{
+  "schema_version": 1,
+  "target": {
+    "product": ".mfd-compatible application",
+    "release": "2026r2",
+    "edition": "Enterprise"
+  },
+  "inventory_complete": false,
+  "description": "Source-only bounded JSON object-schema inventory proposal for eight operations and two independently scoped profiles. All 224 dimension cells remain unverified or unassessed. This separate ledger proposes narrow child IDs without modifying or replacing the broad canonical formats.json row, promoting historical evidence, or claiming execution. Fixed means declared field names; computed-property authoring and other active increments are outside scope.",
+  "profiles": [
+    {
+      "id": "mfd-2026r2-enterprise",
+      "kind": "native_mfd",
+      "description": "Candidate ordinary native JSON-boundary operations for the pinned release; exact operation/backend eligibility and behavioral evidence remain separate."
+    },
+    {
+      "id": "ferrule-native-extensions",
+      "kind": "ferrule_native_extensions",
+      "description": "Independent extension-applicability inventory for the same bounded operations. No semantic extension fixture is assumed from ordinary schema or round-trip metadata; no status is inherited from the native profile."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "json-schema-objects",
+      "kind": "repository",
+      "location": "crates/format-json/src/json_schema/tests/object_openness.rs",
+      "description": "Self-authored source regression leads for closed/open objects and typed additional-property intersections; test source is not a retained fresh execution record."
+    },
+    {
+      "id": "json-schema-required",
+      "kind": "repository",
+      "location": "crates/format-json/src/json_schema/tests/required.rs",
+      "description": "Self-authored declared/runtime required-name and absent-versus-explicit-null source regressions; no run is promoted here."
+    },
+    {
+      "id": "json-schema-alternatives",
+      "kind": "repository",
+      "location": "crates/format-json/src/json_schema/tests/mod.rs",
+      "description": "Self-authored compatible oneOf/anyOf, nullable-object and typed/arbitrary additionalProperties source regressions; only the named operations in the README are leads."
+    },
+    {
+      "id": "mfd-json-alternatives",
+      "kind": "repository",
+      "location": "crates/mfd/tests/import/json_alternatives.rs",
+      "description": "Self-authored MFD import, interpreter and self-reimport source regressions for exclusive object alternatives; neither source presence nor self-reimport proves external native execution."
+    },
+    {
+      "id": "rust-object-boundary",
+      "kind": "repository",
+      "location": "crates/codegen-rust/src/tests/json_object_openness.rs",
+      "description": "Self-authored emitted Rust public-JSON object-openness host source. Its existing harness covers a subset; no current compiler or host result is attached to this proposal."
+    },
+    {
+      "id": "csharp-object-boundary",
+      "kind": "repository",
+      "location": "crates/codegen-csharp/tests/json_object_openness_dotnet.rs",
+      "description": "Self-authored emitted C# public-JSON object-openness host source. Extra constraints in that source are not included in this operation family or claimed as fresh proof."
+    },
+    {
+      "id": "rust-json-adapter",
+      "kind": "repository",
+      "location": "crates/codegen-runtime/src/json.rs",
+      "description": "Public Rust JSON adapter source delegates typed object decoding and encoding to format-json; source dependency is not compiled public-host behavioral evidence."
+    },
+    {
+      "id": "native-json-schema-render",
+      "kind": "repository",
+      "location": "crates/mfd/src/export/json_schema_fidelity.rs",
+      "description": "JSON schema rendering/fidelity source lead; source rendering and a local parse comparison do not establish native application acceptance."
+    },
+    {
+      "id": "profile-contract",
+      "kind": "repository",
+      "location": "conformance/README.md",
+      "description": "Profile and evidence classification contract: ordinary round-trip annotations alone do not establish an extension dependency or native execution."
+    },
+    {
+      "id": "inventory-guards",
+      "kind": "repository",
+      "location": "crates/mfd-conformance/tests/json_objects.rs",
+      "description": "New source-authored proposal/gate regression controls; these test inventory mechanics and are not JSON mapping behavior evidence."
+    },
+    {
+      "id": "historical-import-roundtrip",
+      "kind": "repository",
+      "location": "crates/mfd/tests/samples_survey.rs",
+      "description": "Historical informational corpus import/validation/local export/self-reimport scope; not evidence of execution for any proposed object cell."
+    },
+    {
+      "id": "historical-emission",
+      "kind": "repository",
+      "location": "crates/mfd/tests/codegen_samples_survey.rs",
+      "description": "Historical corpus lowering/emission scope; not compiled Rust/C# object-operation execution evidence."
+    },
+    {
+      "id": "historical-execution-survey",
+      "kind": "repository",
+      "location": "crates/mfd/tests/samples_execution_survey.rs",
+      "description": "Historical informational local execution survey remains separate from import/emission and from fresh scoped object-profile proof."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "json.objects.closed-fields.native",
+      "title": "Closed named object fields — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Object with named string, signed-integer and boolean fields and additionalProperties:false; include nested closed objects and rejection of an undeclared key. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects"
+          ],
+          "detail": "Applicable candidate: Closed named object fields. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Closed named object fields. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects"
+          ],
+          "detail": "Applicable candidate: Closed named object fields through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Closed named object fields. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Closed named object fields. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "rust-json-adapter",
+            "rust-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Closed named object fields. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "csharp-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Closed named object fields. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Closed named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.closed-fields.extensions",
+      "title": "Closed named object fields — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Closed named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.typed-extra-fields.native",
+      "title": "Typed runtime-named object fields — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Object with named fields plus additionalProperties of one scalar type; preserve each extra key/value and reject an extra value outside that type. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Typed runtime-named object fields. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Typed runtime-named object fields. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Typed runtime-named object fields through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Typed runtime-named object fields. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Typed runtime-named object fields. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives",
+            "rust-json-adapter",
+            "rust-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Typed runtime-named object fields. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives",
+            "csharp-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Typed runtime-named object fields. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Typed runtime-named object fields. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.typed-extra-fields.extensions",
+      "title": "Typed runtime-named object fields — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Typed runtime-named object fields. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.arbitrary-extra-fields.native",
+      "title": "Arbitrary runtime-named JSON values — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Object with additionalProperties omitted, true or {}; preserve extra objects, arrays, scalars and explicit null through the json_any lexical JSON domain. This is not arbitrary graph-typed nested dynamic construction. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Arbitrary runtime-named JSON values. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Arbitrary runtime-named JSON values. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Arbitrary runtime-named JSON values through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Arbitrary runtime-named JSON values. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Arbitrary runtime-named JSON values. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives",
+            "rust-json-adapter",
+            "rust-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Arbitrary runtime-named JSON values. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-objects",
+            "json-schema-alternatives",
+            "csharp-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Arbitrary runtime-named JSON values. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Arbitrary runtime-named JSON values. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.arbitrary-extra-fields.extensions",
+      "title": "Arbitrary runtime-named JSON values — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Arbitrary runtime-named JSON values. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.declared-required.native",
+      "title": "Required declared field presence — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.native"
+      ],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Closed object with required declared id and nullable note; distinguish omitted required fields from present explicit null; output omission must also fail the required check. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: Required declared field presence. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Required declared field presence. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: Required declared field presence through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Required declared field presence. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Required declared field presence. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required",
+            "rust-json-adapter"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Required declared field presence. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Required declared field presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Required declared field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.declared-required.extensions",
+      "title": "Required declared field presence — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.extensions"
+      ],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Required declared field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.runtime-required.native",
+      "title": "Required runtime-named field presence — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [
+        "json.objects.arbitrary-extra-fields.native"
+      ],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Open object with required runtime name x-correlation-id; distinguish absent required name from a present dynamic property, without requiring a declared child. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: Required runtime-named field presence. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Required runtime-named field presence. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: Required runtime-named field presence through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Required runtime-named field presence. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Required runtime-named field presence. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required",
+            "rust-json-adapter"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Required runtime-named field presence. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-required"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Required runtime-named field presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Required runtime-named field presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.runtime-required.extensions",
+      "title": "Required runtime-named field presence — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [
+        "json.objects.arbitrary-extra-fields.extensions"
+      ],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Required runtime-named field presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.nullable-object.native",
+      "title": "Nullable object presence — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.native"
+      ],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Optional nullable closed child object; distinguish absence, explicit JSON null, present empty object and present nonempty object through input, mapping and output. Array nullability is outside this operation. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Nullable object presence. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Nullable object presence. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Nullable object presence through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Nullable object presence. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Nullable object presence. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "rust-json-adapter"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Nullable object presence. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "csharp-object-boundary"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Nullable object presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Nullable object presence. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.nullable-object.extensions",
+      "title": "Nullable object presence — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.extensions"
+      ],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Nullable object presence. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.exclusive-alternatives.native",
+      "title": "Compatible exclusive object alternatives — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.native"
+      ],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "mfd-json-alternatives"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Closed oneOf object alternatives with shared compatible field schemas and required member sets; preserve branch identity and exact one-match semantics, including no-match and ambiguous-match refusal. General correlated or incompatible compositions are outside this operation. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "mfd-json-alternatives"
+          ],
+          "detail": "Applicable candidate: Compatible exclusive object alternatives. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Compatible exclusive object alternatives. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "mfd-json-alternatives"
+          ],
+          "detail": "Applicable candidate: Compatible exclusive object alternatives through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Compatible exclusive object alternatives. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Compatible exclusive object alternatives. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "mfd-json-alternatives",
+            "rust-json-adapter"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Compatible exclusive object alternatives. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "mfd-json-alternatives"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Compatible exclusive object alternatives. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Compatible exclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.exclusive-alternatives.extensions",
+      "title": "Compatible exclusive object alternatives — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.extensions"
+      ],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Compatible exclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.inclusive-alternatives.native",
+      "title": "Compatible inclusive object alternatives — native candidate",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.native"
+      ],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: ordinary JSON-boundary MFD import. Operation: Closed anyOf object alternatives with shared compatible field schemas and required member sets; accept one or several matching branches and reject no-match. Incompatible schemas for the same field are a separate refusal boundary, not a claim that all overlap is unsupported. Missing proof: a complete fresh imported schema/project/diagnostic record for this exact operation, not an aggregate historical survey count."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Compatible inclusive object alternatives. Missing proof: complete fresh literal values/presence and typed rejection causes through JSON decoding, engine mapping and output encoding. Decoder-only source tests do not prove this mapping cell."
+        },
+        "native_export": {
+          "status": "unverified",
+          "evidence": [
+            "native-json-schema-render"
+          ],
+          "detail": "Applicability unresolved in pinned native release: Compatible inclusive object alternatives. Missing proof: strict preflight/export report, complete package, external open/validate/execute/save and literal payload/error comparison. Local schema rendering is only a source lead."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: Compatible inclusive object alternatives through local export/reimport. Missing proof: exact original/reimported schema/project and literal behavior across two cycles. This local operation does not establish native execution."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Compatible inclusive object alternatives. Missing inventory: precise reachable import/create/edit/save workflow and field/presence/branch controls. Existing computed-property editing is outside this proposal."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Applicability unknown for Compatible inclusive object alternatives. Missing inventory: precise Preview/trace/error-inspection route and complete presence/branch/cause observations. An engine result alone does not assess debugging."
+        },
+        "rust": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives",
+            "rust-json-adapter"
+          ],
+          "detail": "Applicable candidate: generated Rust public JSON boundaries for Compatible inclusive object alternatives. Missing proof: fresh compiled library, complete text/bytes and typed/context/named-input success/error cases. Existing source leads cover only a subset; emission is separate."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "json-schema-alternatives"
+          ],
+          "detail": "Applicable candidate: generated C# public JSON boundaries for Compatible inclusive object alternatives. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt1 backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xslt2 backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise xquery1 backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise cpp backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise java backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Applicability unknown for pinned 2026r2 Enterprise csharp backend and Compatible inclusive object alternatives. Missing inventory: exact JSON operation input/output eligibility, generate/compile/run route, complete manual values/errors and release-bound record. Native preview or another backend is not proof."
+          }
+        }
+      }
+    },
+    {
+      "id": "json.objects.inclusive-alternatives.extensions",
+      "title": "Compatible inclusive object alternatives — extension applicability inventory",
+      "category": "extensions",
+      "profiles": [
+        "ferrule-native-extensions"
+      ],
+      "depends_on": [
+        "json.objects.closed-fields.extensions"
+      ],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for import and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for interpreter and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for native_export and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for ferrule_roundtrip and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for gui and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for debug and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for rust and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [
+            "profile-contract"
+          ],
+          "detail": "Applicability unknown in extension profile for csharp and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
+        },
+        "vendor_backends": {
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt1 and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xslt2 and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned xquery1 and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned cpp and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned java and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [
+              "profile-contract"
+            ],
+            "detail": "Applicability unknown in extension profile for pinned csharp and Compatible inclusive object alternatives. No distinct semantic-extension witness, evidenced backend exclusion or execution record exists in this proposal. Ordinary schema/round-trip metadata and native-profile status do not transfer."
+          }
+        }
+      }
+    }
+  ]
+}
