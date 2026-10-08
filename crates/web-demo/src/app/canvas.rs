@@ -305,6 +305,7 @@ pub(super) fn build_snarl(
 
 pub(super) struct DemoViewer<'a> {
     graph: &'a mut Graph,
+    target_name: &'a str,
     bindings: &'a [(String, NodeId)],
     run_pending: &'a mut bool,
     project_changed: &'a mut bool,
@@ -315,6 +316,7 @@ pub(super) struct DemoViewer<'a> {
 impl<'a> DemoViewer<'a> {
     pub(super) fn new(
         graph: &'a mut Graph,
+        target_name: &'a str,
         bindings: &'a [(String, NodeId)],
         run_pending: &'a mut bool,
         project_changed: &'a mut bool,
@@ -323,6 +325,7 @@ impl<'a> DemoViewer<'a> {
     ) -> Self {
         Self {
             graph,
+            target_name,
             bindings,
             run_pending,
             project_changed,
@@ -335,7 +338,7 @@ impl<'a> DemoViewer<'a> {
 impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
     fn title(&mut self, node: &CanvasNode) -> String {
         match node {
-            CanvasNode::Target => "Summary (target)".to_string(),
+            CanvasNode::Target => format!("{} (target)", self.target_name),
             CanvasNode::Graph(id) => self
                 .graph
                 .nodes
