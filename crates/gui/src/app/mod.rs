@@ -1695,3 +1695,6 @@ mod value_map_input_type_tests;
 
 #[cfg(test)]
 mod computed_property_tests;
+
+#[cfg(test)]
+mod value_map_default_presence_tests;

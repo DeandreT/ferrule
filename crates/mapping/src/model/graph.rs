@@ -44,6 +44,50 @@ where
     preview.serialize(serializer)
 }
 
+// A disabled default and an enabled absent default are different editor
+// states. Ordinary Option<Value> serde cannot retain Some(Value::Null).
+fn serialize_value_map_default<S>(value: &Option<Value>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if matches!(value, Some(Value::Null)) {
+        use serde::ser::SerializeMap;
+        let mut marker = serializer.serialize_map(Some(1))?;
+        marker.serialize_entry("$value_map_absent", &true)?;
+        marker.end()
+    } else {
+        value.serialize(serializer)
+    }
+}
+
+fn deserialize_value_map_default<'de, D>(deserializer: D) -> Result<Option<Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Absent {
+        #[serde(rename = "$value_map_absent")]
+        enabled: bool,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Absent(Absent),
+        Value(Value),
+    }
+
+    match Option::<Repr>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(Repr::Absent(Absent { enabled: true })) => Ok(Some(Value::Null)),
+        Some(Repr::Absent(Absent { enabled: false })) => {
+            Err(serde::de::Error::custom("$value_map_absent must be true"))
+        }
+        Some(Repr::Value(value)) => Ok(Some(value)),
+    }
+}
+
 const fn default_xml_indent() -> bool {
     true
 }
@@ -242,6 +286,13 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input_type: Option<ScalarType>,
         table: Vec<(Value, Value)>,
+        /// None disables the default; Some(Null) is an enabled absent value.
+        /// Legacy missing/null wire defaults remain disabled.
+        #[serde(
+            default,
+            serialize_with = "serialize_value_map_default",
+            deserialize_with = "deserialize_value_map_default"
+        )]
         default: Option<Value>,
     },
     /// A cross-source join: evaluates `matches`, then scans the repeating
