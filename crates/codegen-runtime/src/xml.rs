@@ -134,15 +134,37 @@ mod tests {
 
     #[test]
     fn embedded_schema_lossless_xml_uses_its_own_prefixed_byte_cap() {
+        let high = f64::from_bits(0x0031_fa18_2c40_c60e);
         let amount: SchemaNode = serde_json::from_str(
-            r#"{"name":"Amount","numeric_range":{"kind":"number","bounds":{"minimum":{"value":1e-307}}},"kind":{"kind":"scalar","ty":"float"}}"#,
+            r#"{"name":"Amount","numeric_range":{"kind":"number","bounds":{"minimum":{"value":1.0000000000000001e-307}}},"kind":{"kind":"scalar","ty":"float"}}"#,
         )
         .unwrap();
-        let high: f64 = serde_json::from_str("1e-307").unwrap();
+        let explicit_v2 = |schema: &SchemaNode| {
+            let mut payload = serde_json::to_value(schema).unwrap();
+            let slot = payload
+                .pointer_mut("/kind/children/0/numeric_range/bounds/minimum/value")
+                .expect("literal Amount minimum");
+            assert_eq!(slot.as_f64().unwrap().to_bits(), 0x0031_fa18_2c40_c60e);
+            *slot = serde_json::Value::String(format!(
+                "{}0031fa182c40c60e",
+                codegen_schema::FLOAT_BITS_MARKER_PREFIX,
+            ));
+            let descriptor = format!(
+                "{}{}",
+                codegen_schema::V2_PREFIX,
+                serde_json::to_string(&payload).unwrap(),
+            );
+            let decoded = codegen_schema::decode(&descriptor, usize::MAX).unwrap();
+            assert_eq!(
+                serde_json::to_string(&decoded).unwrap(),
+                serde_json::to_string(schema).unwrap(),
+            );
+            descriptor
+        };
         let mut padding = SchemaNode::scalar("Padding", ScalarType::String);
         padding.fixed = Some(String::new());
         let base = SchemaNode::group("Item", vec![amount, padding]);
-        let overhead = codegen_schema::encode(&base, usize::MAX).unwrap().len();
+        let overhead = explicit_v2(&base).len();
         let instance = group([field("Amount", scalar(Value::Float(high)))]);
         let options = XmlWriteOptions {
             declaration: false,
@@ -156,7 +178,7 @@ mod tests {
                 unreachable!()
             };
             children[1].fixed = Some("x".repeat(bytes - overhead));
-            let descriptor = codegen_schema::encode(&schema, usize::MAX).unwrap();
+            let descriptor = explicit_v2(&schema);
             assert!(descriptor.starts_with(codegen_schema::V2_PREFIX));
             assert_eq!(descriptor.len(), bytes);
             let expected =
@@ -170,7 +192,7 @@ mod tests {
                     unreachable!()
                 };
                 children[1].fixed.as_mut().unwrap().push('x');
-                let descriptor = codegen_schema::encode(&schema, usize::MAX).unwrap();
+                let descriptor = explicit_v2(&schema);
                 assert!(
                     matches!(serialize_xml(19, &descriptor, &instance, false, false, None),
                     Err(RuntimeError::XmlSerialization { node: 19, message })

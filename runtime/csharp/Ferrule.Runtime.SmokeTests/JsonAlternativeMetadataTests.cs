@@ -39,7 +39,7 @@ internal static partial class Program
                      ("int", "int", "1.0"),
                      ("int", "int", "1e0"),
                      ("int", "int", "9223372036854775808"),
-                     ("float", "float", "1.7976931348623158e308"),
+                     ("float", "float", "1.7976931348623159e308"),
                      ("float", "float", "1e400"),
                      ("string", "string", "1"),
                      ("string", "string", "null"),

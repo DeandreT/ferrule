@@ -52,6 +52,7 @@ internal static partial class Program
             ("JSON duplicate declaration clones and bounds", JsonDuplicateDeclarationNestedCloneAndBounds),
             ("JSON large collection boundaries", JsonLargeCollectionsMatchPublicBoundaryLimits),
             ("JSON canonical arbitrary numbers", JsonCanonicalNumbers),
+            ("JSON correctly rounded numbers", JsonCorrectlyRoundedNumbers),
             ("JSON parse-field native limits", JsonParseFieldNativeLimits),
             ("JSON outer output bytes", JsonOuterOutputBytes),
             ("JSON output predicate numeric provenance", JsonOutputPredicateNumericProvenance),

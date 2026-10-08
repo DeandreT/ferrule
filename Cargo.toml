@@ -61,7 +61,7 @@ mfd = { path = "crates/mfd" }
 cli = { path = "crates/cli" }
 
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = "0.10.9"
 json5 = "1.3.1"
 thiserror = "2"

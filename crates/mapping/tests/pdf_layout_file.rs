@@ -123,22 +123,208 @@ fn snapshot(layout: &PdfLayout) -> BTreeMap<String, u64> {
     bits(&serde_json::to_value(layout).unwrap(), "", &mut result);
     result
 }
+// Full hand-declared bits for complete_layout's eleven regions and eleven
+// other metric/threshold fields. This oracle is independent of file encoding.
+fn expected_bits() -> BTreeMap<String, u64> {
+    [
+        ("/commands/0/region/left/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/0/region/top/offset", 0x0031fa182c40c60d_u64),
+        ("/commands/0/region/right/offset", 0x8000000000000000_u64),
+        ("/commands/0/region/bottom/offset", 0x0000000000000000_u64),
+        ("/commands/2/region/left/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/2/region/top/offset", 0x0031fa182c40c60d_u64),
+        ("/commands/2/region/right/offset", 0x8000000000000000_u64),
+        ("/commands/2/region/bottom/offset", 0x0000000000000000_u64),
+        ("/commands/3/region/left/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/3/region/top/offset", 0x0031fa182c40c60d_u64),
+        ("/commands/3/region/right/offset", 0x8000000000000000_u64),
+        ("/commands/3/region/bottom/offset", 0x0000000000000000_u64),
+        (
+            "/commands/3/groups/0/children/0/region/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/3/groups/0/children/0/region/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/3/groups/0/children/0/region/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/3/groups/0/children/0/region/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        ("/commands/4/region/left/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/4/region/top/offset", 0x0031fa182c40c60d_u64),
+        ("/commands/4/region/right/offset", 0x8000000000000000_u64),
+        ("/commands/4/region/bottom/offset", 0x0000000000000000_u64),
+        (
+            "/commands/4/fallback_anchor/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/4/fallback_anchor/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/4/fallback_anchor/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/4/fallback_anchor/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        (
+            "/commands/4/children/0/region/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/4/children/0/region/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/4/children/0/region/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/4/children/0/region/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        (
+            "/commands/4/children/0/children/0/region/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/4/children/0/children/0/region/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/4/children/0/children/0/region/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/4/children/0/children/0/region/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        ("/commands/5/region/left/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/5/region/top/offset", 0x0031fa182c40c60d_u64),
+        ("/commands/5/region/right/offset", 0x8000000000000000_u64),
+        ("/commands/5/region/bottom/offset", 0x0000000000000000_u64),
+        (
+            "/commands/5/children/0/region/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/5/children/0/region/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/5/children/0/region/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/5/children/0/region/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        (
+            "/commands/5/children/0/children/0/region/left/offset",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/5/children/0/children/0/region/top/offset",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/5/children/0/children/0/region/right/offset",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/5/children/0/children/0/region/bottom/offset",
+            0x0000000000000000_u64,
+        ),
+        ("/commands/1/at/offset", 0x0031fa182c40c60e_u64),
+        ("/commands/2/find/fill", 0x0031fa182c40c60e_u64),
+        ("/commands/2/find/prominence", 0x8000000000000000_u64),
+        (
+            "/commands/3/groups/0/matcher/properties/cell_height/value",
+            0x0031fa182c40c60e_u64,
+        ),
+        (
+            "/commands/3/groups/0/matcher/properties/cell_height/deviation",
+            0x0031fa182c40c60d_u64,
+        ),
+        (
+            "/commands/3/groups/0/matcher/properties/baseline_angle/value",
+            0x8000000000000000_u64,
+        ),
+        (
+            "/commands/3/groups/0/matcher/properties/baseline_angle/deviation",
+            0x0031fa182c40c60e_u64,
+        ),
+        ("/commands/4/find/fill", 0x0031fa182c40c60e_u64),
+        ("/commands/4/find/prominence", 0x0031fa182c40c60d_u64),
+        ("/commands/4/minimum_extent", 0x0031fa182c40c60e_u64),
+        ("/commands/5/minimum_extent", 0x0031fa182c40c60d_u64),
+    ]
+    .into_iter()
+    .map(|(path, bits)| (path.into(), bits))
+    .collect()
+}
+
+// Select the public V2 decoder explicitly; automatic encoding is now ordinary.
+// Every float table entry is a declared typed path with a literal expected bit.
+fn versioned(layout: &PdfLayout) -> String {
+    assert_eq!(snapshot(layout), expected_bits());
+    let float_bits: serde_json::Map<String, Value> = expected_bits()
+        .into_iter()
+        .map(|(path, bits)| (path, Value::String(format!("{bits:016x}"))))
+        .collect();
+    let envelope = serde_json::json!({
+        "__ferrule_file": {"kind": "pdf_layout", "version": 2, "float_bits": float_bits},
+        "document": serde_json::to_value(layout).unwrap(),
+    });
+    format!("{}\n", serde_json::to_string_pretty(&envelope).unwrap())
+}
+
 #[test]
 fn preserves_offsets_extents_edge_thresholds_metrics_and_signed_zero() {
     let original = complete_layout();
     let ordinary = serde_json::to_string(&original).unwrap();
-    let reopened: PdfLayout = serde_json::from_str(&ordinary).unwrap();
-    assert_ne!(
-        snapshot(&original),
-        snapshot(&reopened),
-        "ordinary layout parse drifts"
-    );
+    let reopened_result = serde_json::from_str::<PdfLayout>(&ordinary);
+    println!("ORIGINAL_ORDINARY_PDF_LAYOUT_RESULT {reopened_result:?}");
+    let reopened = reopened_result.unwrap();
+    assert_eq!(snapshot(&original), expected_bits());
+    assert_eq!(snapshot(&reopened), expected_bits());
+    assert_eq!(serde_json::to_string(&reopened).unwrap(), ordinary);
     let encoded = pdf_layout_file::encode_pretty(&original).unwrap();
-    let envelope: Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        encoded,
+        format!("{}\n", serde_json::to_string_pretty(&original).unwrap())
+    );
+    assert!(!encoded.contains("\"__ferrule_file\""));
+    let ordinary_result = pdf_layout_file::decode_bytes(encoded.as_bytes());
+    println!("ORIGINAL_ORDINARY_PDF_FILE_RESULT {ordinary_result:?}");
+    let ordinary_decoded = ordinary_result.unwrap();
+    assert_eq!(snapshot(&ordinary_decoded), expected_bits());
+    assert_eq!(serde_json::to_string(&ordinary_decoded).unwrap(), ordinary);
+    assert_eq!(
+        pdf_layout_file::encode_pretty(&ordinary_decoded).unwrap(),
+        encoded
+    );
+
+    let versioned = versioned(&original);
+    let envelope: Value = serde_json::from_str(&versioned).unwrap();
     assert_eq!(envelope["__ferrule_file"]["kind"], "pdf_layout");
     assert_eq!(envelope["__ferrule_file"]["version"], 2);
-    let decoded = pdf_layout_file::decode_bytes(encoded.as_bytes()).unwrap();
-    assert_eq!(snapshot(&decoded), snapshot(&original));
+    assert_eq!(
+        envelope["__ferrule_file"]["float_bits"]["/commands/0/region/left/offset"],
+        "0031fa182c40c60e"
+    );
+    let versioned_result = pdf_layout_file::decode_bytes(versioned.as_bytes());
+    println!("ORIGINAL_VERSIONED_PDF_FILE_RESULT {versioned_result:?}");
+    let decoded = versioned_result.unwrap();
+    assert_eq!(snapshot(&decoded), expected_bits());
     assert_eq!(serde_json::to_string(&decoded).unwrap(), ordinary);
     assert_eq!(pdf_layout_file::encode_pretty(&decoded).unwrap(), encoded);
     let floats = snapshot(&decoded);
@@ -157,7 +343,7 @@ fn preserves_offsets_extents_edge_thresholds_metrics_and_signed_zero() {
         assert!(floats.contains_key(path), "missing {path}");
     }
     assert_eq!(floats["/commands/2/find/prominence"], (-0.0_f64).to_bits());
-    assert!(serde_json::from_str::<PdfLayout>(&encoded).is_err());
+    assert!(serde_json::from_str::<PdfLayout>(&versioned).is_err());
 }
 #[test]
 fn stable_layout_uses_ordinary_legacy_wire_and_error_behavior() {
@@ -188,7 +374,16 @@ fn stable_layout_uses_ordinary_legacy_wire_and_error_behavior() {
 }
 #[test]
 fn rejects_stale_malformed_nonfinite_wrong_kind_and_oversized_metadata() {
-    let encoded = pdf_layout_file::encode_pretty(&complete_layout()).unwrap();
+    let original = complete_layout();
+    let encoded = versioned(&original);
+    let baseline_result = pdf_layout_file::decode_bytes(encoded.as_bytes());
+    println!("ORIGINAL_VALID_VERSIONED_PDF_FIXTURE_RESULT {baseline_result:?}");
+    let baseline = baseline_result.unwrap();
+    assert_eq!(snapshot(&baseline), expected_bits());
+    assert_eq!(
+        serde_json::to_string(&baseline).unwrap(),
+        serde_json::to_string(&original).unwrap()
+    );
     let envelope: Value = serde_json::from_str(&encoded).unwrap();
     for bad in [
         "7ff0000000000000",

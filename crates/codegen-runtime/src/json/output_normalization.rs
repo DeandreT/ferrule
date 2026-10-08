@@ -30,10 +30,9 @@ fn assert_matches_native(schema_json: &str, instance: &Instance, accepted: bool)
 
 #[test]
 fn exact_multiple_of_uses_pre_serialization_float_value() {
-    // serde_json 1.0.150 writes LOW as `1e-307`, then parses that text as
-    // HIGH. It writes HIGH as `1.0000000000000001e-307`, then parses LOW.
-    // Output constraints must inspect the normalized value before this lossy
-    // text round trip, as the native formatter does.
+    // Independent adjacent values straddle the exact decimal multipleOf.
+    // Output constraints inspect the normalized value, as the native formatter
+    // does, independently of the JSON reader's corrected round-trip behavior.
     let schema = r#"{"name":"Value","json_multiple_of":{"any_of":[[{"coefficient":1,"decimal_exponent":-307}]]},"kind":{"kind":"scalar","ty":"float"}}"#;
     assert_matches_native(schema, &scalar(LOW), true);
     assert_matches_native(schema, &scalar(HIGH), false);
@@ -41,9 +40,9 @@ fn exact_multiple_of_uses_pre_serialization_float_value() {
 
 #[test]
 fn allowed_values_use_pre_serialization_float_value() {
-    let schema = r#"{"name":"Value","json_allowed_values":[{"type":"float","value":1e-307},{"type":"float","value":1.5}],"kind":{"kind":"scalar","ty":"float"}}"#;
-    // The embedded 1e-307 metadata is parsed as HIGH, so LOW must fail and
-    // HIGH must pass even though serde's output-text parse reverses them.
+    let schema = r#"{"name":"Value","json_allowed_values":[{"type":"float","value":1.0000000000000001e-307},{"type":"float","value":1.5}],"kind":{"kind":"scalar","ty":"float"}}"#;
+    // The explicit upper decimal has literal HIGH bits, so LOW must fail and
+    // HIGH must pass. No expected output depends on a lossy metadata parse.
     assert_matches_native(schema, &scalar(LOW), false);
     assert_matches_native(schema, &scalar(HIGH), true);
     assert_matches_native(schema, &scalar(1.5_f64.to_bits()), true);
@@ -52,7 +51,7 @@ fn allowed_values_use_pre_serialization_float_value() {
 
 #[test]
 fn numeric_range_and_contains_keep_the_same_native_value() {
-    let minimum = r#"{"kind":"number","bounds":{"minimum":{"value":1e-307}}}"#;
+    let minimum = r#"{"kind":"number","bounds":{"minimum":{"value":1.0000000000000001e-307}}}"#;
     let range_schema = format!(
         r#"{{"name":"Value","numeric_range":{minimum},"kind":{{"kind":"scalar","ty":"float"}}}}"#
     );

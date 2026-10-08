@@ -69,10 +69,9 @@ impl std::error::Error for EmbeddedSchemaError {
 
 /// Encodes a schema losslessly within the caller's generated runtime limit.
 ///
-/// In particular, the default serde JSON floating-point parser can change a
-/// finite bound after its shortest decimal representation is serialized. Both
-/// generated backends use a versioned descriptor for those schemas. Stable
-/// schemas retain their ordinary JSON descriptor byte for byte.
+/// Both generated backends share the bounded descriptor codec. Ordinary JSON
+/// is retained when it preserves the complete schema and exact finite values;
+/// the codec also supports versioned descriptors for compatibility.
 pub fn serialize_embedded_schema(
     schema: &SchemaNode,
     max_bytes: usize,
@@ -112,6 +111,18 @@ mod tests {
         .expect("physical schema is valid")
     }
 
+    fn explicit_v2(schema: &SchemaNode, path: &str) -> String {
+        let mut payload = serde_json::to_value(schema).unwrap();
+        let slot = payload.pointer_mut(path).expect("literal typed float path");
+        assert_eq!(slot.as_f64().unwrap().to_bits(), 0x0031_fa18_2c40_c60d);
+        *slot = serde_json::Value::String("FERRULE-F64-BITS:0031fa182c40c60d".into());
+        format!(
+            "{}{}",
+            codegen_schema::V2_PREFIX,
+            serde_json::to_string(&payload).unwrap()
+        )
+    }
+
     #[test]
     fn preserves_changed_nested_floating_metadata_without_changing_the_schema() {
         let cases = [
@@ -123,14 +134,21 @@ mod tests {
             let original = schema.clone();
             let encoded = serialize_embedded_schema(&schema, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
                 .expect("unstable metadata encodes losslessly");
-            assert!(encoded.starts_with(codegen_schema::V2_PREFIX));
-            let decoded = codegen_schema::decode(&encoded, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
-                .expect("lossless metadata decodes");
-            assert_eq!(
-                serde_json::to_value(&schema).unwrap(),
-                serde_json::to_value(&decoded).unwrap()
-            );
-            assert_eq!(schema, original);
+            assert_eq!(encoded, serde_json::to_string(&schema).unwrap());
+            let path = if schema.child("Amount").unwrap().numeric_range.is_some() {
+                "/kind/children/0/numeric_range/bounds/minimum/value"
+            } else {
+                "/kind/children/0/json_allowed_values/1/value"
+            };
+            for descriptor in [encoded, explicit_v2(&schema, path)] {
+                let decoded = codegen_schema::decode(&descriptor, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
+                    .expect("lossless metadata decodes");
+                assert_eq!(
+                    serde_json::to_value(&schema).unwrap(),
+                    serde_json::to_value(&decoded).unwrap()
+                );
+                assert_eq!(schema, original);
+            }
         }
         let alternative: SchemaNode = serde_json::from_str(
             r#"{"name":"AlternativeRoot","kind":{"kind":"group","children":[{"name":"Out","kind":{"kind":"scalar","ty":"float"}}],"alternatives":[{"name":"Selected","members":["Out"],"constraints":[{"member":"Out","value":{"type":"float","value":1e-307}}]}]}}"#,
@@ -138,12 +156,21 @@ mod tests {
         .expect("physical alternative schema is valid");
         let encoded = serialize_embedded_schema(&alternative, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
             .expect("floating alternative encodes");
-        assert!(encoded.starts_with(codegen_schema::V2_PREFIX));
-        let decoded = codegen_schema::decode(&encoded, MAX_EMBEDDED_JSON_SCHEMA_BYTES).unwrap();
-        assert_eq!(
-            serde_json::to_value(&alternative).unwrap(),
-            serde_json::to_value(&decoded).unwrap()
-        );
+        assert_eq!(encoded, serde_json::to_string(&alternative).unwrap());
+        for descriptor in [
+            encoded,
+            explicit_v2(
+                &alternative,
+                "/kind/alternatives/0/constraints/0/value/value",
+            ),
+        ] {
+            let decoded =
+                codegen_schema::decode(&descriptor, MAX_EMBEDDED_JSON_SCHEMA_BYTES).unwrap();
+            assert_eq!(
+                serde_json::to_value(&alternative).unwrap(),
+                serde_json::to_value(&decoded).unwrap()
+            );
+        }
     }
 
     #[test]
@@ -258,31 +285,57 @@ mod tests {
                 padding,
             ],
         );
-        let overhead = serialize_embedded_schema(&base, usize::MAX).unwrap().len();
-        for max in [
-            MAX_EMBEDDED_JSON_SCHEMA_BYTES,
-            MAX_EMBEDDED_XML_SCHEMA_BYTES,
-        ] {
-            let mut schema = base.clone();
-            let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
-                unreachable!()
+        let path = "/kind/children/0/numeric_range/bounds/minimum/value";
+        for versioned in [false, true] {
+            let encode = |schema: &SchemaNode| {
+                if versioned {
+                    explicit_v2(schema, path)
+                } else {
+                    serialize_embedded_schema(schema, usize::MAX).unwrap()
+                }
             };
-            children[1].fixed = Some("x".repeat(max - overhead));
-            let encoded = serialize_embedded_schema(&schema, max).unwrap();
-            assert!(encoded.starts_with(codegen_schema::V2_PREFIX));
-            assert_eq!(encoded.len(), max);
-            let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
-                unreachable!()
-            };
-            children[1].fixed.as_mut().unwrap().push('x');
-            assert_eq!(
-                serialize_embedded_schema(&schema, max),
-                Err(EmbeddedSchemaError::TooLarge {
-                    schema: "Root".into(),
-                    bytes: max + 1,
-                    max,
-                })
-            );
+            let overhead = encode(&base).len();
+            for max in [
+                MAX_EMBEDDED_JSON_SCHEMA_BYTES,
+                MAX_EMBEDDED_XML_SCHEMA_BYTES,
+            ] {
+                let mut schema = base.clone();
+                let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
+                    unreachable!()
+                };
+                children[1].fixed = Some("x".repeat(max - overhead));
+                let encoded = encode(&schema);
+                assert_eq!(encoded.starts_with(codegen_schema::V2_PREFIX), versioned);
+                assert_eq!(encoded.len(), max);
+                let decoded = codegen_schema::decode(&encoded, max).unwrap();
+                assert_eq!(
+                    serde_json::to_string(&decoded).unwrap(),
+                    serde_json::to_string(&schema).unwrap()
+                );
+                let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
+                    unreachable!()
+                };
+                children[1].fixed.as_mut().unwrap().push('x');
+                let oversized = encode(&schema);
+                assert_eq!(oversized.len(), max + 1);
+                assert_eq!(
+                    codegen_schema::decode(&oversized, max),
+                    Err(codegen_schema::CodecError::TooLarge {
+                        bytes: max + 1,
+                        max
+                    })
+                );
+                if !versioned {
+                    assert_eq!(
+                        serialize_embedded_schema(&schema, max),
+                        Err(EmbeddedSchemaError::TooLarge {
+                            schema: "Root".into(),
+                            bytes: max + 1,
+                            max
+                        })
+                    );
+                }
+            }
         }
     }
 

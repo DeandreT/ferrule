@@ -24,7 +24,7 @@ internal static partial class Program
                 FerruleRuntimeError.JsonBoundary,
                 () => FerruleJson.Parse(alternative, "{\"X\":" + metadata + "}"));
         }
-        foreach (var invalid in new[] { "1.7976931348623158e308", "1e400" })
+        foreach (var invalid in new[] { "1.7976931348623159e308", "1e400" })
         {
             var schema = Alternative(invalid, false);
             Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(schema, "{}"));

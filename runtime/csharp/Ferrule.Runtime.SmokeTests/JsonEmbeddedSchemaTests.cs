@@ -26,10 +26,15 @@ internal static partial class Program
                     lowRange, Scalar(FerruleValue.FromDouble(low)))));
         Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(
             lowRange, Scalar(FerruleValue.FromDouble(high))));
-        _ = FerruleJson.ParseEmbedded(highRange, "1e-307");
-        _ = FerruleJson.ParseEmbeddedBytes(highRange, Encoding.UTF8.GetBytes("1e-307"));
+        _ = FerruleJson.ParseEmbedded(lowRange, "1e-307");
+        _ = FerruleJson.ParseEmbeddedBytes(lowRange, Encoding.UTF8.GetBytes("1e-307"));
         Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(
-            lowRange, "1e-307"));
+            highRange, "1e-307"));
+        _ = FerruleJson.ParseEmbedded(highRange, "1.0000000000000001e-307");
+        _ = FerruleJson.ParseEmbeddedBytes(
+            highRange, Encoding.UTF8.GetBytes("1.0000000000000001e-307"));
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(
+            lowRange, "1.0000000000000001e-307"));
 
         var allowed = EmbeddedV2Prefix +
             """{"name":"Value","json_allowed_values":[{"type":"float","value":__LOW__},{"type":"float","value":__HIGH__}],"kind":{"kind":"scalar","ty":"float"}}"""
