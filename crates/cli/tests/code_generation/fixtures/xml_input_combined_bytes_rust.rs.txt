@@ -1,0 +1,112 @@
+use codegen_runtime::{ExecutionContext, RuntimeError, XmlBoundaryError, XmlExecutionError, XmlInputSetResourceError, XmlInputSource};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{error::Error, fmt::Debug, path::{Path, PathBuf}};
+
+fn observed<T: Debug>(result: Result<T, XmlExecutionError>, directory: &Path,
+    success: impl FnOnce(T) -> Result<Json, Box<dyn Error>>) -> Result<Json, Box<dyn Error>> {
+    // This is the complete original typed Result, before projection or comparison.
+    std::fs::write(directory.join("original-typed-result.txt"), format!("{result:#?}\n"))?;
+    match result {
+        Ok(value) => success(value),
+        Err(error) => {
+            let mut chain = Vec::new();
+            let mut current: Option<&dyn Error> = Some(&error);
+            while let Some(cause) = current {
+                chain.push(json!({"debug":format!("{cause:?}"),"display":cause.to_string()}));
+                current = cause.source();
+            }
+            std::fs::write(directory.join("original-complete-error-chain.json"), serde_json::to_vec_pretty(&chain)?)?;
+            let resource = error.boundary.source().and_then(|source| source.downcast_ref::<XmlInputSetResourceError>())
+                .map(|cause| json!({"resource":cause.resource,"observed_count":cause.observed_count,"limit":cause.limit}));
+            let sentinel = error.boundary.source().and_then(|source| source.downcast_ref::<RuntimeError>())
+                .and_then(|cause| match cause {
+                    RuntimeError::MappingException { node, message } => Some(json!({"node":node,"message":message})),
+                    _ => None,
+                });
+            let input = match error.input {
+                None => Json::Null,
+                Some(XmlInputSource::Primary) => json!({"kind":"Primary","index":null,"name":null}),
+                Some(XmlInputSource::Named { index, name }) => json!({"kind":"Named","index":index,"name":name}),
+            };
+            let preserved = error.source().and_then(|source| source.downcast_ref::<XmlBoundaryError>())
+                .is_some_and(|boundary| std::ptr::eq(boundary, error.boundary.as_ref()));
+            Ok(json!({"kind":format!("{:?}",error.boundary.kind),"returned":false,"input":input,
+                "output":error.output.map(|output|format!("{output:?}")),"request":error.request.map(|request|format!("{request:?}")),
+                "boundary_preserved":preserved,"boundary_bytes":error.boundary.bytes,"boundary_limit":error.boundary.limit,
+                "boundary_has_source":error.boundary.source().is_some(),"resource":resource,"mapping_exception":sentinel,"chain":chain}))
+        }
+    }
+}
+fn text_output(primary: String, extras: Option<Vec<generated::NamedXmlOutput>>) -> Json {
+    json!({"kind":"ok","returned":true,"primary":primary,"extras":extras.map(|extras|extras.into_iter()
+        .map(|output|json!({"name":output.name,"document":output.document})).collect::<Vec<_>>())})
+}
+fn bytes_output(primary: Vec<u8>, extras: Option<Vec<generated::NamedXmlBytesOutput>>) -> Result<Json, Box<dyn Error>> {
+    let original = primary.clone();
+    let extras = extras.map(|extras|extras.into_iter().map(|output| {
+        Ok(json!({"name":output.name,"document":String::from_utf8(output.document)?}))
+    }).collect::<Result<Vec<_>,std::string::FromUtf8Error>>()).transpose()?;
+    Ok(json!({"kind":"ok","returned":true,"primary":String::from_utf8(primary)?,"original_return_bytes":original,"extras":extras}))
+}
+fn input_path(root: &Path, name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    if name.is_empty() || name.len() > 64 || !name.bytes().all(|byte|byte.is_ascii_alphanumeric() || matches!(byte,b'-'|b'.')) {
+        return Err("invalid fixed input basename".into());
+    }
+    let path = root.join(name);
+    if std::fs::symlink_metadata(&path)?.file_type().is_symlink() || std::fs::metadata(&path)?.len() > 64 * 1024 * 1024 + 1 {
+        return Err("input is not a bounded ordinary file".into());
+    }
+    Ok(path)
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.len() != 7 { return Err("manifest corpus case api project originals".into()); }
+    let manifest: Json = serde_json::from_slice(&std::fs::read(&args[1])?)?;
+    let case = manifest.get(&args[3]).ok_or("unknown fixed case")?;
+    let root = Path::new(&args[2]);
+    let original = Path::new(&args[6]);
+    let context = ExecutionContext::new(Path::new(&args[5])).with_current_datetime("2026-10-08T00:00:00Z");
+    let named = case["named"].as_array().ok_or("named inventory")?;
+    let primary_path = input_path(root, case["primary"].as_str().ok_or("primary basename")?)?;
+    let named_paths = named.iter().map(|input| input_path(root,input["path"].as_str().ok_or("named basename")?))
+        .collect::<Result<Vec<_>,Box<dyn Error>>>()?;
+    // Retain only path/size identities here; the complete inputs are the parent-owned files.
+    let paths = std::iter::once(&primary_path).chain(named_paths.iter()).map(|path| {
+        Ok(json!({"path":path,"bytes":std::fs::metadata(path)?.len()}))
+    }).collect::<Result<Vec<_>,std::io::Error>>()?;
+    std::fs::write(original.join("actual-input-paths-and-sizes.json"),serde_json::to_vec_pretty(&paths)?)?;
+    let api = args[4].as_str();
+    let row = if api.starts_with("bytes") {
+        let primary = std::fs::read(&primary_path)?;
+        let documents = named_paths.iter().map(std::fs::read).collect::<Result<Vec<_>,_>>()?;
+        let inputs = named.iter().zip(&documents).map(|(input,document)| {
+            Ok(generated::NamedXmlBytesInput { name:input["name"].as_str().ok_or("source name")?,document })
+        }).collect::<Result<Vec<_>,Box<dyn Error>>>()?;
+        match api {
+            "bytes-set" => observed(generated::execute_xml_bytes_outputs_with_sources(&primary,&inputs),original,|value|bytes_output(value.primary,Some(value.extras)))?,
+            "bytes-set-context" => observed(generated::execute_xml_bytes_outputs_with_sources_and_context(&primary,&inputs,&context),original,|value|bytes_output(value.primary,Some(value.extras)))?,
+            "bytes-singular" => observed(generated::execute_xml_bytes_with_sources(&primary,&inputs),original,|value|bytes_output(value,None))?,
+            "bytes-singular-context" => observed(generated::execute_xml_bytes_with_sources_and_context(&primary,&inputs,&context),original,|value|bytes_output(value,None))?,
+            _ => return Err("unknown byte route".into()),
+        }
+    } else {
+        let primary = std::fs::read_to_string(&primary_path)?;
+        let documents = named_paths.iter().map(std::fs::read_to_string).collect::<Result<Vec<_>,_>>()?;
+        let inputs = named.iter().zip(&documents).map(|(input,document)| {
+            Ok(generated::NamedXmlInput { name:input["name"].as_str().ok_or("source name")?,document })
+        }).collect::<Result<Vec<_>,Box<dyn Error>>>()?;
+        match api {
+            "text-set" => observed(generated::execute_xml_outputs_with_sources(&primary,&inputs),original,|value|Ok(text_output(value.primary,Some(value.extras))))?,
+            "text-set-context" => observed(generated::execute_xml_outputs_with_sources_and_context(&primary,&inputs,&context),original,|value|Ok(text_output(value.primary,Some(value.extras))))?,
+            "text-singular" => observed(generated::execute_xml_with_sources(&primary,&inputs),original,|value|Ok(text_output(value,None)))?,
+            "text-singular-context" => observed(generated::execute_xml_with_sources_and_context(&primary,&inputs,&context),original,|value|Ok(text_output(value,None)))?,
+            _ => return Err("unknown text route".into()),
+        }
+    };
+    let row = json!({"case":args[3],"api":api,"result":row});
+    // Original structured observation is saved before the parent makes any assertion.
+    std::fs::write(original.join("actual-public-result.json"),serde_json::to_vec_pretty(&row)?)?;
+    println!("{}",serde_json::to_string(&row)?);
+    Ok(())
+}
