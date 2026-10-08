@@ -54,7 +54,9 @@ box does not close its later desktop, generated, or external-runtime gates.
   file choosers, an ordinary GUI executable, 1200 × 800 / 1200 × 760 windows,
   and complete saved-project/layout comparisons are covered in the
   [desktop report](docs/qualification/flat-workbook-desktop-2026-10-08.md).
-- [ ] Retain failures and closure observations independently of a later success.
+- [x] Retain failures and closure observations independently of the qualified
+  [#92](https://github.com/DeandreT/ferrule/issues/92) desktop workflow, merged in
+  [#132](https://github.com/DeandreT/ferrule/pull/132).
 
 Exit: a user can choose both schemas, reach Configure/Create without an enlarged
 viewport, save and reopen the mapping, and recover the same worksheet settings.
@@ -96,6 +98,29 @@ an unrestricted publication-parity promise.
   `.xml` path hints alone do not enable XML companions.
 - [x] Preserve exact names, wrapper causes, lazy failures, full output bytes,
   and complete original outcomes for those qualified cohorts.
+- [x] Qualify static XML input combined bytes at 256 MiB and +1, with declared
+  input census and per-document error precedence:
+  [#116](https://github.com/DeandreT/ferrule/issues/116), merged in
+  [#131](https://github.com/DeandreT/ferrule/pull/131).
+- [x] Qualify document-list XML output combined bytes at 256 MiB and +1, retaining
+  the failing member and original cause without returning partial results:
+  [#117](https://github.com/DeandreT/ferrule/issues/117), merged in
+  [#137](https://github.com/DeandreT/ferrule/pull/137).
+- [x] Qualify actual XML loader callbacks at the 4,096-artifact boundary and the
+  next reservation, refused before its callback:
+  [#118](https://github.com/DeandreT/ferrule/issues/118), merged in
+  [#138](https://github.com/DeandreT/ferrule/pull/138).
+- [x] Qualify a lazy last-row mapping exception before admission of an otherwise
+  4,097-artifact mixed XML output set:
+  [#119](https://github.com/DeandreT/ferrule/issues/119), merged in
+  [#139](https://github.com/DeandreT/ferrule/pull/139).
+
+These four authored Rust/C# public-host cohorts include small prerequisites and
+separate opt-in boundary runs. The [XML qualification index](docs/generated-xml-qualification-index.md)
+and [memory observations](docs/memory-and-limits.md#compiled-xml-host-observations)
+were refreshed in [#133](https://github.com/DeandreT/ferrule/issues/133), merged in
+[#147](https://github.com/DeandreT/ferrule/pull/147). Helper-only checks, external
+execution, other designs, and a universal RAM guarantee remain separate.
 
 Exit: compiled public calls agree with independent oracles under their declared
 adapter profile. Neither a lowering pass nor one host cohort certifies every
@@ -110,6 +135,36 @@ survey design or backend.
 - [ ] Identify an exact import/export representation before changing admission.
 - [ ] Keep generated JSON adapters strict JSON unless a separate eligible API
   and tests are implemented.
+- [x] Add bounded pure syntax normalization for Rust in
+  [#134](https://github.com/DeandreT/ferrule/issues/134)/
+  [#140](https://github.com/DeandreT/ferrule/pull/140) and package-free C# in
+  [#136](https://github.com/DeandreT/ferrule/issues/136)/
+  [#146](https://github.com/DeandreT/ferrule/pull/146). The shared authored cases
+  and focused scaled-limit controls pass; generated adapters and default large
+  resource caps are separate gates. Unquoted identifiers use the initial ASCII
+  subset; Unicode identifier membership remains
+  [#135](https://github.com/DeandreT/ferrule/issues/135).
+- [x] Complete shared closed-object eligibility in
+  [#141](https://github.com/DeandreT/ferrule/issues/141) with its descriptor
+  duplicate guard [#148](https://github.com/DeandreT/ferrule/issues/148), merged
+  together in [#151](https://github.com/DeandreT/ferrule/pull/151). Focused and
+  complete affected policy checks, formatting and strict warnings pass. The
+  [companion contract](docs/generated-json5-contract.md) keeps ordinary codecs
+  and lowering unchanged; this policy does not enable generated public APIs.
+- [ ] Add explicit opt-in Rust and C# companions in parallel
+  [#142](https://github.com/DeandreT/ferrule/issues/142)/
+  [#143](https://github.com/DeandreT/ferrule/issues/143) lanes against the committed
+  policy; their qualification remains pending. Preserve ordinary strict JSON
+  APIs and artifact sets.
+- [ ] Qualify all 184 small public calls in
+  [#144](https://github.com/DeandreT/ferrule/issues/144) after both language
+  adapters, before the 48 opt-in physical byte-boundary calls in
+  [#145](https://github.com/DeandreT/ferrule/issues/145).
+
+Generated companions and native metadata are independent contracts. The native
+nonfinite-token verification lane
+[#130](https://github.com/DeandreT/ferrule/issues/130) also remains open; pure
+syntax qualification does not establish its behavior.
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.
@@ -147,8 +202,9 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   and function canvases: preserve typed imported tables/defaults and compact
   geometry; check all five choices, locks, history, save/reopen, and Preview.
   Four interaction groups and the full 703-test GUI suite pass, along with
-  formatting, fresh workspace warning checks, and the normal GUI build. Edited
-  table cells remain text, so this does not add typed table-cell authoring.
+  formatting, fresh workspace warning checks, and the normal GUI build. That
+  input-conversion increment kept edited cells as text; typed-cell authoring is
+  the separate #97 increment below.
 - [x] Add and locally qualify **Computed properties** editing for singular
   ordinary JSON target objects with String, Int, Float, or Bool additional
   values on main and named-target canvases, including static constructed
@@ -164,15 +220,31 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   boundary checks, generated public hosts, C# runtime smoke, full workspace
   tests, fresh lint, formatting, and the normal build pass. Other Value map,
   desktop, and metadata gates remain separate.
-- [ ] Complete the Value map conversion/null increments: isolated integer
-  conversion in [#91](https://github.com/DeandreT/ferrule/issues/91) is locally
-  qualified and merged in [#123](https://github.com/DeandreT/ferrule/pull/123);
-  ordinary typed JSON-null matching in
-  [#113](https://github.com/DeandreT/ferrule/issues/113) remains pending. Preserve
-  their distinct contexts and complete interpreter/generated outcomes.
-- [ ] Preserve enabled absent Value map defaults through save/reload and history
-  in [#114](https://github.com/DeandreT/ferrule/issues/114), then qualify typed-cell
-  authoring in [#97](https://github.com/DeandreT/ferrule/issues/97) after #91/#114.
+- [x] Complete the separate Value map conversion/null increments: isolated integer
+  conversion in [#91](https://github.com/DeandreT/ferrule/issues/91), merged in
+  [#123](https://github.com/DeandreT/ferrule/pull/123), and ordinary declared
+  JSON-null matching in [#113](https://github.com/DeandreT/ferrule/issues/113),
+  merged in [#126](https://github.com/DeandreT/ferrule/pull/126). Preserve their
+  distinct contexts and complete interpreter/generated outcomes; the ordinary
+  compiled mapping control already passed before the direct-helper correction.
+- [x] Preserve enabled absent Value map defaults through save/reload and history
+  in [#114](https://github.com/DeandreT/ferrule/issues/114), merged in
+  [#127](https://github.com/DeandreT/ferrule/pull/127). Legacy missing/null defaults
+  keep their disabled meaning; older readers may reject the new absent marker.
+- [x] Qualify typed String, Int, finite Float, Bool and absent table/default editing
+  in [#97](https://github.com/DeandreT/ferrule/issues/97), merged in
+  [#128](https://github.com/DeandreT/ferrule/pull/128) after #91/#114. Local controls
+  preserve imported values, prevent invalid draft commits, and check locks,
+  history, save/reopen, Preview and compact geometry. Normal desktop authoring
+  remains a separate gate.
+- [x] Complete local and normal desktop setup for the primary transposed workbook
+  source in [#98](https://github.com/DeandreT/ferrule/issues/98), merged in
+  [#150](https://github.com/DeandreT/ferrule/pull/150). Local wizard regressions,
+  formatting and warning checks pass. The six-phase desktop create/save/reopen
+  workflow at 1200 × 800 / 1200 × 760 passes complete Project comparisons and
+  saved/reopened body equality. Workbook execution was checked separately in
+  local tests; desktop execution, hierarchical and named-source setup are not
+  claimed.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
@@ -183,6 +255,12 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 ### 0. Versioned Conformance and Compatibility Profiles
 
+- [x] Publish a separate JSON object-schema proposal and validate its independent
+  operation/profile/dimension cells in
+  [#94](https://github.com/DeandreT/ferrule/issues/94), merged in
+  [#129](https://github.com/DeandreT/ferrule/pull/129): 48 Unverified, 176 Unassessed
+  and no Supported cells. The protected survey and incomplete-inventory status
+  are unchanged; this is not a capability promotion.
 - [ ] Complete the applicable inventory before a whole-profile claim.
 - [ ] Track import, interpreter, external export execution, self-roundtrip,
   GUI/debugging, and each generated backend independently.
