@@ -138,8 +138,8 @@ pub(super) fn value_map_editor_width(entry_count: usize) -> f32 {
     }
 }
 
-/// Edits a `ValueMap`'s complete lookup table. Entries are coerced to strings
-/// while editing, matching the original inline editor's behavior.
+/// Edits a `ValueMap`'s ordered lookup table using validated cell drafts.
+/// New entries and newly enabled defaults start as ordinary empty strings.
 pub fn show_value_map_editor(
     ui: &mut Ui,
     table: &mut Vec<(Value, Value)>,
@@ -230,12 +230,19 @@ pub fn show_value_map_editor(
 
         let mut has_default = default.is_some();
         ui.horizontal(|ui| {
-            if ui.checkbox(&mut has_default, "Default").changed() {
+            let changed = ui.checkbox(&mut has_default, "Default").changed();
+            if changed {
                 *default = has_default.then(|| Value::String(String::new()));
             }
-            if let Some(value) = default {
-                edit_map_value(ui, value);
-            }
+            ui.push_id("value_map_default_cell", |ui| {
+                if changed {
+                    let id = ui.id().with("value_map_cell_draft");
+                    ui.ctx().data_mut(|data| data.remove::<MapCellDraft>(id));
+                }
+                if let Some(value) = default {
+                    edit_map_value(ui, value, "Default", false);
+                }
+            });
         });
     });
 }
@@ -246,9 +253,21 @@ fn show_value_map_entry(
     (from, to): &mut (Value, Value),
     remove_idx: &mut Option<usize>,
 ) {
-    edit_map_value(ui, from);
+    let key_draft_id = ui
+        .push_id(("value_map_key", index), |ui| {
+            let draft_id = ui.id().with("value_map_cell_draft");
+            edit_map_value(ui, from, &format!("Entry {} key", index + 1), true);
+            draft_id
+        })
+        .inner;
     ui.weak("->");
-    edit_map_value(ui, to);
+    let value_draft_id = ui
+        .push_id(("value_map_value", index), |ui| {
+            let draft_id = ui.id().with("value_map_cell_draft");
+            edit_map_value(ui, to, &format!("Entry {} value", index + 1), true);
+            draft_id
+        })
+        .inner;
     if ui
         .add(egui::Button::new(crate::icons::text(
             lucide_icons::Icon::Trash2,
@@ -258,6 +277,14 @@ fn show_value_map_entry(
         .clicked()
     {
         *remove_idx = Some(index);
+    }
+    if remove_idx.as_ref().is_some_and(|removed| index >= *removed) {
+        // Entries render in order before removal shifts their indices. Discard
+        // this row's real child-UI drafts once its index ownership will change.
+        ui.ctx().data_mut(|data| {
+            data.remove::<MapCellDraft>(key_draft_id);
+            data.remove::<MapCellDraft>(value_draft_id);
+        });
     }
 }
 
@@ -299,18 +326,192 @@ fn value_map_wheel_offset(
     (current - delta_y).clamp(0.0, max_offset)
 }
 
-fn edit_map_value(ui: &mut Ui, value: &mut Value) {
-    let mut text = display_string(value);
-    if ui
-        .add_sized(
-            [VALUE_MAP_CELL_WIDTH, ui.spacing().interact_size.y],
-            egui::TextEdit::singleline(&mut text),
-        )
-        .on_hover_text(if text.is_empty() { "<empty>" } else { &text })
-        .changed()
-    {
-        *value = Value::String(text);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MapCellKind {
+    String,
+    Int,
+    Float,
+    Bool,
+    Absent,
+    Imported,
+}
+impl MapCellKind {
+    fn from_value(value: &Value) -> Self {
+        match value {
+            Value::String(_) => Self::String,
+            Value::Int(_) => Self::Int,
+            Value::Float(_) => Self::Float,
+            Value::Bool(_) => Self::Bool,
+            Value::Null => Self::Absent,
+            Value::JsonNull(_) | Value::XmlNil(_) => Self::Imported,
+        }
     }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Int => "int",
+            Self::Float => "float",
+            Self::Bool => "bool",
+            Self::Absent => "absent",
+            Self::Imported => "saved",
+        }
+    }
+
+    fn parse(self, text: &str) -> Option<Value> {
+        match self {
+            Self::String => Some(Value::String(text.to_owned())),
+            Self::Int => text.trim().parse().ok().map(Value::Int),
+            Self::Float => text
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|number| number.is_finite())
+                .map(Value::Float),
+            Self::Bool => match text.trim() {
+                "true" => Some(Value::Bool(true)),
+                "false" => Some(Value::Bool(false)),
+                _ => None,
+            },
+            Self::Absent => Some(Value::Null),
+            Self::Imported => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct MapCellDraft {
+    original: Value,
+    kind: MapCellKind,
+    text: String,
+}
+impl MapCellDraft {
+    fn new(value: &Value) -> Self {
+        Self {
+            original: value.clone(),
+            kind: MapCellKind::from_value(value),
+            text: display_string(value),
+        }
+    }
+
+    fn follows(&self, value: &Value) -> bool {
+        match (&self.original, value) {
+            // Imported nonfinite values and signed zero are retained by their bits.
+            (Value::Float(before), Value::Float(after)) => before.to_bits() == after.to_bits(),
+            (before, after) => before == after,
+        }
+    }
+}
+
+fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
+    let draft_id = ui.id().with("value_map_cell_draft");
+    let mut draft = ui
+        .ctx()
+        .data_mut(|data| data.get_temp::<MapCellDraft>(draft_id))
+        .filter(|draft| draft.follows(value))
+        .unwrap_or_else(|| MapCellDraft::new(value));
+    let mut apply = false;
+    let mut enter = false;
+    let mut text_changed = false;
+    let mut type_and_apply = |ui: &mut Ui, draft: &mut MapCellDraft| {
+        let response = egui::ComboBox::from_id_salt("cell_type")
+            .width(52.0)
+            .selected_text(draft.kind.label())
+            .show_ui(ui, |ui| {
+                for candidate in [
+                    MapCellKind::String,
+                    MapCellKind::Int,
+                    MapCellKind::Float,
+                    MapCellKind::Bool,
+                    MapCellKind::Absent,
+                ] {
+                    ui.selectable_value(&mut draft.kind, candidate, candidate.label());
+                }
+            })
+            .response;
+        response.widget_info(|| egui::WidgetInfo {
+            current_text_value: Some(draft.kind.label().to_owned()),
+            ..egui::WidgetInfo::labeled(
+                egui::WidgetType::ComboBox,
+                ui.is_enabled(),
+                format!("{label} type"),
+            )
+        });
+        response.on_hover_text("Choose a type, then apply the complete value.");
+        let valid = draft.kind.parse(&draft.text).is_some();
+        let response = ui.add_enabled(
+            valid,
+            egui::Button::new(crate::icons::text(lucide_icons::Icon::Check, 12.0)),
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                ui.is_enabled() && valid,
+                format!("Apply {label}"),
+            )
+        });
+        apply = response
+            .on_hover_text(if valid {
+                "Apply this cell, or press Enter in its value field."
+            } else {
+                "Enter a complete signed integer, finite number, or true/false value. Saved null markers require an explicit replacement type."
+            })
+            .clicked();
+    };
+    let mut value_field = |ui: &mut Ui, draft: &mut MapCellDraft| {
+        let enabled = !matches!(draft.kind, MapCellKind::Absent | MapCellKind::Imported);
+        let previous = draft.text.clone();
+        let response = ui
+            .add_enabled_ui(enabled, |ui| {
+                ui.add_sized(
+                    [VALUE_MAP_CELL_WIDTH, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(&mut draft.text),
+                )
+            })
+            .inner;
+        response.widget_info(|| {
+            let mut info =
+                egui::WidgetInfo::text_edit(ui.is_enabled() && enabled, &previous, &draft.text, "");
+            info.label = Some(format!("{label} value"));
+            info
+        });
+        text_changed = response.changed();
+        enter = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+        response.on_hover_text(if draft.text.is_empty() {
+            "<empty>"
+        } else {
+            &draft.text
+        });
+    };
+    if stacked {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| type_and_apply(ui, &mut draft));
+            value_field(ui, &mut draft);
+        });
+    } else {
+        ui.horizontal(|ui| {
+            type_and_apply(ui, &mut draft);
+            value_field(ui, &mut draft);
+        });
+    }
+    // Ordinary text cells keep their existing immediate Cut/Paste/typing behavior.
+    // Replacing an imported typed cell with text still requires an explicit commit.
+    if text_changed
+        && ui.is_enabled()
+        && draft.kind == MapCellKind::String
+        && matches!(value, Value::String(_))
+    {
+        *value = Value::String(draft.text.clone());
+        draft.original = value.clone();
+    }
+    if (apply || enter)
+        && ui.is_enabled()
+        && let Some(next) = draft.kind.parse(&draft.text)
+    {
+        *value = next;
+        draft = MapCellDraft::new(value);
+    }
+    ui.ctx().data_mut(|data| data.insert_temp(draft_id, draft));
 }
 
 #[cfg(test)]

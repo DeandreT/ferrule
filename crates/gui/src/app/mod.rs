@@ -1698,3 +1698,6 @@ mod computed_property_tests;
 
 #[cfg(test)]
 mod value_map_default_presence_tests;
+
+#[cfg(test)]
+mod typed_value_map_cell_tests;
