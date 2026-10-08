@@ -15,6 +15,9 @@ design or exporting it again does not establish all of those promises. The
 [conformance inventory](conformance/README.md) remains incomplete; there is no
 supported whole-product parity percentage.
 
+Choose or claim an independent lane in [Parallel work](docs/parallel-work.md),
+which links scoped issues, ownership, dependencies, and shared verification rules.
+
 This roadmap is an execution plan. The complete earlier technical baseline and
 scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 

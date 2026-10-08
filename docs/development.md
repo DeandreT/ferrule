@@ -5,6 +5,19 @@ Use [Architecture](architecture.md) to find the responsible layer and
 compatibility contracts live in [Supported formats](formats.md),
 [`.mfd` interoperability](mfd-interop.md), and [Code generation](code-generation.md).
 
+## Coordinate issue work
+
+Use [Parallel work](parallel-work.md) to choose an available scoped issue and
+check shared source/build/display ownership. Assign the issue to yourself before
+starting; maintainer work uses `DeandreT`. If assignment is unavailable to you,
+ask the maintainer to assign it first. Open a scoped issue for a new gap before
+implementation, agree on overlapping files, and link the implementing PR.
+
+Keep issue comments concise: result, evidence link, blocker, and next step.
+Report source review, local tests, generated calls, desktop interaction, external
+execution and memory trials separately. Close only the acceptance gates that
+have evidence; leave the remaining checks explicit.
+
 ## Keep a change reviewable
 
 - [ ] Describe one concrete input or user action and the expected result.
