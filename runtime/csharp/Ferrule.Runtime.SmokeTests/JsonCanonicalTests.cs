@@ -20,7 +20,7 @@ internal static partial class Program
             ("1e-6", "1e-6"),
             ("1e15", "1000000000000000.0"),
             ("1e16", "1e+16"),
-            ("1e-307", "1.0000000000000001e-307"),
+            ("1e-307", "1e-307"),
             ("1e-400", "0.0"),
             ("-1e-400", "-0.0"),
             ("0e-309", "0.0"),
@@ -39,11 +39,9 @@ internal static partial class Program
         {
             var parsed = (FerruleScalar)FerruleJson.Parse(JsonAnyScalarSchema, input);
             Equal(Text(canonical), parsed.Value);
-            // serde_json's default fast float parser can move one ULP when
-            // reparsing its own shortest text. The source's stored string and
-            // the next writer parse are two distinct normalization steps.
-            var reparsed = input == "1e-307" ? "1e-307" : canonical;
-            Equal(reparsed + "\n", FerruleJson.Serialize(JsonAnyScalarSchema, parsed));
+            // Correctly rounded input preserves the shortest canonical text
+            // through both the stored arbitrary-JSON string and the writer.
+            Equal(canonical + "\n", FerruleJson.Serialize(JsonAnyScalarSchema, parsed));
             Equal(
                 canonical + "\n",
                 FerruleJson.Serialize(JsonAnyScalarSchema, Scalar(Text(input))));

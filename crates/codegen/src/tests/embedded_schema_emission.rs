@@ -59,7 +59,8 @@ fn padded_lossless_schema(name: &str, bytes: usize) -> SchemaNode {
     };
     children[1].fixed = Some("x".repeat(bytes - overhead));
     let descriptor = codegen::serialize_embedded_schema(&schema, usize::MAX).unwrap();
-    assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+    let decoded: SchemaNode = serde_json::from_str(&descriptor).unwrap();
+    assert_eq!(serde_json::to_string(&decoded).unwrap(), serde_json::to_string(&schema).unwrap());
     assert_eq!(descriptor.len(), bytes);
     schema
 }
@@ -77,23 +78,29 @@ fn embedded_schema_emission_preserves_physical_constraint_without_decimal_drift(
     else {
         panic!("physical fixture has a floating constant");
     };
-    assert!(
-        !range.contains(value),
-        "interpreter constraint rejects the constant"
-    );
+    assert_eq!(range.minimum().unwrap().value().get().to_bits(), 0x0031_fa18_2c40_c60d);
+    assert_eq!(value.to_bits(), 0x0031_fa18_2c40_c60e);
+    let below = f64::from_bits(0x0031_fa18_2c40_c60c);
+    assert!(range.contains(value), "the adjacent upper constant is in range");
+    assert!(!range.contains(below), "the adjacent lower control is out of range");
     let encoded = serde_json::to_string(&program.target).expect("schema serializes");
     let decoded: SchemaNode = serde_json::from_str(&encoded).expect("encoded schema parses");
-    let Some(NumericRange::Number(weakened)) = decoded.child("Out").unwrap().numeric_range else {
+    let Some(NumericRange::Number(reparsed)) = decoded.child("Out").unwrap().numeric_range else {
         panic!("reparsed fixture has a number range");
     };
-    assert!(
-        weakened.contains(value),
-        "unprotected embedding would weaken the range"
-    );
+    assert_eq!(reparsed.minimum().unwrap().value().get().to_bits(), 0x0031_fa18_2c40_c60d);
+    assert!(reparsed.contains(value));
+    assert!(!reparsed.contains(below));
     let descriptor =
         codegen::serialize_embedded_schema(&program.target, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
             .expect("physical metadata encodes losslessly");
-    assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+    let embedded: SchemaNode = serde_json::from_str(&descriptor).unwrap();
+    let Some(NumericRange::Number(embedded_range)) = embedded.child("Out").unwrap().numeric_range else {
+        panic!("embedded fixture retains the number range");
+    };
+    assert_eq!(embedded_range.minimum().unwrap().value().get().to_bits(), 0x0031_fa18_2c40_c60d);
+    assert!(embedded_range.contains(value));
+    assert!(!embedded_range.contains(below));
     let artifacts = emit_schema_fixture(&program).expect("physical fixture emits losslessly");
     assert_descriptor_is_emitted(&artifacts, &descriptor);
 }
@@ -184,7 +191,13 @@ fn embedded_schema_emission_preserves_primary_named_dynamic_and_expression_schem
             MAX_EMBEDDED_XML_SCHEMA_BYTES,
         )
         .expect("unstable schema encodes");
-        assert!(descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
+        let decoded: SchemaNode = serde_json::from_str(&descriptor).unwrap();
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), serde_json::to_string(&changed_schema(name)).unwrap());
+        let Some(NumericRange::Number(range)) = decoded.child("Out").unwrap().numeric_range else {
+            panic!("every emitted boundary retains the range");
+        };
+        assert_eq!(range.minimum().unwrap().value().get().to_bits(), 0x0031_fa18_2c40_c60d);
+        assert!(!range.contains(f64::from_bits(0x0031_fa18_2c40_c60c)));
         let artifacts = emit_schema_fixture(&program).expect("valid metadata emits losslessly");
         assert_descriptor_is_emitted(&artifacts, &descriptor);
     }

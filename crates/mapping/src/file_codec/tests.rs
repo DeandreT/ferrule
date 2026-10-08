@@ -36,8 +36,39 @@ fn plain_project() -> Project {
 fn snapshot<T: Serialize>(model: &T) -> Value {
     tree::to_value(model).unwrap()
 }
+// Explicit version-2 fixture construction is independent of the encoder's
+// ordinary-versus-envelope selection. The document and table retain every
+// typed float tag and bit; malformed tests then edit this valid envelope.
+fn versioned_fixture<T: Serialize>(model: &T, kind: &str) -> Value {
+    let document = snapshot(model);
+    let float_bits: serde_json::Map<String, Value> = collect_bits(&document)
+        .unwrap()
+        .into_iter()
+        .map(|(path, bits)| (path, Value::String(format!("{bits:016x}"))))
+        .collect();
+    serde_json::json!({
+        "__ferrule_file": { "kind": kind, "version": 2, "float_bits": float_bits },
+        "document": document,
+    })
+}
+fn versioned_text<T: Serialize>(model: &T, kind: &str) -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&versioned_fixture(model, kind)).unwrap()
+    )
+}
 fn envelope() -> Value {
-    serde_json::from_str(&project_file::encode_pretty(&project()).unwrap()).unwrap()
+    let original = project();
+    let value = versioned_fixture(&original, "project");
+    let result = project_file::decode_str(&value.to_string());
+    println!("ORIGINAL_VALID_VERSIONED_FIXTURE_RESULT {result:?}");
+    let decoded = result.unwrap();
+    assert!(same_model(&snapshot(&original), &snapshot(&decoded)).unwrap());
+    assert_eq!(
+        collect_bits(&snapshot(&original)).unwrap(),
+        collect_bits(&snapshot(&decoded)).unwrap()
+    );
+    value
 }
 fn assert_invalid(value: &Value) {
     assert!(project_file::decode_str(&serde_json::to_string(value).unwrap()).is_err());
@@ -48,6 +79,8 @@ fn physical_project_preserves_schema_graph_value_map_function_and_pdf_floats() {
     let mut original = project();
     let high = serde_json::from_str::<f64>("1e-307").unwrap();
     let low = serde_json::from_str::<f64>("1.0000000000000001e-307").unwrap();
+    assert_eq!(high.to_bits(), 0x0031_fa18_2c40_c60d);
+    assert_eq!(low.to_bits(), 0x0031_fa18_2c40_c60e);
     assert_ne!(high.to_bits(), low.to_bits());
     let mut enumerated = SchemaNode::scalar("Enum", ScalarType::Float);
     enumerated.json_allowed_values = Some(
@@ -61,23 +94,51 @@ fn physical_project_preserves_schema_graph_value_map_function_and_pdf_floats() {
         children.push(enumerated);
     }
     let legacy = serde_json::to_string_pretty(&original).unwrap();
-    // Some canonical metadata may become noncanonical after an ordinary reparse.
-    let legacy_changed = serde_json::from_str::<Project>(&legacy)
-        .map(|p| snapshot(&p) != snapshot(&original))
-        .unwrap_or(true);
-    assert!(legacy_changed);
-    let encoded = project_file::encode_pretty(&original).unwrap();
+    let legacy_result = serde_json::from_str::<Project>(&legacy);
+    println!("ORIGINAL_ORDINARY_PHYSICAL_PROJECT_RESULT {legacy_result:?}");
+    let legacy_decoded = legacy_result.unwrap();
+    assert!(same_model(&snapshot(&legacy_decoded), &snapshot(&original)).unwrap());
+    assert_eq!(
+        collect_bits(&snapshot(&legacy_decoded)).unwrap(),
+        collect_bits(&snapshot(&original)).unwrap()
+    );
+    let ordinary_encoded = project_file::encode_pretty(&original).unwrap();
+    assert_eq!(ordinary_encoded, format!("{legacy}\n"));
+    assert!(!ordinary_encoded.contains("\"__ferrule_file\""));
+    let ordinary_result = project_file::decode_bytes(ordinary_encoded.as_bytes());
+    println!("ORIGINAL_ORDINARY_PHYSICAL_FILE_RESULT {ordinary_result:?}");
+    let ordinary_decoded = ordinary_result.unwrap();
+    assert!(same_model(&snapshot(&original), &snapshot(&ordinary_decoded)).unwrap());
+    assert_eq!(
+        collect_bits(&snapshot(&ordinary_decoded)).unwrap(),
+        collect_bits(&snapshot(&original)).unwrap()
+    );
+    assert_eq!(
+        project_file::encode_pretty(&ordinary_decoded).unwrap(),
+        ordinary_encoded
+    );
+    let encoded = versioned_text(&original, "project");
     assert!(encoded.ends_with('\n'));
     let root: Value = serde_json::from_str(&encoded).unwrap();
     assert_eq!(root["__ferrule_file"]["kind"], "project");
     assert_eq!(root["__ferrule_file"]["version"], 2);
-    let decoded = project_file::decode_bytes(encoded.as_bytes()).unwrap();
+    let result = project_file::decode_bytes(encoded.as_bytes());
+    println!("ORIGINAL_VERSIONED_PHYSICAL_FILE_RESULT {result:?}");
+    let decoded = result.unwrap();
     assert!(same_model(&snapshot(&original), &snapshot(&decoded)).unwrap());
     assert_eq!(
         collect_bits(&snapshot(&decoded)).unwrap(),
         collect_bits(&snapshot(&original)).unwrap()
     );
-    assert_eq!(project_file::encode_pretty(&decoded).unwrap(), encoded);
+    assert_eq!(
+        project_file::encode_pretty(&decoded).unwrap(),
+        ordinary_encoded
+    );
+    assert_eq!(versioned_text(&decoded, "project"), encoded);
+    assert_eq!(
+        root["__ferrule_file"]["float_bits"]["/graph/nodes/0/value"],
+        "0031fa182c40c60d"
+    );
     assert!(
         serde_json::from_str::<Project>(&encoded).is_err(),
         "legacy reader must reject the envelope"
@@ -246,7 +307,25 @@ fn pipeline_embedded_projects_keep_all_float_bits() {
             },
         ],
     };
-    let encoded = pipeline_file::encode_pretty(&original).unwrap();
+    let ordinary_encoded = pipeline_file::encode_pretty(&original).unwrap();
+    assert_eq!(
+        ordinary_encoded,
+        format!("{}\n", serde_json::to_string_pretty(&original).unwrap())
+    );
+    assert!(!ordinary_encoded.contains("\"__ferrule_file\""));
+    let ordinary_result = pipeline_file::decode_bytes(ordinary_encoded.as_bytes());
+    println!("ORIGINAL_ORDINARY_PIPELINE_FILE_RESULT {ordinary_result:?}");
+    let ordinary_decoded = ordinary_result.unwrap();
+    assert!(same_model(&snapshot(&original), &snapshot(&ordinary_decoded)).unwrap());
+    assert_eq!(
+        collect_bits(&snapshot(&ordinary_decoded)).unwrap(),
+        collect_bits(&snapshot(&original)).unwrap()
+    );
+    assert_eq!(
+        pipeline_file::encode_pretty(&ordinary_decoded).unwrap(),
+        ordinary_encoded
+    );
+    let encoded = versioned_text(&original, "pipeline");
     let root: Value = serde_json::from_str(&encoded).unwrap();
     assert_eq!(root["__ferrule_file"]["kind"], "pipeline");
     assert!(
@@ -254,8 +333,23 @@ fn pipeline_embedded_projects_keep_all_float_bits() {
             .get("/stages/1/project/graph/nodes/0/value")
             .is_some()
     );
-    let decoded = pipeline_file::decode_bytes(encoded.as_bytes()).unwrap();
+    let result = pipeline_file::decode_bytes(encoded.as_bytes());
+    println!("ORIGINAL_VERSIONED_PIPELINE_FILE_RESULT {result:?}");
+    let decoded = result.unwrap();
     assert!(same_model(&snapshot(&original), &snapshot(&decoded)).unwrap());
+    assert_eq!(
+        collect_bits(&snapshot(&decoded)).unwrap(),
+        collect_bits(&snapshot(&original)).unwrap()
+    );
+    assert_eq!(
+        root["__ferrule_file"]["float_bits"]["/stages/1/project/graph/nodes/0/value"],
+        "0031fa182c40c60d"
+    );
+    assert_eq!(
+        pipeline_file::encode_pretty(&decoded).unwrap(),
+        ordinary_encoded
+    );
+    assert_eq!(versioned_text(&decoded, "pipeline"), encoded);
     assert!(serde_json::from_str::<Pipeline>(&encoded).is_err());
     assert!(matches!(
         project_file::decode_str(&encoded),
@@ -356,13 +450,15 @@ fn versioned_metadata_is_strict_and_rejects_truncated_nonfinite_and_invalid_path
         project_file::decode_bytes(&[0xff]),
         Err(FileCodecError::InvalidUtf8(_))
     ));
-    let text = project_file::encode_pretty(&project()).unwrap();
+    let text = versioned_text(&project(), "project");
     assert!(project_file::decode_str(&text[..text.len() / 2]).is_err());
+    let ordinary = project_file::encode_pretty(&project()).unwrap();
+    assert!(project_file::decode_str(&ordinary[..ordinary.len() / 2]).is_err());
 }
 
 #[test]
 fn versioned_duplicate_members_are_rejected_before_collapse() {
-    let text = project_file::encode_pretty(&project()).unwrap();
+    let text = versioned_text(&project(), "project");
     for (needle, duplicate) in [
         ("\"version\": 2", "\"version\": 2, \"version\": 2"),
         (
@@ -370,17 +466,14 @@ fn versioned_duplicate_members_are_rejected_before_collapse() {
             "\"kind\": \"project\", \"kind\": \"project\"",
         ),
         (
-            "\"/graph/nodes/0/value\": \"0031fa182c40c60e\"",
-            "\"/graph/nodes/0/value\": \"0031fa182c40c60e\", \"/graph/nodes/0/value\": \"0031fa182c40c60e\"",
+            "\"/graph/nodes/0/value\": \"0031fa182c40c60d\"",
+            "\"/graph/nodes/0/value\": \"0031fa182c40c60d\", \"/graph/nodes/0/value\": \"0031fa182c40c60d\"",
         ),
     ] {
         assert!(text.contains(needle));
         assert!(project_file::decode_str(&text.replacen(needle, duplicate, 1)).is_err());
     }
-    let duplicate_document = text.replace(
-        "\"value\": 1.0000000000000001e-307",
-        "\"value\": 1.0000000000000001e-307, \"value\": 1.0",
-    );
+    let duplicate_document = text.replace("\"value\": 1e-307", "\"value\": 1e-307, \"value\": 1.0");
     assert_ne!(duplicate_document, text);
     assert!(project_file::decode_str(&duplicate_document).is_err());
     let duplicate_root = format!("{{\"document\": {{}},{}", &text[1..]);
@@ -389,7 +482,7 @@ fn versioned_duplicate_members_are_rejected_before_collapse() {
 
 #[test]
 fn insignificant_versioned_formatting_and_key_order_are_accepted() {
-    let pretty = project_file::encode_pretty(&project()).unwrap();
+    let pretty = versioned_text(&project(), "project");
     let mut quoted = false;
     let mut escaped = false;
     let compact: String = pretty
@@ -494,9 +587,41 @@ fn escaped_pointer_and_signed_zero_are_unambiguous() {
         floats: vec![serde_json::from_str("1e-307").unwrap(), -0.0, 1.0],
         text: "__ferrule_file FERRULE-F64-BITS:deadbeef".into(),
     };
-    let encoded = encode_pretty(&original, "project").unwrap();
+    let ordinary_encoded = encode_pretty(&original, "project").unwrap();
+    assert_eq!(
+        ordinary_encoded,
+        format!("{}\n", serde_json::to_string_pretty(&original).unwrap())
+    );
+    assert!(!ordinary_encoded.contains("\"__ferrule_file\":"));
+    let ordinary_result = decode_str::<PointerFixture>(&ordinary_encoded, "project");
+    println!(
+        "ORIGINAL_ORDINARY_POINTER_RESULT {:?}",
+        ordinary_result
+            .as_ref()
+            .map(|value| (&value.floats, &value.text))
+    );
+    let ordinary_decoded = ordinary_result.unwrap();
+    assert_eq!(
+        ordinary_decoded
+            .floats
+            .iter()
+            .map(|f| f.to_bits())
+            .collect::<Vec<_>>(),
+        vec![
+            0x0031_fa18_2c40_c60d,
+            0x8000_0000_0000_0000,
+            0x3ff0_0000_0000_0000
+        ]
+    );
+    assert_eq!(ordinary_decoded.text, original.text);
+    let encoded = versioned_text(&original, "project");
     assert!(encoded.contains("/a~1b~0c/0"));
-    let decoded: PointerFixture = decode_str(&encoded, "project").unwrap();
+    let result = decode_str::<PointerFixture>(&encoded, "project");
+    println!(
+        "ORIGINAL_VERSIONED_POINTER_RESULT {:?}",
+        result.as_ref().map(|value| (&value.floats, &value.text))
+    );
+    let decoded = result.unwrap();
     assert_eq!(
         decoded
             .floats
@@ -532,14 +657,42 @@ fn constructed_depth_and_envelope_extra_depth_are_bounded() {
     for _ in 0..126 {
         depth126 = Value::Array(vec![depth126]);
     }
-    assert!(encode_pretty(&depth126, "project").is_ok());
+    let ordinary126 = encode_pretty(&depth126, "project").unwrap();
+    assert!(
+        same_model(
+            &decode_str::<Value>(&ordinary126, "project").unwrap(),
+            &depth126
+        )
+        .unwrap()
+    );
+    let versioned126 = versioned_text(&depth126, "project");
+    let decoded126 = decode_str::<Value>(&versioned126, "project");
+    println!("ORIGINAL_VERSIONED_DEPTH126_RESULT {decoded126:?}");
+    assert!(same_model(&decoded126.unwrap(), &depth126).unwrap());
     let mut depth127 = serde_json::json!(serde_json::from_str::<f64>("1e-307").unwrap());
     for _ in 0..127 {
         depth127 = Value::Array(vec![depth127]);
     }
-    // A root scalar/array is not a project: use private encoding only to prove
-    // envelope depth costs are rejected rather than extending serde's limit.
-    assert!(encode_pretty(&depth127, "project").is_err());
+    // A root scalar/array is not a Project. The private codec demonstrates
+    // ordinary depth 127 and the real versioned decoder's extra root cost.
+    let ordinary127 = encode_pretty(&depth127, "project").unwrap();
+    let decoded127 = decode_str::<Value>(&ordinary127, "project");
+    println!("ORIGINAL_ORDINARY_DEPTH127_RESULT {decoded127:?}");
+    assert!(same_model(&decoded127.unwrap(), &depth127).unwrap());
+    assert!(matches!(
+        check_depth(&depth127, 1),
+        Err(FileCodecError::DepthLimit {
+            depth: 128,
+            max: 127
+        })
+    ));
+    let versioned127 = versioned_text(&depth127, "project");
+    let decoded_versioned127 = decode_str::<Value>(&versioned127, "project");
+    println!("ORIGINAL_VERSIONED_DEPTH127_RESULT {decoded_versioned127:?}");
+    assert!(matches!(
+        decoded_versioned127,
+        Err(FileCodecError::InvalidEnvelope { .. })
+    ));
 }
 
 #[test]
@@ -604,18 +757,29 @@ fn deterministic_finite_binary64_graph_sweep_preserves_every_tag_and_bit() {
             },
         );
     }
-    let encoded = project_file::encode_pretty(&original).unwrap();
-    assert!(encoded.contains("\"__ferrule_file\""));
-    let decoded = project_file::decode_str(&encoded).unwrap();
-    assert_eq!(decoded.graph.nodes.len(), bits.len());
-    for (index, expected) in bits.iter().enumerate() {
-        let Node::Const {
-            value: ir::Value::Float(actual),
-        } = decoded.graph.nodes[&(index as u32)]
-        else {
-            panic!("node {index} lost Float tag");
-        };
-        assert_eq!(actual.to_bits(), *expected, "node {index}");
+    let ordinary = project_file::encode_pretty(&original).unwrap();
+    assert_eq!(
+        ordinary,
+        format!("{}\n", serde_json::to_string_pretty(&original).unwrap())
+    );
+    assert!(!ordinary.contains("\"__ferrule_file\""));
+    let versioned = versioned_text(&original, "project");
+    assert!(versioned.contains("\"__ferrule_file\""));
+    for (route, encoded) in [("ordinary", &ordinary), ("versioned", &versioned)] {
+        let result = project_file::decode_str(encoded);
+        println!("ORIGINAL_SWEEP_{route}_RESULT {result:?}");
+        let decoded = result.unwrap();
+        assert_eq!(decoded.graph.nodes.len(), bits.len());
+        for (index, expected) in bits.iter().enumerate() {
+            let Node::Const {
+                value: ir::Value::Float(actual),
+            } = decoded.graph.nodes[&(index as u32)]
+            else {
+                panic!("node {index} lost Float tag on {route}");
+            };
+            assert_eq!(actual.to_bits(), *expected, "node {index} on {route}");
+        }
+        assert_eq!(project_file::encode_pretty(&decoded).unwrap(), ordinary);
+        assert_eq!(versioned_text(&decoded, "project"), versioned);
     }
-    assert_eq!(project_file::encode_pretty(&decoded).unwrap(), encoded);
 }

@@ -10,7 +10,7 @@ use mapping::{
 };
 use mfd::{ExportCompatibility, ExportCompatibilityFeature, ExportProfile};
 
-struct TempDir(PathBuf);
+struct TempDir(PathBuf, bool);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
@@ -21,13 +21,20 @@ impl TempDir {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
+        Ok(Self(path, false))
     }
 }
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if self.1 && std::env::var("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref() != Ok("1") {
+            let _ = std::fs::remove_dir_all(&self.0);
+        } else {
+            eprintln!(
+                "retained native PDF export artifacts at {}",
+                self.0.display()
+            );
+        }
     }
 }
 
@@ -170,7 +177,7 @@ fn first_capture(layout: &PdfLayout) -> &PdfCapture {
 fn all_page_direct_captures_export_as_native_shaped_pxt_with_exact_offsets()
 -> Result<(), Box<dyn std::error::Error>> {
     const UNSTABLE: u64 = 0x3feffffffffffc19;
-    let temp = TempDir::new()?;
+    let mut temp = TempDir::new()?;
     let design = temp.0.join("native.mfd");
     let layout = PdfLayout::new(
         "Receipt",
@@ -200,13 +207,14 @@ fn all_page_direct_captures_export_as_native_shaped_pxt_with_exact_offsets()
     assert_eq!(first.region.left.offset.to_bits(), UNSTABLE);
     assert_eq!(first.region.right.offset.to_bits(), (-0.0_f64).to_bits());
     assert_eq!(first.region.bottom.offset.to_bits(), (-0.0_f64).to_bits());
+    temp.1 = true;
     Ok(())
 }
 
 #[test]
 fn native_pdf_labels_preserve_interior_xml_attribute_whitespace()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let mut temp = TempDir::new()?;
     let design = temp.0.join("whitespace.mfd");
     let root_name = "Re\tceipt\n2026\rA";
     let capture_name = "It\tem\nA\rZ";
@@ -229,6 +237,7 @@ fn native_pdf_labels_preserve_interior_xml_attribute_whitespace()
     let restored_layout = restored.project.source_options.pdf.as_ref().unwrap();
     assert_eq!(restored_layout.root_name(), root_name);
     assert_eq!(first_capture(restored_layout).name, capture_name);
+    temp.1 = true;
     Ok(())
 }
 
@@ -236,7 +245,7 @@ fn native_pdf_labels_preserve_interior_xml_attribute_whitespace()
 fn first_page_capture_keeps_lossless_extension_and_native_export_rejects_atomically()
 -> Result<(), Box<dyn std::error::Error>> {
     const UNSTABLE: u64 = 0x3feffffffffffc19;
-    let temp = TempDir::new()?;
+    let mut temp = TempDir::new()?;
     let design = temp.0.join("first.mfd");
     let layout = PdfLayout::new(
         "Receipt",
@@ -256,7 +265,62 @@ fn first_page_capture_keeps_lossless_extension_and_native_export_rejects_atomica
 
     mfd::export(&project, &design)?;
     let template = std::fs::read_to_string(temp.0.join("first-source.pxt"))?;
-    assert!(template.contains("<FerruleLayout version=\"2\">"));
+    // This complete ordinary payload is independent of the file encoder. The
+    // decimal left offset lies inside UNSTABLE's exact binary64 rounding cell.
+    const ORDINARY_LAYOUT: &str = r#"{
+      "root_name": "Receipt",
+      "page_selection": { "kind": "first" },
+      "commands": [{
+        "kind": "capture",
+        "name": "Item",
+        "region": {
+          "left": { "reference": { "kind": "left" }, "offset": 0.9999999999998891 },
+          "top": { "reference": { "kind": "top" }, "offset": 2.5 },
+          "right": { "reference": { "kind": "right" }, "offset": -0.0 },
+          "bottom": { "reference": { "kind": "bottom" }, "offset": -0.0 }
+        },
+        "algorithm": {
+          "kind": "basic_visual", "separate_words": "insert_space", "whitespace": "default"
+        }
+      }]
+    }"#;
+    const EXPECTED_BITS: [u64; 4] = [
+        UNSTABLE,
+        0x4004_0000_0000_0000,
+        0x8000_0000_0000_0000,
+        0x8000_0000_0000_0000,
+    ];
+    let expected_payload: serde_json::Value = serde_json::from_str(ORDINARY_LAYOUT)?;
+    let expected_layout: PdfLayout = serde_json::from_str(ORDINARY_LAYOUT)?;
+    std::fs::write(temp.0.join("ordinary-first-layout.json"), ORDINARY_LAYOUT)?;
+    let document = roxmltree::Document::parse(&template)?;
+    let carriers = document
+        .descendants()
+        .filter(|node| node.has_tag_name("FerruleLayout"))
+        .collect::<Vec<_>>();
+    assert_eq!(carriers.len(), 1);
+    assert_eq!(carriers[0].attribute("version"), Some("1"));
+    let payload = carriers[0].text().ok_or("missing layout payload")?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(payload)?,
+        expected_payload
+    );
+    let coordinate_bits = |layout: &PdfLayout| {
+        let region = &first_capture(layout).region;
+        [
+            region.left.offset.to_bits(),
+            region.top.offset.to_bits(),
+            region.right.offset.to_bits(),
+            region.bottom.offset.to_bits(),
+        ]
+    };
+    for decoded in [
+        mapping::pdf_layout_file::decode_str(payload)?,
+        mapping::pdf_layout_file::decode_bytes(payload.as_bytes())?,
+    ] {
+        assert_eq!(decoded, expected_layout);
+        assert_eq!(coordinate_bits(&decoded), EXPECTED_BITS);
+    }
     let restored = mfd::import(&design)?;
     assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
     let restored_layout = restored.project.source_options.pdf.as_ref().unwrap();
@@ -269,6 +333,34 @@ fn first_page_capture_keeps_lossless_extension_and_native_export_rejects_atomica
         first_capture(restored_layout).region.right.offset.to_bits(),
         (-0.0_f64).to_bits()
     );
+    assert_eq!(restored_layout, &expected_layout);
+    assert_eq!(coordinate_bits(restored_layout), EXPECTED_BITS);
+
+    // Exercise a hand-authored legacy version-2 payload even though a new save
+    // now selects the exact ordinary representation for this layout.
+    let legacy = serde_json::json!({
+        "__ferrule_file": {
+            "kind": "pdf_layout",
+            "version": 2,
+            "float_bits": {
+                "/commands/0/region/left/offset": "3feffffffffffc19",
+                "/commands/0/region/top/offset": "4004000000000000",
+                "/commands/0/region/right/offset": "8000000000000000",
+                "/commands/0/region/bottom/offset": "8000000000000000"
+            }
+        },
+        "document": expected_payload
+    });
+    let legacy_text = serde_json::to_string_pretty(&legacy)?;
+    std::fs::write(temp.0.join("legacy-first-layout.json"), &legacy_text)?;
+    for decoded in [
+        mapping::pdf_layout_file::decode_str(&legacy_text)?,
+        mapping::pdf_layout_file::decode_bytes(legacy_text.as_bytes())?,
+    ] {
+        assert_eq!(decoded, expected_layout);
+        assert_eq!(coordinate_bits(&decoded), EXPECTED_BITS);
+    }
+    temp.1 = true;
     Ok(())
 }
 
@@ -276,7 +368,7 @@ fn first_page_capture_keeps_lossless_extension_and_native_export_rejects_atomica
 fn one_named_page_group_maps_two_pages_through_two_strict_native_cycles()
 -> Result<(), Box<dyn std::error::Error>> {
     const UNSTABLE: u64 = 0x3feffffffffffc19;
-    let temp = TempDir::new()?;
+    let mut temp = TempDir::new()?;
     let layout = PdfLayout::new(
         "Receipt",
         PdfPageSelection::All,
@@ -344,6 +436,7 @@ fn one_named_page_group_maps_two_pages_through_two_strict_native_cycles()
         );
         current = restored.project;
     }
+    temp.1 = true;
     Ok(())
 }
 
@@ -400,7 +493,7 @@ fn other_group_shapes_keep_extensions_and_reject_strict_export_atomically()
         PdfPageSelection::All,
         vec![group(" Page", vec![capture("Text", 0.0, 0.0)])],
     )?;
-    let temp = TempDir::new()?;
+    let mut temp = TempDir::new()?;
     for (name, layout) in [
         ("nested", nested),
         ("mixed", mixed),
@@ -421,5 +514,6 @@ fn other_group_shapes_keep_extensions_and_reject_strict_export_atomically()
         let template = std::fs::read_to_string(sibling)?;
         assert!(template.contains("<FerruleLayout"), "{name}: {template}");
     }
+    temp.1 = true;
     Ok(())
 }

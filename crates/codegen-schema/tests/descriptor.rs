@@ -10,6 +10,34 @@ const LIMIT: usize = 1024 * 1024;
 const LOW: u64 = 0x0031_fa18_2c40_c60d;
 const HIGH: u64 = 0x0031_fa18_2c40_c60e;
 
+// Decoder fixtures select v2 explicitly, independently of encode's version
+// choice. This is the literal wire shape of one Float minimum, not an encoder
+// walk copied into the test. The input bits are the independent oracle.
+const V2_LOW_VALUE: &str = concat!(
+    "FERRULE-EMBEDDED-SCHEMA/2\n",
+    r#"{"name":"Value","repeating":false,"numeric_range":{"kind":"number","bounds":{"minimum":{"value":"FERRULE-F64-BITS:0031fa182c40c60d"}}},"kind":{"kind":"scalar","ty":"float"}}"#,
+);
+
+fn v2_range_payload(name: &str, bits: u64) -> serde_json::Value {
+    let mut payload: serde_json::Value = serde_json::from_str(
+        V2_LOW_VALUE
+            .strip_prefix(V2_PREFIX)
+            .expect("literal v2 fixture"),
+    )
+    .expect("literal range JSON");
+    payload["name"] = serde_json::Value::String(name.into());
+    payload["numeric_range"]["bounds"]["minimum"]["value"] =
+        serde_json::Value::String(format!("{FLOAT_BITS_MARKER_PREFIX}{bits:016x}"));
+    payload
+}
+
+fn v2_descriptor(payload: &serde_json::Value) -> String {
+    format!(
+        "{V2_PREFIX}{}",
+        serde_json::to_string(payload).expect("explicit fixture JSON serializes")
+    )
+}
+
 fn range_schema(name: &str, bits: u64) -> SchemaNode {
     let finite = FiniteF64::new(f64::from_bits(bits)).expect("test bits are finite");
     let range = NumberRange::new(Some(NumberBound::inclusive(finite)), None)
@@ -41,25 +69,25 @@ fn stable_schema_keeps_exact_v1_json() {
 
 #[test]
 fn adjacent_unstable_floats_and_signed_zero_keep_all_bits() {
-    for bits in [LOW, HIGH] {
+    for bits in [LOW, HIGH, 0_f64.to_bits(), (-0_f64).to_bits()] {
         let schema = range_schema("Value", bits);
-        let encoded = encode(&schema, LIMIT).expect("unstable schema encodes");
-        assert!(encoded.starts_with(V2_PREFIX));
-        assert!(encoded.contains(&format!("{FLOAT_BITS_MARKER_PREFIX}{bits:016x}")));
-        let decoded = decode(&encoded, LIMIT).expect("v2 schema decodes");
+        let plain = serde_json::to_string(&schema).expect("ordinary schema JSON");
+        let encoded = encode(&schema, LIMIT).expect("finite schema encodes");
+        assert_eq!(encoded, plain, "ordinary JSON preserves bits {bits:016x}");
+        let decoded = decode(&encoded, LIMIT).expect("ordinary schema decodes");
         assert_eq!(range_bits(&decoded), bits);
         assert_eq!(
             encode(&decoded, LIMIT).expect("canonical re-encode"),
             encoded
         );
-    }
 
-    for bits in [0_f64.to_bits(), (-0_f64).to_bits()] {
-        let schema = range_schema("Zero", bits);
-        let encoded = encode(&schema, LIMIT).expect("signed zero encodes");
+        let forced_v2 = v2_descriptor(&v2_range_payload("Value", bits));
+        let decoded_v2 = decode(&forced_v2, LIMIT).expect("explicit v2 schema decodes");
+        assert_eq!(range_bits(&decoded_v2), bits);
+        assert_eq!(decoded_v2, schema);
         assert_eq!(
-            range_bits(&decode(&encoded, LIMIT).expect("signed zero decodes")),
-            bits
+            encode(&decoded_v2, LIMIT).expect("v2 canonicalizes to ordinary JSON"),
+            plain
         );
     }
 
@@ -70,17 +98,29 @@ fn adjacent_unstable_floats_and_signed_zero_keep_all_bits() {
             range_schema("Zero", (-0_f64).to_bits()),
         ],
     );
-    let encoded = encode(&nested, LIMIT).expect("v2 with signed zero encodes");
-    assert!(encoded.starts_with(V2_PREFIX));
-    assert!(encoded.contains(&format!(
-        "{FLOAT_BITS_MARKER_PREFIX}{:016x}",
-        (-0_f64).to_bits()
-    )));
-    let decoded = decode(&encoded, LIMIT).expect("v2 signed zero decodes");
-    let ir::SchemaKind::Group { children, .. } = decoded.kind else {
-        panic!("root is a group");
-    };
-    assert_eq!(range_bits(&children[1]), (-0_f64).to_bits());
+    let plain = serde_json::to_string(&nested).expect("nested ordinary JSON");
+    let encoded = encode(&nested, LIMIT).expect("nested signed zero encodes");
+    assert_eq!(encoded, plain);
+    let forced_v2 = v2_descriptor(&serde_json::json!({
+        "name": "Root", "repeating": false,
+        "kind": {"kind": "group", "children": [
+            v2_range_payload("Unstable", LOW),
+            v2_range_payload("Zero", (-0_f64).to_bits()),
+        ]},
+    }));
+    for descriptor in [&encoded, &forced_v2] {
+        let decoded = decode(descriptor, LIMIT).expect("nested signed zero decodes");
+        assert_eq!(decoded, nested);
+        let ir::SchemaKind::Group { children, .. } = &decoded.kind else {
+            panic!("root is a group");
+        };
+        assert_eq!(range_bits(&children[0]), LOW);
+        assert_eq!(range_bits(&children[1]), (-0_f64).to_bits());
+        assert_eq!(
+            encode(&decoded, LIMIT).expect("nested canonical re-encode"),
+            plain
+        );
+    }
 }
 
 #[test]
@@ -139,27 +179,44 @@ fn nested_ranges_allowed_values_alternatives_and_predicates_roundtrip() {
     .with_json_dependent_schemas(dependent)
     .expect("dependent schema");
 
+    let plain = serde_json::to_string(&root).expect("ordinary metadata JSON");
     let encoded = encode(&root, LIMIT).expect("all metadata encodes");
-    assert!(encoded.starts_with(V2_PREFIX));
+    assert_eq!(encoded, plain);
+    let forced_v2 = concat!(
+        "FERRULE-EMBEDDED-SCHEMA/2\n",
+        r#"{
+          "name":"Root",
+          "json_dependent_schemas":[{"trigger":"Trigger","predicate":{"kind":"schema","schema":{
+            "name":"Root","kind":{"kind":"group","children":[{
+              "name":"Nested","numeric_range":{"kind":"number","bounds":{"minimum":{"value":"FERRULE-F64-BITS:0031fa182c40c60e"}}},"kind":{"kind":"scalar","ty":"float"}
+            }]}
+          }}}],
+          "kind":{"kind":"group","children":[
+            {"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},
+            {"name":"Allowed","json_allowed_values":[{"type":"int","value":0},{"type":"float","value":"FERRULE-F64-BITS:0031fa182c40c60d"}],"kind":{"kind":"scalar","ty":"float"}},
+            {"name":"Alternative","kind":{"kind":"group","children":[{"name":"Out","kind":{"kind":"scalar","ty":"float"}}],"alternatives":[{"name":"Selected","members":["Out"],"required":["Out"],"constraints":[{"member":"Out","value":{"type":"float","value":"FERRULE-F64-BITS:0031fa182c40c60d"}}]}]}},
+            {"name":"Items","repeating":true,"json_contains":[{"predicate":{"kind":"schema","schema":{"name":"Item","numeric_range":{"kind":"number","bounds":{"minimum":{"value":"FERRULE-F64-BITS:0031fa182c40c60d"}}},"kind":{"kind":"scalar","ty":"float"}}},"range":{"minimum":1}}],"kind":{"kind":"scalar","ty":"float"}}
+          ],"dynamic":{"name":"Dynamic","numeric_range":{"kind":"number","bounds":{"minimum":{"value":"FERRULE-F64-BITS:0031fa182c40c60d"}}},"kind":{"kind":"scalar","ty":"float"}}}
+        }"#,
+    );
     let low_marker = format!("{FLOAT_BITS_MARKER_PREFIX}{LOW:016x}");
     let high_marker = format!("{FLOAT_BITS_MARKER_PREFIX}{HIGH:016x}");
-    assert!(
-        encoded.matches(&low_marker).count() >= 4,
-        "all nested low values marked"
-    );
-    assert!(encoded.contains(&high_marker));
-    let decoded = decode(&encoded, LIMIT).expect("all metadata decodes");
-    assert_eq!(
-        encode(&decoded, LIMIT).expect("canonical re-encode"),
-        encoded
-    );
-    assert_eq!(decoded, root);
+    assert_eq!(forced_v2.matches(&low_marker).count(), 4);
+    assert_eq!(forced_v2.matches(&high_marker).count(), 1);
+    for descriptor in [encoded.as_str(), forced_v2] {
+        let decoded = decode(descriptor, LIMIT).expect("all metadata decodes");
+        assert_eq!(decoded, root);
+        assert_eq!(encode(&decoded, LIMIT).expect("canonical re-encode"), plain);
+        let ordinary_decoded = serde_json::to_value(decoded).expect("decoded metadata tree");
+        let ordinary_root = serde_json::to_value(&root).expect("original metadata tree");
+        assert_eq!(ordinary_decoded, ordinary_root);
+    }
 }
 
 #[test]
 fn marker_validation_and_string_domain_do_not_conflict() {
     let schema = range_schema("Value", LOW);
-    let descriptor = encode(&schema, LIMIT).expect("v2 schema");
+    let descriptor = V2_LOW_VALUE;
     let valid = format!("{FLOAT_BITS_MARKER_PREFIX}{LOW:016x}");
     for invalid in [
         "FERRULE-F64-BITS:0031FA182C40C60D",
@@ -188,11 +245,15 @@ fn marker_validation_and_string_domain_do_not_conflict() {
     named.name = valid.clone();
     let encoded = encode(&named, LIMIT).expect("literal marker name is valid");
     assert_eq!(
-        decode(&encoded, LIMIT)
-            .expect("literal marker name survives")
-            .name,
-        valid
+        encoded,
+        serde_json::to_string(&named).expect("ordinary named schema")
     );
+    let named_v2 = v2_descriptor(&v2_range_payload(&valid, LOW));
+    for descriptor in [&encoded, &named_v2] {
+        let decoded = decode(descriptor, LIMIT).expect("literal marker name survives");
+        assert_eq!(decoded.name, valid);
+        assert_eq!(range_bits(&decoded), LOW);
+    }
 
     let allowed = JsonAllowedValues::new([
         JsonAllowedValue::String("ordinary".into()),
@@ -208,11 +269,26 @@ fn marker_validation_and_string_domain_do_not_conflict() {
                 .expect("string allowed values are valid"),
         ],
     );
-    let literal_encoded = encode(&literal, LIMIT).expect("v2 with literal string marker");
+    let literal_encoded = encode(&literal, LIMIT).expect("ordinary literal string marker");
     assert_eq!(
-        decode(&literal_encoded, LIMIT).expect("literal string decodes"),
-        literal
+        literal_encoded,
+        serde_json::to_string(&literal).expect("ordinary string schema")
     );
+    let literal_v2 = v2_descriptor(&serde_json::json!({
+        "name": "Root", "kind": {"kind": "group", "children": [
+            v2_range_payload("Unstable", LOW),
+            {"name": "Text", "json_allowed_values": [
+                {"type": "string", "value": valid.clone()},
+                {"type": "string", "value": "ordinary"},
+            ], "kind": {"kind": "scalar", "ty": "string"}},
+        ]},
+    }));
+    for descriptor in [&literal_encoded, &literal_v2] {
+        assert_eq!(
+            decode(descriptor, LIMIT).expect("literal string decodes"),
+            literal
+        );
+    }
 
     let foreign = descriptor.replacen(
         "\"name\":",
@@ -244,34 +320,38 @@ fn marker_validation_and_string_domain_do_not_conflict() {
 #[test]
 fn exact_byte_limits_and_ordinary_json_flexibility() {
     let schema = range_schema("Value", LOW);
-    let descriptor = encode(&schema, LIMIT).expect("v2 schema");
-    assert!(decode(&descriptor, descriptor.len()).is_ok());
+    let plain = serde_json::to_string(&schema).expect("ordinary schema JSON");
+    let encoded = encode(&schema, LIMIT).expect("ordinary schema encodes");
+    assert_eq!(encoded, plain);
+    let descriptor = V2_LOW_VALUE;
+    for document in [encoded.as_str(), descriptor] {
+        assert_eq!(
+            decode(document, document.len()).expect("exact byte limit"),
+            schema
+        );
+        assert_eq!(
+            decode(document, document.len() - 1),
+            Err(CodecError::TooLarge {
+                bytes: document.len(),
+                max: document.len() - 1
+            })
+        );
+        let spaced = document.replacen("\"name\":", "\"name\" :", 1);
+        assert_eq!(
+            decode(&spaced, LIMIT).expect("JSON whitespace is accepted"),
+            schema
+        );
+    }
     assert_eq!(
-        decode(&descriptor, descriptor.len() - 1),
-        Err(CodecError::TooLarge {
-            bytes: descriptor.len(),
-            max: descriptor.len() - 1
-        })
+        encode(&schema, plain.len()).expect("exact ordinary encoder limit"),
+        plain
     );
     assert_eq!(
-        encode(&schema, descriptor.len() - 1),
+        encode(&schema, plain.len() - 1),
         Err(CodecError::TooLarge {
-            bytes: descriptor.len(),
-            max: descriptor.len() - 1
+            bytes: plain.len(),
+            max: plain.len() - 1
         })
-    );
-    let plain_unstable = serde_json::to_string(&schema).expect("plain schema serializes");
-    assert_eq!(
-        encode(&schema, plain_unstable.len() - 1),
-        Err(CodecError::TooLarge {
-            bytes: plain_unstable.len(),
-            max: plain_unstable.len() - 1,
-        })
-    );
-    let spaced = descriptor.replacen("\"name\":", "\"name\" :", 1);
-    assert_eq!(
-        decode(&spaced, LIMIT).expect("JSON whitespace is accepted"),
-        schema
     );
     let mut payload: serde_json::Value =
         serde_json::from_str(descriptor.strip_prefix(V2_PREFIX).expect("v2 prefix"))
@@ -287,6 +367,18 @@ fn exact_byte_limits_and_ordinary_json_flexibility() {
     assert_eq!(
         decode(&reordered, LIMIT).expect("field order is accepted"),
         schema
+    );
+    let unicode_v2 = v2_descriptor(&v2_range_payload("é", LOW));
+    assert_eq!(
+        decode(&unicode_v2, unicode_v2.len()).expect("exact v2 UTF-8 byte limit"),
+        range_schema("é", LOW)
+    );
+    assert_eq!(
+        decode(&unicode_v2, unicode_v2.len() - 1),
+        Err(CodecError::TooLarge {
+            bytes: unicode_v2.len(),
+            max: unicode_v2.len() - 1
+        })
     );
     let stable = serde_json::to_string(&range_schema("é", 1.5_f64.to_bits())).expect("v1");
     assert_eq!(
@@ -312,10 +404,31 @@ fn v2_accepts_explicit_null_optional_metadata_but_not_required_slots() {
         ))
         .expect("float metadata");
     let schema = SchemaNode::group("Root", vec![upper, range_schema("Lower", LOW)]);
-    let descriptor = encode(&schema, LIMIT).expect("unstable metadata encodes");
-    let mut payload: serde_json::Value =
-        serde_json::from_str(descriptor.strip_prefix(V2_PREFIX).expect("v2 descriptor"))
-            .expect("payload parses");
+    let plain = serde_json::to_string(&schema).expect("ordinary bounded schema");
+    assert_eq!(
+        encode(&schema, LIMIT).expect("ordinary metadata encodes"),
+        plain
+    );
+    let ordinary_decoded = decode(&plain, LIMIT).expect("ordinary metadata decodes");
+    assert_eq!(ordinary_decoded, schema);
+    let ir::SchemaKind::Group { children, .. } = &ordinary_decoded.kind else {
+        panic!("ordinary root remains a group");
+    };
+    assert_eq!(range_bits(&children[0]), 0_f64.to_bits());
+    assert_eq!(range_bits(&children[1]), LOW);
+    let mut upper_payload = v2_range_payload("Upper", 0_f64.to_bits());
+    upper_payload["numeric_range"]["bounds"]["maximum"] = serde_json::json!({
+        "value": "FERRULE-F64-BITS:0031fa182c40c60d",
+    });
+    let mut payload = serde_json::json!({
+        "name": "Root", "kind": {"kind": "group", "children": [
+            upper_payload, v2_range_payload("Lower", LOW),
+        ]},
+    });
+    assert_eq!(
+        decode(&v2_descriptor(&payload), LIMIT).expect("explicit v2 metadata"),
+        schema
+    );
     for optional in [
         "numeric_range",
         "json_allowed_values",
@@ -437,40 +550,47 @@ fn broad_finite_binary64_metadata_matches_legacy_stability_and_keeps_exact_bits(
         0x3fef_ffff_ffff_fc19,
         0x3fef_ffff_ffff_fc1a,
     ];
-    let mut stable = 0_usize;
-    let mut unstable = 0_usize;
+    let mut ordinary_checked = 0_usize;
+    let mut v2_checked = 0_usize;
     let mut check = |bits: u64| {
         let schema = range_schema("Value", bits);
         let plain = serde_json::to_string(&schema).expect("plain metadata serializes");
-        let legacy_preserves_bits =
-            serde_json::from_str::<SchemaNode>(&plain)
-                .ok()
-                .is_some_and(|decoded| {
-                    range_bits(&decoded) == bits
-                        && serde_json::to_string(&decoded).expect("parsed metadata serializes")
-                            == plain
-                });
+        let ordinary = serde_json::from_str::<SchemaNode>(&plain).expect("finite JSON is exact");
+        assert_eq!(
+            range_bits(&ordinary),
+            bits,
+            "ordinary parser bits {bits:016x}"
+        );
+        assert_eq!(
+            serde_json::to_string(&ordinary).expect("ordinary canonical bytes"),
+            plain
+        );
         let descriptor = encode(&schema, LIMIT).expect("finite metadata encodes");
-        if legacy_preserves_bits {
-            stable += 1;
-            assert_eq!(descriptor, plain, "stable bits {bits:016x} retain v1 bytes");
-        } else {
-            unstable += 1;
-            assert!(
-                descriptor.starts_with(V2_PREFIX),
-                "unstable bits {bits:016x} use v2"
-            );
-            assert!(
-                descriptor.contains(&format!("{FLOAT_BITS_MARKER_PREFIX}{bits:016x}")),
-                "unstable bits {bits:016x} appear as exact marker"
-            );
-        }
-        let decoded = decode(&descriptor, LIMIT).expect("finite metadata decodes");
+        assert_eq!(
+            descriptor, plain,
+            "finite bits {bits:016x} retain ordinary bytes"
+        );
+        let decoded = decode(&descriptor, LIMIT).expect("ordinary finite metadata decodes");
         assert_eq!(
             range_bits(&decoded),
             bits,
-            "finite bits {bits:016x} survive"
+            "ordinary descriptor bits {bits:016x}"
         );
+        ordinary_checked += 1;
+
+        let forced_v2 = v2_descriptor(&v2_range_payload("Value", bits));
+        let decoded_v2 = decode(&forced_v2, LIMIT).expect("explicit finite v2 metadata decodes");
+        assert_eq!(
+            range_bits(&decoded_v2),
+            bits,
+            "v2 descriptor bits {bits:016x}"
+        );
+        assert_eq!(decoded_v2, schema);
+        assert_eq!(
+            encode(&decoded_v2, LIMIT).expect("v2 canonical ordinary bytes"),
+            plain
+        );
+        v2_checked += 1;
     };
     for bits in edges {
         check(bits);
@@ -489,29 +609,64 @@ fn broad_finite_binary64_metadata_matches_legacy_stability_and_keeps_exact_bits(
             finite_checked += 1;
         }
     }
-    assert!(
-        stable > 0 && unstable > 0,
-        "both descriptor versions are exercised"
+    assert_eq!(finite_checked, 4096);
+    assert_eq!(ordinary_checked, edges.len() + 4096);
+    assert_eq!(
+        v2_checked,
+        edges.len() + 4096,
+        "both versions checked for every finite input"
     );
 }
 
 #[test]
 fn v2_keeps_the_ordinary_json_depth_limit() {
     let mut schema = range_schema("Leaf", LOW);
+    let mut payload = v2_range_payload("Leaf", LOW);
     let mut deepest_supported = None;
+    let mut refused_depth = false;
     for level in 0..64 {
         let plain = serde_json::to_string(&schema).expect("nested schema serializes");
-        if serde_json::from_str::<serde_json::Value>(&plain).is_err() {
+        let forced_v2 = v2_descriptor(&payload);
+        let ordinary_parses = serde_json::from_str::<serde_json::Value>(&plain).is_ok();
+        let v2_parses = serde_json::from_str::<serde_json::Value>(
+            forced_v2
+                .strip_prefix(V2_PREFIX)
+                .expect("explicit v2 prefix"),
+        )
+        .is_ok();
+        assert_eq!(v2_parses, ordinary_parses, "v2 adds no JSON containers");
+        if !ordinary_parses {
+            assert!(matches!(
+                decode(&forced_v2, LIMIT),
+                Err(CodecError::Deserialization(_))
+            ));
+            refused_depth = true;
             break;
         }
-        deepest_supported = Some(schema.clone());
-        schema = SchemaNode::group(format!("Level{level}"), vec![schema]);
+        deepest_supported = Some((schema.clone(), forced_v2));
+        let name = format!("Level{level}");
+        schema = SchemaNode::group(&name, vec![schema]);
+        payload = serde_json::json!({
+            "name": name, "repeating": false,
+            "kind": {"kind": "group", "children": [payload]},
+        });
     }
-    let schema = deepest_supported.expect("at least the leaf parses");
-    let encoded = encode(&schema, LIMIT).expect("v2 adds no JSON containers");
-    assert!(encoded.starts_with(V2_PREFIX));
-    let decoded = decode(&encoded, LIMIT).expect("same parser depth supports v2");
-    assert_eq!(encode(&decoded, LIMIT).expect("deep re-encode"), encoded);
+    assert!(
+        refused_depth,
+        "the next container level reaches the ordinary JSON parser limit"
+    );
+    let (schema, forced_v2) = deepest_supported.expect("at least the leaf parses");
+    let plain = serde_json::to_string(&schema).expect("deep ordinary schema JSON");
+    let encoded = encode(&schema, LIMIT).expect("deep ordinary metadata encodes");
+    assert_eq!(encoded, plain);
+    for descriptor in [&encoded, &forced_v2] {
+        let decoded = decode(descriptor, LIMIT).expect("same parser depth supports both versions");
+        assert_eq!(decoded, schema);
+        assert_eq!(
+            encode(&decoded, LIMIT).expect("deep canonical re-encode"),
+            plain
+        );
+    }
 }
 
 #[test]

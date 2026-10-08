@@ -88,15 +88,72 @@ fn rust_encoded_float_metadata_executes_in_generated_csharp()
     );
 
     let schemas = [allowed, alternative, contains, dependent, xml];
-    let descriptors = schemas
-        .iter()
-        .map(|schema| {
-            let encoded =
-                codegen::serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
-            assert!(encoded.starts_with("FERRULE-EMBEDDED-SCHEMA/2\n"));
-            Ok::<_, Box<dyn std::error::Error>>(encoded)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let markers: [&[(&str, u64)]; 5] = [
+        &[
+            ("/json_allowed_values/0/value", 0x0031_fa18_2c40_c60d),
+            ("/json_allowed_values/1/value", 0x0031_fa18_2c40_c60e),
+        ],
+        &[(
+            "/kind/alternatives/0/constraints/0/value/value",
+            0x0031_fa18_2c40_c60d,
+        )],
+        &[
+            (
+                "/json_contains/0/predicate/schema/numeric_range/bounds/minimum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+            (
+                "/json_contains/0/predicate/schema/numeric_range/bounds/maximum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+        ],
+        &[
+            (
+                "/json_dependent_schemas/0/predicate/schema/kind/children/1/numeric_range/bounds/minimum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+            (
+                "/json_dependent_schemas/0/predicate/schema/kind/children/1/numeric_range/bounds/maximum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+        ],
+        &[
+            (
+                "/kind/children/0/numeric_range/bounds/minimum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+            (
+                "/kind/children/0/numeric_range/bounds/maximum/value",
+                0x0031_fa18_2c40_c60d,
+            ),
+        ],
+    ];
+    let mut descriptors = Vec::new();
+    for schema in &schemas {
+        let encoded =
+            codegen::serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
+        assert_eq!(encoded, serde_json::to_string(schema)?);
+        let decoded: SchemaNode = serde_json::from_str(&encoded)?;
+        assert_eq!(
+            serde_json::to_string(&decoded)?,
+            serde_json::to_string(schema)?
+        );
+        descriptors.push(encoded);
+    }
+    for (schema, positions) in schemas.iter().zip(markers) {
+        let mut payload = serde_json::to_value(schema)?;
+        for &(path, bits) in positions {
+            let slot = payload
+                .pointer_mut(path)
+                .expect("literal Float metadata slot");
+            assert_eq!(slot.as_f64().unwrap().to_bits(), bits);
+            *slot = serde_json::Value::String(format!("FERRULE-F64-BITS:{bits:016x}"));
+        }
+        descriptors.push(format!(
+            "FERRULE-EMBEDDED-SCHEMA/2\n{}",
+            serde_json::to_string(&payload)?
+        ));
+    }
 
     let program = Program {
         xml_boundary: None,
@@ -178,36 +235,32 @@ fn write_harness(root: &Path, descriptors: &[String]) -> Result<(), std::io::Err
         directory.join("Harness.csproj"),
         r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup></Project>"#,
     )?;
+    let literal = |index: usize| {
+        format!(
+            "mode == 0 ? {} : {}",
+            serde_json::to_string(&descriptors[index]).unwrap(),
+            serde_json::to_string(&descriptors[index + 5]).unwrap()
+        )
+    };
     let source = HARNESS
-        .replace(
-            "__ALLOWED__",
-            &serde_json::to_string(&descriptors[0]).unwrap(),
-        )
-        .replace(
-            "__ALTERNATIVE__",
-            &serde_json::to_string(&descriptors[1]).unwrap(),
-        )
-        .replace(
-            "__CONTAINS__",
-            &serde_json::to_string(&descriptors[2]).unwrap(),
-        )
-        .replace(
-            "__DEPENDENT__",
-            &serde_json::to_string(&descriptors[3]).unwrap(),
-        )
-        .replace("__XML__", &serde_json::to_string(&descriptors[4]).unwrap());
+        .replace("__ALLOWED__", &literal(0))
+        .replace("__ALTERNATIVE__", &literal(1))
+        .replace("__CONTAINS__", &literal(2))
+        .replace("__DEPENDENT__", &literal(3))
+        .replace("__XML__", &literal(4));
     std::fs::write(directory.join("Program.cs"), source)
 }
 
 const HARNESS: &str = r#"using Ferrule.Runtime;
 
+for (var mode = 0; mode < 2; mode++) {
 var low = BitConverter.Int64BitsToDouble(0x0031fa182c40c60d);
 var high = BitConverter.Int64BitsToDouble(0x0031fa182c40c60e);
-const string allowed = __ALLOWED__;
-const string alternative = __ALTERNATIVE__;
-const string contains = __CONTAINS__;
-const string dependent = __DEPENDENT__;
-const string xml = __XML__;
+var allowed = __ALLOWED__;
+var alternative = __ALTERNATIVE__;
+var contains = __CONTAINS__;
+var dependent = __DEPENDENT__;
+var xml = __XML__;
 
 static FerruleScalar Scalar(double value) => new(FerruleValue.FromDouble(value));
 static FerruleGroup Group(params FerruleField[] fields) => new(fields);
@@ -232,8 +285,9 @@ Reject(() => FerruleJson.SerializeEmbedded(dependent, Group(
 var instance = Group(Field("Amount", Scalar(low)));
 var embeddedXml = FerruleXml.SerializeEmbedded(7, xml, instance, false, false, null);
 var plainXml = FerruleXml.Serialize(7,
-    xml["FERRULE-EMBEDDED-SCHEMA/2\n".Length..], instance, false, false, null);
+    mode == 0 ? xml : xml["FERRULE-EMBEDDED-SCHEMA/2\n".Length..], instance, false, false, null);
 if (embeddedXml != plainXml) throw new Exception("XML descriptor changed output");
+}
 Console.WriteLine("embedded schemas passed");
 "#;
 
