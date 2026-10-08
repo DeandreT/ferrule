@@ -56,6 +56,7 @@ internal static partial class Program
             ("JSON5 UTF16 text policy", Json5SyntaxEncoding),
             ("JSON5 depth and scaled budgets", Json5SyntaxBudgets),
             ("JSON document boundaries", JsonDocumentBoundaries),
+            ("JSON required and undeclared property precedence", JsonRequiredPropertyPrecedence),
             ("JSON duplicate schema declarations", JsonDuplicateDeclarationMaterialization),
             ("JSON duplicate declaration projection", JsonDuplicateDeclarationProjection),
             ("JSON duplicate declaration constraints", JsonDuplicateDeclarationConstraintsAndDynamicRejection),

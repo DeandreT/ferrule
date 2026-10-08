@@ -1295,9 +1295,9 @@ public static partial class FerruleJson
         var properties = OrderedProperties(element);
         ValidatePropertyCount(schema, properties.Count);
         ValidatePropertyNames(schema, properties, budget);
+        ValidateRequired(schema, properties);
         ValidateDeclaredProperties(schema, properties);
         ValidatePatternProperties(schema, properties, budget);
-        ValidateRequired(schema, properties);
         ValidatePropertyDependencies(schema, properties);
         ValidateAlternatives(schema, properties, budget);
         var fields = new List<FerruleField>();
