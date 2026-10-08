@@ -361,7 +361,7 @@ impl NewMappingSetup {
         let ready = |boundary: &MappingBoundary, target| match boundary {
             MappingBoundary::Schema(_) => true,
             MappingBoundary::FixedWidth(draft) => draft.validate().is_ok(),
-            MappingBoundary::Xlsx(draft) => draft.validate().is_ok(),
+            MappingBoundary::Xlsx(draft) => draft.validate_for(target).is_ok(),
             MappingBoundary::Csv(draft) => draft.validate().is_ok(),
             MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
             MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),
