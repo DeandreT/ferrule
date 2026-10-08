@@ -308,6 +308,8 @@ pub(super) struct DemoViewer<'a> {
     bindings: &'a [(String, NodeId)],
     run_pending: &'a mut bool,
     project_changed: &'a mut bool,
+    edited_constant: &'a mut Option<NodeId>,
+    focused_constant: &'a mut Option<NodeId>,
 }
 
 impl<'a> DemoViewer<'a> {
@@ -316,12 +318,16 @@ impl<'a> DemoViewer<'a> {
         bindings: &'a [(String, NodeId)],
         run_pending: &'a mut bool,
         project_changed: &'a mut bool,
+        edited_constant: &'a mut Option<NodeId>,
+        focused_constant: &'a mut Option<NodeId>,
     ) -> Self {
         Self {
             graph,
             bindings,
             run_pending,
             project_changed,
+            edited_constant,
+            focused_constant,
         }
     }
 }
@@ -403,13 +409,15 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
                 Value::String(s) => s.clone(),
                 other => format!("{other:?}"),
             };
-            if ui
-                .add(egui::TextEdit::singleline(&mut text).desired_width(70.0))
-                .changed()
-            {
+            let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(70.0));
+            if response.has_focus() {
+                *self.focused_constant = Some(id);
+            }
+            if response.changed() {
                 *value = Value::String(text);
                 *self.run_pending = true;
                 *self.project_changed = true;
+                *self.edited_constant = Some(id);
             }
         }
         PinInfo::circle()

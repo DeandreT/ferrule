@@ -126,11 +126,15 @@ fn check_both_layouts(definitions: &[(&str, NodeId)], target_wires: &[(NodeId, u
         ];
         let mut run_pending = false;
         let mut project_changed = false;
+        let mut edited_constant = None;
+        let mut focused_constant = None;
         let mut viewer = DemoViewer::new(
             &mut project.graph,
             &bindings,
             &mut run_pending,
             &mut project_changed,
+            &mut edited_constant,
+            &mut focused_constant,
         );
         let actual_pin_counts = (
             viewer.inputs(&CanvasNode::Target),
@@ -149,6 +153,8 @@ fn check_both_layouts(definitions: &[(&str, NodeId)], target_wires: &[(NodeId, u
         assert_eq!(actual_pin_counts, (definitions.len(), 0, 2));
         assert_eq!(restored, original);
         assert!(!run_pending && !project_changed);
+        assert_eq!(edited_constant, None);
+        assert_eq!(focused_constant, None);
     }
 }
 
