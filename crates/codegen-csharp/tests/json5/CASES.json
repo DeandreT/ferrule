@@ -1,0 +1,209 @@
+{
+  "status": "independent contract literals; all prospective92 C# calls UNRUN",
+  "fixtures": [
+    "I",
+    "F",
+    "S",
+    "N",
+    "U",
+    "MessageError",
+    "MessageConstant",
+    "MessageNone",
+    "MessageEmpty",
+    "Context"
+  ],
+  "cases": [
+    {
+      "id": "strict-integer",
+      "fixture": "I",
+      "input": "{\"n\":7}",
+      "output": "{\n  \"n\": 7\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "comments-trailing-comma",
+      "fixture": "I",
+      "input": "/*before*/{n:7,}// eof",
+      "output": "{\n  \"n\": 7\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "unicode-text-single-quotes",
+      "fixture": "S",
+      "input": "{n:'Ada 雪'}",
+      "output": "{\n  \"n\": \"Ada 雪\"\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "hexadecimal",
+      "fixture": "I",
+      "input": "{n:0x10}",
+      "output": "{\n  \"n\": 16\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "leading-point",
+      "fixture": "F",
+      "input": "{n:.5}",
+      "output": "{\n  \"n\": 0.5\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "float-minus-zero",
+      "fixture": "F",
+      "input": "{n:-0.0}",
+      "output": "{\n  \"n\": -0.0\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "nullable-explicit-null",
+      "fixture": "N",
+      "input": "{n:null}",
+      "output": "{\n  \"n\": null\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "integer-two53-plus1",
+      "fixture": "I",
+      "input": "{n:9007199254740993}",
+      "output": "{\n  \"n\": 9007199254740993\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "duplicate-last-wins",
+      "fixture": "I",
+      "input": "{n:1,n:7}",
+      "output": "{\n  \"n\": 7\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "bom-and-json5-whitespace",
+      "fixture": "I",
+      "input": "﻿ {n:7}  ",
+      "output": "{\n  \"n\": 7\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "surrogate-pair-string",
+      "fixture": "S",
+      "input": "{n:'\\uD83D\\uDE00'}",
+      "output": "{\n  \"n\": \"😀\"\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "unquoted-unicode-boundary",
+      "fixture": "U",
+      "input": "{雪:7}",
+      "output": null,
+      "stage": "Syntax",
+      "syntax_kind": "UnsupportedIdentifier",
+      "utf8_offset": 1
+    },
+    {
+      "id": "second-root-json-lines",
+      "fixture": "I",
+      "input": "{n:7}\n{n:8}",
+      "output": null,
+      "stage": "Syntax",
+      "syntax_kind": "TrailingRootValue"
+    },
+    {
+      "id": "unterminated-block-comment",
+      "fixture": "I",
+      "input": "{n:7}/*",
+      "output": null,
+      "stage": "Syntax",
+      "syntax_kind": "UnterminatedComment"
+    },
+    {
+      "id": "nonfinite-NaN",
+      "fixture": "N",
+      "input": "{n:NaN}",
+      "output": null,
+      "stage": "Syntax",
+      "syntax_kind": "NonFiniteNumber",
+      "utf8_offset": 3
+    },
+    {
+      "id": "root-array-not-flat-rows",
+      "fixture": "I",
+      "input": "[{n:7}]",
+      "output": null,
+      "stage": "Input",
+      "syntax_kind": null,
+      "input_kind": "RootObjectRequired"
+    },
+    {
+      "id": "integer-not-exact-float",
+      "fixture": "F",
+      "input": "{n:9007199254740993}",
+      "output": null,
+      "stage": "Input",
+      "syntax_kind": null,
+      "input_kind": "SchemaShape"
+    },
+    {
+      "id": "lazy-message-unselected",
+      "fixture": "MessageError",
+      "input": "{Fail:false}",
+      "output": "{\n  \"n\": 7\n}\n"
+    },
+    {
+      "id": "selected-constant-message",
+      "fixture": "MessageConstant",
+      "input": "{Fail:true}",
+      "stage": "Mapping",
+      "runtime_error": "MappingException",
+      "node": 3,
+      "message": "stop"
+    },
+    {
+      "id": "selected-message-error",
+      "fixture": "MessageError",
+      "input": "{Fail:true}",
+      "stage": "Mapping",
+      "runtime_error": "DivideByZero"
+    },
+    {
+      "id": "raise-no-message",
+      "fixture": "MessageNone",
+      "input": "{}",
+      "stage": "Mapping",
+      "runtime_error": "MappingException",
+      "node": 3,
+      "message": null
+    },
+    {
+      "id": "raise-explicit-empty-message",
+      "fixture": "MessageEmpty",
+      "input": "{}",
+      "stage": "Mapping",
+      "runtime_error": "MappingException",
+      "node": 3,
+      "message": ""
+    },
+    {
+      "id": "context-lazy-path",
+      "fixture": "Context",
+      "input": "{}",
+      "without_context": {
+        "stage": "Mapping",
+        "runtime_error": "MissingRuntimeValue"
+      },
+      "with_context": {
+        "output": "{\n  \"Path\": \"/logical/active.json\"\n}\n"
+      }
+    }
+  ]
+}

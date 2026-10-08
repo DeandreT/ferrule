@@ -424,3 +424,47 @@ internal static class TargetBuilder
         };
 }
 "#;
+
+// Optional companions are never part of ordinary SOURCES/PROJECT.
+pub(crate) const JSON5_SOURCES: [(&str, &str); 9] = [
+    (
+        "Runtime/Json5/FerruleJson5Syntax.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5Syntax.Numbers.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Numbers.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5Syntax.Strings.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Strings.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5Syntax.Errors.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Errors.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5Syntax.Boundary.cs",
+        include_str!(
+            "../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Boundary.cs"
+        ),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5.Boundary.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5.Boundary.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson5.Boundary.Errors.cs",
+        include_str!(
+            "../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5.Boundary.Errors.cs"
+        ),
+    ),
+    (
+        "Runtime/Json5/FerruleJson.Json5Codec.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Codec.cs"),
+    ),
+    (
+        "Runtime/Json5/FerruleJson.Json5Schema.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Schema.cs"),
+    ),
+];

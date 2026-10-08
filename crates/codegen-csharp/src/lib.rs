@@ -4,12 +4,15 @@
 
 mod csv_output;
 mod error;
+mod json5_output;
 mod literal;
 mod mapping;
 mod runtime;
 
 #[cfg(test)]
 mod csv_output_tests;
+#[cfg(test)]
+mod json5_output_tests;
 
 #[cfg(test)]
 mod dynamic_targets_tests;
@@ -22,6 +25,7 @@ mod raise_tests;
 mod xml_input_tests;
 
 pub use error::EmitError;
+pub use json5_output::Json5EmitError;
 
 use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};
 
@@ -65,6 +69,14 @@ pub fn emit_with_csv_output(
     policy: &codegen::CsvOutputPolicy,
 ) -> Result<ArtifactSet, EmitError> {
     csv_output::emit(program, policy)
+}
+
+/// Emit explicit singular closed-object JSON5 input companions.
+///
+/// All four overloads retain strict JSON output and execute the mapping once.
+/// Shared optional-profile admission precedes artifacts; ordinary [`emit`] is unchanged.
+pub fn emit_with_json5(program: &Program) -> Result<ArtifactSet, Json5EmitError> {
+    json5_output::emit(program)
 }
 
 fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitError> {
