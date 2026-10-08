@@ -8,6 +8,8 @@
 //! metadata families become bit strings. This adds no JSON container depth and
 //! never changes ordinary string fields.
 
+pub mod json5_profile;
+
 use ir::{SchemaKind, SchemaNode};
 use serde_json::{Number, Value};
 use std::fmt;

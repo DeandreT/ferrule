@@ -9,6 +9,7 @@ mod csv_output;
 mod diagnostic;
 mod embedded_schema;
 mod join;
+mod json5_boundary;
 mod lower;
 mod model;
 mod validate;
@@ -26,6 +27,10 @@ pub use embedded_schema::{
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality,
+};
+pub use json5_boundary::{
+    Json5BoundaryPolicyError, Json5BoundaryProfile, Json5BoundarySide, prepare_json5_boundary,
+    validate_json5_boundary, validate_json5_format_options,
 };
 pub use lower::lower;
 pub use model::{
