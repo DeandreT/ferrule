@@ -1,0 +1,116 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 6) throw new ArgumentException("manifest inputs case api project originals");
+using var manifest = JsonDocument.Parse(File.ReadAllBytes(args[0]));
+var name = manifest.RootElement.GetProperty(args[2]).GetProperty("path").GetString() ?? throw new InvalidDataException("fixed primary basename");
+if (name.Length == 0 || name.Length > 64 || name.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-' && c != '.')) throw new InvalidDataException("invalid fixed basename");
+var path = Path.Combine(args[1], name); var file = new FileInfo(path);
+if (!file.Exists || (file.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0 || file.Length > 1024 * 1024) throw new InvalidDataException("bounded ordinary primary required");
+var originals = args[5];
+File.WriteAllText(Path.Combine(originals, "actual-primary-path-and-size.json"), JsonSerializer.Serialize(new { path, size = file.Length }));
+var input = File.ReadAllBytes(path); var utf8 = new UTF8Encoding(false, true);
+var context = new FerruleExecutionContext(args[4], args[4], "2026-10-08T00:00:00Z", null);
+var result = args[3] switch
+{
+    "text" => Observe(() => GeneratedMapping.ExecuteXmlMixedOutputs(utf8.GetString(input)), RawText, Text),
+    "text-context" => Observe(() => GeneratedMapping.ExecuteXmlMixedOutputs(utf8.GetString(input), context), RawText, Text),
+    "bytes" => Observe(() => GeneratedMapping.ExecuteXmlBytesMixedOutputs(input), RawBytes, Bytes),
+    "bytes-context" => Observe(() => GeneratedMapping.ExecuteXmlBytesMixedOutputs(input, context), RawBytes, Bytes),
+    _ => throw new ArgumentException("unknown mixed output route"),
+};
+var row = new Dictionary<string, object?> { ["case"] = args[2], ["api"] = args[3], ["result"] = result };
+File.WriteAllText(Path.Combine(originals, "actual-public-result.json"), JsonSerializer.Serialize(row, new JsonSerializerOptions { WriteIndented = true }));
+Console.WriteLine(JsonSerializer.Serialize(row));
+
+Dictionary<string, object?> Document(string text, byte[]? bytes) => new()
+{ ["document"] = text, ["original_return_bytes"] = bytes?.Select(value => (int)value).ToArray() };
+Dictionary<string, object?> Text(XmlMixedExecutionOutputs value)
+{
+    var extras = value.Extras.Select(extra => extra switch
+    {
+        NamedXmlMixedOutput.SingleDocument single => Single(Document(single.Document, null), single.DeclarationIndex, single.Name),
+        NamedXmlMixedOutput.DocumentList list => new Dictionary<string, object?>
+        { ["kind"] = "DocumentList", ["declaration_index"] = list.DeclarationIndex, ["name"] = list.Name,
+            ["documents"] = list.Documents.Select(member => Member(Document(member.Document, null), member.Path)).ToArray() },
+        _ => throw new InvalidDataException("unknown actual mixed text shape"),
+    }).ToArray();
+    return new() { ["kind"] = "ok", ["returned"] = true, ["outputs"] = new { primary = Document(value.Primary, null), extras } };
+}
+Dictionary<string, object?> Bytes(XmlMixedBytesExecutionOutputs value)
+{
+    var extras = value.Extras.Select(extra => extra switch
+    {
+        NamedXmlMixedBytesOutput.SingleDocument single => Single(Document(utf8.GetString(single.Document), single.Document), single.DeclarationIndex, single.Name),
+        NamedXmlMixedBytesOutput.DocumentList list => new Dictionary<string, object?>
+        { ["kind"] = "DocumentList", ["declaration_index"] = list.DeclarationIndex, ["name"] = list.Name,
+            ["documents"] = list.Documents.Select(member => Member(Document(utf8.GetString(member.Document), member.Document), member.Path)).ToArray() },
+        _ => throw new InvalidDataException("unknown actual mixed byte shape"),
+    }).ToArray();
+    return new() { ["kind"] = "ok", ["returned"] = true, ["outputs"] = new { primary = Document(utf8.GetString(value.Primary), value.Primary), extras } };
+}
+Dictionary<string, object?> Single(Dictionary<string, object?> value, int declaration, string name)
+{ value["kind"] = "SingleDocument"; value["declaration_index"] = declaration; value["name"] = name; return value; }
+Dictionary<string, object?> Member(Dictionary<string, object?> value, string path) { value["path"] = path; return value; }
+object RawText(XmlMixedExecutionOutputs value) => new
+{
+    RuntimeType = value.GetType().FullName, value.Primary,
+    Extras = value.Extras.Select(extra => (object)(extra switch
+    {
+        NamedXmlMixedOutput.SingleDocument single => (object)new { RuntimeType = single.GetType().FullName, single.DeclarationIndex, single.Name, single.Document },
+        NamedXmlMixedOutput.DocumentList list => new { RuntimeType = list.GetType().FullName, list.DeclarationIndex, list.Name,
+            Documents = list.Documents.Select(member => new { RuntimeType = member.GetType().FullName, member.Path, member.Document }).ToArray() },
+        _ => throw new InvalidDataException("unknown actual mixed raw text shape"),
+    })).ToArray(),
+};
+object RawBytes(XmlMixedBytesExecutionOutputs value) => new
+{
+    RuntimeType = value.GetType().FullName, value.Primary,
+    Extras = value.Extras.Select(extra => (object)(extra switch
+    {
+        NamedXmlMixedBytesOutput.SingleDocument single => (object)new { RuntimeType = single.GetType().FullName, single.DeclarationIndex, single.Name, single.Document },
+        NamedXmlMixedBytesOutput.DocumentList list => new { RuntimeType = list.GetType().FullName, list.DeclarationIndex, list.Name,
+            Documents = list.Documents.Select(member => new { RuntimeType = member.GetType().FullName, member.Path, member.Document }).ToArray() },
+        _ => throw new InvalidDataException("unknown actual mixed raw byte shape"),
+    })).ToArray(),
+};
+object RuntimePayload(FerruleRuntimeException value) => new
+{
+    Error = value.Error.ToString(), value.Message, value.Node, value.Function, value.ExpectedArity, value.ActualArity,
+    FoundKind = value.FoundKind?.ToString(), AggregateOperation = value.AggregateOperation?.ToString(), value.Detail,
+    RequestedItems = value.RequestedItems?.ToString(), MaximumItems = value.MaximumItems?.ToString(), value.MaximumDepth,
+    RuntimeValue = value.RuntimeValue?.ToString(), value.FailureRule, value.MappingFailureMessage, value.MappingExceptionMessage,
+    value.Join, value.UserFunction, value.FunctionParameter, ExpectedScalarType = value.ExpectedScalarType?.ToString(),
+    value.RuntimeParameter, value.SourceField, value.FoundInstance, PrimaryRoot = value.PrimaryRoot?.ToString(),
+};
+Dictionary<string, object?> Observe<T>(Func<T> call, Func<T, object> raw, Func<T, Dictionary<string, object?>> success)
+{
+    try
+    {
+        var value = call();
+        File.WriteAllText(Path.Combine(originals, "original-typed-result.txt"), JsonSerializer.Serialize(raw(value), new JsonSerializerOptions { WriteIndented = true }));
+        return success(value);
+    }
+    catch (XmlMixedExecutionException error)
+    {
+        File.WriteAllText(Path.Combine(originals, "original-typed-result.txt"), error.ToString());
+        var chain = new List<object>();
+        for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+            chain.Add(new { Type = cause.GetType().FullName, cause.Message, FullText = cause.ToString(),
+                RuntimePayload = cause is FerruleRuntimeException runtime ? RuntimePayload(runtime) : null });
+        File.WriteAllText(Path.Combine(originals, "original-complete-error-chain.json"), JsonSerializer.Serialize(chain, new JsonSerializerOptions { WriteIndented = true }));
+        var boundary = error.Boundary; var runtimeCause = boundary.InnerException as FerruleRuntimeException;
+        var resource = boundary.InnerException as FerruleXmlOutputSetResourceException;
+        return new()
+        {
+            ["kind"] = boundary.Kind.ToString(), ["returned"] = false, ["outputs"] = null,
+            ["owner"] = error.Owner?.ToString(), ["boundary_bytes"] = boundary.Bytes, ["boundary_limit"] = boundary.Limit,
+            ["boundary_preserved"] = ReferenceEquals(error.InnerException, boundary), ["runtime_cause_present"] = runtimeCause is not null,
+            ["mapping_exception"] = runtimeCause is { Error: FerruleRuntimeError.MappingException } ? new { node = runtimeCause.Node, message = runtimeCause.MappingExceptionMessage } : null,
+            ["resource"] = resource is null ? null : new { resource = resource.Resource, observed_count = resource.ObservedCount, limit = resource.Limit },
+            ["cause_type"] = boundary.InnerException?.GetType().FullName, ["chain"] = chain,
+        };
+    }
+}

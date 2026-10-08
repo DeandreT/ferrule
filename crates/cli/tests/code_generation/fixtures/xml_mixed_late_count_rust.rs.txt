@@ -1,0 +1,54 @@
+use ferrule_generated_mapping as generated;
+use codegen_runtime::{ExecutionContext,RuntimeError,XmlBoundaryError,XmlOutputSetResourceError};
+use serde_json::{Value as Json,json};
+use std::{error::Error,fmt::Debug,path::Path};
+fn document(text:String,bytes:Option<Vec<u8>>)->Json {json!({"document":text,"original_return_bytes":bytes})}
+fn text(value:generated::XmlMixedExecutionOutputs)->Result<Json,Box<dyn Error>> {
+    let extras=value.extras.into_iter().map(|extra|match extra {
+        generated::NamedXmlMixedOutput::SingleDocument{declaration_index,name,document:xml}=>{
+            let mut value=document(xml,None);value["kind"]=json!("SingleDocument");value["declaration_index"]=json!(declaration_index);value["name"]=json!(name);value},
+        generated::NamedXmlMixedOutput::DocumentList{declaration_index,name,documents}=>json!({"kind":"DocumentList","declaration_index":declaration_index,"name":name,
+            "documents":documents.into_iter().map(|member|{let mut value=document(member.document,None);value["path"]=json!(member.path);value}).collect::<Vec<_>>()})
+    }).collect::<Vec<_>>();Ok(json!({"kind":"ok","returned":true,"outputs":{"primary":document(value.primary,None),"extras":extras}}))
+}
+fn bytes(value:generated::XmlMixedBytesExecutionOutputs)->Result<Json,Box<dyn Error>> {
+    fn buffer(value:Vec<u8>)->Result<Json,Box<dyn Error>> {Ok(document(String::from_utf8(value.clone())?,Some(value)))}
+    let extras=value.extras.into_iter().map(|extra|->Result<Json,Box<dyn Error>> {Ok(match extra {
+        generated::NamedXmlMixedBytesOutput::SingleDocument{declaration_index,name,document:xml}=>{
+            let mut value=buffer(xml)?;value["kind"]=json!("SingleDocument");value["declaration_index"]=json!(declaration_index);value["name"]=json!(name);value},
+        generated::NamedXmlMixedBytesOutput::DocumentList{declaration_index,name,documents}=>json!({"kind":"DocumentList","declaration_index":declaration_index,"name":name,
+            "documents":documents.into_iter().map(|member|->Result<Json,Box<dyn Error>> {let mut value=buffer(member.document)?;value["path"]=json!(member.path);Ok(value)}).collect::<Result<Vec<_>,_>>()?})
+    })}).collect::<Result<Vec<_>,_>>()?;Ok(json!({"kind":"ok","returned":true,"outputs":{"primary":buffer(value.primary)?,"extras":extras}}))
+}
+fn observed<T:Debug>(result:Result<T,generated::XmlMixedExecutionError>,directory:&Path,success:impl FnOnce(T)->Result<Json,Box<dyn Error>>)->Result<Json,Box<dyn Error>> {
+    std::fs::write(directory.join("original-typed-result.txt"),format!("{result:#?}\n"))?;
+    match result {Ok(value)=>success(value),Err(error)=>{
+        let mut chain=Vec::new();let mut current:Option<&dyn Error>=Some(&error);
+        while let Some(cause)=current{chain.push(json!({"debug":format!("{cause:?}"),"display":cause.to_string()}));current=cause.source();}
+        std::fs::write(directory.join("original-complete-error-chain.json"),serde_json::to_vec_pretty(&chain)?)?;
+        let original=error.boundary.source();let runtime=original.and_then(|cause|cause.downcast_ref::<RuntimeError>());
+        let mapping=match runtime{Some(RuntimeError::MappingException{node,message})=>Some(json!({"node":node,"message":message})),_=>None};
+        let resource=original.and_then(|cause|cause.downcast_ref::<XmlOutputSetResourceError>()).map(|value|json!({"resource":value.resource,"observed_count":value.observed_count,"limit":value.limit}));
+        let preserved=error.source().and_then(|cause|cause.downcast_ref::<XmlBoundaryError>()).is_some_and(|boundary|std::ptr::eq(boundary,error.boundary.as_ref()));
+        Ok(json!({"kind":format!("{:?}",error.boundary.kind),"returned":false,"outputs":null,"owner":error.owner.as_ref().map(|owner|format!("{owner:?}")),
+            "boundary_bytes":error.boundary.bytes,"boundary_limit":error.boundary.limit,"boundary_preserved":preserved,"runtime_cause_present":runtime.is_some(),
+            "mapping_exception":mapping,"resource":resource,"chain":chain}))
+    }}
+}
+fn main()->Result<(),Box<dyn Error>> {
+    let args=std::env::args().collect::<Vec<_>>();if args.len()!=7{return Err("manifest inputs case api project originals".into());}
+    let manifest:Json=serde_json::from_slice(&std::fs::read(&args[1])?)?;let case=manifest.get(&args[3]).ok_or("fixed case missing")?;
+    let name=case["path"].as_str().ok_or("fixed primary basename")?;if name.is_empty() || name.len()>64 || !name.bytes().all(|byte|byte.is_ascii_alphanumeric() || matches!(byte,b'-'|b'.')) {return Err("invalid fixed basename".into());}
+    let path=Path::new(&args[2]).join(name);let metadata=std::fs::symlink_metadata(&path)?;if !metadata.file_type().is_file() || metadata.len()>1024*1024{return Err("bounded ordinary primary required".into());}
+    let original=Path::new(&args[6]);std::fs::write(original.join("actual-primary-path-and-size.json"),serde_json::to_vec(&json!({"path":path,"size":metadata.len()}))?)?;
+    let input=std::fs::read(&path)?;let context=ExecutionContext::new(Path::new(&args[5])).with_current_datetime("2026-10-08T00:00:00Z");let api=args[4].as_str();
+    let result=match api {
+        "text"=>observed(generated::execute_xml_mixed_outputs(std::str::from_utf8(&input)?),original,text)?,
+        "text-context"=>observed(generated::execute_xml_mixed_outputs_with_context(std::str::from_utf8(&input)?,&context),original,text)?,
+        "bytes"=>observed(generated::execute_xml_bytes_mixed_outputs(&input),original,bytes)?,
+        "bytes-context"=>observed(generated::execute_xml_bytes_mixed_outputs_with_context(&input,&context),original,bytes)?,
+        _=>return Err("unknown mixed output route".into()),
+    };
+    let row=json!({"case":args[3],"api":api,"result":result});std::fs::write(original.join("actual-public-result.json"),serde_json::to_vec_pretty(&row)?)?;
+    println!("{}",serde_json::to_string(&row)?);Ok(())
+}
