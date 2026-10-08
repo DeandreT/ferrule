@@ -23,7 +23,9 @@ choose a lane and avoid conflicting changes.
 
 ## Ownership and readiness
 
-Snapshot: 2026-10-08 11:39:02 UTC. Completed rows record merged increments;
+Snapshot: 2026-10-08 16:20:00 UTC, against merged main
+[`aabe158`](https://github.com/DeandreT/ferrule/commit/aabe158f117011aeda46382a5073bfa4b7123d3d).
+Completed rows record merged increments;
 active maintainer lanes are assigned to `DeandreT`. Unassigned `help wanted`
 lanes remain available. Available does not mean an implementation contract has
 already been agreed. Design-first issues must settle their stated contract before
@@ -31,17 +33,17 @@ code changes. Check the live issue for later status and ownership updates.
 
 | Issue | Owner | Next gate | Primary ownership / coordination |
 | --- | --- | --- | --- |
-| [#89 Coordination](https://github.com/DeandreT/ferrule/issues/89) | Complete; #109 merged | Current status refresh in #149 | Docs; coordinate all overlaps |
+| [#89 Coordination](https://github.com/DeandreT/ferrule/issues/89) | Complete; #109 merged | Current status refresh in #158 | Docs; coordinate all overlaps |
 | [#90 Computed JSON properties](https://github.com/DeandreT/ferrule/issues/90) | Complete; #110 merged | Local GUI checks complete; desktop separate | Scope inspector, workspace and GUI tests |
 | [#91 Isolated Value map conversion](https://github.com/DeandreT/ferrule/issues/91) | Complete; [#123](https://github.com/DeandreT/ferrule/pull/123) merged | Local conversion gates complete; ordinary #113 remains a distinct context | Runtime helpers and both emitters |
 | [#92 Workbook desktop persistence](https://github.com/DeandreT/ferrule/issues/92) | Complete; [#132](https://github.com/DeandreT/ferrule/pull/132) merged | Flat fixture create/save/reopen complete; other workflows separate | Desktop lane; #98 extends primary source setup |
 | [#93 XML root annotations](https://github.com/DeandreT/ferrule/issues/93) | DeandreT; active | Metadata observation pending | XML/.mfd metadata; shared display |
 | [#94 JSON object conformance cells](https://github.com/DeandreT/ferrule/issues/94) | Complete; [#129](https://github.com/DeandreT/ferrule/pull/129) merged | Proposal/validator checks complete; no Supported cells | Conformance docs and validator fixtures; survey unchanged |
 | [#95 Generated XML limit coverage](https://github.com/DeandreT/ferrule/issues/95) | Complete; [#121](https://github.com/DeandreT/ferrule/pull/121) merged | Source/link review complete; rendering unverified; cohorts recorded in #133 | XML coverage index and host guide |
-| [#96 Generated JSON5 adapters](https://github.com/DeandreT/ferrule/issues/96) | DeandreT; active | Syntax and shared policy merged; public adapters pending | Parent contract; coordinate #142–#145; strict JSON unchanged |
+| [#96 Generated JSON5 adapters](https://github.com/DeandreT/ferrule/issues/96) | Complete; initial scope closed | All initial language/public/resource increments merged | Parent contract; broader identifiers/native metadata remain separate |
 | [#97 Typed Value map cells](https://github.com/DeandreT/ferrule/issues/97) | Complete; [#128](https://github.com/DeandreT/ferrule/pull/128) merged | Local editor gates complete after #91/#114; desktop separate | Cell editor; no coercion changes |
 | [#98 Transposed workbook source setup](https://github.com/DeandreT/ferrule/issues/98) | Complete; [#150](https://github.com/DeandreT/ferrule/pull/150) merged | Local and scoped desktop setup/save/reopen checks complete; workbook execution checked locally | Primary-source workbook wizard; hierarchical/named setup excluded |
-| [#99 Browser edit history](https://github.com/DeandreT/ferrule/issues/99) | Unassigned | Browser history contract ready | Web app/canvas; native history unchanged |
+| [#99 Browser edit history](https://github.com/DeandreT/ferrule/issues/99) | DeandreT; active | Source preparation; WASM and browser qualification pending | Web app/canvas; native history unchanged |
 | [#100 Required-only reference siblings](https://github.com/DeandreT/ferrule/issues/100) | Unassigned | Conservative exact subset design | JSON Schema facade; coordinate #101 |
 | [#101 String-or-Int range constraints](https://github.com/DeandreT/ferrule/issues/101) | Unassigned | Model/backend contract first | IR, JSON constraints and both validators |
 | [#102 Scalar-sequence composition](https://github.com/DeandreT/ferrule/issues/102) | Unassigned | Design milestone; code is a follow-on | Mapping/engine/codegen contract review |
@@ -61,18 +63,22 @@ code changes. Check the live issue for later status and ownership updates.
 | [#118 XML loader count boundary](https://github.com/DeandreT/ferrule/issues/118) | Complete; [#138](https://github.com/DeandreT/ferrule/pull/138) merged | Real callback and next-reservation checks complete | Dynamic input child; no counter priming |
 | [#119 XML mapping/count priority](https://github.com/DeandreT/ferrule/issues/119) | Complete; [#139](https://github.com/DeandreT/ferrule/pull/139) merged | Lazy last-row Raise before mixed count checked | Mixed output child; no pre-target global rule substitute |
 | [#122 Numeric codec documentation](https://github.com/DeandreT/ferrule/issues/122) | Complete; [#124](https://github.com/DeandreT/ferrule/pull/124) merged | Source/link/Rustdoc checks complete; rendering unverified | Project-files guide, host-guide paragraph and opening Rustdoc |
-| [#130 Native JSON5 nonfinite tokens](https://github.com/DeandreT/ferrule/issues/130) | Unassigned | Confirm nullable witness before changing native behavior | Native reader/nullable projection; distinct from #96 |
+| [#130 Native JSON5 nonfinite tokens](https://github.com/DeandreT/ferrule/issues/130) | DeandreT; active | Nullable public-reader defect confirmed; native admission fix and broader checks pending | Native reader/nullable projection; generated adapters and metadata excluded |
 | [#133 XML qualification documentation](https://github.com/DeandreT/ferrule/issues/133) | Complete; [#147](https://github.com/DeandreT/ferrule/pull/147) merged | Source/link review of four completed cohorts and measurements | XML coverage index and memory guide; no new measurements |
 | [#134 Rust JSON5 syntax](https://github.com/DeandreT/ferrule/issues/134) | Complete; [#140](https://github.com/DeandreT/ferrule/pull/140) merged | Shared syntax/scaled-limit checks complete; public projection separate | Pure normalizer and syntax controls |
 | [#135 JSON5 Unicode identifiers](https://github.com/DeandreT/ferrule/issues/135) | Unassigned | Shared frozen membership tables and both-language contract first | Optional Unicode extension; initial ASCII subset stays explicit |
 | [#136 C# JSON5 syntax](https://github.com/DeandreT/ferrule/issues/136) | Complete; [#146](https://github.com/DeandreT/ferrule/pull/146) merged | Shared syntax/scaled-limit checks complete; public projection separate | Package-free pure normalizer; ordinary source set unchanged |
 | [#141 JSON5 closed-object eligibility](https://github.com/DeandreT/ferrule/issues/141) | Complete; [#151](https://github.com/DeandreT/ferrule/pull/151) merged | Policy checks complete with #148; public adapters separate | Shared schema/profile predicate and contract |
-| [#142 Rust JSON5 adapters](https://github.com/DeandreT/ferrule/issues/142) | DeandreT; active | Source preparation; adapter qualification pending against committed #141/#151 policy | Optional runtime codec/emitter; syntax #134/#140 merged |
-| [#143 C# JSON5 adapters](https://github.com/DeandreT/ferrule/issues/143) | DeandreT; active | Source preparation; adapter qualification pending against committed #141/#151 policy | Optional package-free codec/emitter; syntax #136/#146 merged |
-| [#144 JSON5 generation and small hosts](https://github.com/DeandreT/ferrule/issues/144) | DeandreT; active | Waits for #142/#143; all 184 small public calls must pass | Explicit CLI opt-in and dedicated public hosts |
-| [#145 JSON5 byte boundaries](https://github.com/DeandreT/ferrule/issues/145) | DeandreT; active | Waits for all #144 small calls before 48 opt-in physical calls | Serial resource fixtures and scoped measurements |
+| [#142 Rust JSON5 adapters](https://github.com/DeandreT/ferrule/issues/142) | Complete; [#153](https://github.com/DeandreT/ferrule/pull/153) merged | Local optional codec/emitter checks complete; physical gate separate | Optional Rust APIs only; ordinary strict defaults preserved |
+| [#143 C# JSON5 adapters](https://github.com/DeandreT/ferrule/issues/143) | Complete; [#155](https://github.com/DeandreT/ferrule/pull/155) merged | Local smoke/emitter/public checks complete; physical gate separate | Optional package-free C# APIs only; ordinary source set preserved |
+| [#144 JSON5 generation and small hosts](https://github.com/DeandreT/ferrule/issues/144) | Complete; [#156](https://github.com/DeandreT/ferrule/pull/156) merged | All 184 small compiled public calls and CLI checks complete | Explicit CLI opt-in; 23 literal cases across four routes per language |
+| [#145 JSON5 byte boundaries](https://github.com/DeandreT/ferrule/issues/145) | Complete; [#159](https://github.com/DeandreT/ferrule/pull/159) merged | All 48 physical calls pass after all 184 small prerequisites | Serial resource fixtures; whole-host RSS is not an API-only peak or RAM ceiling |
 | [#148 JSON5 descriptor duplicates](https://github.com/DeandreT/ferrule/issues/148) | Complete; [#151](https://github.com/DeandreT/ferrule/pull/151) merged | Duplicate/error-priority controls complete with #141 | Descriptor decoder guard; ordinary JSON codec unchanged |
-| [#149 Current status refresh](https://github.com/DeandreT/ferrule/issues/149) | DeandreT; active | Two-doc source/link/dependency review | Roadmap and this map; no implementation |
+| [#149 Current status refresh](https://github.com/DeandreT/ferrule/issues/149) | Complete; [#152](https://github.com/DeandreT/ferrule/pull/152) merged | Source/link/dependency checks complete; rendering unverified; superseded by #158 | Roadmap and this map; no implementation |
+| [#154 JSON5 guide refresh](https://github.com/DeandreT/ferrule/issues/154) | Complete; [#161](https://github.com/DeandreT/ferrule/pull/161) merged | Public routes, all 184 small/all 48 physical calls and whole-host RSS documented | JSON5 contract guide only; rendering unverified |
+| [#157 Direct-Program Rust emission](https://github.com/DeandreT/ferrule/issues/157) | Unassigned | Define unused-expression retention after validation; denied-warning controls | Ordinary Rust emitter only; exclude lowering and #145 fixture changes |
+| [#158 JSON5 progress and lanes](https://github.com/DeandreT/ferrule/issues/158) | DeandreT; active | Two-doc source/link/dependency review against merged initial JSON5 increments | Roadmap and this map; coordinate separate #154 guide |
+| [#160 C# JSON5 allocation attribution](https://github.com/DeandreT/ferrule/issues/160) | Unassigned | Matched profiling/retention plan before attribution conclusions | Generated C# benchmark/report only; exclude production optimization and filesystem #107 |
 
 Computed JSON properties retain their #110 local qualification; normal desktop
 authoring remains separate. The #111/#112 precision increment merged in #120,
@@ -104,16 +110,36 @@ These cohorts do not establish external execution, general design coverage or a
 universal RAM limit. Source reviews and emission passes remain separate from
 compiled public calls.
 
-Pure JSON5 syntax is merged in #140/#146. The shared policy #141 and descriptor
-duplicate guard #148 are merged together in #151 after focused/full affected
-policy checks, formatting and strict warnings. The [companion contract](generated-json5-contract.md)
-keeps policy admission separate from generated mapping APIs. #142 and #143 can
-continue parallel source preparation and their separate qualification against
-that committed policy; neither language adapter is qualified yet. #144 must
-complete all 184 small public calls across both languages
-before #145 starts its 48 opt-in physical boundary calls. Ordinary strict JSON
-APIs and artifact sets stay unchanged. Unicode identifiers #135 and native
-metadata #106/#130 remain independent follow-ons.
+Pure JSON5 syntax is merged in #140/#146, and the shared policy #141 with its
+descriptor duplicate guard #148 is merged in #151. Explicit Rust and C#
+companions are merged in #153/#155; CLI opt-in and the complete 184 small compiled
+public calls are merged in #156. The 23 public cases comprise 17 representation
+and six mapping/context cases, each across four routes in both languages. This
+cohort is distinct from the 75-case pure syntax inventory. Ordinary strict JSON
+APIs and default artifact sets stay unchanged. The complete 48 serial physical
+calls in #145 are merged in #159 after a fresh complete small prerequisite
+cohort: original input, normalized input and strict output exact/+1 workloads
+across all eight public language/API routes. Full results/typed causes, source
+and library guards, and normal process closure are retained. Whole-host RSS
+includes startup, input handling, public mapping, output retention and host
+checks; it establishes neither an API-only peak, a RAM ceiling nor streaming.
+
+The [companion contract](generated-json5-contract.md) separates policy, syntax,
+projection, mapping and strict output. Its #154 refresh is merged in
+[#161](https://github.com/DeandreT/ferrule/pull/161), including all physical
+boundary results and measured whole-host memory ranges. The unassigned
+#160 benchmark/report lane will attribute generated C# allocation peaks through
+matched profiling and uninstrumented controls, excluding production optimization
+and the filesystem multi-output trials in #107. The unassigned #157 follow-on
+addresses unused-expression retention in direct-Program Rust emission after
+validation; it does not widen the JSON5 profile or change #145 fixtures. Unicode
+identifiers #135, native metadata #106 and the claimed native-token verification
+#130 remain independent. The #130 public-reader witness confirmed eight nonfinite
+numeric inputs become
+JSON null under a nullable Float schema; legitimate null and finite controls
+passed. The native admission fix and broader regressions are pending. The initial
+#96 companion scope is complete and closed. Broader identifier membership and
+native/desktop contracts remain separate.
 
 ## Dependencies and shared areas
 
@@ -129,12 +155,14 @@ flowchart TB
     C115["#115 Earlier status: merged"]
     C122["#122 Numeric codec docs: merged"]
     C133["#133 XML evidence docs: merged"]
-    C149["#149 Current status"]
+    C149["#149 Earlier status: merged"]
+    C154["#154 JSON5 guide: merged"]
+    C158["#158 Current status refresh"]
     subgraph gui["GUI and browser"]
         G90["#90 Computed properties: merged"]
         G97["#97 Typed cells: locally qualified"]
         G98["#98 Transposed setup: qualified"]
-        G99["#99 Browser history: available"]
+        G99["#99 Browser history: active"]
     end
     subgraph generated["Generated execution"]
         G91["#91 Isolated conversion: merged"]
@@ -147,17 +175,18 @@ flowchart TB
         G117["#117 XML output bytes: qualified"]
         G118["#118 XML loader count: qualified"]
         G119["#119 XML error priority: qualified"]
+        G157["#157 Direct-Program Rust emission: available"]
     end
     subgraph json5["Explicit generated JSON5 companions"]
-        G96["#96 Parent contract: active"]
+        G96["#96 Initial companion scope: complete"]
         G134["#134 Rust syntax: merged"]
         G136["#136 C# syntax: merged"]
         G148["#148 Descriptor duplicate guard: merged"]
         G141["#141 Shared eligibility policy: merged"]
-        G142["#142 Rust adapters: source preparation"]
-        G143["#143 C# adapters: source preparation"]
-        G144["#144 All 184 small public calls"]
-        G145["#145 Later 48 physical calls"]
+        G142["#142 Rust adapters: merged"]
+        G143["#143 C# adapters: merged"]
+        G144["#144 All 184 small calls: qualified"]
+        G145["#145 All 48 physical calls: qualified"]
         G135["#135 Unicode identifiers: available"]
     end
     subgraph schema["Schema interoperability"]
@@ -171,13 +200,14 @@ flowchart TB
         G104["#104 PDF isolation: available"]
         G105["#105 Offline bundle: available"]
         G107["#107 JSON memory trials: available"]
+        G160["#160 C# allocation attribution: available"]
     end
     subgraph observed["Desktop and native metadata"]
         G92["#92 Flat workbook persistence: qualified"]
         G93["#93 XML annotations: pending"]
         G106["#106 JSON5 metadata: available"]
         G108["#108 Mapping-path workflow: available"]
-        G130["#130 Native nonfinite tokens: available"]
+        G130["#130 Native token admission: active"]
     end
     C89 -.-> G94
     C89 -.-> G90
@@ -187,6 +217,9 @@ flowchart TB
     C89 -.-> C115
     C89 -.-> C122
     C89 -.-> C149
+    C89 -.-> C158
+    C149 -.->|Same two docs| C158
+    C154 -.->|Separate guide; coordinate status| C158
     C115 -.->|Same two docs| C149
     C122 -.->|Separate docs files| C149
     C133 -.->|Separate docs files| C149
@@ -223,6 +256,14 @@ flowchart TB
     G142 --> G144
     G143 --> G144
     G144 -->|All small calls before any large call| G145
+    G142 -->|Public API guide claims| C154
+    G143 -->|Public API guide claims| C154
+    G144 -->|Compiled small-cohort status| C154
+    G145 -->|Resource status only| C154
+    G145 -->|Resource row only| C158
+    G142 -.->|Shared Rust emitter; separate scope| G157
+    G145 -.->|Shared workload/evidence; no optimization| G160
+    G143 -.->|Shared C# boundary; profiling only| G160
     G135 -.-> G96
     G93 -.-> G106
     G92 -.-> G108
