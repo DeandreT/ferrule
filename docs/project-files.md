@@ -2,13 +2,13 @@
 
 The CLI, native editor, and browser editor share the mapping crate's project
 file codec. Pipeline files use the same codec for all embedded projects.
-Existing unmarked JSON files keep their original parsing behavior.
+Existing unmarked files retain their ordinary JSON wire format.
 
-Saving a project must preserve its values when it is reopened. Some finite
-floating-point values change by one representable step when their shortest
-JSON decimal is decoded by the default parser. That can change a numeric
-schema bound, a constant, a value-map entry, a user function, or a PDF position.
-The file codec preserves the original binary64 bits, including negative zero.
+Saving a project must preserve its values when it is reopened. The shared
+JSON parser now correctly rounds finite floating-point tokens. Earlier parsing
+could shift a shortest-decimal value by one representable step. The file codec
+verifies the complete model and preserves floating-point bits, including
+negative zero.
 
 Files that round-trip exactly retain the ordinary JSON form. Other files use
 a versioned JSON envelope containing the document and its floating-point bit

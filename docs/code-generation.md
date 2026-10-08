@@ -268,9 +268,10 @@ constructed property paths do not inherit the raw JSON reader's depth limit.
 Malformed path descriptors retain typed function errors.
 
 Generated JSON outputs use the interpreter's pretty formatting, Unicode
-escaping, and floating-point text in both languages. Output constraints inspect
-the normalized value before serialization. Reparsing that text can change a
-floating-point value, so generated Rust validates its normalized JSON tree
+escaping, and floating-point text in both languages. The Rust and C# JSON
+runtimes now correctly round accepted floating-point tokens; integer token
+classification remains separate. Output constraints inspect the normalized
+value before serialization. Generated Rust validates its normalized JSON tree
 directly; valid arbitrary-JSON leaves also retain their own input depth check
 when nested into a deeper final target document.
 
