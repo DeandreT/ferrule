@@ -1,0 +1,66 @@
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::{execute, execute_with_sources};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (index, (integer, marker)) in [
+        (9_007_199_254_740_991, "converted"),
+        (9_007_199_254_740_992, "converted"),
+        (9_007_199_254_740_993, "original"),
+        (9_007_199_254_740_994, "converted"),
+        (-9_007_199_254_740_991, "converted"),
+        (-9_007_199_254_740_992, "converted"),
+        (-9_007_199_254_740_993, "original"),
+        (i64::MIN, "converted"),
+        (i64::MIN + 1, "original"),
+        (i64::MAX, "original"),
+    ].into_iter().enumerate() {
+        let input = source(integer, false, false);
+        std::fs::write(format!("host-case-{index}-input.txt"), format!("{input:#?}\n"))?;
+        let expected = expected(marker);
+        std::fs::write(format!("host-case-{index}-literal-expected.txt"), format!("{expected:#?}\n"))?;
+        for (route, with_sources) in [("typed", false), ("typed-empty-named", true)] {
+            let result = if with_sources { execute_with_sources(&input, &[]) } else { execute(&input) };
+            std::fs::write(format!("host-case-{index}-{route}-raw.txt"), format!("{result:#?}\n"))?;
+            assert_eq!(result?, expected, "integer {integer}, route {route}");
+        }
+    }
+    for (name, selected, function_selected) in [("main", true, false), ("function", false, true)] {
+        let input = source(9_007_199_254_740_993, selected, function_selected);
+        std::fs::write(format!("host-{name}-selected-input.txt"), format!("{input:#?}\n"))?;
+        for (route, with_sources) in [("typed", false), ("typed-empty-named", true)] {
+            let result = if with_sources { execute_with_sources(&input, &[]) } else { execute(&input) };
+            std::fs::write(format!("host-{name}-{route}-selected-raw.txt"), format!("{result:#?}\n"))?;
+            assert!(matches!(result, Err(RuntimeError::Function(FunctionError::DivideByZero))),
+                "selected {name} input must retain DivideByZero, route {route}");
+        }
+    }
+    Ok(())
+}
+
+fn source(integer: i64, selected: bool, function_selected: bool) -> Instance {
+    group([
+        field("Input", scalar(Value::Int(integer))),
+        field("Selected", scalar(Value::Bool(selected))),
+        field("FunctionSelected", scalar(Value::Bool(function_selected))),
+    ])
+}
+
+fn expected(marker: &str) -> Instance {
+    group([
+        field("Main", scalar(Value::String("converted".into()))),
+        field("Function", scalar(Value::String(marker.into()))),
+        field("Nested", scalar(Value::String(marker.into()))),
+        field("Lazy", scalar(Value::String("safe".into()))),
+        field("LazyFunction", scalar(Value::String("safe".into()))),
+        field("Duplicate", scalar(Value::String("first".into()))),
+        field("NoDefault", scalar(Value::Null)),
+        field("NullDefault", scalar(Value::Null)),
+        field("EmptyDefault", scalar(Value::String(String::new()))),
+        field("Null", scalar(Value::String("null".into()))),
+        field("XmlNil", scalar(Value::String("nil".into()))),
+        field("JsonNull", scalar(Value::String("json-null".into()))),
+        field("NoConversion", scalar(Value::String("tagged".into()))),
+        field("FailedText", scalar(Value::String("retained".into()))),
+        field("SignedZero", scalar(Value::String("first zero".into()))),
+    ])
+}
