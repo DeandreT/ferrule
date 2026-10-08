@@ -1,0 +1,194 @@
+use std::{error::Error, fs, path::Path};
+use codegen_runtime::{Instance, JsonBoundaryError, RuntimeError, Value};
+use serde_json::Value as Json;
+
+type TestResult<T> = Result<T, Box<dyn Error>>;
+include!("tree.rs");
+
+fn main() -> TestResult<()> {
+    let root = std::env::args_os().nth(1).ok_or("one retained root required")?;
+    let root = Path::new(&root);
+    let corpus: Json = serde_json::from_slice(&fs::read(root.join("cases.json"))?)?;
+    let mut counts = [0_usize; 5];
+    let mut failures = Vec::new();
+    for case in corpus["cases"].as_array().ok_or("cases required")? {
+        let fixture = case["fixture"].as_str().ok_or("fixture required")?;
+        let id = case["id"].as_str().ok_or("id required")?;
+        let input = case["input"].as_str();
+        let bytes = match input {
+            Some(text) => text.as_bytes().to_vec(),
+            None => serde_json::from_value::<Vec<u8>>(case["bytes"].clone())?,
+        };
+        let schema = fs::read_to_string(root.join(format!("{}-schema.json", case["profile"].as_u64().ok_or("profile required")?)))?;
+        let typed_input = case["expected"].get("input_tree").map(manual_tree).transpose()?;
+        let typed = typed_input.as_ref().map(|source| typed_call(fixture, source));
+        if let Some(result) = &typed {
+            retain(root, &format!("{id}-typed"), result)?;
+            counts[2] += 1;
+            check(&mut failures, id, || {
+                let actual = result.as_ref().map_err(|error| error.to_string())?;
+                if complete_tree(actual).map_err(|error| error.to_string())? != case["expected"]["output_tree"]
+                    || *actual != manual_tree(&case["expected"]["output_tree"]).map_err(|error| error.to_string())? {
+                    return Err("complete ordinary typed result differs".into());
+                }
+                Ok(())
+            });
+        }
+        for route in 0..2 {
+            if route == 0 && input.is_none() { continue; }
+            let stem = format!("{id}-route{route}");
+            // Both the untouched Result and every original cause are retained
+            // before converting a successful text return to its UTF-8 bytes.
+            let result = mapping_call(fixture, input, &bytes, route, root, &stem)?;
+            counts[0] += 1;
+            check(&mut failures, &stem, || verify_output(&result, &case["expected"]));
+            if fixture.starts_with('P') {
+                let parsed = if route == 0 {
+                    codegen_runtime::parse_json(&schema, input.ok_or("text required")?)
+                } else { codegen_runtime::parse_json_bytes(&schema, &bytes) };
+                retain(root, &format!("{stem}-reader"), &parsed)?;
+                counts[1] += 1;
+                check(&mut failures, &stem, || {
+                    if let Some(wanted) = case["expected"].get("input_tree") {
+                        let actual = parsed.as_ref().map_err(|error| error.to_string())?;
+                        if complete_tree(actual).map_err(|error| error.to_string())? != *wanted
+                            || *actual != manual_tree(wanted).map_err(|error| error.to_string())? {
+                            return Err("complete parsed input tree differs".into());
+                        }
+                        Ok(())
+                    } else { verify_error(parsed.as_ref().err(), &case["expected"]["rust"]) }
+                });
+            }
+        }
+    }
+    for case in corpus["typed_writer_cases"].as_array().ok_or("writers required")? {
+        let id = case["id"].as_str().ok_or("writer id required")?;
+        let schema = fs::read_to_string(root.join(format!("{}-schema.json", case["profile"].as_u64().ok_or("profile required")?)))?;
+        let value = manual_tree(&case["input_tree"])?;
+        for route in 0..2 {
+            let stem = format!("{id}-writer{route}");
+            let result = if route == 0 {
+                let raw = codegen_runtime::serialize_json(&schema, &value);
+                retain(root, &stem, &raw)?;
+                raw.map(String::into_bytes)
+            } else {
+                let raw = codegen_runtime::serialize_json_bytes(&schema, &value);
+                retain(root, &stem, &raw)?;
+                raw
+            };
+            counts[3] += 1;
+            check(&mut failures, &stem, || verify_output(&result, &case["expected"]));
+        }
+    }
+    for case in corpus["admission_controls"].as_array().ok_or("controls required")? {
+        let id = case["id"].as_str().ok_or("control id required")?;
+        let schema = case["schema"].as_str().ok_or("control schema required")?;
+        for route in case["routes"].as_array().ok_or("routes required")? {
+            let result = if route == "text" {
+                codegen_runtime::parse_json(schema, case["input"].as_str().ok_or("control text required")?)
+            } else {
+                let bytes = match case["input"].as_str() {
+                    Some(text) => text.as_bytes().to_vec(),
+                    None => serde_json::from_value::<Vec<u8>>(case["bytes"].clone())?,
+                };
+                codegen_runtime::parse_json_bytes(schema, &bytes)
+            };
+            let stem = format!("{id}-admission-{route}");
+            retain(root, &stem, &result)?;
+            counts[4] += 1;
+            check(&mut failures, &stem, || verify_error(result.as_ref().err(), &case["expected"]["rust"]));
+        }
+    }
+    let actual = serde_json::json!({"counts":counts,"failures":failures});
+    fs::write(root.join("RUST-COMPLETE-RESULT.json"), serde_json::to_vec_pretty(&actual)?)?;
+    let expected = &corpus["counts"];
+    let wanted = [expected["generated_mapping_public_calls_per_language"].as_u64(),
+        expected["independent_public_reader_controls_per_language"].as_u64(),
+        expected["ordinary_typed_execute_controls_per_language"].as_u64(),
+        expected["public_typed_writer_controls_per_language"].as_u64(),
+        expected["schema_encoding_admission_controls_per_language"].as_u64()];
+    if counts.iter().zip(wanted).any(|(a,b)| Some(*a as u64) != b) || !failures.is_empty() {
+        return Err("complete required-reference Rust comparison failed; originals retained".into());
+    }
+    Ok(())
+}
+
+fn retain<T: std::fmt::Debug>(root: &Path, stem: &str, result: &Result<T, impl Error>) -> TestResult<()> {
+    let mut text = format!("complete original result={result:#?}\n");
+    if let Err(error) = result {
+        text.push_str(&format!("original display={error}\n"));
+        let mut source = error.source();
+        while let Some(error) = source {
+            text.push_str(&format!("original cause={error:#?}\noriginal cause display={error}\n"));
+            source = error.source();
+        }
+    }
+    fs::write(root.join(format!("RUST-{stem}-ORIGINAL.txt")), text.as_bytes())?;
+    println!("{text}");
+    Ok(())
+}
+
+fn check(failures: &mut Vec<String>, id: &str, run: impl FnOnce() -> Result<(), String>) {
+    if let Err(reason) = run() { failures.push(format!("{id}: {reason}")); }
+}
+
+fn verify_output(result: &Result<Vec<u8>, JsonBoundaryError>, expected: &Json) -> Result<(), String> {
+    if let Some(wanted) = expected["output_utf8"].as_str() {
+        if !matches!(result, Ok(bytes) if bytes == wanted.as_bytes()) {
+            return Err("complete exact UTF-8 output including order/BOM/LF differs".into());
+        }
+        return Ok(());
+    }
+    verify_error(result.as_ref().err(), &expected["rust"])
+}
+
+fn verify_error(error: Option<&JsonBoundaryError>, expected: &Json) -> Result<(), String> {
+    let error = error.ok_or("refusal returned success")?;
+    let (variant, message) = match error {
+        JsonBoundaryError::InvalidInput { message } => ("InvalidInput",message),
+        JsonBoundaryError::InvalidOutput { message } => ("InvalidOutput",message),
+        JsonBoundaryError::InvalidEmbeddedSchema { message } => ("InvalidEmbeddedSchema",message),
+        _ => return Err(format!("unexpected complete boundary variant: {error:?}")),
+    };
+    if expected["variant"] != variant || expected["message"] != *message || error.source().is_some() {
+        return Err(format!("complete public category/message/source differs: {error:?}"));
+    }
+    Ok(())
+}
+
+fn mapping_call(fixture: &str, input: Option<&str>, bytes: &[u8], route: usize, root: &Path, stem: &str)
+    -> TestResult<Result<Vec<u8>, JsonBoundaryError>> {
+    macro_rules! run { ($library:ident) => {{
+        if route == 0 {
+            let result = $library::execute_json(input.ok_or("text required")?);
+            retain(root, stem, &result)?;
+            result.map(String::into_bytes)
+        } else {
+            let result = $library::execute_json_bytes(bytes);
+            retain(root, stem, &result)?;
+            result
+        }
+    }}; }
+    Ok(match fixture {
+        "P0" => run!(fixture_p0), "P1" => run!(fixture_p1), "P2" => run!(fixture_p2),
+        "P3" => run!(fixture_p3), "P4" => run!(fixture_p4), "P5" => run!(fixture_p5),
+        "P6" => run!(fixture_p6), "P7" => run!(fixture_p7), "P8" => run!(fixture_p8),
+        "O0_0" => run!(fixture_o0_0), "O0_1" => run!(fixture_o0_1),
+        "O1_1" => run!(fixture_o1_1), "O1_2" => run!(fixture_o1_2),
+        "O2_0" => run!(fixture_o2_0), "O3_0" => run!(fixture_o3_0), "O8_0" => run!(fixture_o8_0),
+        _ => return Err("undeclared mapping fixture".into()),
+    })
+}
+
+fn typed_call(fixture: &str, input: &Instance) -> Result<Instance, RuntimeError> {
+    match fixture {
+        "P0" => fixture_p0::execute(input), "P1" => fixture_p1::execute(input),
+        "P2" => fixture_p2::execute(input), "P3" => fixture_p3::execute(input),
+        "P4" => fixture_p4::execute(input), "P5" => fixture_p5::execute(input),
+        "P6" => fixture_p6::execute(input), "P7" => fixture_p7::execute(input), "P8" => fixture_p8::execute(input),
+        "O0_0" => fixture_o0_0::execute(input), "O0_1" => fixture_o0_1::execute(input),
+        "O1_1" => fixture_o1_1::execute(input), "O1_2" => fixture_o1_2::execute(input),
+        "O2_0" => fixture_o2_0::execute(input), "O3_0" => fixture_o3_0::execute(input), "O8_0" => fixture_o8_0::execute(input),
+        _ => unreachable!("declared finite fixture"),
+    }
+}

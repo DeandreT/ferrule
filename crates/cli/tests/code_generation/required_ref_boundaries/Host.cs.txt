@@ -1,0 +1,344 @@
+using System.Collections;
+using System.Globalization;
+using System.Reflection;
+using System.Runtime.Loader;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+if (args.Length != 1) { throw new ArgumentException("One retained root required."); }
+var root = Path.GetFullPath(args[0]);
+using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "cases.json")));
+var counts = new int[5];
+var failures = new List<string>();
+var loaded = new Dictionary<string, (AssemblyLoadContext Context, Assembly Assembly)>();
+try
+{
+    foreach (var fixture in corpus.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        var name = fixture.GetProperty("fixture").GetString()!;
+        var context = new AssemblyLoadContext("required-ref169-" + name, isCollectible: true);
+        loaded.Add(name, (context, context.LoadFromAssemblyPath(Path.Combine(root, "csharp", name,
+            "bin", "Debug", "net10.0", "Ferrule.Generated.dll"))));
+    }
+    foreach (var test in corpus.RootElement.GetProperty("cases").EnumerateArray())
+    {
+        var fixture = test.GetProperty("fixture").GetString()!;
+        var assembly = loaded[fixture].Assembly;
+        var mapping = Type(assembly, "Ferrule.Generated.GeneratedMapping");
+        var instanceType = Type(assembly, "Ferrule.Runtime.FerruleInstance");
+        var json = Type(assembly, "Ferrule.Runtime.FerruleJson");
+        var id = test.GetProperty("id").GetString()!;
+        var expected = test.GetProperty("expected");
+        var input = test.TryGetProperty("input", out var text) ? text.GetString() : null;
+        var bytes = input is null ? test.GetProperty("bytes").EnumerateArray().Select(value => value.GetByte()).ToArray()
+            : Encoding.UTF8.GetBytes(input);
+        var schema = File.ReadAllText(Path.Combine(root, test.GetProperty("profile").GetInt32() + "-schema.json"));
+        if (expected.TryGetProperty("input_tree", out var manual))
+        {
+            var source = MakeTree(assembly, manual);
+            var method = Method(mapping, "Execute", new[] { instanceType });
+            var typed = Invoke(method, new[] { source });
+            Retain(root, id + "-typed", method, typed, test);
+            counts[2]++;
+            Compare(failures, id, () =>
+            {
+                Check(typed.Error is null && typed.Output is not null, "ordinary typed mapping failed");
+                EqualTree(typed.Output!, expected.GetProperty("output_tree"));
+            });
+        }
+        for (var route = 0; route < 2; route++)
+        {
+            if (route == 0 && input is null) { continue; }
+            var stem = id + "-route" + route;
+            var method = Method(mapping, route == 0 ? "ExecuteJson" : "ExecuteJsonBytes",
+                new[] { route == 0 ? typeof(string) : typeof(byte[]) });
+            var result = Invoke(method, new object?[] { route == 0 ? input : bytes });
+            Retain(root, stem, method, result, test);
+            counts[0]++;
+            Compare(failures, stem, () => VerifyOutput(result, expected, route == 1));
+            if (fixture.StartsWith("P", StringComparison.Ordinal))
+            {
+                method = Method(json, route == 0 ? "Parse" : "ParseBytes",
+                    new[] { typeof(string), route == 0 ? typeof(string) : typeof(byte[]) });
+                var parsed = Invoke(method, new object?[] { schema, route == 0 ? input : bytes });
+                Retain(root, stem + "-reader", method, parsed, test);
+                counts[1]++;
+                Compare(failures, stem, () =>
+                {
+                    if (expected.TryGetProperty("input_tree", out var wanted))
+                    {
+                        Check(parsed.Error is null && parsed.Output is not null, "public reader failed");
+                        EqualTree(parsed.Output!, wanted);
+                    }
+                    else { VerifyError(parsed, expected.GetProperty("csharp")); }
+                });
+            }
+        }
+    }
+    foreach (var test in corpus.RootElement.GetProperty("typed_writer_cases").EnumerateArray())
+    {
+        var profile = test.GetProperty("profile").GetInt32();
+        var assembly = loaded["P" + profile].Assembly;
+        var json = Type(assembly, "Ferrule.Runtime.FerruleJson");
+        var instanceType = Type(assembly, "Ferrule.Runtime.FerruleInstance");
+        var source = MakeTree(assembly, test.GetProperty("input_tree"));
+        var schema = File.ReadAllText(Path.Combine(root, profile + "-schema.json"));
+        for (var route = 0; route < 2; route++)
+        {
+            var stem = test.GetProperty("id").GetString() + "-writer" + route;
+            var method = Method(json, route == 0 ? "Serialize" : "SerializeBytes",
+                new[] { typeof(string), instanceType });
+            var result = Invoke(method, new[] { schema, source });
+            Retain(root, stem, method, result, test);
+            counts[3]++;
+            Compare(failures, stem, () => VerifyOutput(result, test.GetProperty("expected"), route == 1));
+        }
+    }
+    var controlJson = Type(loaded["P0"].Assembly, "Ferrule.Runtime.FerruleJson");
+    foreach (var test in corpus.RootElement.GetProperty("admission_controls").EnumerateArray())
+    {
+        foreach (var route in test.GetProperty("routes").EnumerateArray())
+        {
+            var bytesRoute = route.GetString() == "bytes";
+            var input = test.TryGetProperty("input", out var inputText) ? inputText.GetString() : null;
+            var bytes = input is null ? test.GetProperty("bytes").EnumerateArray().Select(value => value.GetByte()).ToArray()
+                : Encoding.UTF8.GetBytes(input);
+            var method = Method(controlJson, bytesRoute ? "ParseEmbeddedBytes" : "ParseEmbedded",
+                new[] { typeof(string), bytesRoute ? typeof(byte[]) : typeof(string) });
+            var result = Invoke(method, new object?[] { test.GetProperty("schema").GetString(), bytesRoute ? bytes : input });
+            var stem = test.GetProperty("id").GetString() + "-admission-" + route.GetString();
+            Retain(root, stem, method, result, test);
+            counts[4]++;
+            Compare(failures, stem, () => VerifyError(result, test.GetProperty("expected").GetProperty("csharp")));
+        }
+    }
+}
+finally
+{
+    foreach (var entry in loaded.Values) { entry.Context.Unload(); }
+}
+File.WriteAllText(Path.Combine(root, "CSHARP-COMPLETE-RESULT.json"),
+    JsonSerializer.Serialize(new { counts, failures }) + "\n", new UTF8Encoding(false, true));
+var countOracle = corpus.RootElement.GetProperty("counts");
+var keys = new[] { "generated_mapping_public_calls_per_language", "independent_public_reader_controls_per_language",
+    "ordinary_typed_execute_controls_per_language", "public_typed_writer_controls_per_language",
+    "schema_encoding_admission_controls_per_language" };
+Check(counts.Where((count, index) => count != countOracle.GetProperty(keys[index]).GetInt32()).Count() == 0
+    && failures.Count == 0, "complete required-reference C# comparison failed; originals retained");
+
+static Type Type(Assembly assembly, string name) => assembly.GetType(name, throwOnError: true)!;
+static MethodInfo Method(Type type, string name, Type[] arguments) =>
+    type.GetMethod(name, arguments) ?? throw new InvalidOperationException("Missing exact public signature: " + name);
+static (object? Output, Exception? Error) Invoke(MethodInfo method, object?[] arguments)
+{
+    try { return (method.Invoke(null, arguments), null); }
+    catch (Exception original) { return (null, original); }
+}
+static object? Property(object value, string name) => value.GetType().GetProperty(name)?.GetValue(value);
+static object? Cause(Exception? error) => error is null ? null : new
+{
+    type = error.GetType().FullName, completeOriginal = error.ToString(), error.Message,
+    publicProperties = error.GetType().GetProperties()
+        .Where(property => property.Name != "InnerException" && property.GetIndexParameters().Length == 0)
+        .ToDictionary(property => property.Name, property => property.GetValue(error) is byte[] bytes
+            ? JsonSerializer.Serialize(bytes.Select(value => (int)value).ToArray())
+            : property.GetValue(error)?.ToString()),
+    inner = Cause(error.InnerException),
+};
+static void Retain(string root, string stem, MethodInfo method,
+    (object? Output, Exception? Error) result, JsonElement manual)
+{
+    // Original wrapper, full original cause chain and complete native return
+    // are saved before any assertion or conversion for comparison.
+    var output = result.Output switch
+    {
+        null => null, string text => (object)new { text, utf8 = Convert.ToHexString(Encoding.UTF8.GetBytes(text)) },
+        byte[] bytes => new { bytesHex = Convert.ToHexString(bytes) },
+        _ => Tree(result.Output!),
+    };
+    var original = JsonSerializer.Serialize(new { method = method.ToString(), manual, output, instanceMetadata = InstanceMetadata(result.Output), error = Cause(result.Error) });
+    File.WriteAllText(Path.Combine(root, "CSHARP-" + stem + "-ORIGINAL.json"), original + "\n", new UTF8Encoding(false, true));
+    Console.WriteLine(original);
+}
+static void Compare(List<string> failures, string stem, Action compare)
+{
+    try { compare(); }
+    catch (Exception original) { failures.Add(stem + ": " + original); }
+}
+static void VerifyOutput((object? Output, Exception? Error) result, JsonElement expected, bool bytes)
+{
+    if (expected.TryGetProperty("output_utf8", out var output))
+    {
+        Check(result.Error is null, "successful mapping/writer raised an exception");
+        var wanted = output.GetString()!;
+        Check(bytes ? result.Output is byte[] raw && raw.SequenceEqual(Encoding.UTF8.GetBytes(wanted))
+            : result.Output is string text && text == wanted, "complete exact UTF-8 output/order/BOM/LF differs");
+        return;
+    }
+    VerifyError(result, expected.GetProperty("csharp"));
+}
+static void VerifyError((object? Output, Exception? Error) result, JsonElement expected)
+{
+    Check(result.Output is null && result.Error is TargetInvocationException, "refusal lost the original reflection wrapper");
+    var error = result.Error!.InnerException ?? throw new InvalidOperationException("Original public cause missing.");
+    Check(ReferenceEquals(error, result.Error.InnerException), "original cause identity lost");
+    Check(error.GetType().FullName == expected.GetProperty("type").GetString(), "wrong public exception type");
+    Check(Property(error, "Error")?.ToString() == expected.GetProperty("Error").GetString(), "wrong public category");
+    Check(error.Message == expected.GetProperty("Message").GetString()
+        && (string?)Property(error, "Detail") == expected.GetProperty("Detail").GetString(), "complete message/detail differs");
+    Check(error.GetType().GetProperties().Where(property => property.DeclaringType == error.GetType()
+        && property.Name is not "Error" and not "Detail").All(property => property.GetValue(error) is null),
+        "unexpected non-null runtime-owned payload field");
+    var inner = expected.GetProperty("inner");
+    if (inner.ValueKind == JsonValueKind.Null) { Check(error.InnerException is null, "unexpected original inner cause"); return; }
+    var cause = error.InnerException ?? throw new InvalidOperationException("Original parser/decoder cause missing.");
+    Check(cause.InnerException is null, "unexpected nested original parser/decoder cause");
+    if (inner.TryGetProperty("Message", out var message)) { Check(cause.Message == message.GetString(), "complete original cause message differs"); }
+    switch (inner.GetProperty("category").GetString())
+    {
+        case "System.Text.Json.JsonException":
+            Check(cause is JsonException, "wrong complete parser category");
+            var syntax = (JsonException)cause;
+            Check(syntax.LineNumber == inner.GetProperty("LineNumber").GetInt64()
+                && syntax.BytePositionInLine == inner.GetProperty("BytePositionInLine").GetInt64()
+                && syntax.Path is null, "complete parser line/byte/path differs");
+            break;
+        case "System.Text.DecoderFallbackException":
+            Check(cause is DecoderFallbackException, "wrong original UTF-8 decoder category");
+            var encoding = (DecoderFallbackException)cause;
+            Check(encoding.Index == inner.GetProperty("Index").GetInt32()
+                && encoding.BytesUnknown is not null
+                && encoding.BytesUnknown.SequenceEqual(inner.GetProperty("BytesUnknown").EnumerateArray().Select(value => value.GetByte())),
+                "complete decoder index/original invalid bytes differ");
+            break;
+        case "System.FormatException":
+            Check(cause.GetType() == typeof(FormatException), "wrong original schema-admission cause category");
+            break;
+        default: throw new InvalidOperationException("Unbound complete cause oracle.");
+    }
+}
+static object MakeTree(Assembly assembly, JsonElement tree)
+{
+    Type Runtime(string name) => Type(assembly, "Ferrule.Runtime." + name);
+    if (tree.GetProperty("kind").GetString() == "Group")
+    {
+        var fields = tree.GetProperty("fields").EnumerateArray().ToArray();
+        var values = Array.CreateInstance(Runtime("FerruleField"), fields.Length);
+        for (var index = 0; index < fields.Length; index++)
+        {
+            values.SetValue(Activator.CreateInstance(Runtime("FerruleField"), new object[]
+                { fields[index].GetProperty("name").GetString()!, MakeTree(assembly, fields[index].GetProperty("instance")) }), index);
+        }
+        return Activator.CreateInstance(Runtime("FerruleGroup"), new object[] { values })!;
+    }
+    var scalar = tree.GetProperty("value");
+    var valueType = Runtime("FerruleValue");
+    var value = scalar.GetProperty("tag").GetString() switch
+    {
+        "Int" => valueType.GetMethod("FromInt64")!.Invoke(null, new object[] { long.Parse(scalar.GetProperty("decimal").GetString()!, CultureInfo.InvariantCulture) }),
+        "String" => valueType.GetMethod("FromString")!.Invoke(null, new object[] { scalar.GetProperty("text").GetString()! }),
+        "Null" => valueType.GetProperty("Null")!.GetValue(null),
+        "JsonNull" => valueType.GetProperty("JsonNull")!.GetValue(null),
+        _ => throw new InvalidOperationException("Manual scalar outside the complete finite cohort."),
+    };
+    return Activator.CreateInstance(Runtime("FerruleScalar"), new[] { value })!;
+}
+static object Tree(object instance)
+{
+    switch (instance.GetType().Name)
+    {
+        case "FerruleGroup":
+            var fields = ((IEnumerable)Property(instance, "Fields")!).Cast<object>().Select(field =>
+                new { name = (string)Property(field, "Name")!, instance = Tree(Property(field, "Value")!) }).ToArray();
+            return new { kind = "Group", fields };
+        case "FerruleRepeated":
+        case "FerruleMappedSequence":
+            return new
+            {
+                kind = instance.GetType().Name == "FerruleRepeated" ? "Repeated" : "MappedSequence",
+                items = ((IEnumerable)Property(instance, "Items")!).Cast<object>().Select(Tree).ToArray(),
+            };
+        case "FerruleDocumentSet":
+            return new
+            {
+                kind = "DocumentSet",
+                documents = ((IEnumerable)Property(instance, "Documents")!).Cast<object>().Select(document => new
+                {
+                    path = (string)Property(document, "Path")!,
+                    resolved_source_path = (string?)Property(document, "ResolvedSourcePath"),
+                    instance = Tree(Property(document, "Value")!),
+                }).ToArray(),
+            };
+        case "FerruleScalar":
+            var value = Property(instance, "Value")!;
+            object scalar = Property(value, "Kind")!.ToString() switch
+            {
+                "Int64" => new { tag = "Int", @decimal = Convert.ToInt64(Property(value, "Int64Value"), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture) },
+                "String" => new { tag = "String", text = (string)Property(value, "StringValue")! },
+                "Bool" => new { tag = "Bool", boolean = (bool)Property(value, "BooleanValue")! },
+                "Double" => new
+                {
+                    tag = "Double",
+                    bits64 = unchecked((ulong)BitConverter.DoubleToInt64Bits((double)Property(value, "DoubleValue")!))
+                        .ToString("x16", CultureInfo.InvariantCulture),
+                },
+                "Null" => new { tag = "Null" }, "JsonNull" => new { tag = "JsonNull" },
+                "XmlNil" => new { tag = "XmlNil" },
+                _ => new { tag = Property(value, "Kind")?.ToString(), original = value.ToString() },
+            };
+            return new { kind = "Scalar", value = scalar };
+        default:
+            return new { kind = instance.GetType().FullName, original = instance.ToString() };
+    }
+}
+static object? InstanceMetadata(object? instance)
+{
+    if (instance is null) { return null; }
+    switch (instance.GetType().Name)
+    {
+        case "FerruleGroup":
+            var origin = Property(instance, "XmlTypeOrigin")!;
+            return new
+            {
+                xmlTypeOrigin = new { kind = Property(origin, "Kind")?.ToString(), identity = Property(origin, "Identity"), literal = Property(origin, "Literal") },
+                fields = ((IEnumerable)Property(instance, "Fields")!).Cast<object>()
+                    .Select(field => new { name = (string)Property(field, "Name")!, metadata = InstanceMetadata(Property(field, "Value")) }).ToArray(),
+            };
+        case "FerruleRepeated":
+        case "FerruleMappedSequence":
+            return new
+            {
+                kind = instance.GetType().Name == "FerruleRepeated" ? "Repeated" : "MappedSequence",
+                items = ((IEnumerable)Property(instance, "Items")!).Cast<object>().Select(InstanceMetadata).ToArray(),
+            };
+        case "FerruleDocumentSet":
+            return new
+            {
+                kind = "DocumentSet",
+                documents = ((IEnumerable)Property(instance, "Documents")!).Cast<object>().Select(document => new
+                {
+                    path = (string)Property(document, "Path")!,
+                    resolved_source_path = (string?)Property(document, "ResolvedSourcePath"),
+                    metadata = InstanceMetadata(Property(document, "Value")),
+                }).ToArray(),
+            };
+        default: return null;
+    }
+}
+static void ValidateDefaultMetadata(object instance)
+{
+    if (instance.GetType().Name != "FerruleGroup") { return; }
+    var origin = Property(instance, "XmlTypeOrigin")!;
+    Check(Property(origin, "Kind")?.ToString() == "Unknown" && Property(origin, "Identity") is null
+        && Property(origin, "Literal") is null, "complete ordinary JSON group metadata differs from constructor defaults");
+    foreach (var field in ((IEnumerable)Property(instance, "Fields")!).Cast<object>())
+    { ValidateDefaultMetadata(Property(field, "Value")!); }
+}
+static void EqualTree(object actual, JsonElement expected)
+{
+    ValidateDefaultMetadata(actual);
+    Check(JsonNode.DeepEquals(JsonNode.Parse(JsonSerializer.Serialize(Tree(actual))), JsonNode.Parse(expected.GetRawText())),
+        "complete typed payload/order/tag differs");
+}
+static void Check(bool accepted, string reason) { if (!accepted) { throw new InvalidOperationException(reason); } }

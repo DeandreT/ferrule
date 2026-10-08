@@ -1,0 +1,44 @@
+fn manual_tree(tree: &Json) -> TestResult<Instance> {
+    match tree["kind"].as_str() {
+        Some("Group") => {
+            let fields = tree["fields"].as_array().ok_or("manual fields required")?
+                .iter().map(|field| Ok((
+                    field["name"].as_str().ok_or("manual name required")?.to_owned(),
+                    manual_tree(&field["instance"])?,
+                ))).collect::<TestResult<Vec<_>>>()?;
+            Ok(Instance::Group(fields.into()))
+        }
+        Some("Scalar") => {
+            let value = &tree["value"];
+            Ok(Instance::Scalar(match value["tag"].as_str() {
+                Some("Int") => Value::Int(value["decimal"].as_str().ok_or("decimal required")?.parse()?),
+                Some("String") => Value::String(value["text"].as_str().ok_or("text required")?.into()),
+                Some("Null") => Value::Null,
+                Some("JsonNull") => Value::json_null(),
+                _ => return Err("manual scalar outside the complete finite cohort".into()),
+            }))
+        }
+        _ => Err("manual kind outside the complete finite cohort".into()),
+    }
+}
+
+fn complete_tree(instance: &Instance) -> TestResult<Json> {
+    match instance {
+        Instance::Group(fields) => Ok(serde_json::json!({
+            "kind":"Group", "fields":fields.iter().map(|(name,value)| {
+                Ok(serde_json::json!({"name":name,"instance":complete_tree(value)?}))
+            }).collect::<TestResult<Vec<_>>>()?,
+        })),
+        Instance::Scalar(value) => {
+            let value = match value {
+                Value::Int(value) => serde_json::json!({"tag":"Int","decimal":value.to_string()}),
+                Value::String(value) => serde_json::json!({"tag":"String","text":value}),
+                Value::Null => serde_json::json!({"tag":"Null"}),
+                Value::JsonNull(_) => serde_json::json!({"tag":"JsonNull"}),
+                _ => return Err("actual scalar outside the complete finite cohort".into()),
+            };
+            Ok(serde_json::json!({"kind":"Scalar","value":value}))
+        }
+        _ => Err("actual kind outside the complete finite cohort".into()),
+    }
+}

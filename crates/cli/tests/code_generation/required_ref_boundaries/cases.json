@@ -1,0 +1,5451 @@
+{
+  "issue": 169,
+  "dependent_native_issue": 100,
+  "known_precedence_issue": 171,
+  "source_only": true,
+  "runtime_gates": "UNRUN",
+  "profiles": [
+    {
+      "id": "modern-closed",
+      "physical_files": {
+        "root.schema.json": "{\n  \"title\": \"Envelope\",\n  \"$ref\": \"#/$defs/Base\",\n  \"required\": [\n    \"note\",\n    \"id\"\n  ],\n  \"$defs\": {\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  },\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\"\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "note"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null}"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "present"
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "kept"
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}"
+        },
+        {
+          "input_utf8": "{\"id\":7}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "note",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"note\":null}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"id\":null,\"note\":null}",
+          "expected_error": {
+            "native_type": "Shape",
+            "name": "id",
+            "expected": "integer",
+            "got": "null",
+            "generated_requirement": "same complete field/domain/null refusal; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null,\"extra\":1}",
+          "expected_error": {
+            "native_type": "UndeclaredProperty",
+            "object": "Envelope",
+            "property": "extra",
+            "generated_requirement": "same complete undeclared-property category; bind backend type before execution"
+          }
+        }
+      ],
+      "normalized_output_cases": [
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "note",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "present"
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "fixture": "P0"
+    },
+    {
+      "id": "modern-explicit-object-null",
+      "physical_files": {
+        "root.schema.json": "{\n  \"title\": \"Envelope\",\n  \"$ref\": \"#/$defs/Base\",\n  \"required\": [\n    \"note\"\n  ],\n  \"$defs\": {\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": [\n        \"object\",\n        \"null\"\n      ],\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  },\n  \"$schema\": \"https://json-schema.org/draft/2019-09/schema\"\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": true,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "note"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "null",
+          "expected_instance": {
+            "kind": "Scalar",
+            "tag": "JsonNull",
+            "value": null
+          },
+          "expected_output_utf8": "null"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null}"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "present"
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "kept"
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}"
+        },
+        {
+          "input_utf8": "{\"id\":7}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "note",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"note\":null}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"id\":null,\"note\":null}",
+          "expected_error": {
+            "native_type": "Shape",
+            "name": "id",
+            "expected": "integer",
+            "got": "null",
+            "generated_requirement": "same complete field/domain/null refusal; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null,\"extra\":1}",
+          "expected_error": {
+            "native_type": "UndeclaredProperty",
+            "object": "Envelope",
+            "property": "extra",
+            "generated_requirement": "same complete undeclared-property category; bind backend type before execution"
+          }
+        }
+      ],
+      "normalized_output_cases": [
+        {
+          "input_instance": {
+            "kind": "Scalar",
+            "tag": "JsonNull",
+            "value": null
+          },
+          "expected_output_utf8": "null"
+        },
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "note",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        },
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "present"
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "fixture": "P1"
+    },
+    {
+      "id": "modern-open-base-runtime-presence",
+      "physical_files": {
+        "root.schema.json": "{\n  \"title\": \"Envelope\",\n  \"$ref\": \"#/$defs/Base\",\n  \"required\": [\n    \"note\"\n  ],\n  \"$defs\": {\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": true,\n      \"required\": [\n        \"id\",\n        \"runtime-required\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "runtime-required",
+          "note"
+        ],
+        "dynamic": {
+          "name": "*",
+          "kind": "Scalar",
+          "type": "String",
+          "json_any": true
+        },
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"runtime-required\":9,\"note\":null}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "runtime-required",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "9"
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"runtime-required\":9,\"note\":null}"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "runtime-required",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "normalized_output_cases": [
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "runtime-required",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "fixture": "P2"
+    },
+    {
+      "id": "legacy-ignored-unknown-required",
+      "physical_files": {
+        "root.schema.json": "{\n  \"title\": \"Envelope\",\n  \"$ref\": \"#/$defs/Base\",\n  \"required\": [\n    \"unknown\"\n  ],\n  \"$defs\": {\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  },\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\"\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7}"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null}"
+        },
+        {
+          "input_utf8": "{}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "id",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "normalized_output_cases": [
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7}"
+        }
+      ],
+      "fixture": "P3"
+    },
+    {
+      "id": "physical-root-modern-False-external-modern-False",
+      "physical_files": {
+        "root.schema.json": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$ref\": \"external.schema.json#/$defs/Use\",\n  \"required\": [\n    \"optional\"\n  ]\n}\n",
+        "external.schema.json": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$defs\": {\n    \"Use\": {\n      \"$ref\": \"#/$defs/Base\",\n      \"required\": [\n        \"note\"\n      ]\n    },\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7}"
+        }
+      ],
+      "normalized_output_cases": [],
+      "fixture": "P4"
+    },
+    {
+      "id": "physical-root-modern-False-external-modern-True",
+      "physical_files": {
+        "root.schema.json": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$ref\": \"external.schema.json#/$defs/Use\",\n  \"required\": [\n    \"optional\"\n  ]\n}\n",
+        "external.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$defs\": {\n    \"Use\": {\n      \"$ref\": \"#/$defs/Base\",\n      \"required\": [\n        \"note\"\n      ]\n    },\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "note"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null}"
+        }
+      ],
+      "normalized_output_cases": [],
+      "fixture": "P5"
+    },
+    {
+      "id": "physical-root-modern-True-external-modern-False",
+      "physical_files": {
+        "root.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$ref\": \"external.schema.json#/$defs/Use\",\n  \"required\": [\n    \"optional\"\n  ]\n}\n",
+        "external.schema.json": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$defs\": {\n    \"Use\": {\n      \"$ref\": \"#/$defs/Base\",\n      \"required\": [\n        \"note\"\n      ]\n    },\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "optional"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"optional\":\"kept\"}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "kept"
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"optional\":\"kept\"}"
+        }
+      ],
+      "normalized_output_cases": [],
+      "fixture": "P6"
+    },
+    {
+      "id": "physical-root-modern-True-external-modern-True",
+      "physical_files": {
+        "root.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$ref\": \"external.schema.json#/$defs/Use\",\n  \"required\": [\n    \"optional\"\n  ]\n}\n",
+        "external.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$defs\": {\n    \"Use\": {\n      \"$ref\": \"#/$defs/Base\",\n      \"required\": [\n        \"note\"\n      ]\n    },\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "note",
+          "optional"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "kept"
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}"
+        }
+      ],
+      "normalized_output_cases": [],
+      "fixture": "P7"
+    },
+    {
+      "id": "compatible-existing-outer-all-of",
+      "physical_files": {
+        "root.schema.json": "{\n  \"title\": \"Envelope\",\n  \"allOf\": [\n    {\n      \"$ref\": \"#/$defs/Base\",\n      \"required\": [\n        \"note\"\n      ]\n    },\n    {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"optional\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  ],\n  \"$defs\": {\n    \"Base\": {\n      \"title\": \"Envelope\",\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"id\"\n      ],\n      \"properties\": {\n        \"id\": {\n          \"type\": \"integer\"\n        },\n        \"note\": {\n          \"type\": [\n            \"string\",\n            \"null\"\n          ]\n        },\n        \"optional\": {\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}\n"
+      },
+      "entry_file": "root.schema.json",
+      "expected_model": {
+        "name": "Envelope",
+        "kind": "Group",
+        "repeating": false,
+        "container_nullable": false,
+        "ordered_children": [
+          {
+            "name": "id",
+            "kind": "Scalar",
+            "type": "Int",
+            "nullable": false
+          },
+          {
+            "name": "note",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": true
+          },
+          {
+            "name": "optional",
+            "kind": "Scalar",
+            "type": "String",
+            "nullable": false
+          }
+        ],
+        "required": [
+          "id",
+          "note",
+          "optional"
+        ],
+        "dynamic": null,
+        "remaining_metadata": "exact constructor defaults as independently constructed in the focused child"
+      },
+      "input_cases": [
+        {
+          "input_utf8": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+          "expected_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "String",
+                  "value": "kept"
+                }
+              }
+            ]
+          },
+          "expected_output_utf8": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}"
+        },
+        {
+          "input_utf8": "{\"id\":7,\"note\":null}",
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "optional",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "normalized_output_cases": [
+        {
+          "input_instance": {
+            "kind": "Group",
+            "ordered_fields": [
+              {
+                "name": "id",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "name": "note",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "JsonNull",
+                  "value": null
+                }
+              },
+              {
+                "name": "optional",
+                "value": {
+                  "kind": "Scalar",
+                  "tag": "Null",
+                  "value": null
+                }
+              }
+            ]
+          },
+          "expected_error": {
+            "native_type": "MissingRequiredProperty",
+            "object": "Envelope",
+            "property": "optional",
+            "generated_requirement": "same complete object/property semantic category; bind actual structured backend type before execution"
+          }
+        }
+      ],
+      "fixture": "P8"
+    }
+  ],
+  "fixtures": [
+    {
+      "fixture": "P0",
+      "profile": 0,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "O0_0",
+      "profile": 0,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "O0_1",
+      "profile": 0,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "String",
+                "text": "present"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "P1",
+      "profile": 1,
+      "construction": "constant-presence"
+    },
+    {
+      "fixture": "O1_1",
+      "profile": 1,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "O1_2",
+      "profile": 1,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "String",
+                "text": "present"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "P2",
+      "profile": 2,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "O2_0",
+      "profile": 2,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "JsonNull"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "P3",
+      "profile": 3,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "O3_0",
+      "profile": 3,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "P4",
+      "profile": 4,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "P5",
+      "profile": 5,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "P6",
+      "profile": 6,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "P7",
+      "profile": 7,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "P8",
+      "profile": 8,
+      "construction": "copy-current-source"
+    },
+    {
+      "fixture": "O8_0",
+      "profile": 8,
+      "construction": "constant-presence",
+      "constant_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "JsonNull"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "P0-literal-00",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P0-literal-01",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "present"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "present"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": \"present\",\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": \"present\",\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P0-literal-02",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":7}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-literal-03",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-literal-04",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-literal-05",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":null,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "name": "id",
+          "expected": "integer",
+          "got": "null",
+          "category": "Shape"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`id`: expected integer, got null",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON field 'id' expected integer, got Null.",
+          "Message": "JSON field 'id' expected integer, got Null.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-literal-06",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":7,\"note\":null,\"extra\":1}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "extra",
+          "category": "UndeclaredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "closed object `Envelope` does not declare property `extra`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' does not allow property 'extra'.",
+          "Message": "JSON object 'Envelope' does not allow property 'extra'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-missing-id",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-missing-note",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-reversed-properties",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "O0_0-valid-source-output-projection",
+      "fixture": "O0_0",
+      "profile": 0,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "O0_1-valid-source-output-projection",
+      "fixture": "O0_1",
+      "profile": 0,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "present"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P1-literal-00",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "null",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Scalar",
+          "value": {
+            "tag": "JsonNull"
+          }
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "null\n"
+      }
+    },
+    {
+      "id": "P1-literal-01",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P1-literal-02",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":7,\"note\":\"present\",\"optional\":\"kept\"}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "present"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": \"present\",\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P1-literal-03",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":7}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-literal-04",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-literal-05",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-literal-06",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":null,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "name": "id",
+          "expected": "integer",
+          "got": "null",
+          "category": "Shape"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`id`: expected integer, got null",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON field 'id' expected integer, got Null.",
+          "Message": "JSON field 'id' expected integer, got Null.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-literal-07",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":7,\"note\":null,\"extra\":1}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "extra",
+          "category": "UndeclaredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "closed object `Envelope` does not declare property `extra`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' does not allow property 'extra'.",
+          "Message": "JSON object 'Envelope' does not allow property 'extra'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-missing-id",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-missing-note",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-reversed-properties",
+      "fixture": "P1",
+      "profile": 1,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "O1_1-valid-source-output-projection",
+      "fixture": "O1_1",
+      "profile": 1,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "O1_2-valid-source-output-projection",
+      "fixture": "O1_2",
+      "profile": 1,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "present"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P2-literal-00",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"id\":7,\"runtime-required\":9,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "runtime-required",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "9"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "runtime-required",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "9"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"runtime-required\": 9,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"runtime-required\": 9,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P2-literal-01",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "runtime-required",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `runtime-required`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "Message": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P2-missing-id",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"runtime-required\":9,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P2-missing-runtime-required",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "runtime-required"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `runtime-required`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "Message": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P2-missing-note",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"id\":7,\"runtime-required\":9,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P2-reversed-properties",
+      "fixture": "P2",
+      "profile": 2,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"runtime-required\":9,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "runtime-required",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "9"
+                }
+              }
+            },
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "runtime-required",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "9"
+                }
+              }
+            },
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"optional\": \"kept\",\n  \"note\": null,\n  \"runtime-required\": 9,\n  \"id\": 7\n}\n",
+        "native_roundtrip_utf8": "{\n  \"optional\": \"kept\",\n  \"note\": null,\n  \"runtime-required\": 9,\n  \"id\": 7\n}\n"
+      }
+    },
+    {
+      "id": "O2_0-valid-source-output-projection",
+      "fixture": "O2_0",
+      "profile": 2,
+      "input": "{\"id\":7,\"runtime-required\":9,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "runtime-required",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `runtime-required`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "Message": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "runtime-required",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "9"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P3-literal-00",
+      "fixture": "P3",
+      "profile": 3,
+      "input": "{\"id\":7}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7\n}\n"
+      }
+    },
+    {
+      "id": "P3-literal-01",
+      "fixture": "P3",
+      "profile": 3,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P3-literal-02",
+      "fixture": "P3",
+      "profile": 3,
+      "input": "{}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P3-missing-id",
+      "fixture": "P3",
+      "profile": 3,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P3-reversed-properties",
+      "fixture": "P3",
+      "profile": 3,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "O3_0-valid-source-output-projection",
+      "fixture": "O3_0",
+      "profile": 3,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "output_utf8": "{\n  \"id\": 7\n}\n",
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P4-literal-00",
+      "fixture": "P4",
+      "profile": 4,
+      "input": "{\"id\":7}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7\n}\n"
+      }
+    },
+    {
+      "id": "P4-missing-id",
+      "fixture": "P4",
+      "profile": 4,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P4-reversed-properties",
+      "fixture": "P4",
+      "profile": 4,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P5-literal-00",
+      "fixture": "P5",
+      "profile": 5,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P5-missing-id",
+      "fixture": "P5",
+      "profile": 5,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P5-missing-note",
+      "fixture": "P5",
+      "profile": 5,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P5-reversed-properties",
+      "fixture": "P5",
+      "profile": 5,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P6-literal-00",
+      "fixture": "P6",
+      "profile": 6,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P6-missing-id",
+      "fixture": "P6",
+      "profile": 6,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P6-missing-optional",
+      "fixture": "P6",
+      "profile": 6,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "optional"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P6-reversed-properties",
+      "fixture": "P6",
+      "profile": 6,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P7-literal-00",
+      "fixture": "P7",
+      "profile": 7,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P7-missing-id",
+      "fixture": "P7",
+      "profile": 7,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P7-missing-note",
+      "fixture": "P7",
+      "profile": 7,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P7-missing-optional",
+      "fixture": "P7",
+      "profile": 7,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "optional"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P7-reversed-properties",
+      "fixture": "P7",
+      "profile": 7,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P8-literal-00",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "P8-literal-01",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independent100-original-literal",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "optional",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P8-missing-id",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"note\":null,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P8-missing-note",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"id\":7,\"optional\":\"kept\"}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P8-missing-optional",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"id\":7,\"note\":null}",
+      "scope": "independently-omitted-required-field",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "optional"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P8-reversed-properties",
+      "fixture": "P8",
+      "profile": 8,
+      "input": "{\"optional\":\"kept\",\"note\":null,\"id\":7}",
+      "scope": "closed-schema-order-or-open-original-order",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null,\n  \"optional\": \"kept\"\n}\n"
+      }
+    },
+    {
+      "id": "O8_0-valid-source-output-projection",
+      "fixture": "O8_0",
+      "profile": 8,
+      "input": "{\"id\":7,\"note\":null,\"optional\":\"kept\"}",
+      "scope": "valid-source-independent-constant-target-presence-projection",
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "optional",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        },
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "kept"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "P0-required-before-scalar",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"id\":null}",
+      "scope": "first-refusal-priority",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "note"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-required-before-undeclared-issue171",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{\"extra\":1}",
+      "scope": "first-refusal-priority",
+      "expected": {
+        "native_error": {
+          "category": "MissingRequiredProperty",
+          "object": "Envelope",
+          "property": "id"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-complete-syntax-before-required",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "{invalid",
+      "scope": "parser-before-property-validation",
+      "expected": {
+        "native_error": {
+          "category": "Json",
+          "class": "Syntax",
+          "line": 1,
+          "column": 2,
+          "message": "key must be a string at line 1 column 2"
+        },
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "json error: key must be a string at line 1 column 2",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON input is invalid.",
+          "Message": "JSON input is invalid.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": {
+            "category": "System.Text.Json.JsonException",
+            "Message": "'i' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1.",
+            "LineNumber": 0,
+            "BytePositionInLine": 1,
+            "Path": null,
+            "InnerException": null
+          }
+        }
+      }
+    },
+    {
+      "id": "P0-one-leading-bom",
+      "fixture": "P0",
+      "profile": 0,
+      "input": "﻿{\"id\":7,\"note\":null}",
+      "scope": "ordinary-one-leading-UTF8-BOM",
+      "expected": {
+        "input_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_tree": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "id",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            },
+            {
+              "name": "note",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            },
+            {
+              "name": "optional",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Null"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n",
+        "native_roundtrip_utf8": "{\n  \"id\": 7,\n  \"note\": null\n}\n"
+      }
+    },
+    {
+      "id": "P0-invalid-UTF8",
+      "fixture": "P0",
+      "profile": 0,
+      "bytes": [
+        255
+      ],
+      "scope": "UTF8-decoding-before-schema-and-json",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "document is not UTF-8: invalid utf-8 sequence of 1 bytes from index 0",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON input is not UTF-8.",
+          "Message": "JSON input is not UTF-8.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": {
+            "category": "System.Text.DecoderFallbackException",
+            "Index": 0,
+            "BytesUnknown": [
+              255
+            ],
+            "InnerException": null
+          }
+        }
+      }
+    }
+  ],
+  "typed_writer_cases": [
+    {
+      "id": "P0-typed-output-00",
+      "profile": 0,
+      "fixture": "P0",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P0-typed-output-01",
+      "profile": 0,
+      "fixture": "P0",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "String",
+                "text": "present"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-typed-output-00",
+      "profile": 1,
+      "fixture": "P1",
+      "input_tree": {
+        "kind": "Scalar",
+        "value": {
+          "tag": "JsonNull"
+        }
+      },
+      "expected": {
+        "output_utf8": "null\n"
+      }
+    },
+    {
+      "id": "P1-typed-output-01",
+      "profile": 1,
+      "fixture": "P1",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "note",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `note`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'note'.",
+          "Message": "JSON object 'Envelope' requires property 'note'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P1-typed-output-02",
+      "profile": 1,
+      "fixture": "P1",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "String",
+                "text": "present"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "id",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `id`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'id'.",
+          "Message": "JSON object 'Envelope' requires property 'id'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P2-typed-output-00",
+      "profile": 2,
+      "fixture": "P2",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "JsonNull"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "runtime-required",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `runtime-required`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "Message": "JSON object 'Envelope' requires property 'runtime-required'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    },
+    {
+      "id": "P3-typed-output-00",
+      "profile": 3,
+      "fixture": "P3",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "output_utf8": "{\n  \"id\": 7\n}\n"
+      }
+    },
+    {
+      "id": "P8-typed-output-00",
+      "profile": 8,
+      "fixture": "P8",
+      "input_tree": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "id",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Int",
+                "decimal": "7"
+              }
+            }
+          },
+          {
+            "name": "note",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "JsonNull"
+              }
+            }
+          },
+          {
+            "name": "optional",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "native_error": {
+          "object": "Envelope",
+          "property": "optional",
+          "category": "MissingRequiredProperty"
+        },
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "object `Envelope` requires property `optional`",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON object 'Envelope' requires property 'optional'.",
+          "Message": "JSON object 'Envelope' requires property 'optional'.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": null
+        }
+      }
+    }
+  ],
+  "admission_controls": [
+    {
+      "id": "unsupported-schema-before-syntax",
+      "schema": "FERRULE-EMBEDDED-SCHEMA/999\n{}",
+      "input": "{invalid",
+      "routes": [
+        "text",
+        "bytes"
+      ],
+      "expected": {
+        "rust": {
+          "variant": "InvalidEmbeddedSchema",
+          "message": "unsupported embedded schema descriptor version",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "Embedded JSON schema is invalid.",
+          "Message": "Embedded JSON schema is invalid.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": {
+            "category": "System.FormatException",
+            "Message": "unsupported embedded schema descriptor version",
+            "InnerException": null
+          }
+        }
+      }
+    },
+    {
+      "id": "UTF8-before-unsupported-schema",
+      "schema": "FERRULE-EMBEDDED-SCHEMA/999\n{}",
+      "bytes": [
+        255
+      ],
+      "routes": [
+        "bytes"
+      ],
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "document is not UTF-8: invalid utf-8 sequence of 1 bytes from index 0",
+          "source": null
+        },
+        "csharp": {
+          "type": "Ferrule.Runtime.FerruleRuntimeException",
+          "Error": "JsonBoundary",
+          "Detail": "JSON input is not UTF-8.",
+          "Message": "JSON input is not UTF-8.",
+          "all_other_runtime_owned_payloads": null,
+          "inner": {
+            "category": "System.Text.DecoderFallbackException",
+            "Index": 0,
+            "BytesUnknown": [
+              255
+            ],
+            "InnerException": null
+          }
+        }
+      }
+    }
+  ],
+  "counts": {
+    "profiles": 9,
+    "fixtures": 16,
+    "cases": 66,
+    "generated_mapping_public_calls_per_language": 131,
+    "independent_public_reader_controls_per_language": 117,
+    "ordinary_typed_execute_controls_per_language": 30,
+    "public_typed_writer_controls_per_language": 16,
+    "schema_encoding_admission_controls_per_language": 3,
+    "all_public_and_typed_calls_per_language": 297
+  },
+  "null_boundary_scope": "P1 accepts root JSON null through a constant ordinary target with id=7/note=JsonNull. Whole-group copy of scalar null is excluded. Native direct writer and both public typed writers separately qualify root-null output vacuity.",
+  "expected_truth": "All complete schema/tree/error/value oracles originate from the independent nine source profiles and explicit small authored transforms, never native/generated actual results."
+}
