@@ -23,20 +23,20 @@ choose a lane and avoid conflicting changes.
 
 ## Ownership and readiness
 
-Snapshot: 2026-10-08 20:45:28 UTC, against merged main
-[`8ac5c2a`](https://github.com/DeandreT/ferrule/commit/8ac5c2a1828532eca888975f5b3e9b9645b78daf).
+Snapshot: 2026-10-08 23:03:59 UTC, against merged main
+[`3028230`](https://github.com/DeandreT/ferrule/commit/30282307f3c5ef2eee15e4fdf6873c7ca4485614).
 Completed rows record merged increments;
 active maintainer lanes are assigned to `DeandreT`. Unassigned `help wanted`
 lanes remain available. Available does not mean an implementation contract has
 already been agreed. Design-first issues must settle their stated contract before
 code changes. Check the live issue for later status and ownership updates.
-The map contains 50 work lanes plus the #89 coordination row. The current
-two-document refresh is #173; it does not block implementation. Documentation
+The map contains 56 work lanes plus the #89 coordination row. The current
+two-document refresh is #182; it does not block implementation. Documentation
 rendering remains unverified for this refresh.
 
 | Issue | Owner | Next gate | Primary ownership / coordination |
 | --- | --- | --- | --- |
-| [#89 Coordination](https://github.com/DeandreT/ferrule/issues/89) | Complete; #109 merged | Live issue map; current documentation snapshot in #173 | Docs; coordinate all overlaps |
+| [#89 Coordination](https://github.com/DeandreT/ferrule/issues/89) | Complete; #109 merged | Live issue map; current documentation snapshot in #182 | Docs; coordinate all overlaps |
 | [#90 Computed JSON properties](https://github.com/DeandreT/ferrule/issues/90) | Complete; #110 merged | Local GUI checks complete; desktop separate | Scope inspector, workspace and GUI tests |
 | [#91 Isolated Value map conversion](https://github.com/DeandreT/ferrule/issues/91) | Complete; [#123](https://github.com/DeandreT/ferrule/pull/123) merged | Local conversion gates complete; ordinary #113 remains a distinct context | Runtime helpers and both emitters |
 | [#92 Workbook desktop persistence](https://github.com/DeandreT/ferrule/issues/92) | Complete; [#132](https://github.com/DeandreT/ferrule/pull/132) merged | Flat fixture create/save/reopen complete; other workflows separate | Desktop lane; #98 extends primary source setup |
@@ -46,15 +46,15 @@ rendering remains unverified for this refresh.
 | [#96 Generated JSON5 adapters](https://github.com/DeandreT/ferrule/issues/96) | Complete; initial scope closed | All initial language/public/resource increments merged | Parent contract; broader identifiers/native metadata remain separate |
 | [#97 Typed Value map cells](https://github.com/DeandreT/ferrule/issues/97) | Complete; [#128](https://github.com/DeandreT/ferrule/pull/128) merged | Local editor gates complete after #91/#114; desktop separate | Cell editor; no coercion changes |
 | [#98 Transposed workbook source setup](https://github.com/DeandreT/ferrule/issues/98) | Complete; [#150](https://github.com/DeandreT/ferrule/pull/150) merged | Local and scoped desktop setup/save/reopen checks complete; workbook execution checked locally | Primary-source workbook wizard; hierarchical/named setup excluded |
-| [#99 Browser edit history](https://github.com/DeandreT/ferrule/issues/99) | DeandreT; active | Candidate passed 43 local web tests and WASM on #167; current dependency recheck and ordinary browser workflow pending | Web app/history/canvas; preserve #165; native history unchanged |
+| [#99 Browser edit history](https://github.com/DeandreT/ferrule/issues/99) | Complete; [#178](https://github.com/DeandreT/ferrule/pull/178) merged | 43 web tests, fresh WASM and finite 132-command/34-download browser review; original oracle/cleanup limits below | Web app/history/canvas; preserve #165; #177 is separate net-zero correction |
 | [#100 Required-only reference siblings](https://github.com/DeandreT/ferrule/issues/100) | Complete; native [#170](https://github.com/DeandreT/ferrule/pull/170) and generated [#174](https://github.com/DeandreT/ferrule/pull/174) merged | Exact native/generated presence subset qualified; broader composition separate | JSON Schema presence subset only; coordinate #101; no general intersection |
-| [#101 String-or-Int range constraints](https://github.com/DeandreT/ferrule/issues/101) | Unassigned | Model/backend contract first | IR, JSON constraints and both validators |
-| [#102 Scalar-sequence composition](https://github.com/DeandreT/ferrule/issues/102) | Unassigned | Design milestone; code is a follow-on | Mapping/engine/codegen contract review |
+| [#101 String-or-Int range constraints](https://github.com/DeandreT/ferrule/issues/101) | Complete; [#183](https://github.com/DeandreT/ferrule/pull/183) merged | Exact native/direct/generated contract; all 152 compiled calls and scoped checks pass | Exact String-or-Int IntegerRange only; IR/JSON constraints and both validators; broader unions separate |
+| [#102 Scalar-sequence composition](https://github.com/DeandreT/ferrule/issues/102) | DeandreT; active, design only | Review bounded contract and literal counterexamples; implementation is a separate follow-on | Design note and mapping/engine/codegen feasibility; no implementation in this issue |
 | [#103 Typed SQLite query boundary](https://github.com/DeandreT/ferrule/issues/103) | Unassigned | Read-only query contract first | Boundary model, SQLite and CLI input |
 | [#104 PDF extraction isolation](https://github.com/DeandreT/ferrule/issues/104) | Unassigned | Portable worker/limit contract first | PDF, CLI and applicable preview worker |
 | [#105 Offline mapping bundle export](https://github.com/DeandreT/ferrule/issues/105) | Unassigned | Bundle contract first | CLI staging, resources and path codecs |
 | [#106 JSON5 interchange metadata](https://github.com/DeandreT/ferrule/issues/106) | Unassigned | Observe saved metadata before implementation | Metadata lane; coordinate display with #93 |
-| [#107 JSON output-set memory trials](https://github.com/DeandreT/ferrule/issues/107) | Unassigned | Bounded measurement plan first | Benchmark fixture/report; shared build lane |
+| [#107 JSON output-set memory trials](https://github.com/DeandreT/ferrule/issues/107) | Complete; [#185](https://github.com/DeandreT/ferrule/pull/185) merged | Eight normal-dev measurements, eight separate verifiers and twelve complete documents pass; [report](performance/json-output-set-memory.md) retains finite limits | Fixture/host and filesystem JSON performance report only; #184 uses this baseline; no optimization |
 | [#108 Mapping-path desktop workflow](https://github.com/DeandreT/ferrule/issues/108) | Unassigned | Existing implementation; desktop gate open | Desktop scenario; coordinate with #92/#93 |
 | [#111 Project Float precision](https://github.com/DeandreT/ferrule/issues/111) | Complete; [#120](https://github.com/DeandreT/ferrule/pull/120) merged | Local precision gates complete; other contexts qualify separately | JSON configuration and persistence fixtures |
 | [#112 C# JSON Float rounding](https://github.com/DeandreT/ferrule/issues/112) | Complete; [#120](https://github.com/DeandreT/ferrule/pull/120) merged | Local rounding gates complete in the #111 increment | C# number parser and boundary fixtures |
@@ -86,7 +86,13 @@ rendering remains unverified for this refresh.
 | [#165 Missing browser target bindings](https://github.com/DeandreT/ferrule/issues/165) | Complete; [#166](https://github.com/DeandreT/ferrule/pull/166) merged | Eight layout cases, 38 browser tests and WASM pass; #99 must retain them | Canvas target-wire construction only; history and admission excluded |
 | [#169 Generated required-reference qualification](https://github.com/DeandreT/ferrule/issues/169) | Complete; [#174](https://github.com/DeandreT/ferrule/pull/174) merged | 183 native observations, all 594 compiled calls, 23 CLI checks and capture controls pass; closes #100 generated gate | CLI qualification leaf, corpus and Rust/C# hosts; no importer or runtime fix |
 | [#171 JSON required-property error precedence](https://github.com/DeandreT/ferrule/issues/171) | Complete; [#172](https://github.com/DeandreT/ferrule/pull/172) merged | 30 direct observations and native/Rust/C# suites pass; #169 compiled mapping witness passes separately | Narrow C# runtime check order and direct tests; no importer/browser edits |
-| [#173 Roadmap and lane refresh](https://github.com/DeandreT/ferrule/issues/173) | DeandreT; active | Two-doc source/link/diagram review and focused merge; rendering unverified | ROADMAP.md and this map only; separate from #99/#169 implementation |
+| [#173 Roadmap and lane refresh](https://github.com/DeandreT/ferrule/issues/173) | Complete; [#175](https://github.com/DeandreT/ferrule/pull/175) merged | Earlier two-doc source/link/diagram review; rendering unverified; superseded by #182 | ROADMAP.md and this map only; separate from implementation |
+| [#176 Applied browser target names](https://github.com/DeandreT/ferrule/issues/176) | Complete; [#181](https://github.com/DeandreT/ferrule/pull/181) merged | 45 web tests, fresh WASM, 24 actual native browser commands and two typed/byte-checked downloads | Borrowed applied schema title and existing eight layout cases; ordinary canvas/model/wires preserved |
+| [#177 Coalesced browser baseline return](https://github.com/DeandreT/ferrule/issues/177) | Complete; [#179](https://github.com/DeandreT/ferrule/pull/179) merged | Exact retained baseline collapse; 45 web tests, scoped strict lint and formatting pass; no fresh browser campaign | Browser history and state-machine regressions; strict byte ledger, discarded redo and distinct focus sessions |
+| [#180 Browser Fit view transform](https://github.com/DeandreT/ferrule/issues/180) | DeandreT; active | Corrected v2 source independently accepted; local/runtime/browser qualification unrun | Whole-node view transform after #176; preserve Project/node layout; shared web/display/build lanes |
+| [#182 Browser progress and coordinated lanes](https://github.com/DeandreT/ferrule/issues/182) | DeandreT; active | Two-doc source/link/checklist/diagram review and focused merge; rendering unverified | ROADMAP.md and this map only; implementation and execution gates remain separate |
+| [#184 Borrowed ordinary JSON serialization](https://github.com/DeandreT/ferrule/issues/184) | Unassigned | Preserve exact writer behavior, then repeat #107's eight matched trials | format-json writer/tests; remove intermediate owned Value; pretty String/API/publication unchanged; engine/input/JSON5/generated/allocator excluded |
+| [#186 Generated scalar-UDF argument error order](https://github.com/DeandreT/ferrule/issues/186) | Unassigned | Validate and qualify source-derived ordinary/nested witness before emitter correction | Rust/C# call rendering and focused direct/compiled tests; interpreter/coercion/frame/sequence/GUI policy excluded |
 
 Computed JSON properties retain their #110 local qualification; normal desktop
 authoring remains separate. The #111/#112 precision increment merged in #120,
@@ -173,17 +179,79 @@ without executing any validation step because of the account billing/spending-li
 restriction, as in #170/#172. Local verification, source review and compiled calls
 remain distinct from hosted execution.
 
-The #99 browser-history candidate passed 43 local web tests and a release
-WebAssembly build on the #167 baseline. Its canvas prerequisite #165/#166 passed
-eight layout cases, 38 browser tests and WebAssembly compilation. The unmerged
-#99 candidate must recheck current dependencies and preserve those regressions;
-ordinary browser edit/apply/undo/redo and save/download comparisons remain pending.
-Local tests and WebAssembly compilation do not establish that workflow.
+The #99 browser-history increment is merged in
+[#178](https://github.com/DeandreT/ferrule/pull/178) after 43 web tests, fresh
+WebAssembly and a separate finite actual browser review: 132 native commands,
+34 native GUID-completed downloads and 32 public-helper matches. The two
+original helper refusals are preserved; their compact draft originals were
+separately qualified by complete-byte comparison. No campaign exit-0 or helper
+pass is claimed for those two. The browser/server close calls fulfilled, then
+remaining owned descendants needed cleanup before final closure was proven.
+Earlier failures remain distinct from this bounded product acceptance. The
+#165/#166 missing-binding controls remain prerequisites, without widening the
+browser history claim to arbitrary editor or native-desktop parity.
 
-The previous two-document refresh #158 merged in #162. This #173 refresh only
-updates the status map and prerequisites; source/link/diagram checks do not
-establish rendered Mermaid or product execution. The dated baseline and all
-earlier memory/inventory limitations remain preserved.
+The separate #177 exact coalesced baseline correction is merged in
+[#179](https://github.com/DeandreT/ferrule/pull/179), with all 45 web tests, scoped
+strict lint and formatting passing. It preserves the strict retained-byte ledger,
+transient redo discard and distinct focus sessions; no fresh browser campaign
+is claimed. Applied target titles #176 are merged in
+[#181](https://github.com/DeandreT/ferrule/pull/181) after 45 web tests, fresh
+WebAssembly and 24 actual native browser commands in wide/compact views, with
+two complete typed and whole-byte-checked downloads. That owned browser run also
+needed descendant cleanup before final closure was proven. #180 follows #176
+for whole-node Fit measurement and a view transform only. Its corrected v2 source
+is independently accepted; local, runtime and browser checks remain unrun at
+this snapshot. Manual view validity and Project/node-layout preservation remain
+part of its finite scope.
+
+The #101 exact String-or-Int IntegerRange contract is merged in
+[#183](https://github.com/DeandreT/ferrule/pull/183). Three IR and four native
+focused groups, 202 direct calls per language, all 179 C# smoke groups and all
+152 compiled generated text/byte calls pass across seven mappings. Full typed,
+serialized and refusal oracles cover primary and named boundaries. All 797
+affected Rust checks, scoped strict warnings and formatting pass, with one
+existing resource test ignored. The original native error-text oracle failure
+and its source-reviewed correction remain retained. The optional full generated
+catalog was explicitly stopped after early checks and owned cleanup; it is not
+claimed passed. Three hosted jobs executed zero steps under the account billing
+restriction. String assertions, enum/format behavior and strict Contains remain
+separate from integer branch intervals; broader scalar unions are not admitted.
+The #107 ordinary filesystem JSON study is merged in
+[#185](https://github.com/DeandreT/ferrule/pull/185): eight normal-development-profile
+measurements, eight separate verifiers and twelve complete output documents pass.
+The [individual-run report](performance/json-output-set-memory.md) records
+120.3–194.6 MiB whole-process peaks and all four matched second-output increases:
+31.2–39.4 MiB. Both repetitions, full typed/serialized expectations, original
+phase/process observations and normal closure remain recorded. The earlier
+numeric-parser source finding and its bounded correction are preserved; all 45 numeric
+controls pass. Three hosted jobs executed zero validation steps because of the
+account billing/spending restriction. Two workloads and two repetitions do not
+establish statistical significance, streaming, allocation-exclusive peaks or a
+universal RAM cap. The separate #160 generated allocation scope is unchanged.
+
+The available #184 increment owns ordinary format-json serialization: remove the
+intermediate owned `serde_json::Value` tree while keeping the returned pretty
+String, APIs, member order, null omission, coercion, validation/errors, exact bytes
+and publication. Engine targets, input parsing, JSON5, generated runtimes,
+allocator/default changes and a general streaming API are excluded. #107's
+retained measurements are its before/after comparison baseline; the report does
+not assign an entire peak or paired difference to that intermediate tree.
+
+The claimed #102 lane remains design and literal fixtures only; an agreed
+sequence contract must precede separately scoped implementation. The available
+#186 lane records an existing source-derived UDF argument-order difference: an
+early Bool-to-Int argument followed by a reached Raise predicts different first
+errors because the interpreter collects arguments before adaptation while the
+emitters adapt immediately. Validation and actual runtime controls are unrun.
+It owns ordinary/nested Rust/C# call rendering and focused regressions, excluding
+interpreter/coercion, frame, sequence and GUI policy. This gap does not block
+starting #102's design; its qualification is a separate issue.
+
+The earlier two-document refreshes #158/#162 and #173/#175 remain recorded.
+This #182 refresh updates only the status map and prerequisites; source/link/
+diagram checks do not establish rendered Mermaid or product execution. The
+dated baseline and all earlier memory/inventory limitations remain preserved.
 
 ## Dependencies and shared areas
 
@@ -192,8 +260,13 @@ means coordinate shared source or verification resources; it does not block
 independent design/source work. In particular, generated JSON5 adapters and
 native JSON5 metadata are separate contracts, and XML annotations do not have to
 finish before JSON5 observation can begin. #100/#170 and #171/#172 are
-prerequisites for #169's compiled mapping checks. The #173 documentation lane
-coordinates their status and is not an implementation prerequisite.
+prerequisites for #169's compiled mapping checks. #99 is the retained history
+baseline for #177; #176 precedes #180's applied-title Fit checks. The #182
+documentation lane coordinates status and shared source, not implementation
+readiness. #101 closes only its exact native/generated profile. The merged #107
+study supplies the before/after baseline for #184's matched measurement gate;
+#89/#182 are coordination only. The separate source-derived #186 gap coordinates
+with #102 design, without blocking its start or claiming runtime qualification.
 
 ```mermaid
 flowchart TB
@@ -204,13 +277,17 @@ flowchart TB
     C149["#149 Earlier status: merged"]
     C154["#154 JSON5 guide: merged"]
     C158["#158 Earlier status: merged"]
-    C173["#173 Current docs refresh: active"]
+    C173["#173 Earlier docs refresh: merged"]
+    C182["#182 Current docs refresh: active"]
     subgraph gui["GUI and browser"]
         G90["#90 Computed properties: merged"]
         G97["#97 Typed cells: locally qualified"]
         G98["#98 Transposed setup: qualified"]
-        G99["#99 Browser history: browser gate pending"]
+        G99["#99 Browser history: finite workflow qualified"]
         G165["#165 Missing bindings: merged"]
+        G176["#176 Applied target titles: qualified"]
+        G177["#177 Coalesced baseline return: locally qualified"]
+        G180["#180 Browser Fit: source accepted, execution pending"]
     end
     subgraph generated["Generated execution"]
         G91["#91 Isolated conversion: merged"]
@@ -226,6 +303,7 @@ flowchart TB
         G157["#157 Direct-Program Rust emission: qualified"]
         G169["#169 Compiled qualification: merged"]
         G171["#171 Direct runtime error order: qualified"]
+        G186["#186 UDF argument order: source gap, available"]
     end
     subgraph json5["Explicit generated JSON5 companions"]
         G96["#96 Initial companion scope: complete"]
@@ -242,15 +320,16 @@ flowchart TB
     subgraph schema["Schema interoperability"]
         G94["#94 Object-schema proposal: merged"]
         G100["#100 Exact native/generated subset: complete"]
-        G101["#101 Union ranges: available"]
+        G101["#101 Exact union ranges: native/generated complete"]
     end
     subgraph design["Model and host contracts"]
-        G102["#102 Sequence composition: available"]
+        G102["#102 Sequence composition: claimed design only"]
         G103["#103 SQLite query boundary: available"]
         G104["#104 PDF isolation: available"]
         G105["#105 Offline bundle: available"]
-        G107["#107 JSON memory trials: available"]
+        G107["#107 JSON memory study: qualified baseline"]
         G160["#160 C# allocation attribution: available"]
+        G184["#184 Ordinary JSON writer: available"]
     end
     subgraph observed["Desktop, native metadata and JSON5 input"]
         G92["#92 Flat workbook persistence: qualified"]
@@ -264,15 +343,29 @@ flowchart TB
     C89 -.-> G90
     C89 -.-> G102
     C89 -.-> G107
+    C89 -.-> G184
+    C89 -.-> G186
     C89 -.-> G92
     C89 -.-> C115
     C89 -.-> C122
     C89 -.-> C149
     C89 -.-> C158
     C89 -.-> C173
+    C89 -.-> C182
+    C89 -.-> G180
     C158 -.->|Same two docs; later snapshot| C173
     G169 -.->|Separate source; coordinate status| C173
     G99 -.->|Separate source; coordinate status| C173
+    C173 -.->|Same two docs; later snapshot| C182
+    G99 -.->|Finite browser evidence status| C182
+    G176 -.->|Applied-title evidence status| C182
+    G177 -.->|Local correction status only| C182
+    G180 -.->|Active view-transform status| C182
+    G101 -.->|Exact native/generated completion| C182
+    G107 -.->|Qualified memory baseline status| C182
+    G102 -.->|Design-only ownership status| C182
+    G184 -.->|Available writer scope status| C182
+    G186 -.->|Source gap; execution unrun| C182
     C149 -.->|Same two docs| C158
     C154 -.->|Separate guide; coordinate status| C158
     C115 -.->|Same two docs| C149
@@ -295,9 +388,17 @@ flowchart TB
     G119 --> C133
     G92 -.-> G98
     G165 -->|Preserve missing-binding controls| G99
+    G99 -->|Retained history baseline| G177
+    G99 -.->|Shared web app; separate label correction| G176
+    G176 -->|Applied titles before Fit workflow| G180
+    G177 -.->|Preserve history tests; shared display/build| G180
     G100 -->|Merged native subset before compiled checks| G169
     G171 -->|Merged presence-first runtime before compiled checks| G169
     G100 -.-> G101
+    G101 -.->|Shared build lane; separate source| G107
+    G107 -->|Retained baseline before matched trials| G184
+    G101 -.->|Shared format-json crate; separate writer scope| G184
+    G102 -.->|Separate UDF gap; design can begin| G186
     G101 -.-> G96
     G95 -.-> G96
     G95 -.-> G116
