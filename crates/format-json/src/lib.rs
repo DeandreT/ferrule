@@ -12,6 +12,7 @@
 //! rows; nested arrays still require a repeating child schema.
 
 pub mod json5_boundary;
+mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
@@ -386,7 +387,7 @@ pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonF
         });
     }
     check_json5_nesting(text)?;
-    let value: serde_json::Value = json5::from_str(text)?;
+    let value = json5_finite::from_str(text)?;
     json5_unique::validate(schema, text)?;
     from_value(&value, schema)
 }
