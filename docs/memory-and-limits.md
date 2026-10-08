@@ -52,7 +52,7 @@ error ordering, and additional schema/format limits.
 | Generated flat CSV output | 64 MiB encoded UTF-8 output, including headers, quoting, line endings, and optional BOM |
 | Ordinary filesystem CSV | No general 64 MiB input/output cap; parsed rows and complete serialized output remain materialized |
 | Ordinary JSON and JSON Lines files | Whole text is read; no general 64 MiB file cap at these ordinary readers |
-| Local JSON5 input | 64 MiB and 128-container input bound; distinct from strict JSON and generated JSON APIs |
+| Local JSON5 input | File and text readers cap original UTF-8 bytes at 64 MiB, including a leading BOM; 128-container input bound; distinct from strict JSON and generated JSON APIs |
 | Typed dynamic-source host loader | At most 1,000,000 loads per dynamic source and 4,096-byte logical paths; the host owns document acquisition and its byte budgets |
 | Literal, fixed-length, regex, and integer-range generated sequences | At most 1,000,000 generated items; regex has additional pattern and compiled-program bounds |
 | PDF extraction input | 8 MiB before reading; event/node/value/depth caps apply later, and do not isolate upstream decompression or recursive content traversal |
