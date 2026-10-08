@@ -22,12 +22,14 @@ This roadmap is an execution plan.
 
 ## Current Baseline
 
-Status snapshot: 2026-10-08 20:45:28 UTC, against merged main
-[`8ac5c2a`](https://github.com/DeandreT/ferrule/commit/8ac5c2a1828532eca888975f5b3e9b9645b78daf).
+Status snapshot: 2026-10-08 23:03:59 UTC, against merged main
+[`3028230`](https://github.com/DeandreT/ferrule/commit/30282307f3c5ef2eee15e4fdf6873c7ca4485614).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#173](https://github.com/DeandreT/ferrule/issues/173), separate from implementation
-and its execution gates. Documentation rendering remains unverified.
+[#182](https://github.com/DeandreT/ferrule/issues/182), separate from implementation
+and its execution gates. The earlier #173 snapshot merged in
+[#175](https://github.com/DeandreT/ferrule/pull/175). Documentation rendering
+remains unverified.
 
 | Area | Available now | Boundary to keep visible |
 | --- | --- | --- |
@@ -36,9 +38,9 @@ and its execution gates. Documentation rendering remains unverified.
 | Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
 | Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
 | Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
-| JSON Schema | Per-resource reference policies and a qualified required-only object-reference sibling subset | Native and finite compiled Rust/C# qualification is complete in [#169](https://github.com/DeandreT/ferrule/issues/169)/[#174](https://github.com/DeandreT/ferrule/pull/174); broader compositions and workflows remain separate |
+| JSON Schema | Per-resource reference policies, qualified required-only object-reference siblings, and exact integer intervals in String-or-Int fields | Native and compiled Rust/C# subsets are qualified in [#174](https://github.com/DeandreT/ferrule/pull/174)/[#183](https://github.com/DeandreT/ferrule/pull/183); broader compositions and scalar unions remain separate |
 | Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and explicit optional JSON5 or bounded flat CSV companions | Supported emission, compiled calls, physical resource checks, and external execution are separate gates |
-| Large files | Per-boundary byte/item/work budgets and CSV temporary-row release | Input/target trees and serialized buffers remain materialized; there is no total-RAM cap |
+| Large files | Per-boundary byte/item/work budgets and CSV temporary-row release | Input and target trees and serialized buffers remain materialized; their sizes do not cap total RAM |
 | `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
 
 See [Architecture](docs/architecture.md), [Code generation](docs/code-generation.md),
@@ -110,9 +112,17 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 
 ### 5. Deepen memory and authoring coverage without changing contracts
 
-- [ ] Recheck #99 against current dependencies, then qualify ordinary browser
-  edit/apply/undo/redo and save/download with complete Project and output
-  comparisons. The browser workflow remains pending.
+- [ ] Investigate removing the ordinary JSON writer's intermediate owned
+  `serde_json::Value` tree in the available
+  [#184](https://github.com/DeandreT/ferrule/issues/184) lane. Preserve the returned
+  pretty String, APIs, exact bytes, validation/errors and publication; compare
+  against #107's retained baseline. Engine target ownership, input parsing,
+  JSON5, generated runtimes, allocator changes and streaming APIs are excluded.
+- [ ] Qualify Fit against measured whole-node bounds in the current browser
+  canvas in [#180](https://github.com/DeandreT/ferrule/issues/180), following #176.
+  Its corrected v2 source is independently accepted; local, runtime and browser
+  checks remain unrun at this snapshot. This active lane owns the view transform;
+  model/node-layout changes and broader authoring features are separate.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
@@ -153,8 +163,18 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 - [ ] Extend catalog-backed functions and reusable contexts with matching
   validation, interpreter, Rust, C#, and authoring contracts.
-- [ ] Treat first-class sequence/higher-order composition as a distinct feature,
-  rather than widening an existing scalar call implicitly.
+- [ ] Agree the bounded scalar-sequence composition contract in the claimed
+  design/literal-fixture lane
+  [#102](https://github.com/DeandreT/ferrule/issues/102). Existing reducers and
+  scalar UDFs remain the baseline; implementation needs separately scoped
+  follow-on issues after design review. General higher-order/nested collections
+  are excluded from this initial design.
+- [ ] Validate the source-derived scalar-UDF argument-error witness in the
+  available [#186](https://github.com/DeandreT/ferrule/issues/186) lane before
+  aligning the two emitters with interpreter evaluation/adaptation order.
+  An early Bool-to-Int argument and later Raise predict different first errors;
+  validation and runtime qualification are unrun. Interpreter, coercion, frame,
+  sequence and GUI policy changes are excluded.
 
 ### B. Visual Authoring and Debugging
 
