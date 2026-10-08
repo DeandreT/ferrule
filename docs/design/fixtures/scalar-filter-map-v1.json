@@ -1,0 +1,6061 @@
+{
+  "contract": "filter_map_v1 design proposal",
+  "issue": 102,
+  "status": "ALL_CANDIDATE_AND_LITERAL_RUNTIME_UNRUN",
+  "format_note": "Complete proposed adapter cases, not current Project files. Parent graphs and UDFs use existing literal node shapes. Typed expected values distinguish all scalar markers. Evaluation and cancellation controls are prospective test-adapter instructions, not product wire fields. Expected values/errors are manually authored literals, not obtained by executing the engine or a candidate.",
+  "limits_note": "Work charges only descriptor source/capture/stage subevaluation. Counters share a run; reservation order is primitive cap, cumulative item limit, work. Source/output owners are 10/11 unless a deliberate admission negative states otherwise. Diagnostics are logical proposed envelopes; original cause fields correspond to existing source and are not invented current C# structured APIs.",
+  "case_count": 37,
+  "cases": [
+    {
+      "id": "positions-parent-source-dense",
+      "purpose": "Parent capture, original indices and dense downstream positions are distinct.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 20,
+            "ty": "int"
+          }
+        ]
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 5
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          },
+          "20": {
+            "kind": "position",
+            "collection": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep-after-two",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 2
+              },
+              "3": {
+                "kind": "call",
+                "function": "greater_than",
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map-with-both-positions",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 10
+              },
+              "3": {
+                "kind": "call",
+                "function": "multiply",
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "function_parameter",
+                "parameter": 2
+              },
+              "5": {
+                "kind": "call",
+                "function": "add",
+                "args": [
+                  3,
+                  4
+                ]
+              },
+              "6": {
+                "kind": "function_parameter",
+                "parameter": 3
+              },
+              "7": {
+                "kind": "call",
+                "function": "add",
+                "args": [
+                  5,
+                  6
+                ]
+              }
+            }
+          },
+          "output": 7
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 40
+          },
+          {
+            "tag": "int",
+            "value": 51
+          },
+          {
+            "tag": "int",
+            "value": 62
+          }
+        ],
+        "kept_source_positions": [
+          3,
+          4,
+          5
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [
+          {
+            "tag": "int",
+            "value": 7
+          }
+        ],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "identity-all",
+      "purpose": "Ordered identity mapping.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "filter-all-false",
+      "purpose": "False predicates never invoke the raising mapper.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "drop",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": false
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "must-not-run",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "raise"
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "reverse-empty-captures-still-eager",
+      "purpose": "Reversed generator is empty but capture is evaluated once.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 20,
+            "ty": "string"
+          }
+        ]
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 3
+          },
+          "2": {
+            "kind": "const",
+            "value": 1
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          },
+          "20": {
+            "kind": "const",
+            "value": "kept"
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "string"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "string"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [
+          {
+            "tag": "string",
+            "value": "kept"
+          }
+        ],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "absent-from-skips-upper",
+      "purpose": "Legacy absent lower bound suppresses a reached-upper exception.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": null
+          },
+          "2": {
+            "kind": "raise"
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "json-null-from-skips-upper",
+      "purpose": "Explicit JSON null also preserves the legacy absent-argument short circuit.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": {
+              "$json_null": true
+            }
+          },
+          "2": {
+            "kind": "raise"
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "omitted-from-default-one",
+      "purpose": "An omitted lower bound preserves default 1.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "empty-source-capture-raise",
+      "purpose": "An empty source does not make parent captures lazy.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 20,
+            "ty": "int"
+          }
+        ]
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 3
+          },
+          "2": {
+            "kind": "const",
+            "value": 1
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          },
+          "20": {
+            "kind": "raise"
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "capture",
+          "capture_index": 0,
+          "source_position": null,
+          "function": null,
+          "node": 20,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 20,
+            "message": null
+          }
+        }
+      }
+    },
+    {
+      "id": "source-error-before-capture-error",
+      "purpose": "Upper-bound error precedes the later parent capture error.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 20,
+            "ty": "int"
+          }
+        ]
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 3
+          },
+          "2": {
+            "kind": "raise",
+            "message": 21
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          },
+          "20": {
+            "kind": "raise"
+          },
+          "21": {
+            "kind": "const",
+            "value": "source first"
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": "source first"
+          }
+        }
+      }
+    },
+    {
+      "id": "false-predicate-skips-mapper-error",
+      "purpose": "Item 3 is removed before its mapper Raise; item 4 still maps.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 4
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "except-three",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 3
+              },
+              "3": {
+                "kind": "call",
+                "function": "not_equal",
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "raise-at-three",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 3
+              },
+              "3": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "raise"
+              },
+              "5": {
+                "kind": "if",
+                "condition": 3,
+                "then": 4,
+                "else": 1
+              }
+            }
+          },
+          "output": 5
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 4
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          4
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "selected-mapper-raise-absent-message",
+      "purpose": "Selected item 3 stops the whole sequence; no successful prefix is returned.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 4
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "raise-at-three",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 3
+              },
+              "3": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "raise"
+              },
+              "5": {
+                "kind": "if",
+                "condition": 3,
+                "then": 4,
+                "else": 1
+              }
+            }
+          },
+          "output": 5
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": null
+          }
+        }
+      }
+    },
+    {
+      "id": "selected-mapper-raise-empty-message",
+      "purpose": "An explicitly empty exception message remains different from absence.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 4
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "raise-at-three",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 3
+              },
+              "3": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "raise",
+                "message": 6
+              },
+              "5": {
+                "kind": "if",
+                "condition": 3,
+                "then": 4,
+                "else": 1
+              },
+              "6": {
+                "kind": "const",
+                "value": ""
+              }
+            }
+          },
+          "output": 5
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": ""
+          }
+        }
+      }
+    },
+    {
+      "id": "mapper-unselected-if-raise",
+      "purpose": "The valid unselected Raise branch remains lazy.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "lazy-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": false
+              },
+              "3": {
+                "kind": "raise"
+              },
+              "4": {
+                "kind": "if",
+                "condition": 2,
+                "then": 3,
+                "else": 1
+              }
+            }
+          },
+          "output": 4
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "outer-unselected-composition",
+      "purpose": "A statically valid composition in an unselected outer If has no runtime invocation.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "must-not-run",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "raise"
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "outer_if",
+        "condition": false,
+        "then": "sequence_descriptor",
+        "else": {
+          "tag": "int",
+          "value": 7
+        },
+        "invocations": 0,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": [],
+        "consumer_result": {
+          "tag": "int",
+          "value": 7
+        },
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "eager-before-exists",
+      "purpose": "Exists would accept output 1 but mapper failure at 3 wins before consumer evaluation.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "raise-at-three",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 3
+              },
+              "3": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "raise"
+              },
+              "5": {
+                "kind": "if",
+                "condition": 3,
+                "then": 4,
+                "else": 1
+              }
+            }
+          },
+          "output": 5
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "exists_after_complete_sequence",
+        "invocations": 1,
+        "consumer_nodes": {
+          "31": {
+            "kind": "const",
+            "value": 1
+          },
+          "32": {
+            "kind": "call",
+            "function": "equal",
+            "args": [
+              11,
+              31
+            ]
+          }
+        },
+        "consumer_output": 32
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": null
+          }
+        }
+      }
+    },
+    {
+      "id": "float-output",
+      "purpose": "Finite Float output remains Float with exact binary64 bits.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "float",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "float-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "float",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": 1.5
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          },
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          },
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "bool-output",
+      "purpose": "Boolean mapping is an output value rather than an implicit filter.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "bool",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "bool-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "const",
+                "value": 1
+              },
+              "3": {
+                "kind": "call",
+                "function": "greater_than",
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "bool",
+            "value": false
+          },
+          {
+            "tag": "bool",
+            "value": true
+          },
+          {
+            "tag": "bool",
+            "value": true
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "string-output",
+      "purpose": "Binary concat preserves ordinary scalar text conversion and Unicode bytes.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "string",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "string-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "string",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": "vλ"
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "3": {
+                "kind": "call",
+                "function": "concat",
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "string",
+            "value": "vλ1"
+          },
+          {
+            "tag": "string",
+            "value": "vλ2"
+          },
+          {
+            "tag": "string",
+            "value": "vλ3"
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "mapper-absence-rejected",
+      "purpose": "A passed-through scalar marker is rejected by the new mapper boundary.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "marker-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "unconnected"
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "null",
+          "found_value": {
+            "tag": "null"
+          }
+        }
+      }
+    },
+    {
+      "id": "mapper-json-null-rejected",
+      "purpose": "A passed-through scalar marker is rejected by the new mapper boundary.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "marker-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": {
+                  "$json_null": true
+                }
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "json null",
+          "found_value": {
+            "tag": "json null"
+          }
+        }
+      }
+    },
+    {
+      "id": "mapper-xml-nil-rejected",
+      "purpose": "A passed-through scalar marker is rejected by the new mapper boundary.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "marker-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": {
+                  "$xml_nil": true
+                }
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "xml nil",
+          "found_value": {
+            "tag": "xml nil"
+          }
+        }
+      }
+    },
+    {
+      "id": "predicate-absence-rejected",
+      "purpose": "Absence is not false; the strict predicate boundary refuses it.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "absent-predicate",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "unconnected"
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "PredicateTag",
+          "output_owner": 11,
+          "phase": "predicate",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 100,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "bool",
+          "found_tag": "null",
+          "found_value": {
+            "tag": "null"
+          }
+        }
+      }
+    },
+    {
+      "id": "nonfinite-mapper-output",
+      "purpose": "Ordinary finite operands may overflow to infinity; the stage refuses a nonfinite result.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "float",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "overflow-float",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "float",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": 1e+308
+              },
+              "2": {
+                "kind": "const",
+                "value": 2.0
+              },
+              "3": {
+                "kind": "call",
+                "function": "multiply",
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputNonFinite",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 3,
+          "original_cause": null,
+          "expected_tag": "finite float",
+          "found_tag": "float",
+          "found_ieee754_binary64_hex": "7ff0000000000000"
+        }
+      }
+    },
+    {
+      "id": "capture-tag-before-next-capture-error",
+      "purpose": "Exact capture adaptation precedes evaluation of the next capture.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 20,
+            "ty": "int"
+          },
+          {
+            "node": 21,
+            "ty": "int"
+          }
+        ]
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          },
+          "20": {
+            "kind": "const",
+            "value": "7"
+          },
+          "21": {
+            "kind": "raise"
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            },
+            {
+              "id": 4,
+              "name": "capture_1",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 3,
+              "name": "capture_0",
+              "ty": "int"
+            },
+            {
+              "id": 4,
+              "name": "capture_1",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "CaptureTag",
+          "output_owner": 11,
+          "phase": "capture",
+          "capture_index": 0,
+          "source_position": null,
+          "function": null,
+          "node": 20,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "string",
+          "found_value": {
+            "tag": "string",
+            "value": "7"
+          }
+        }
+      }
+    },
+    {
+      "id": "nested-arguments-all-evaluate-before-adapt",
+      "purpose": "Later argument Raise wins over an earlier bad String-to-Int argument; #186 qualification is separate.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 1
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "nested-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": "bad"
+              },
+              "2": {
+                "kind": "raise",
+                "message": 4
+              },
+              "3": {
+                "kind": "user_function_call",
+                "function": 102,
+                "args": [
+                  1,
+                  2
+                ]
+              },
+              "4": {
+                "kind": "const",
+                "value": "later argument"
+              }
+            }
+          },
+          "output": 3
+        },
+        "102": {
+          "library": "sequence-design",
+          "name": "callee",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "left",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "right",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": "later argument"
+          }
+        }
+      }
+    },
+    {
+      "id": "nested-adaptation-original-cause",
+      "purpose": "With all arguments evaluated, adaptation refuses the first bad parameter; the original UDF fields remain.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 1
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "nested-map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": "bad"
+              },
+              "2": {
+                "kind": "const",
+                "value": 2
+              },
+              "3": {
+                "kind": "user_function_call",
+                "function": 102,
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        },
+        "102": {
+          "library": "sequence-design",
+          "name": "callee",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "left",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "right",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 3,
+          "original_cause": {
+            "category": "UserFunctionParameterType",
+            "function": 102,
+            "parameter": 1,
+            "expected": "int",
+            "found": "string"
+          }
+        }
+      }
+    },
+    {
+      "id": "cumulative-items-two-invocations",
+      "purpose": "The second range reservation shares the first invocation’s item usage.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "repeat_same_descriptor",
+        "invocations": 2,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 5,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "ItemLimit",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "limit": 5,
+          "used": 3,
+          "requested": 3,
+          "invocation": 2,
+          "first_completed_sequence": [
+            {
+              "tag": "int",
+              "value": 1
+            },
+            {
+              "tag": "int",
+              "value": 2
+            },
+            {
+              "tag": "int",
+              "value": 3
+            }
+          ],
+          "reservation_consumed": false
+        }
+      }
+    },
+    {
+      "id": "work-boundary-first-mapper-parameter",
+      "purpose": "Work 8 allows source 5, predicate 2 and mapper entry 1; its parameter-node charge refuses.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 8,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "WorkLimit",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "limit": 8,
+          "used": 8,
+          "requested": 1,
+          "refused_charge_consumed": false,
+          "source_items_used": 3
+        }
+      }
+    },
+    {
+      "id": "cancellation-before-second-mapper",
+      "purpose": "Explicit test checker cancels at the second mapper call boundary; no partial success.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "cancel_at_boundary",
+        "phase": "mapper",
+        "source_position": 2,
+        "function": 101,
+        "boundary": "call_entry"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "Cancelled",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 2,
+          "function": 101,
+          "node": null,
+          "original_cause": null,
+          "boundary": "call_entry",
+          "completed_prefix_evidence_only": [
+            {
+              "tag": "int",
+              "value": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unsupported-tokenizer-source",
+      "purpose": "Existing tokenize remains supported on legacy paths; it is outside this new variant’s initial source admission.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "tokenize",
+          "input": 1,
+          "delimiter": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": "a,b"
+          },
+          "2": {
+            "kind": "const",
+            "value": ","
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnsupportedSource",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "field": "source.kind",
+          "found": "tokenize",
+          "allowed": [
+            "generate"
+          ]
+        }
+      }
+    },
+    {
+      "id": "duplicate-private-owner",
+      "purpose": "The source owner and output owner cannot alias.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 11
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "DuplicatePrivateOwner",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 11,
+          "original_cause": null,
+          "field": "source.item"
+        }
+      }
+    },
+    {
+      "id": "predicate-signature-static-before-unselected-runtime",
+      "purpose": "An invalid predicate declaration is refused even when the outer branch would skip execution.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "wrong-declaration",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": 1
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "outer_if",
+        "condition": false,
+        "then": "sequence_descriptor",
+        "else": {
+          "tag": "int",
+          "value": 7
+        },
+        "invocations": 0,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "StageSignature",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 100,
+          "node": null,
+          "original_cause": null,
+          "field": "predicate.output_type",
+          "expected_type": "bool",
+          "found_type": "int"
+        }
+      }
+    },
+    {
+      "id": "stage-context-node-static-refusal",
+      "purpose": "The stage cannot read an implicit parent or private source frame.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "bad-position",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "position",
+                "collection": []
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnsupportedStageNode",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "found_kind": "position"
+        }
+      }
+    },
+    {
+      "id": "unknown-new-field-no-silent-fallback",
+      "purpose": "New-variant unknown fields are refused without globally narrowing old wire forms.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": [],
+        "stream": true
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnknownField",
+          "output_owner": 11,
+          "phase": "decode",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "field": "stream"
+        }
+      }
+    },
+    {
+      "id": "primitive-range-cap-before-new-budget",
+      "purpose": "The existing primitive item cap is the first reservation refusal; no allocation or capture runs.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 1000001
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 3,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": {
+            "category": "GeneratedSequenceTooLarge",
+            "requested": 1000001,
+            "max": 1000000
+          }
+        }
+      }
+    },
+    {
+      "id": "invalid-lower-value-later-upper-raise",
+      "purpose": "Complete source argument evaluation precedes bound coercion: later upper Raise wins over bad lower String.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": "bad"
+          },
+          "2": {
+            "kind": "raise"
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": null
+          }
+        }
+      }
+    },
+    {
+      "id": "stage-cycle-static-refusal",
+      "purpose": "A transitive stage UDF cycle is refused before runtime selection.",
+      "status": "PROPOSED_LITERAL_UNRUN_NOT_CURRENT_PROJECT_WIRE",
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 1,
+          "to": 2,
+          "item": 10
+        },
+        "item": 11,
+        "predicate": 100,
+        "mapper": 101,
+        "output_type": "int",
+        "captures": []
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": 1
+          },
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          },
+          "11": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "user_functions": {
+        "100": {
+          "library": "sequence-design",
+          "name": "keep",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 1
+        },
+        "101": {
+          "library": "sequence-design",
+          "name": "map",
+          "parameters": [
+            {
+              "id": 1,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 2,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "value",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 1
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 2
+              },
+              "3": {
+                "kind": "user_function_call",
+                "function": 101,
+                "args": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "output": 3
+        }
+      },
+      "parent_context": {
+        "instance": {
+          "kind": "scalar",
+          "value": {
+            "tag": "int",
+            "value": 7
+          }
+        },
+        "position_frames": [
+          {
+            "collection": [
+              "Parents"
+            ],
+            "index": 7
+          }
+        ]
+      },
+      "evaluation": {
+        "kind": "collect",
+        "invocations": 1,
+        "consumer_nodes": {},
+        "consumer_output": null
+      },
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "StageCycle",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 101,
+          "node": 3,
+          "original_cause": null,
+          "call_path": [
+            101,
+            101
+          ]
+        }
+      }
+    }
+  ],
+  "legacy_control_count": 2,
+  "legacy_controls": [
+    {
+      "id": "legacy-generate-omitted-from",
+      "descriptor": {
+        "kind": "generate",
+        "to": 2,
+        "item": 10
+      },
+      "parent_graph": {
+        "nodes": {
+          "2": {
+            "kind": "const",
+            "value": 3
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "expected_ordered_typed_sequence": [
+        {
+          "tag": "int",
+          "value": 1
+        },
+        {
+          "tag": "int",
+          "value": 2
+        },
+        {
+          "tag": "int",
+          "value": 3
+        }
+      ],
+      "expected_roundtrip_descriptor": {
+        "kind": "generate",
+        "to": 2,
+        "item": 10
+      }
+    },
+    {
+      "id": "legacy-generate-absent-lower",
+      "descriptor": {
+        "kind": "generate",
+        "from": 1,
+        "to": 2,
+        "item": 10
+      },
+      "parent_graph": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": null
+          },
+          "2": {
+            "kind": "raise"
+          },
+          "10": {
+            "kind": "source_field",
+            "path": []
+          }
+        }
+      },
+      "expected_ordered_typed_sequence": [],
+      "expected_roundtrip_descriptor": {
+        "kind": "generate",
+        "from": 1,
+        "to": 2,
+        "item": 10
+      }
+    }
+  ],
+  "future_controls_required": [
+    "Compile a nonfinite-result witness rather than encoding NaN/Infinity in JSON wire.",
+    "Add deep acyclic call-chain and cyclic-static diagnostics to the model/native qualification increment.",
+    "Qualify cancellation at a source allocation boundary and at a node boundary with real run-owned checker.",
+    "Retain exact UTF-8 output bytes and original diagnostics after adapting complete ordinary Projects; no current runtime acceptance.",
+    "Qualify shared counters across primary/named targets and scopes, not only this two-invocation adapter literal."
+  ]
+}
