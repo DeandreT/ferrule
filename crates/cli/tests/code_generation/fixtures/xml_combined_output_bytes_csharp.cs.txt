@@ -1,0 +1,159 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var utf8 = new UTF8Encoding(false, true);
+const int M = 64 * 1024 * 1024;
+var prefix = "<O><T>"u8.ToArray();
+var suffix = "</T></O>"u8.ToArray();
+string[] small = ["<O><T>a</T></O>", "<O><T>ab</T></O>", "<O><T>abc</T></O>",
+    "<O><T>abcd</T></O>", "<O><T>abcda</T></O>"];
+var directory = args[0];
+var caseName = args[1];
+var api = int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture);
+var folder = Path.Combine(directory, $"observations-{caseName}-{api}");
+void Save(string name, object value) => File.WriteAllText(Path.Combine(folder, name),
+    JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }), utf8);
+static void Require(bool condition, string label)
+{
+    if (!condition) throw new InvalidOperationException(label);
+}
+static object[] Causes(Exception error)
+{
+    var result = new List<object>();
+    for (Exception? current = error; current is not null; current = current.InnerException)
+        result.Add(new { type = current.GetType().FullName, current.Message, original = current.ToString() });
+    return result.ToArray();
+}
+static string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
+string ExpectedHash(int index, int[] sizes)
+{
+    if (caseName == "small") return Hash(utf8.GetBytes(small[index]));
+    using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    digest.AppendData(prefix);
+    var block = new byte[65536];
+    Array.Fill(block, (byte)'x');
+    var remaining = sizes[index] - 14;
+    while (remaining > 0)
+    {
+        var count = Math.Min(remaining, block.Length);
+        digest.AppendData(block, 0, count);
+        remaining -= count;
+    }
+    digest.AppendData(suffix);
+    return Convert.ToHexStringLower(digest.GetHashAndReset());
+}
+bool Literal(int index, byte[] value, int[] sizes)
+{
+    if (caseName == "small") return value.AsSpan().SequenceEqual(utf8.GetBytes(small[index]));
+    if (value.Length != sizes[index] || !value.AsSpan().StartsWith(prefix) || !value.AsSpan().EndsWith(suffix))
+        return false;
+    foreach (var element in value.AsSpan(prefix.Length, value.Length - prefix.Length - suffix.Length))
+        if (element != (byte)'x') return false;
+    return true;
+}
+
+// This independent prototype uses fixed literal bytes before any large public call.
+var schema = File.ReadAllText(Path.Combine(directory, "target-schema.txt"), utf8);
+var prototype = new FerruleGroup(new[] {
+    new FerruleField("T", new FerruleScalar(FerruleValue.FromString("abc"))) });
+string? prototypeOutput = null;
+Exception? prototypeError = null;
+try { prototypeOutput = FerruleXml.SerializeDocumentEmbedded(schema, prototype, false, false, null, null); }
+catch (Exception error) { prototypeError = error; }
+Save("original-small-writer-result.json", new { prototypeOutput,
+    error = prototypeError is null ? null : Causes(prototypeError) });
+if (prototypeOutput is not null) File.WriteAllText(Path.Combine(folder, "original-small-writer.xml"), prototypeOutput, utf8);
+Require(prototypeError is null && prototypeOutput == "<O><T>abc</T></O>", "literal prototype");
+Require(prefix.Length + suffix.Length == 14 && 64 - 14 > 0, "independent wrapper overhead");
+
+var inputBytes = File.ReadAllBytes(Path.Combine(directory, $"{caseName}.xml"));
+Save("original-input.json", new { utf8_bytes = inputBytes.Length, sha256 = Hash(inputBytes) });
+Require(inputBytes.Length < 33 * 1024 * 1024, "independent primary input cap");
+var text = utf8.GetString(inputBytes);
+int[] sizes = caseName switch {
+    "small" => [15, 16, 17, 18, 19],
+    "exact" => [M, M, M, M - 64, 64],
+    "plus-one" => [M, M, M, M - 64, 65],
+    _ => throw new InvalidOperationException("exact case name") };
+var execution = new FerruleExecutionContext("combined-output-fixture.json");
+object? original = null;
+Exception? originalError = null;
+try
+{
+    original = api switch {
+        0 => GeneratedMapping.ExecuteXmlDocuments(text),
+        1 => GeneratedMapping.ExecuteXmlDocuments(text, execution),
+        2 => GeneratedMapping.ExecuteXmlBytesDocuments(inputBytes),
+        3 => GeneratedMapping.ExecuteXmlBytesDocuments(inputBytes, execution),
+        _ => throw new InvalidOperationException("exact public API index") };
+}
+catch (Exception error) { originalError = error; }
+
+var paths = new List<string>();
+var observedSizes = new List<int>();
+var matches = new List<bool>();
+var records = new List<object>();
+void Retain(int index, string path, byte[] value)
+{
+    var output = Path.Combine(folder, $"original-member-{index}.xml");
+    File.WriteAllBytes(output, value);
+    paths.Add(path);
+    observedSizes.Add(value.Length);
+    matches.Add(index < 5 && Literal(index, value, sizes));
+    records.Add(new { index, path, original_file = output, bytes = value.Length, sha256 = Hash(value),
+        manual_literal_sha256 = index < 5 ? ExpectedHash(index, sizes) : null });
+}
+// Retain every actual returned member, not a projected summary alone, before result assertions.
+if (original is IReadOnlyList<XmlDocumentOutput> textDocuments)
+    for (var index = 0; index < textDocuments.Count; index++)
+        Retain(index, textDocuments[index].Path, utf8.GetBytes(textDocuments[index].Document));
+else if (original is IReadOnlyList<XmlBytesDocumentOutput> byteDocuments)
+    for (var index = 0; index < byteDocuments.Count; index++)
+        Retain(index, byteDocuments[index].Path, byteDocuments[index].Document);
+
+var wrapper = originalError as FerruleXmlDocumentExecutionException;
+var cause = wrapper?.Boundary.InnerException as FerruleXmlOutputSetResourceException;
+var member = wrapper?.Member;
+object row = originalError is not null ? new {
+    result = "Err", returned_documents = (int?)null, @case = caseName, api,
+    kind = wrapper?.Boundary.Kind.ToString(),
+    member = member is null ? null : new {
+        target = member.Target.Kind.ToString(), index = member.Index, path = member.Path },
+    bytes = wrapper?.Boundary.Bytes, limit = wrapper?.Boundary.Limit,
+    resource = cause?.Resource, observed = cause?.ObservedCount, resource_limit = cause?.Limit,
+    original_boundary_identity = wrapper is not null && ReferenceEquals(wrapper.InnerException, wrapper.Boundary),
+    typed_original_cause = cause is not null,
+    error_type = originalError.GetType().FullName, original = originalError.ToString(), causes = Causes(originalError)
+} : new {
+    result = "Ok", returned_documents = paths.Count, @case = caseName, api,
+    result_type = original?.GetType().FullName, paths, sizes = observedSizes, members = records,
+    literal_matches = matches, all_literal_documents_match = paths.Count == 5 && matches.All(value => value) };
+Save("original-result.json", row);
+
+// Complete physical output files or full original error/cause records precede these oracles.
+if (caseName == "plus-one")
+{
+    Require(original is null && wrapper is not null, "+1 must throw without returning a partial list");
+    var error = (FerruleXmlDocumentExecutionException)originalError!;
+    Require(error.Boundary.Kind == FerruleXmlBoundaryErrorKind.Output, "Output category");
+    Require(error.Boundary.Bytes is null && error.Boundary.Limit is null, "set counter is not document bytes");
+    Require(error.Member is not null && error.Member.Target == FerruleXmlOutputTarget.Primary
+        && error.Member.Index == 4 && error.Member.Path == "same.xml", "original final Primary member");
+    Require(ReferenceEquals(error.InnerException, error.Boundary), "original boundary identity");
+    Require(cause is not null && cause.Resource == "xml_output_set_utf8_bytes"
+        && cause.ObservedCount == 268435457UL && cause.Limit == 268435456UL, "typed original resource cause");
+}
+else
+{
+    Require(originalError is null && paths.Count == 5, "complete successful document list");
+    Require(paths.All(path => path == "same.xml") && observedSizes.SequenceEqual(sizes), "ordered opaque paths and sizes");
+    Require(matches.All(value => value), "all physical documents match independent literals");
+    for (var index = 0; index < paths.Count; index++)
+        Require(Hash(File.ReadAllBytes(Path.Combine(folder, $"original-member-{index}.xml"))) == ExpectedHash(index, sizes),
+            "independent complete literal hash");
+}
+Console.WriteLine(JsonSerializer.Serialize(new { @case = caseName, api,
+    full_original = Path.Combine(folder, "original-result.json"), @checked = true }));

@@ -1,0 +1,128 @@
+use codegen_runtime::{ExecutionContext, XmlBoundaryError, XmlBoundaryErrorKind, XmlDocumentExecutionError,
+    XmlOutputSetResourceError, XmlOutputTarget, group, field, scalar, string};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use sha2::{Digest, Sha256};
+use std::error::Error;
+use std::path::{Path, PathBuf};
+
+const M: usize = 64 * 1024 * 1024;
+const PREFIX: &[u8] = b"<O><T>";
+const SUFFIX: &[u8] = b"</T></O>";
+const SMALL: [&str; 5] = ["<O><T>a</T></O>", "<O><T>ab</T></O>", "<O><T>abc</T></O>",
+    "<O><T>abcd</T></O>", "<O><T>abcda</T></O>"];
+
+enum Original {
+    Text(Result<Vec<generated::XmlDocumentOutput>, XmlDocumentExecutionError>),
+    Bytes(Result<Vec<generated::XmlBytesDocumentOutput>, XmlDocumentExecutionError>),
+}
+fn call(api: usize, text: &str, execution: &ExecutionContext<'_>) -> Original {
+    match api {
+        0 => Original::Text(generated::execute_xml_documents(text)),
+        1 => Original::Text(generated::execute_xml_documents_with_context(text, execution)),
+        2 => Original::Bytes(generated::execute_xml_bytes_documents(text.as_bytes())),
+        3 => Original::Bytes(generated::execute_xml_bytes_documents_with_context(text.as_bytes(), execution)),
+        _ => panic!("exact public API index"),
+    }
+}
+fn document_count(value: &Original) -> Option<usize> {
+    match value { Original::Text(Ok(d)) => Some(d.len()), Original::Bytes(Ok(d)) => Some(d.len()), _ => None }
+}
+fn document(value: &Original, index: usize) -> (&str, &[u8]) {
+    match value {
+        Original::Text(Ok(d)) => (&d[index].path, d[index].document.as_bytes()),
+        Original::Bytes(Ok(d)) => (&d[index].path, &d[index].document),
+        _ => panic!("successful original result"),
+    }
+}
+fn error(value: &Original) -> Option<&XmlDocumentExecutionError> {
+    match value { Original::Text(Err(e)) | Original::Bytes(Err(e)) => Some(e), _ => None }
+}
+fn write_json(path: &Path, value: &Json) -> Result<(), Box<dyn Error>> {
+    std::fs::write(path, serde_json::to_vec_pretty(value)?)?; Ok(())
+}
+fn error_record(error: &XmlDocumentExecutionError) -> Json {
+    let mut causes = Vec::new(); let mut next = error.source();
+    while let Some(cause) = next {
+        causes.push(json!({"display":cause.to_string(),"debug":format!("{cause:?}")})); next = cause.source();
+    }
+    let cause = error.boundary.source().and_then(|value| value.downcast_ref::<XmlOutputSetResourceError>());
+    let member = error.member.as_ref().map(|owner|json!({"target":format!("{:?}",owner.target),"index":owner.index,"path":owner.path}));
+    json!({"result":"Err","returned_documents":null,"kind":format!("{:?}",error.boundary.kind),
+        "member":member,"bytes":error.boundary.bytes,"limit":error.boundary.limit,
+        "resource":cause.map(|v|v.resource),"observed":cause.map(|v|v.observed_count),"resource_limit":cause.map(|v|v.limit),
+        "original_boundary_identity":error.source().and_then(|source|source.downcast_ref::<XmlBoundaryError>())
+            .is_some_and(|source|std::ptr::eq(source,error.boundary.as_ref())),
+        "typed_original_cause":cause.is_some(),"display":error.to_string(),"debug":format!("{error:?}"),"causes":causes})
+}
+fn literal(case: &str, index: usize, value: &[u8], expected_sizes: &[usize; 5]) -> bool {
+    if case == "small" { return value == SMALL[index].as_bytes(); }
+    value.len() == expected_sizes[index] && value.starts_with(PREFIX) && value.ends_with(SUFFIX)
+        && value[PREFIX.len()..value.len()-SUFFIX.len()].iter().all(|byte|*byte==b'x')
+}
+fn expected_hash(case: &str, index: usize, sizes: &[usize; 5]) -> String {
+    if case == "small" { return format!("{:x}",Sha256::digest(SMALL[index].as_bytes())); }
+    let mut hash=Sha256::new(); hash.update(PREFIX);
+    let block=[b'x';65536]; let mut remaining=sizes[index]-14;
+    while remaining>0 { let n=remaining.min(block.len()); hash.update(&block[..n]); remaining-=n; }
+    hash.update(SUFFIX); format!("{:x}",hash.finalize())
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let args=std::env::args().collect::<Vec<_>>();
+    let directory=PathBuf::from(args.get(1).ok_or("directory missing")?);
+    let case=args.get(2).ok_or("case missing")?; let api=args.get(3).ok_or("API missing")?.parse::<usize>()?;
+    let folder=directory.join(format!("observations-{case}-{api}"));
+    let schema=std::fs::read_to_string(directory.join("target-schema.txt"))?;
+    let prototype=group([field("T",scalar(string("abc")))]);
+    let writer=codegen_runtime::serialize_xml_document(&schema,&prototype,false,false,None,None);
+    std::fs::write(folder.join("original-small-writer-result.txt"),format!("{writer:#?}\n"))?;
+    if let Ok(value)=&writer { std::fs::write(folder.join("original-small-writer.xml"),value)?; }
+    assert_eq!(writer?,"<O><T>abc</T></O>");
+    assert_eq!(PREFIX.len()+SUFFIX.len(),14);
+    let text=std::fs::read_to_string(directory.join(format!("{case}.xml")))?;
+    write_json(&folder.join("original-input.json"),&json!({"utf8_bytes":text.len(),"sha256":format!("{:x}",Sha256::digest(text.as_bytes()))}))?;
+    assert!(text.len()<33*1024*1024);
+    let sizes=match case.as_str() { "small" => [15,16,17,18,19], "exact" => [M,M,M,M-64,64],
+        "plus-one" => [M,M,M,M-64,65], _ => return Err("unknown case".into()) };
+    let execution=ExecutionContext::new(Path::new("combined-output-fixture.json"));
+    let original=call(api,&text,&execution);
+    let mut row=if let Some(count)=document_count(&original) {
+        let mut records=Vec::new(); let mut paths=Vec::new(); let mut observed_sizes=Vec::new(); let mut matches=Vec::new();
+        // Retain every returned member before any result/oracle assertion.
+        for index in 0..count {
+            let (path,value)=document(&original,index); let output=folder.join(format!("original-member-{index}.xml"));
+            std::fs::write(&output,value)?;
+            paths.push(path); observed_sizes.push(value.len());
+            let matched=index<5 && literal(case,index,value,&sizes); matches.push(matched);
+            let hash=format!("{:x}",Sha256::digest(value));
+            records.push(json!({"index":index,"path":path,"original_file":output,"bytes":value.len(),"sha256":hash,
+                "manual_literal_sha256":if index<5 {Some(expected_hash(case,index,&sizes))}else{None}}));
+        }
+        json!({"result":"Ok","returned_documents":count,"result_type":if api<2 {"Vec<XmlDocumentOutput>"}else{"Vec<XmlBytesDocumentOutput>"},
+            "paths":paths,"sizes":observed_sizes,"members":records,"literal_matches":matches,
+            "all_literal_documents_match":count==5&&matches.iter().all(|value|*value)})
+    } else { error_record(error(&original).ok_or("complete result variant missing")?) };
+    row["case"]=json!(case); row["api"]=json!(api);
+    write_json(&folder.join("original-result.json"),&row)?;
+    // Physical originals and complete wrapper/cause observation already exist.
+    if case=="plus-one" {
+        let error=error(&original).expect("+1 must not return any successful partial list");
+        assert_eq!(error.boundary.kind,XmlBoundaryErrorKind::Output);
+        assert_eq!((error.boundary.bytes,error.boundary.limit),(None,None));
+        let owner=error.member.as_ref().expect("exact final serialized member");
+        assert_eq!((owner.target,owner.index,owner.path.as_str()),(XmlOutputTarget::Primary,4,"same.xml"));
+        let source=error.source().and_then(|v|v.downcast_ref::<XmlBoundaryError>()).expect("original boundary source");
+        assert!(std::ptr::eq(source,error.boundary.as_ref()));
+        let cause=source.source().and_then(|v|v.downcast_ref::<XmlOutputSetResourceError>()).expect("typed original resource cause");
+        assert_eq!((cause.resource,cause.observed_count,cause.limit),("xml_output_set_utf8_bytes",268435457,268435456));
+    } else {
+        assert_eq!(document_count(&original),Some(5));
+        assert_eq!(row["paths"],json!(["same.xml","same.xml","same.xml","same.xml","same.xml"]));
+        assert_eq!(row["sizes"],json!(sizes)); assert_eq!(row["all_literal_documents_match"],true);
+        for record in row["members"].as_array().expect("complete members") {
+            assert_eq!(record["sha256"],record["manual_literal_sha256"]);
+        }
+    }
+    println!("{}",json!({"case":case,"api":api,"full_original":folder.join("original-result.json"),"checked":true}));
+    Ok(())
+}
