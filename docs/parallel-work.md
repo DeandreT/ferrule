@@ -53,5 +53,7 @@ evidence exists. Preserve earlier failures and narrower supported profiles.
 The [conformance inventory](../conformance/README.md) remains incomplete. Do not
 rewrite the protected survey as part of ordinary feature or coordination work,
 mark unknown cells supported, or infer whole-product parity from a local cohort.
-The coverage index in #95 opens separate issues for identified gaps; design-only
-#102 likewise ends with an agreed follow-on plan rather than unreviewed code.
+The coverage index in #95 keeps helper-only and compiled public-route evidence
+separate; #133 records the completed #116–#119 slices without closing every XML
+gap. Design-only #102 ends with an agreed follow-on plan rather than unreviewed
+code.

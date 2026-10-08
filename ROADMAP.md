@@ -44,7 +44,6 @@ box does not close its later desktop, generated, or external-runtime gates.
 
 ### 1. Complete the flat workbook user workflow
 
-- [ ] Retain failures and closure observations independently of a later success.
 
 Exit: a user can choose both schemas, reach Configure/Create without an enlarged
 viewport, save and reopen the mapping, and recover the same worksheet settings.
@@ -65,6 +64,13 @@ an unrestricted publication-parity promise.
 ### 3. Finish generated boundary cohorts
 
 
+These four authored Rust/C# public-host cohorts include small prerequisites and
+separate opt-in boundary runs. The [XML qualification index](docs/generated-xml-qualification-index.md)
+and [memory observations](docs/memory-and-limits.md#compiled-xml-host-observations)
+were refreshed in [#133](https://github.com/DeandreT/ferrule/issues/133), merged in
+[#147](https://github.com/DeandreT/ferrule/pull/147). Helper-only checks, external
+execution, other designs, and a universal RAM guarantee remain separate.
+
 Exit: compiled public calls agree with independent oracles under their declared
 adapter profile. Neither a lowering pass nor one host cohort certifies every
 survey design or backend.
@@ -76,21 +82,26 @@ survey design or backend.
 - [ ] Identify an exact import/export representation before changing admission.
 - [ ] Keep generated JSON adapters strict JSON unless a separate eligible API
   and tests are implemented.
+- [ ] Add explicit opt-in Rust and C# companions in parallel
+  [#142](https://github.com/DeandreT/ferrule/issues/142)/
+  [#143](https://github.com/DeandreT/ferrule/issues/143) lanes against the committed
+  policy; their qualification remains pending. Preserve ordinary strict JSON
+  APIs and artifact sets.
+- [ ] Qualify all 184 small public calls in
+  [#144](https://github.com/DeandreT/ferrule/issues/144) after both language
+  adapters, before the 48 opt-in physical byte-boundary calls in
+  [#145](https://github.com/DeandreT/ferrule/issues/145).
+
+Generated companions and native metadata are independent contracts. The native
+nonfinite-token verification lane
+[#130](https://github.com/DeandreT/ferrule/issues/130) also remains open; pure
+syntax qualification does not establish its behavior.
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.
 
 ### 5. Deepen memory and authoring coverage without changing contracts
 
-- [ ] Complete the Value map conversion/null increments: isolated integer
-  conversion in [#91](https://github.com/DeandreT/ferrule/issues/91) is locally
-  qualified and merged in [#123](https://github.com/DeandreT/ferrule/pull/123);
-  ordinary typed JSON-null matching in
-  [#113](https://github.com/DeandreT/ferrule/issues/113) remains pending. Preserve
-  their distinct contexts and complete interpreter/generated outcomes.
-- [ ] Preserve enabled absent Value map defaults through save/reload and history
-  in [#114](https://github.com/DeandreT/ferrule/issues/114), then qualify typed-cell
-  authoring in [#97](https://github.com/DeandreT/ferrule/issues/97) after #91/#114.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
