@@ -23,10 +23,12 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
 ## Current Baseline
 
-Status snapshot: 2026-10-08 16:20:00 UTC, against merged main
-[`aabe158`](https://github.com/DeandreT/ferrule/commit/aabe158f117011aeda46382a5073bfa4b7123d3d).
+Status snapshot: 2026-10-08 20:45:28 UTC, against merged main
+[`8ac5c2a`](https://github.com/DeandreT/ferrule/commit/8ac5c2a1828532eca888975f5b3e9b9645b78daf).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
-later ownership and qualification changes.
+later ownership and qualification changes. This two-document refresh is
+[#173](https://github.com/DeandreT/ferrule/issues/173), separate from implementation
+and its execution gates. Documentation rendering remains unverified.
 
 | Area | Available now | Boundary to keep visible |
 | --- | --- | --- |
@@ -35,6 +37,7 @@ later ownership and qualification changes.
 | Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
 | Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
 | Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
+| JSON Schema | Per-resource reference policies and a qualified required-only object-reference sibling subset | Native and finite compiled Rust/C# qualification is complete in [#169](https://github.com/DeandreT/ferrule/issues/169)/[#174](https://github.com/DeandreT/ferrule/pull/174); broader compositions and workflows remain separate |
 | Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and explicit optional JSON5 or bounded flat CSV companions | Supported emission, compiled calls, physical resource checks, and external execution are separate gates |
 | Large files | Per-boundary byte/item/work budgets and CSV temporary-row release | Input/target trees and serialized buffers remain materialized; there is no total-RAM cap |
 | `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
@@ -80,8 +83,16 @@ Physical workbook cell tests and desktop persistence are separate evidence.
   typed/content results and six exact global failure messages.
 - [x] Qualify the corresponding generated public APIs with independent full
   typed/serialized results, lazy messages, and wrapper-cause checks.
-- [ ] Resolve native XML root schema annotations and retain the separately
-  observed failure-publication differences.
+- [x] Align required-property versus undeclared-property JSON failure precedence
+  in native/Rust/C# direct runtime routes in
+  [#171](https://github.com/DeandreT/ferrule/issues/171), merged in
+  [#172](https://github.com/DeandreT/ferrule/pull/172). Thirty direct observations,
+  affected native/Rust suites and all 178 C# smoke groups pass. The separate
+  #169 compiled cohort passes its strict mapping witness and is merged in #174.
+- [ ] Resolve native XML root schema annotations in
+  [#93](https://github.com/DeandreT/ferrule/issues/93) and retain the separately
+  observed failure-publication differences. Controls and saved metadata remain
+  unobserved; the latest attempt refused before settings inspection.
 - [ ] Expand accepted shapes only with a concrete owner/order proof and
   counterexamples for ambiguous, shared, or fallible branches.
 
@@ -119,6 +130,25 @@ an unrestricted publication-parity promise.
   4,097-artifact mixed XML output set:
   [#119](https://github.com/DeandreT/ferrule/issues/119), merged in
   [#139](https://github.com/DeandreT/ferrule/pull/139).
+
+- [x] Keep direct Rust Program emission warning-free with unused expressions in
+  [#157](https://github.com/DeandreT/ferrule/issues/157), merged in
+  [#168](https://github.com/DeandreT/ferrule/pull/168). All 110 emitter tests, three
+  warnings-denied generated hosts and 11 public calls pass; validation order and
+  ordinary strict JSON output remain unchanged.
+- [x] Run the finite required-only reference cohort in
+  [#169](https://github.com/DeandreT/ferrule/issues/169) after #100/#170 and
+  #171/#172: 183 native observations and all 297 Rust / 297 C# public and typed
+  calls pass across nine profiles, 16 mappings and 66 cases. Complete outcomes,
+  text/byte routes and the strict error-order witness pass; earlier compiler
+  and authored expected-text failures are retained separately. Scoped strict lint passes.
+- [x] Complete #169's 23 owning CLI checks, scoped strict lint, formatting and
+  original-outcome capture controls, merged in
+  [#174](https://github.com/DeandreT/ferrule/pull/174). Fourteen harness controls
+  retain complete originals, including 13 intentional mismatches and a later
+  valid control. This closes #100's generated acceptance for the exact subset;
+  broader profiles remain separate. Hosted jobs executed no validation steps
+  because of the account billing/spending-limit restriction.
 
 These four authored Rust/C# public-host cohorts include small prerequisites and
 separate opt-in boundary runs. The [XML qualification index](docs/generated-xml-qualification-index.md)
@@ -175,6 +205,18 @@ survey design or backend.
   Whole-host RSS observations are workload-specific, without a RAM ceiling
   or streaming guarantee.
 
+- [x] Reject nonfinite native JSON5 tokens before nullable projection in
+  [#130](https://github.com/DeandreT/ferrule/issues/130), merged in
+  [#164](https://github.com/DeandreT/ferrule/pull/164). All 190 native controls,
+  58 CLI calls and the full affected suite pass. The original nullable witness
+  and corrected outcomes are retained; legitimate null and finite values remain
+  distinct from nonfinite tokens, including ignored or overwritten members.
+- [x] Count original native JSON5 input bytes, including the leading BOM, on both
+  file and text routes in [#163](https://github.com/DeandreT/ferrule/issues/163),
+  merged in [#167](https://github.com/DeandreT/ferrule/pull/167). All 45 small
+  controls and eight serial physical exact/+1 calls pass. This qualifies the
+  input-byte boundary, without a process-memory or streaming guarantee.
+
 Generated companions and native metadata are independent contracts. The
 [guide refresh](https://github.com/DeandreT/ferrule/issues/154) is merged in
 [PR #161](https://github.com/DeandreT/ferrule/pull/161), including the measured
@@ -182,12 +224,10 @@ whole-host memory ranges. The initial generated companion scope in
 [#96](https://github.com/DeandreT/ferrule/issues/96) is complete and closed.
 Separate allocation attribution in
 [#160](https://github.com/DeandreT/ferrule/issues/160) is available, with no
-production optimization included. The native nonfinite-token
-verification lane [#130](https://github.com/DeandreT/ferrule/issues/130) is claimed
-after a public-reader witness confirmed eight nonfinite numeric inputs become
-JSON null under a nullable Float schema. Legitimate null and finite controls
-passed. A native admission fix and broader checks are pending; generated-host
-qualification does not establish native reader behavior.
+production optimization included. Native token admission and original-byte
+accounting are now separately qualified in #130/#163; generated-host evidence
+does not establish native component metadata or desktop behavior. The JSON5
+metadata lane [#106](https://github.com/DeandreT/ferrule/issues/106) remains open.
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.
@@ -268,6 +308,18 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   saved/reopened body equality. Workbook execution was checked separately in
   local tests; desktop execution, hierarchical and named-source setup are not
   claimed.
+- [x] Keep absent browser target-binding endpoints disconnected in
+  [#165](https://github.com/DeandreT/ferrule/issues/165), merged in
+  [#166](https://github.com/DeandreT/ferrule/pull/166). All eight layout cases,
+  38 browser-crate tests and the release WebAssembly build pass; complete
+  Projects and valid target-input indexes remain unchanged.
+- [x] Qualify the [#99](https://github.com/DeandreT/ferrule/issues/99) browser-history
+  candidate locally with 43 web tests and a release WebAssembly build on #167.
+  This is an unmerged candidate; it preserves the separate applied-project,
+  draft-text and source/output boundaries.
+- [ ] Recheck #99 against current dependencies, then qualify ordinary browser
+  edit/apply/undo/redo and save/download with complete Project and output
+  comparisons. The browser workflow remains pending.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
@@ -296,6 +348,15 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 - [ ] Extend one concrete supported-path mismatch at a time, with a self-authored
   triggering design and preserved refusal controls.
+- [x] Retain modern required-only object reference siblings natively in
+  [#100](https://github.com/DeandreT/ferrule/issues/100), native increment merged in
+  [#170](https://github.com/DeandreT/ferrule/pull/170). Seven focused groups and
+  388 JSON tests pass, with one existing physical-resource test ignored. Proven
+  object/object-null profiles preserve ordered presence and each resource's
+  dialect; unsupported assertions, shapes and undeclared new names still refuse.
+  Required lists and merged sets are bounded to 256 only in this admitted subset.
+  Generated qualification #169 is merged in #174, completing #100's exact
+  native/generated subset; general composition boundaries remain open.
 - [ ] Close remaining XML root/type/namespace and JSON composition boundaries
   only when the IR can preserve them exactly.
 - [ ] Preserve repair imports and legacy extension round trips while keeping
