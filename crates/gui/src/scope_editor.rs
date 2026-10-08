@@ -9,6 +9,7 @@ use mapping::{Binding, Graph, NodeId, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::path_picker::SourcePathCatalog;
 
+pub(crate) mod computed_properties;
 mod copy_controls;
 mod output_controls;
 mod sort_controls;

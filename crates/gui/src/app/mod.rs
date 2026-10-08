@@ -1692,3 +1692,6 @@ mod computed_aggregate_authoring_tests;
 
 #[cfg(test)]
 mod value_map_input_type_tests;
+
+#[cfg(test)]
+mod computed_property_tests;
