@@ -82,6 +82,43 @@ mapping allocations. Buffer capacity can exceed logical length. Multiple live
 buffers, runtime overhead, JIT/GC, allocator behavior, and host-owned inputs
 remain outside an individual output-byte limit.
 
+## Compiled XML host observations
+
+The [compiled XML resource checks](generated-xml-qualification-index.md#compiled-resource-qualification)
+qualified locally by **2026-10-08** also retained GNU `time` maximum resident set
+size for each physical boundary call. These are **whole fresh host-process**
+observations: they include startup, input acquisition, the public API call,
+result checks and retained-output writes. Where a host runs a writer prototype,
+that work is also inside the bracket. Rust hosts use a debug build; C# hosts use
+a Release build. The physical fixtures use valid ASCII
+XML, apart from the deliberate malformed-primary priority control.
+
+The ranges below are the observed minimum and maximum across the listed
+physical calls for each backend, in **KiB (1,024 bytes)**. Ordinary small tests
+and the boundary tests' own small prerequisites are excluded from these ranges.
+
+| Finite boundary cohort | Physical observations per backend | Rust whole-host maximum RSS, KiB | C# whole-host maximum RSS, KiB |
+| --- | ---: | ---: | ---: |
+| [Combined static input bytes](../crates/cli/tests/code_generation/xml_input_sets/combined_bytes.rs) | 40 | 266,888–531,168 | 302,944–1,482,576 |
+| [Combined primary-list output bytes](../crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs) | 8 | 467,912–468,252 | 1,967,360–2,049,680 |
+| [Dynamic input request count](../crates/cli/tests/code_generation/xml_dynamic_inputs/request_count.rs) | 8 | 16,512–56,996 | 100,632–113,328 |
+| [Late graph exception versus mixed-output count](../crates/cli/tests/code_generation/xml_mixed_named_outputs/late_mapping_count.rs) | 12 | 10,696–77,936 | 62,144–126,312 |
+
+The first two cohorts physically reach the 256-MiB input or serialized-output
+boundary and cross it by one byte. The count cohorts instead reach a
+4,096-document/artifact limit; they do not contain 256 MiB of input. For the
+mixed-output count cohort, the three physical inputs are 170,856, 170,898 and
+170,897 bytes, and the largest returned document is 92 bytes. The full successful
+output still contains 4,096 artifacts. Small documents can therefore exercise a
+count limit without exercising a byte limit.
+
+Each case/route was observed once in this finite cohort. The ranges are not
+repeated independent performance trials, an API-only allocation peak, a general
+RSS ceiling, a streaming guarantee or qualification of all XML routes. Different
+host startup, Unicode/shape, typed allocations, profiles or measurement brackets
+can change memory use. The separate 256-MiB input and output ledgers do not bound
+one another, decoded instance trees or process memory.
+
 ## Plan and measure a large-file run
 
 - [ ] Record the route, backend, build profile, input format, row count,
