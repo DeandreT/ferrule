@@ -29,6 +29,7 @@ mod property_dependencies;
 mod property_names;
 mod ranges;
 mod ref_dialects;
+mod ref_required;
 mod reference_depth;
 mod required;
 mod resources;
