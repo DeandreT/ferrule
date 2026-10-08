@@ -11,6 +11,7 @@
 //! A root array of objects can reuse a non-repeating object schema as flat
 //! rows; nested arrays still require a repeating child schema.
 
+pub mod json5_boundary;
 mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
