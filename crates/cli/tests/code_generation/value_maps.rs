@@ -2,6 +2,9 @@ use super::*;
 
 use mapping::{FunctionId, FunctionParameter, FunctionParameterId, UserFunction};
 
+#[path = "value_maps/null_presence.rs"]
+mod null_presence;
+
 struct ValueMapDirectory {
     path: PathBuf,
     complete: bool,
@@ -251,6 +254,7 @@ fn value_map_project() -> Project {
             node: 30,
         },
     ]);
+    null_presence::append_controls(&mut nodes, &mut bindings);
     let user_functions = BTreeMap::from([
         (
             constant_function,
@@ -277,7 +281,14 @@ fn value_map_project() -> Project {
     ]);
     Project {
         source: SchemaNode::group("Source", Vec::new()),
-        target: SchemaNode::group("Target", fields.into_iter().map(string).collect()),
+        target: SchemaNode::group(
+            "Target",
+            fields
+                .into_iter()
+                .chain(null_presence::FIELDS)
+                .map(string)
+                .collect(),
+        ),
         source_path: None,
         target_path: None,
         source_options: Default::default(),
@@ -295,69 +306,68 @@ fn value_map_project() -> Project {
 }
 
 fn expected_output() -> Instance {
-    Instance::Group(
-        (vec![
-            (
-                "Duplicate".into(),
-                Instance::Scalar(Value::String("first".into())),
-            ),
-            (
-                "Default".into(),
-                Instance::Scalar(Value::String("fallback".into())),
-            ),
-            ("NoDefault".into(), Instance::Scalar(Value::Null)),
-            (
-                "FloatString".into(),
-                Instance::Scalar(Value::String("float-string".into())),
-            ),
-            ("Int".into(), Instance::Scalar(Value::String("int".into()))),
-            (
-                "Float".into(),
-                Instance::Scalar(Value::String("float".into())),
-            ),
-            (
-                "Bool".into(),
-                Instance::Scalar(Value::String("bool".into())),
-            ),
-            (
-                "Failed".into(),
-                Instance::Scalar(Value::String("retained".into())),
-            ),
-            (
-                "Null".into(),
-                Instance::Scalar(Value::String("null".into())),
-            ),
-            (
-                "XmlNil".into(),
-                Instance::Scalar(Value::String("xml-nil".into())),
-            ),
-            (
-                "TypedJsonNull".into(),
-                Instance::Scalar(Value::String("null-row".into())),
-            ),
-            (
-                "UntypedJsonNull".into(),
-                Instance::Scalar(Value::String("json-null-row".into())),
-            ),
-            (
-                "TypedXmlNil".into(),
-                Instance::Scalar(Value::String("xml-nil-row".into())),
-            ),
-            (
-                "UntypedXmlNil".into(),
-                Instance::Scalar(Value::String("xml-nil-row".into())),
-            ),
-            (
-                "FunctionConstantJsonNull".into(),
-                Instance::Scalar(Value::String("json-null-row".into())),
-            ),
-            (
-                "FunctionParameterJsonNull".into(),
-                Instance::Scalar(Value::String("json-null-row".into())),
-            ),
-        ])
-        .into(),
-    )
+    let mut fields: Vec<(String, Instance)> = vec![
+        (
+            "Duplicate".into(),
+            Instance::Scalar(Value::String("first".into())),
+        ),
+        (
+            "Default".into(),
+            Instance::Scalar(Value::String("fallback".into())),
+        ),
+        ("NoDefault".into(), Instance::Scalar(Value::Null)),
+        (
+            "FloatString".into(),
+            Instance::Scalar(Value::String("float-string".into())),
+        ),
+        ("Int".into(), Instance::Scalar(Value::String("int".into()))),
+        (
+            "Float".into(),
+            Instance::Scalar(Value::String("float".into())),
+        ),
+        (
+            "Bool".into(),
+            Instance::Scalar(Value::String("bool".into())),
+        ),
+        (
+            "Failed".into(),
+            Instance::Scalar(Value::String("retained".into())),
+        ),
+        (
+            "Null".into(),
+            Instance::Scalar(Value::String("null".into())),
+        ),
+        (
+            "XmlNil".into(),
+            Instance::Scalar(Value::String("xml-nil".into())),
+        ),
+        (
+            "TypedJsonNull".into(),
+            Instance::Scalar(Value::String("null-row".into())),
+        ),
+        (
+            "UntypedJsonNull".into(),
+            Instance::Scalar(Value::String("json-null-row".into())),
+        ),
+        (
+            "TypedXmlNil".into(),
+            Instance::Scalar(Value::String("xml-nil-row".into())),
+        ),
+        (
+            "UntypedXmlNil".into(),
+            Instance::Scalar(Value::String("xml-nil-row".into())),
+        ),
+        (
+            "FunctionConstantJsonNull".into(),
+            Instance::Scalar(Value::String("json-null-row".into())),
+        ),
+        (
+            "FunctionParameterJsonNull".into(),
+            Instance::Scalar(Value::String("json-null-row".into())),
+        ),
+    ];
+    fields.extend(null_presence::expected());
+    Instance::Group(fields.into())
 }
 
 #[test]

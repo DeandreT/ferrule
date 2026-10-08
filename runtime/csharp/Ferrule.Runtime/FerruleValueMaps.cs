@@ -30,7 +30,7 @@ public static class FerruleValueMaps
         var value = input;
         if (inputType.HasValue && TryCoerce(input, inputType.Value, out var coerced))
         {
-            value = coerced;
+            value = coerced.Kind == FerruleValueKind.JsonNull ? FerruleValue.Null : coerced;
         }
         foreach (var entry in table)
         {

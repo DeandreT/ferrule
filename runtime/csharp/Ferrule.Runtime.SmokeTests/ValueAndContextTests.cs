@@ -7,6 +7,7 @@ internal static partial class Program
     private static void ValueMaps()
     {
         IsolatedValueMapInputConversion();
+        DeclaredValueMapNullNormalization();
         var duplicateRows = new[]
         {
             new FerruleValueMapEntry(Text("A"), Text("first")),
@@ -151,6 +152,67 @@ internal static partial class Program
         Equal((ulong?)7, functionType.UserFunction);
         Equal((ulong?)3, functionType.FunctionParameter);
         Equal(FerruleScalarType.Int64, functionType.ExpectedScalarType);
+    }
+
+    private static void DeclaredValueMapNullNormalization()
+    {
+        var table = new[]
+        {
+            new FerruleValueMapEntry(FerruleValue.Null, Text("null-first")),
+            new FerruleValueMapEntry(FerruleValue.Null, Text("null-second")),
+            new FerruleValueMapEntry(FerruleValue.JsonNull, Text("json-first")),
+            new FerruleValueMapEntry(FerruleValue.JsonNull, Text("json-second")),
+            new FerruleValueMapEntry(FerruleValue.XmlNil, Text("nil-first")),
+            new FerruleValueMapEntry(FerruleValue.XmlNil, Text("nil-second")),
+        };
+        foreach (var target in new[] { FerruleScalarType.String, FerruleScalarType.Int64, FerruleScalarType.Double, FerruleScalarType.Bool })
+        {
+            foreach (var (input, ordinary, preserved) in new (FerruleValue, string, string)[]
+            {
+                (FerruleValue.Null, "null-first", "null-first"),
+                (FerruleValue.JsonNull, "null-first", "json-first"),
+                (FerruleValue.XmlNil, "nil-first", "nil-first"),
+            })
+            {
+                var declared = FerruleValueMaps.Apply(input, target, table, Text("miss"));
+                var untyped = FerruleValueMaps.Apply(input, null, table, Text("miss"));
+                var isolated = FerruleValueMaps.ApplyUserFunction(input, target, table, Text("miss"));
+                Console.WriteLine($"marker {input.Kind}: {input}, target {target}: declared={declared.Kind}:{declared}, untyped={untyped.Kind}:{untyped}, isolated={isolated.Kind}:{isolated}");
+                Equal(Text(ordinary), declared);
+                Equal(Text(preserved), untyped);
+                Equal(Text(preserved), isolated);
+            }
+            var onlyJson = new[]
+            {
+                new FerruleValueMapEntry(FerruleValue.JsonNull, Text("json-first")),
+                new FerruleValueMapEntry(FerruleValue.JsonNull, Text("json-second")),
+            };
+            var declaredMiss = FerruleValueMaps.Apply(FerruleValue.JsonNull, target, onlyJson, Text("miss"));
+            var untypedMatch = FerruleValueMaps.Apply(FerruleValue.JsonNull, null, onlyJson, Text("miss"));
+            var isolatedMatch = FerruleValueMaps.ApplyUserFunction(FerruleValue.JsonNull, target, onlyJson, Text("miss"));
+            Console.WriteLine($"only-json target {target}: declared={declaredMiss.Kind}:{declaredMiss}, untyped={untypedMatch.Kind}:{untypedMatch}, isolated={isolatedMatch.Kind}:{isolatedMatch}");
+            Equal(Text("miss"), declaredMiss);
+            Equal(Text("json-first"), untypedMatch);
+            Equal(Text("json-first"), isolatedMatch);
+            foreach (var defaultValue in new FerruleValue?[] { null, FerruleValue.Null, FerruleValue.JsonNull, FerruleValue.XmlNil, Text(string.Empty) })
+            {
+                var expected = defaultValue ?? FerruleValue.Null;
+                var declared = FerruleValueMaps.Apply(FerruleValue.JsonNull, target, Array.Empty<FerruleValueMapEntry>(), defaultValue);
+                var untyped = FerruleValueMaps.Apply(FerruleValue.JsonNull, null, Array.Empty<FerruleValueMapEntry>(), defaultValue);
+                var isolated = FerruleValueMaps.ApplyUserFunction(FerruleValue.JsonNull, target, Array.Empty<FerruleValueMapEntry>(), defaultValue);
+                Console.WriteLine($"empty-table target {target}, default {(defaultValue.HasValue ? defaultValue.Value.Kind.ToString() : "None")}: declared={declared.Kind}:{declared}, untyped={untyped.Kind}:{untyped}, isolated={isolated.Kind}:{isolated}");
+                Equal(expected, declared);
+                Equal(expected, untyped);
+                Equal(expected, isolated);
+            }
+            foreach (var output in new[] { FerruleValue.JsonNull, FerruleValue.XmlNil })
+            {
+                var actual = FerruleValueMaps.Apply(FerruleValue.JsonNull, target,
+                    new[] { new FerruleValueMapEntry(FerruleValue.Null, output) });
+                Console.WriteLine($"selected-output target {target}: {actual.Kind}:{actual}");
+                Equal(output, actual);
+            }
+        }
     }
 
     private static void IsolatedValueMapInputConversion()

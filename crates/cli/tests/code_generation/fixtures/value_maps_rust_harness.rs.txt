@@ -1,9 +1,16 @@
 use codegen_runtime::{Instance, Value, field, group, scalar};
-use ferrule_generated_mapping::execute;
+use ferrule_generated_mapping::{execute, execute_with_sources};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let output = execute(&group(Vec::new()))?;
-    assert_eq!(output, expected());
+    let input = group(Vec::new());
+    let expected = expected();
+    std::fs::write("ordinary-host-input.txt", format!("{input:#?}\n"))?;
+    std::fs::write("ordinary-host-literal-expected.txt", format!("{expected:#?}\n"))?;
+    for (route, with_sources) in [("typed", false), ("typed-empty-named", true)] {
+        let result = if with_sources { execute_with_sources(&input, &[]) } else { execute(&input) };
+        std::fs::write(format!("ordinary-host-{route}-raw.txt"), format!("{result:#?}\n"))?;
+        assert_eq!(result?, expected, "ordinary marker route {route}");
+    }
     Ok(())
 }
 
@@ -25,5 +32,9 @@ fn expected() -> Instance {
         field("UntypedXmlNil", scalar(Value::String("xml-nil-row".into()))),
         field("FunctionConstantJsonNull", scalar(Value::String("json-null-row".into()))),
         field("FunctionParameterJsonNull", scalar(Value::String("json-null-row".into()))),
+        field("TypedNull", scalar(Value::String("null-first".into()))),
+        field("UntypedNull", scalar(Value::String("null-first".into()))),
+        field("FunctionParameterNull", scalar(Value::String("null-row".into()))),
+        field("FunctionParameterXmlNil", scalar(Value::String("xml-nil-row".into()))),
     ])
 }
