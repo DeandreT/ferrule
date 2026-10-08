@@ -57,6 +57,7 @@ internal static partial class Program
             ("JSON5 depth and scaled budgets", Json5SyntaxBudgets),
             ("JSON document boundaries", JsonDocumentBoundaries),
             ("JSON required and undeclared property precedence", JsonRequiredPropertyPrecedence),
+            ("JSON String-or-Int integer ranges", JsonStringIntRangeBoundaries),
             ("JSON duplicate schema declarations", JsonDuplicateDeclarationMaterialization),
             ("JSON duplicate declaration projection", JsonDuplicateDeclarationProjection),
             ("JSON duplicate declaration constraints", JsonDuplicateDeclarationConstraintsAndDynamicRejection),

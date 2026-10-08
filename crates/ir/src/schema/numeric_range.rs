@@ -244,7 +244,8 @@ fn stricter_maximum(left: Option<NumberBound>, right: Option<NumberBound>) -> Op
     }
 }
 
-/// One exact numeric interval attached to a concrete scalar schema.
+/// One exact numeric interval attached to a concrete numeric scalar schema
+/// or to the Int member of an exact String-or-Int scalar union.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "bounds", rename_all = "snake_case")]
 pub enum NumericRange {

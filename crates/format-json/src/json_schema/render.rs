@@ -85,6 +85,7 @@ fn render_shape(
             }
             out.insert("type".into(), types.into());
             super::allowed_values::render(node, out)?;
+            super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
             super::patterns::render(node, out);

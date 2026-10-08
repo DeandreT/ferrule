@@ -1,0 +1,992 @@
+{
+  "scope": "Independent String-or-Int integer-interval public generated text and bytes outcomes; no engine/application results as truth.",
+  "fixtures": [
+    {
+      "name": "I",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":2,\"maximum\":5}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":2,\"maximum\":5}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "W",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9007199254740993,\"maximum\":9007199254740995}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9007199254740993,\"maximum\":9007199254740995}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 9007199254740993,
+                  "maximum": 9007199254740995
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 9007199254740993,
+                  "maximum": 9007199254740995
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "N",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"minimum\":2,\"maximum\":5}},\"required\":[],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"minimum\":2,\"maximum\":5}},\"required\":[],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "nullable": true,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "nullable": true,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "L",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775808,\"maximum\":-9223372036854775808}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775808,\"maximum\":-9223372036854775808}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": -9223372036854775808,
+                  "maximum": -9223372036854775808
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": -9223372036854775808,
+                  "maximum": -9223372036854775808
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "U",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9223372036854775807,\"maximum\":9223372036854775807}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9223372036854775807,\"maximum\":9223372036854775807}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 9223372036854775807,
+                  "maximum": 9223372036854775807
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 9223372036854775807,
+                  "maximum": 9223372036854775807
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "O",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":2,\"maximum\":5}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": false
+    },
+    {
+      "name": "E",
+      "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":2,\"maximum\":5}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "named": true,
+      "expected_extra_source_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      },
+      "expected_extra_target_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 2,
+                  "maximum": 5
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "string-empty",
+      "fixture": "I",
+      "input": "{\"value\":\"\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-word",
+      "fixture": "I",
+      "input": "{\"value\":\"abc\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"abc\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-below",
+      "fixture": "I",
+      "input": "{\"value\":\"1\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"1\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-above",
+      "fixture": "I",
+      "input": "{\"value\":\"6\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"6\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-fraction",
+      "fixture": "I",
+      "input": "{\"value\":\"1.0\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"1.0\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-spaces",
+      "fixture": "I",
+      "input": "{\"value\":\" 6 \"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \" 6 \"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "string-overflow",
+      "fixture": "I",
+      "input": "{\"value\":\"9223372036854775808\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"9223372036854775808\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "int-min",
+      "fixture": "I",
+      "input": "{\"value\":2}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 2\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "int-inner",
+      "fixture": "I",
+      "input": "{\"value\":3}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 3\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "int-max",
+      "fixture": "I",
+      "input": "{\"value\":5}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 5\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "optional-nullable-null",
+      "fixture": "N",
+      "input": "{\"value\":null}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": null\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "optional-nullable-text",
+      "fixture": "N",
+      "input": "{\"value\":\"6\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"6\"\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "optional-nullable-int",
+      "fixture": "N",
+      "input": "{\"value\":2}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 2\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "optional-missing",
+      "fixture": "N",
+      "input": "{}",
+      "expected": {
+        "primary_utf8": "{}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "wide-9007199254740993",
+      "fixture": "W",
+      "input": "{\"value\":9007199254740993}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 9007199254740993\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "wide-9007199254740994",
+      "fixture": "W",
+      "input": "{\"value\":9007199254740994}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 9007199254740994\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "wide-9007199254740995",
+      "fixture": "W",
+      "input": "{\"value\":9007199254740995}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 9007199254740995\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "exact-i64-min",
+      "fixture": "L",
+      "input": "{\"value\":-9223372036854775808}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": -9223372036854775808\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "exact-i64-max",
+      "fixture": "U",
+      "input": "{\"value\":9223372036854775807}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 9223372036854775807\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "bounded-refuse-1",
+      "fixture": "I",
+      "input": "{\"value\":1}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [2, 5], got 1"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 1.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 1.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "bounded-refuse-6",
+      "fixture": "I",
+      "input": "{\"value\":6}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [2, 5], got 6"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 6.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 6.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "wide-refuse-9007199254740992",
+      "fixture": "W",
+      "input": "{\"value\":9007199254740992}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740992"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "wide-refuse-9007199254740996",
+      "fixture": "W",
+      "input": "{\"value\":9007199254740996}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740996"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "min-neighbor",
+      "fixture": "L",
+      "input": "{\"value\":-9223372036854775807}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [-9223372036854775808, -9223372036854775808], got -9223372036854775807"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+          "detail": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "max-neighbor",
+      "fixture": "U",
+      "input": "{\"value\":9223372036854775806}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [9223372036854775807, 9223372036854775807], got 9223372036854775806"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-bool",
+      "fixture": "I",
+      "input": "{\"value\":true}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got bool"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got True.",
+          "detail": "JSON field 'value' expected declared scalar union, got True.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-fraction-lexeme",
+      "fixture": "I",
+      "input": "{\"value\":1.0}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got number"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got Number.",
+          "detail": "JSON field 'value' expected declared scalar union, got Number.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-exponent-lexeme",
+      "fixture": "I",
+      "input": "{\"value\":2e0}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got number"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got Number.",
+          "detail": "JSON field 'value' expected declared scalar union, got Number.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-unsigned-overflow",
+      "fixture": "I",
+      "input": "{\"value\":9223372036854775808}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got number"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got Number.",
+          "detail": "JSON field 'value' expected declared scalar union, got Number.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-below-i64",
+      "fixture": "I",
+      "input": "{\"value\":-9223372036854775809}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got number"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got Number.",
+          "detail": "JSON field 'value' expected declared scalar union, got Number.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "input-shape-null",
+      "fixture": "I",
+      "input": "{\"value\":null}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value`: expected declared scalar union, got null"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON field 'value' expected declared scalar union, got Null.",
+          "detail": "JSON field 'value' expected declared scalar union, got Null.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "target-only-1",
+      "fixture": "O",
+      "input": "{\"value\":1}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "`value` requires numeric range [2, 5], got 1"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 1.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 1.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "target-only-2",
+      "fixture": "O",
+      "input": "{\"value\":2}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 2\n}\n",
+        "extras": []
+      }
+    },
+    {
+      "id": "named-string",
+      "fixture": "E",
+      "input": "{\"value\":2}",
+      "catalog": "{\"value\":\"6\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"6\"\n}\n",
+        "extras": [
+          {
+            "name": "audit",
+            "document_utf8": "{\n  \"value\": 2\n}\n"
+          }
+        ]
+      }
+    },
+    {
+      "id": "named-int",
+      "fixture": "E",
+      "input": "{\"value\":2}",
+      "catalog": "{\"value\":2}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": 2\n}\n",
+        "extras": [
+          {
+            "name": "audit",
+            "document_utf8": "{\n  \"value\": 2\n}\n"
+          }
+        ]
+      }
+    },
+    {
+      "id": "named-input-refusal",
+      "fixture": "E",
+      "input": "{\"value\":2}",
+      "catalog": "{\"value\":6}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidInput",
+          "message": "`value` requires numeric range [2, 5], got 6"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 6.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 6.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "named-output-refusal",
+      "fixture": "E",
+      "input": "{\"value\":6}",
+      "catalog": "{\"value\":\"6\"}",
+      "expected": {
+        "rust": {
+          "variant": "InvalidOutput",
+          "message": "`value` requires numeric range [2, 5], got 6"
+        },
+        "csharp": {
+          "code": "JsonBoundary",
+          "message": "JSON scalar 'value' is outside its numeric range: 6.",
+          "detail": "JSON scalar 'value' is outside its numeric range: 6.",
+          "inner_exception": null
+        }
+      }
+    },
+    {
+      "id": "named-later-good",
+      "fixture": "E",
+      "input": "{\"value\":2}",
+      "catalog": "{\"value\":\"100\"}",
+      "expected": {
+        "primary_utf8": "{\n  \"value\": \"100\"\n}\n",
+        "extras": [
+          {
+            "name": "audit",
+            "document_utf8": "{\n  \"value\": 2\n}\n"
+          }
+        ]
+      }
+    }
+  ],
+  "expected_counts": [
+    76,
+    46,
+    30
+  ]
+}

@@ -1,0 +1,107 @@
+use std::{error::Error, fs, path::Path};
+use codegen_runtime::JsonBoundaryError;
+use serde_json::Value as Json;
+
+type TestResult<T> = Result<T, Box<dyn Error>>;
+#[derive(Debug)]
+struct CompleteOutput { primary: Vec<u8>, extras: Vec<(String, Vec<u8>)> }
+
+fn retain<T: std::fmt::Debug>(root: &Path, stem: &str, result: &Result<T, JsonBoundaryError>) -> TestResult<()> {
+    let mut original = format!("complete original={result:#?}\n");
+    if let Err(error) = result {
+        original.push_str(&format!("original display={error}\n"));
+        let mut cause = error.source();
+        while let Some(error) = cause {
+            original.push_str(&format!("original cause={error:#?}\noriginal cause display={error}\n"));
+            cause = error.source();
+        }
+    }
+    fs::write(root.join(format!("RUST-{stem}-ORIGINAL.txt")), original.as_bytes())?;
+    println!("{original}");
+    Ok(())
+}
+
+fn call(root: &Path, stem: &str, test: &Json, bytes: bool) -> TestResult<Result<CompleteOutput, JsonBoundaryError>> {
+    let input = test["input"].as_str().ok_or("literal input required")?;
+    macro_rules! run { ($library:ident) => {{
+        if bytes {
+            let original = $library::execute_json_bytes_outputs(input.as_bytes());
+            retain(root, stem, &original)?;
+            original.map(|output| CompleteOutput { primary: output.primary,
+                extras: output.extras.into_iter().map(|extra| (extra.name.into(), extra.document)).collect() })
+        } else {
+            let original = $library::execute_json_outputs(input);
+            retain(root, stem, &original)?;
+            original.map(|output| CompleteOutput { primary: output.primary.into_bytes(),
+                extras: output.extras.into_iter().map(|extra| (extra.name.into(), extra.document.into_bytes())).collect() })
+        }
+    }}; }
+    Ok(match test["fixture"].as_str().ok_or("fixture required")? {
+        "I" => run!(fixture_i), "W" => run!(fixture_w), "N" => run!(fixture_n),
+        "L" => run!(fixture_l), "U" => run!(fixture_u), "O" => run!(fixture_o),
+        "E" => {
+            let catalog = test["catalog"].as_str().ok_or("named literal required")?;
+            if bytes {
+                let original = fixture_e::execute_json_bytes_outputs_with_sources(input.as_bytes(),
+                    &[fixture_e::NamedJsonBytesInput { name: "catalog", document: catalog.as_bytes() }]);
+                retain(root, stem, &original)?;
+                original.map(|output| CompleteOutput { primary: output.primary,
+                    extras: output.extras.into_iter().map(|extra| (extra.name.into(), extra.document)).collect() })
+            } else {
+                let original = fixture_e::execute_json_outputs_with_sources(input,
+                    &[fixture_e::NamedJsonInput { name: "catalog", document: catalog }]);
+                retain(root, stem, &original)?;
+                original.map(|output| CompleteOutput { primary: output.primary.into_bytes(),
+                    extras: output.extras.into_iter().map(|extra| (extra.name.into(), extra.document.into_bytes())).collect() })
+            }
+        }
+        _ => return Err("undeclared finite fixture".into()),
+    })
+}
+
+fn compare(actual: &Result<CompleteOutput, JsonBoundaryError>, expected: &Json) -> Result<(), String> {
+    if let Some(primary) = expected["primary_utf8"].as_str() {
+        let original = actual.as_ref().map_err(|error| error.to_string())?;
+        let extras = expected["extras"].as_array().ok_or("literal extras required")?.iter()
+            .map(|extra| Ok((extra["name"].as_str().ok_or("extra name required")?.to_owned(),
+                extra["document_utf8"].as_str().ok_or("extra output required")?.as_bytes().to_vec())))
+            .collect::<Result<Vec<_>, String>>()?;
+        if original.primary != primary.as_bytes() || original.extras != extras {
+            return Err("complete literal primary or ordered named output differs".into());
+        }
+        return Ok(());
+    }
+    let error = actual.as_ref().err().ok_or("refusal returned success")?;
+    let (variant, message) = match error {
+        JsonBoundaryError::InvalidInput { message } => ("InvalidInput", message),
+        JsonBoundaryError::InvalidOutput { message } => ("InvalidOutput", message),
+        _ => return Err(format!("unexpected complete public error: {error:?}")),
+    };
+    if expected["rust"]["variant"] != variant || expected["rust"]["message"] != *message || error.source().is_some() {
+        return Err("complete public category/message/cause differs".into());
+    }
+    Ok(())
+}
+
+fn main() -> TestResult<()> {
+    let root = std::env::args_os().nth(1).ok_or("one retained root required")?;
+    let root = Path::new(&root);
+    let corpus: Json = serde_json::from_slice(&fs::read(root.join("cases.json"))?)?;
+    let mut counts = [0_usize; 3];
+    let mut failures = Vec::new();
+    for test in corpus["cases"].as_array().ok_or("complete cases required")? {
+        for bytes in [false, true] {
+            let stem = format!("{}-{}", test["id"].as_str().ok_or("id required")?, if bytes { "bytes" } else { "text" });
+            let original = call(root, &stem, test, bytes)?;
+            counts[0] += 1;
+            counts[if original.is_ok() { 1 } else { 2 }] += 1;
+            if let Err(error) = compare(&original, &test["expected"]) { failures.push(format!("{stem}: {error}")); }
+        }
+    }
+    let result = serde_json::json!({"counts":counts,"failures":failures});
+    fs::write(root.join("RUST-COMPLETE-RESULT.json"), serde_json::to_vec_pretty(&result)?)?;
+    if result["counts"] != corpus["expected_counts"] || !failures.is_empty() {
+        return Err("complete generated String-or-Int comparison failed; originals retained".into());
+    }
+    Ok(())
+}
