@@ -1,6 +1,7 @@
 //! Browser playground application state and immediate-mode UI.
 
 mod canvas;
+mod history;
 mod sample;
 
 use eframe::egui;
@@ -12,6 +13,7 @@ use web_demo::project_document::{self, ProjectDocumentError};
 use web_demo::runtime::{self, DataFormat, DataSide};
 
 use canvas::{CanvasNode, DemoViewer, build_snarl, flat_bindings};
+use history::ProjectHistory;
 use sample::{SAMPLE_XML, demo_project};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,6 +41,11 @@ pub(super) struct DemoApp {
     project_changed: bool,
     canvas_view_generation: u64,
     canvas_compact: bool,
+    history: ProjectHistory,
+    history_notice: Option<String>,
+    project_json_dirty: bool,
+    edited_constant: Option<NodeId>,
+    focused_constant: Option<NodeId>,
 }
 
 impl DemoApp {
@@ -51,6 +58,11 @@ impl DemoApp {
             Ok(json) => (json, None),
             Err(error) => (String::new(), Some(error.to_string())),
         };
+        let mut history = ProjectHistory::default();
+        let history_notice = history
+            .capture_and_record(&project, None)
+            .err()
+            .map(|error| format!("History cleared: {error}"));
         Self {
             project,
             bindings,
@@ -68,6 +80,11 @@ impl DemoApp {
             project_changed: false,
             canvas_view_generation: 0,
             canvas_compact: false,
+            history,
+            history_notice,
+            project_json_dirty: false,
+            edited_constant: None,
+            focused_constant: None,
         }
     }
 
@@ -111,18 +128,9 @@ impl DemoApp {
     fn apply_project_json(&mut self) {
         match project_document::parse_and_validate(&self.project_json) {
             Ok(project) => {
-                let mut bindings = Vec::new();
-                flat_bindings(&project.root, "", &mut bindings);
-                self.snarl = build_snarl(&project, &bindings, self.canvas_compact);
-                self.source_format =
-                    boundary_format(&project, DataSide::Source, self.source_format);
-                self.target_format =
-                    boundary_format(&project, DataSide::Target, self.target_format);
-                self.project = project;
-                self.bindings = bindings;
-                self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
-                self.project_changed = false;
-                self.run_pending = true;
+                self.install_project(project);
+                self.project_json_dirty = false;
+                self.record_project(None, false);
                 self.status = "Project applied".to_string();
                 self.diagnostic = None;
                 self.active_view = WorkspaceView::Mapping;
@@ -131,6 +139,97 @@ impl DemoApp {
                 self.status = "Project not applied".to_string();
                 self.diagnostic = Some(project_document_error(&error));
             }
+        }
+    }
+
+    fn install_project(&mut self, project: Project) {
+        let mut bindings = Vec::new();
+        flat_bindings(&project.root, "", &mut bindings);
+        self.snarl = build_snarl(&project, &bindings, self.canvas_compact);
+        self.source_format = boundary_format(&project, DataSide::Source, self.source_format);
+        self.target_format = boundary_format(&project, DataSide::Target, self.target_format);
+        self.project = project;
+        self.bindings = bindings;
+        self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+        self.project_changed = false;
+        self.edited_constant = None;
+        self.focused_constant = None;
+        self.run_pending = true;
+    }
+
+    fn record_project(&mut self, constant: Option<NodeId>, sync_editor: bool) {
+        self.history_notice = self
+            .history
+            .capture_and_record(&self.project, constant)
+            .err()
+            .map(|error| format!("History cleared: {error}"));
+        if sync_editor && !self.project_json_dirty {
+            self.sync_project_json();
+        }
+    }
+
+    fn finish_project_edits(&mut self) {
+        if self.project_changed {
+            self.project_changed = false;
+            self.record_project(self.edited_constant, true);
+            self.edited_constant = None;
+        }
+        self.history.finish_focus(self.focused_constant);
+    }
+
+    fn restore_project(&mut self, redo: bool) {
+        let snapshot = if redo {
+            self.history.redo_json()
+        } else {
+            self.history.undo_json()
+        };
+        let Some(snapshot) = snapshot else {
+            return;
+        };
+        // Canvas edits can be incomplete or invalid. Restore the complete typed
+        // document without introducing Apply's separate schema-validation gate.
+        let project = match mapping::project_file::decode_str(snapshot) {
+            Ok(project) => project,
+            Err(error) => {
+                self.history_notice = Some(format!("History restore failed: {error}"));
+                return;
+            }
+        };
+        if redo {
+            self.history.redo();
+        } else {
+            self.history.undo();
+        }
+        self.install_project(project);
+        if !self.project_json_dirty {
+            self.sync_project_json();
+        }
+        self.history_notice = None;
+        self.status = if redo {
+            "Project redone"
+        } else {
+            "Project undone"
+        }
+        .into();
+        self.diagnostic = None;
+    }
+
+    fn handle_history_shortcuts(&mut self, context: &egui::Context) {
+        if context.text_edit_focused() {
+            return;
+        }
+        let undo = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
+        let redo = egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+            egui::Key::Z,
+        );
+        let alternate = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Y);
+        if context
+            .input_mut(|input| input.consume_shortcut(&redo) || input.consume_shortcut(&alternate))
+        {
+            self.restore_project(true);
+        } else if context.input_mut(|input| input.consume_shortcut(&undo)) {
+            self.restore_project(false);
         }
     }
 
@@ -183,6 +282,7 @@ impl DemoApp {
             match text {
                 Ok(text) => {
                     self.project_json = text;
+                    self.project_json_dirty = true;
                     self.apply_project_json();
                 }
                 Err(error) => {
@@ -215,6 +315,26 @@ impl DemoApp {
                     ui.selectable_value(&mut self.active_view, view, label);
                 }
                 ui.separator();
+                if ui
+                    .add_enabled(
+                        self.history.undo_json().is_some(),
+                        egui::Button::new("Undo"),
+                    )
+                    .on_hover_text("Undo project edit (Ctrl/Command+Z); text fields keep text undo")
+                    .clicked()
+                {
+                    self.restore_project(false);
+                }
+                if ui
+                    .add_enabled(
+                        self.history.redo_json().is_some(),
+                        egui::Button::new("Redo"),
+                    )
+                    .on_hover_text("Redo project edit (Ctrl/Command+Shift+Z or Ctrl/Command+Y)")
+                    .clicked()
+                {
+                    self.restore_project(true);
+                }
                 if ui.button("Run").clicked() {
                     self.run();
                 }
@@ -244,6 +364,9 @@ impl DemoApp {
                 }
                 ui.separator();
                 ui.label(&self.status);
+                if let Some(notice) = &self.history_notice {
+                    ui.label(notice);
+                }
             });
         });
     }
@@ -281,6 +404,9 @@ impl DemoApp {
     fn show_project(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("Project JSON");
+            if self.project_json_dirty {
+                ui.label("Unapplied JSON");
+            }
             if ui.button("Apply").clicked() {
                 self.apply_project_json();
             }
@@ -292,21 +418,29 @@ impl DemoApp {
             }
         });
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(&mut self.project_json)
-                    .code_editor()
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(30),
-            );
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut self.project_json)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(30),
+                )
+                .changed()
+            {
+                self.project_json_dirty = true;
+            }
         });
     }
 
     fn show_mapping(&mut self, ui: &mut egui::Ui) {
+        self.edited_constant = None;
         let mut viewer = DemoViewer::new(
             &mut self.project.graph,
             &self.bindings,
             &mut self.run_pending,
             &mut self.project_changed,
+            &mut self.edited_constant,
+            &mut self.focused_constant,
         );
         SnarlWidget::new()
             .id(egui::Id::new((
@@ -315,11 +449,11 @@ impl DemoApp {
             )))
             .show(&mut self.snarl, &mut viewer, ui);
     }
-}
 
-impl eframe::App for DemoApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn show_workspace(&mut self, ui: &mut egui::Ui) {
         self.accept_dropped_project(ui.ctx());
+        self.handle_history_shortcuts(ui.ctx());
+        self.focused_constant = None;
         let compact = ui.available_width() < 900.0;
         if compact != self.canvas_compact {
             self.canvas_compact = compact;
@@ -369,13 +503,16 @@ impl eframe::App for DemoApp {
             egui::CentralPanel::default().show(ui, |ui| self.show_mapping(ui));
         }
 
-        if self.project_changed {
-            self.project_changed = false;
-            self.sync_project_json();
-        }
+        self.finish_project_edits();
         if self.run_pending && self.live_run {
             self.run();
         }
+    }
+}
+
+impl eframe::App for DemoApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show_workspace(ui);
     }
 }
 
@@ -450,3 +587,6 @@ fn read_native_drop(_path: &std::path::Path) -> Option<Result<String, String>> {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod history_tests;
