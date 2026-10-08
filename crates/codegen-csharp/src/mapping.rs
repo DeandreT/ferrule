@@ -851,7 +851,7 @@ fn render_user_function_expression(
         } => {
             output.push_str("\n    {\n");
             output.push_str(&format!(
-                "        var input_{node} = {};\n        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, ",
+                "        var input_{node} = {};\n        return global::Ferrule.Runtime.FerruleValueMaps.ApplyUserFunction(\n            input_{node}, ",
                 call(*input)
             ));
             match input_type {

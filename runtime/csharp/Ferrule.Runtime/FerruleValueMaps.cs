@@ -43,6 +43,33 @@ public static class FerruleValueMaps
         return defaultValue ?? FerruleValue.Null;
     }
 
+    /// <summary>Uses exact integer-to-double input conversion in an isolated function.</summary>
+    public static FerruleValue ApplyUserFunction(
+        FerruleValue input,
+        FerruleScalarType? inputType,
+        IReadOnlyList<FerruleValueMapEntry> table,
+        FerruleValue? defaultValue = null)
+    {
+        var value = input;
+        if (inputType == FerruleScalarType.Double && input.Kind == FerruleValueKind.Int64)
+        {
+            var integer = input.Int64Value;
+            var converted = (double)integer;
+            // The upper bound is exclusive: long.MaxValue rounds to 2^63.
+            if (converted >= (double)long.MinValue &&
+                converted < -(double)long.MinValue &&
+                (long)converted == integer)
+            {
+                value = FerruleValue.FromDouble(converted);
+            }
+        }
+        else if (inputType.HasValue && TryCoerce(input, inputType.Value, out var coerced))
+        {
+            value = coerced;
+        }
+        return Apply(value, null, table, defaultValue);
+    }
+
     internal static bool TryCoerce(
         FerruleValue value,
         FerruleScalarType type,

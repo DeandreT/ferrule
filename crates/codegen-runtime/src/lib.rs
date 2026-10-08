@@ -68,7 +68,7 @@ pub use runtime_value::{
     MAX_RUNTIME_PARAMETERS, RuntimeParameterError, RuntimeParameters, RuntimeValue,
 };
 pub use user_function::adapt_user_function_value;
-pub use value_map::value_map;
+pub use value_map::{value_map, value_map_user_function};
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 pub use xml_boundary::{
     DynamicXmlSourceLoader, MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES,

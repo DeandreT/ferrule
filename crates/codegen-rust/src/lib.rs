@@ -1451,8 +1451,13 @@ fn render_expression(
                 None => "None".to_string(),
             };
             let input = call_expression(*input, "context");
+            let lookup = if parameters.is_some() {
+                "codegen_runtime::value_map_user_function"
+            } else {
+                "value_map"
+            };
             format!(
-                "{{\n        let input = {input}?;\n{normalization}        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
+                "{{\n        let input = {input}?;\n{normalization}        Ok({lookup}(input, {input_type}, &[{table}], {default}))\n    }}"
             )
         }
         Expression::Lookup {
