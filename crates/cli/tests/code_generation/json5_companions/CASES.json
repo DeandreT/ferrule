@@ -1,0 +1,717 @@
+{
+  "oracle_provenance": "Independent literal source/normalized fragments, integer decimals, exact powers-of-two float bits and writer strings authored from reached source contracts. No JSON5 parser, production writer, mapping, or binary conversion used.",
+  "representation_cases": 17,
+  "mapping_context_cases": 6,
+  "routes_per_language": 4,
+  "languages": 2,
+  "small_calls": 184,
+  "physical_calls": 0,
+  "cases": [
+    {
+      "id": "strict-integer",
+      "fixture": "I",
+      "input": "{\"n\":7}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":7}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 7\n}\n"
+      }
+    },
+    {
+      "id": "comments-trailing-comma",
+      "fixture": "I",
+      "input": "/*before*/{n:7,}// eof",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":7}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 7\n}\n"
+      }
+    },
+    {
+      "id": "unicode-text-single-quotes",
+      "fixture": "S",
+      "input": "{n:'Ada 雪'}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":\"Ada 雪\"}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "Ada 雪"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "Ada 雪"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": \"Ada 雪\"\n}\n"
+      }
+    },
+    {
+      "id": "hexadecimal",
+      "fixture": "I",
+      "input": "{n:0x10}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":16}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "16"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "16"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 16\n}\n"
+      }
+    },
+    {
+      "id": "leading-point",
+      "fixture": "F",
+      "input": "{n:.5}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":0.5}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Float",
+                  "bits_hex": "3fe0000000000000",
+                  "mathematical_value": "1/2"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Float",
+                  "bits_hex": "3fe0000000000000",
+                  "mathematical_value": "1/2"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 0.5\n}\n"
+      }
+    },
+    {
+      "id": "float-minus-zero",
+      "fixture": "F",
+      "input": "{n:-0.0}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":-0.0}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Float",
+                  "bits_hex": "8000000000000000",
+                  "mathematical_value": "negative zero"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Float",
+                  "bits_hex": "8000000000000000",
+                  "mathematical_value": "negative zero"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": -0.0\n}\n"
+      }
+    },
+    {
+      "id": "nullable-explicit-null",
+      "fixture": "N",
+      "input": "{n:null}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":null}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "JsonNull"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": null\n}\n"
+      }
+    },
+    {
+      "id": "integer-two53-plus1",
+      "fixture": "I",
+      "input": "{n:9007199254740993}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":9007199254740993}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "9007199254740993"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "9007199254740993"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 9007199254740993\n}\n"
+      }
+    },
+    {
+      "id": "duplicate-last-wins",
+      "fixture": "I",
+      "input": "{n:1,n:7}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":1,\"n\":7}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 7\n}\n"
+      }
+    },
+    {
+      "id": "bom-and-json5-whitespace",
+      "fixture": "I",
+      "input": "﻿ {n:7}  ",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":7}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 7\n}\n"
+      }
+    },
+    {
+      "id": "surrogate-pair-string",
+      "fixture": "S",
+      "input": "{n:'\\uD83D\\uDE00'}",
+      "expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":\"😀\"}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "😀"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "String",
+                  "text": "😀"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": \"😀\"\n}\n"
+      }
+    },
+    {
+      "id": "unquoted-unicode-boundary",
+      "fixture": "U",
+      "input": "{雪:7}",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Syntax",
+        "kind": "UnsupportedIdentifier",
+        "no_public_result": true,
+        "original_utf8_byte_offset": 1
+      }
+    },
+    {
+      "id": "second-root-json-lines",
+      "fixture": "I",
+      "input": "{n:7}\n{n:8}",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Syntax",
+        "kind": "TrailingRootValue",
+        "no_public_result": true
+      }
+    },
+    {
+      "id": "unterminated-block-comment",
+      "fixture": "I",
+      "input": "{n:7}/*",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Syntax",
+        "kind": "UnterminatedComment",
+        "no_public_result": true
+      }
+    },
+    {
+      "id": "nonfinite-NaN",
+      "fixture": "N",
+      "input": "{n:NaN}",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Syntax",
+        "kind": "NonFiniteNumber",
+        "no_public_result": true,
+        "original_utf8_byte_offset": 3
+      }
+    },
+    {
+      "id": "root-array-not-flat-rows",
+      "fixture": "I",
+      "input": "[{n:7}]",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Input",
+        "kind": "RootObjectRequired",
+        "no_public_result": true
+      },
+      "pure_normalizer_expected": {
+        "outcome": "success",
+        "normalized_strict_json": "[{\"n\":7}]",
+        "status": "authored independent literal; UNRUN"
+      }
+    },
+    {
+      "id": "integer-not-exact-float",
+      "fixture": "F",
+      "input": "{n:9007199254740993}",
+      "expected": {
+        "outcome": "refusal",
+        "stage": "Input",
+        "kind": "SchemaShape",
+        "no_public_result": true
+      },
+      "pure_normalizer_expected": {
+        "outcome": "success",
+        "normalized_strict_json": "{\"n\":9007199254740993}",
+        "status": "authored independent literal; UNRUN"
+      }
+    },
+    {
+      "id": "lazy-message-unselected",
+      "fixture": "MessageError",
+      "input": "{Fail:false}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Fail",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Bool",
+                "boolean": false
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "success",
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "n",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"n\": 7\n}\n",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "Fail",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Bool",
+                  "boolean": false
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "selected-constant-message",
+      "fixture": "MessageConstant",
+      "input": "{Fail:true}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Fail",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Bool",
+                "boolean": true
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "stage": "Mapping",
+        "rust_cause": {
+          "variant": "RuntimeError::MappingException",
+          "node": 3,
+          "message": "stop"
+        },
+        "csharp_cause": {
+          "error": "MappingException",
+          "node": 3,
+          "mappingExceptionMessage": "stop"
+        },
+        "complete_original_payload_retained": true,
+        "no_result": true
+      }
+    },
+    {
+      "id": "selected-message-error",
+      "fixture": "MessageError",
+      "input": "{Fail:true}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Fail",
+            "instance": {
+              "kind": "Scalar",
+              "value": {
+                "tag": "Bool",
+                "boolean": true
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "stage": "Mapping",
+        "rust_cause": "RuntimeError::Function(FunctionError::DivideByZero)",
+        "csharp_cause": "original FerruleRuntimeException with DivideByZero, complete original fields retained",
+        "not_a_mapping_exception": true,
+        "no_result": true
+      }
+    },
+    {
+      "id": "raise-no-message",
+      "fixture": "MessageNone",
+      "input": "{}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": []
+      },
+      "expected": {
+        "stage": "Mapping",
+        "node": 3,
+        "message_presence": "None",
+        "no_result": true
+      }
+    },
+    {
+      "id": "raise-explicit-empty-message",
+      "fixture": "MessageEmpty",
+      "input": "{}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": []
+      },
+      "expected": {
+        "stage": "Mapping",
+        "node": 3,
+        "message_presence": "Some",
+        "message": "",
+        "no_result": true
+      }
+    },
+    {
+      "id": "context-lazy-path",
+      "fixture": "Context",
+      "input": "{}",
+      "manual_typed_input": {
+        "kind": "Group",
+        "fields": []
+      },
+      "expected": {
+        "with_context": {
+          "provided_active_path": "/logical/active.json",
+          "complete_typed_output": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "Path",
+                "instance": {
+                  "kind": "Scalar",
+                  "value": {
+                    "tag": "String",
+                    "text": "/logical/active.json"
+                  }
+                }
+              }
+            ]
+          },
+          "output_utf8_text": "{\n  \"Path\": \"/logical/active.json\"\n}\n",
+          "complete_typed_input": {
+            "kind": "Group",
+            "fields": []
+          }
+        },
+        "without_context": {
+          "stage": "Mapping",
+          "original_cause": "MissingRuntimeValue(MappingFilePath)",
+          "no_result": true
+        }
+      }
+    }
+  ]
+}

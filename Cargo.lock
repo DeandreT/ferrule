@@ -916,6 +916,7 @@ dependencies = [
  "codegen-csharp",
  "codegen-runtime",
  "codegen-rust",
+ "codegen-schema",
  "engine",
  "format-csv",
  "format-db",

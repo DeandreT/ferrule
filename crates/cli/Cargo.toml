@@ -23,6 +23,7 @@ ir = { workspace = true }
 mapping = { workspace = true }
 engine = { workspace = true }
 codegen = { workspace = true }
+codegen-schema = { workspace = true }
 codegen-rust = { workspace = true }
 codegen-csharp = { workspace = true }
 format-csv = { workspace = true }

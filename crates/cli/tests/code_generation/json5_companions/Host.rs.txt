@@ -1,0 +1,189 @@
+use std::{error::Error, fmt::Debug, fs, path::Path};
+use codegen_runtime::{ExecutionContext, FunctionError, Instance, Json5BoundaryError,
+    Json5SyntaxError, Json5SyntaxKind, JsonFormatError, RuntimeError, RuntimeValue, Value};
+use serde_json::Value as Json;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let root = std::env::args_os().nth(1).ok_or("one retained cohort root is required")?;
+    let root = Path::new(&root);
+    let corpus: Json = serde_json::from_slice(&fs::read(root.join("CASES.json"))?)?;
+    let execution = ExecutionContext::new(Path::new("/logical/active.json"));
+    let mut total = 0;
+    let mut failures = Vec::new();
+    for case in corpus["cases"].as_array().ok_or("cases must be an array")? {
+        for route in 0..4 {
+            let with_context = route % 2 == 1;
+            let expected = if case["expected"].get("with_context").is_some() {
+                &case["expected"][if with_context { "with_context" } else { "without_context" }]
+            } else { &case["expected"] };
+            let source = case["input"].as_str().ok_or("input must be text")?;
+            let fixture = case["fixture"].as_str().ok_or("fixture must be text")?;
+            let id = case["id"].as_str().ok_or("id must be text")?;
+            let stem = format!("RUST-{fixture}-{id}-route{route}");
+            // Manual typed trees are independent contract literals, not produced
+            // by the JSON5 parser or inferred from the adapter's output.
+            let typed_input = expected.get("complete_typed_input")
+                .or_else(|| case.get("manual_typed_input")).map(instance).transpose()?;
+            let typed = typed_input.as_ref().map(|input| typed_call(fixture, input, with_context, &execution));
+            let result = public_call(fixture, source, route, &execution, root, &stem)?;
+            let evidence = format!("id={id}\nroute={route}\ninput_utf8={:?}\ninput_text={source:?}\ncontext={:?}\nmanual_oracle={case:#}\nmanual_typed_input={typed_input:#?}\noriginal_typed_result={typed:#?}\noriginal_public_result={result:#?}\n",
+                source.as_bytes(), with_context.then_some("/logical/active.json"));
+            fs::write(root.join(format!("{stem}-ORIGINAL.txt")), &evidence)?;
+            println!("{evidence}");
+            total += 1;
+            if let Err(reason) = verify(&result, typed.as_ref(), expected) {
+                failures.push(format!("{stem}: {reason}"));
+            }
+        }
+    }
+    fs::write(root.join("RUST-COMPARISON-FAILURES.json"), serde_json::to_vec_pretty(&failures)?)?;
+    fs::write(root.join("COMPLETE_CALL_COUNT_RUST.json"), serde_json::to_vec_pretty(&serde_json::json!({
+        "total":total,"expected":92,"failures":failures.len(),"physical_calls":0
+    }))?)?;
+    if total != 92 || !failures.is_empty() { return Err("complete Rust small public comparison failed; all originals retained".into()); }
+    Ok(())
+}
+
+fn original<T: Debug>(root: &Path, stem: &str, result: &Result<T, Json5BoundaryError>) -> Result<(), Box<dyn Error>> {
+    let mut record = format!("original public Result={result:#?}\n");
+    if let Err(error) = result {
+        record.push_str(&format!("original display={error}\n"));
+        let mut cause = error.source();
+        while let Some(error) = cause {
+            record.push_str(&format!("original cause={error:#?}\noriginal cause display={error}\n"));
+            cause = error.source();
+        }
+    }
+    fs::write(root.join(format!("{stem}-PUBLIC-ORIGINAL.txt")), &record)?;
+    println!("{record}");
+    Ok(())
+}
+
+fn public_call(fixture: &str, input: &str, route: usize, execution: &ExecutionContext<'_>, root: &Path, stem: &str)
+    -> Result<Result<Vec<u8>, Json5BoundaryError>, Box<dyn Error>> {
+    macro_rules! run { ($library:ident) => {{
+        match route {
+            0 => { let result = $library::execute_json5(input); original(root, stem, &result)?; result.map(String::into_bytes) }
+            1 => { let result = $library::execute_json5_with_context(input, execution); original(root, stem, &result)?; result.map(String::into_bytes) }
+            2 => { let result = $library::execute_json5_bytes(input.as_bytes()); original(root, stem, &result)?; result }
+            3 => { let result = $library::execute_json5_bytes_with_context(input.as_bytes(), execution); original(root, stem, &result)?; result }
+            _ => unreachable!("exactly four public routes"),
+        }
+    }}; }
+    Ok(match fixture {
+        "I" => run!(fixture_i), "F" => run!(fixture_f), "S" => run!(fixture_s),
+        "N" => run!(fixture_n), "U" => run!(fixture_u),
+        "MessageError" => run!(fixture_messageerror), "MessageConstant" => run!(fixture_messageconstant),
+        "MessageNone" => run!(fixture_messagenone), "MessageEmpty" => run!(fixture_messageempty),
+        "Context" => run!(fixture_context),
+        _ => return Err("undeclared fixture".into()),
+    })
+}
+
+fn typed_call(fixture: &str, input: &Instance, with_context: bool, execution: &ExecutionContext<'_>) -> Result<Instance, RuntimeError> {
+    macro_rules! run { ($library:ident) => {
+        if with_context { $library::execute_with_context(input, execution) } else { $library::execute(input) }
+    }; }
+    match fixture {
+        "I" => run!(fixture_i), "F" => run!(fixture_f), "S" => run!(fixture_s),
+        "N" => run!(fixture_n), "U" => run!(fixture_u),
+        "MessageError" => run!(fixture_messageerror), "MessageConstant" => run!(fixture_messageconstant),
+        "MessageNone" => run!(fixture_messagenone), "MessageEmpty" => run!(fixture_messageempty),
+        "Context" => run!(fixture_context), _ => unreachable!("declared fixture"),
+    }
+}
+
+fn instance(tree: &Json) -> Result<Instance, Box<dyn Error>> {
+    match tree["kind"].as_str() {
+        Some("Group") => {
+            let fields = tree["fields"].as_array().ok_or("manual Group requires fields")?
+                .iter().map(|field| Ok((field["name"].as_str().ok_or("manual name required")?.to_owned(), instance(&field["instance"])?)))
+                .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+            Ok(Instance::Group(fields.into()))
+        }
+        Some("Scalar") => {
+            let value = &tree["value"];
+            Ok(Instance::Scalar(match value["tag"].as_str() {
+                Some("Int") => Value::Int(value["decimal"].as_str().ok_or("integer decimal required")?.parse()?),
+                Some("Float") => Value::Float(f64::from_bits(u64::from_str_radix(value["bits_hex"].as_str().ok_or("float bits required")?,16)?)),
+                Some("String") => Value::String(value["text"].as_str().ok_or("string text required")?.into()),
+                Some("Bool") => Value::Bool(value["boolean"].as_bool().ok_or("boolean required")?),
+                Some("Null") => Value::Null, Some("JsonNull") => Value::json_null(),
+                _ => return Err("manual scalar tag outside this bounded cohort".into()),
+            }))
+        }
+        _ => Err("manual tree kind outside this bounded cohort".into()),
+    }
+}
+
+fn same_instance(actual: &Instance, expected: &Instance) -> bool {
+    match (actual, expected) {
+        (Instance::Group(actual), Instance::Group(expected)) => actual.len() == expected.len()
+            && actual.iter().zip(expected.iter()).all(|((an,av),(en,ev))| an == en && same_instance(av,ev)),
+        (Instance::Scalar(Value::Float(actual)), Instance::Scalar(Value::Float(expected))) => actual.to_bits() == expected.to_bits(),
+        (Instance::Scalar(actual), Instance::Scalar(expected)) => actual == expected,
+        _ => false,
+    }
+}
+
+fn verify(result: &Result<Vec<u8>, Json5BoundaryError>, typed: Option<&Result<Instance, RuntimeError>>, expected: &Json) -> Result<(), String> {
+    if let Some(output) = expected["output_utf8_text"].as_str() {
+        if !matches!(result, Ok(actual) if actual == output.as_bytes()) { return Err("complete independent output bytes differ".into()); }
+        let wanted = instance(&expected["complete_typed_output"]).map_err(|error| error.to_string())?;
+        if !matches!(typed, Some(Ok(actual)) if same_instance(actual, &wanted)) { return Err("complete independent typed output differs".into()); }
+        return Ok(());
+    }
+    let error = result.as_ref().err().ok_or("failed stage returned output")?;
+    match expected["stage"].as_str() {
+        Some("Syntax") => {
+            let Json5BoundaryError::Syntax(cause) = error else { return Err("wrong original Syntax wrapper".into()); };
+            if !matches!(error.source().and_then(|source| source.downcast_ref::<Json5SyntaxError>()), Some(original) if std::ptr::eq(original,cause)) {
+                return Err("original syntax source identity lost".into());
+            }
+            let Json5SyntaxError::Syntax { kind, offset } = cause else { return Err("unexpected syntax resource/encoding refusal".into()); };
+            let wanted = match expected["kind"].as_str() {
+                Some("UnsupportedIdentifier") => Json5SyntaxKind::UnsupportedIdentifier,
+                Some("TrailingRootValue") => Json5SyntaxKind::TrailingRootValue,
+                Some("UnterminatedComment") => Json5SyntaxKind::UnterminatedComment,
+                Some("NonFiniteNumber") => Json5SyntaxKind::NonFiniteNumber,
+                _ => return Err("unbound syntax oracle".into()),
+            };
+            if *kind != wanted { return Err("original syntax kind differs".into()); }
+            if let Some(wanted) = expected["original_utf8_byte_offset"].as_u64() {
+                if *offset as u64 != wanted { return Err("original UTF-8 offset differs".into()); }
+            }
+        }
+        Some("Input") => {
+            let Json5BoundaryError::Input(cause) = error else { return Err("wrong original Input wrapper".into()); };
+            if !matches!(error.source().and_then(|source| source.downcast_ref::<JsonFormatError>()), Some(original) if std::ptr::eq(original,cause)) {
+                return Err("original projection source identity lost".into());
+            }
+            let matches = match expected["kind"].as_str() {
+                Some("RootObjectRequired") => matches!(cause, JsonFormatError::Shape { name, expected:"object",got:"array" } if name == "Input"),
+                Some("SchemaShape") => matches!(cause, JsonFormatError::Shape { name, expected:"number", got:"integer outside the exact f64 range" } if name == "n"),
+                _ => false,
+            };
+            if !matches { return Err("complete original projection payload differs".into()); }
+        }
+        Some("Mapping") => {
+            let Json5BoundaryError::Mapping(cause) = error else { return Err("wrong original Mapping wrapper".into()); };
+            if !matches!(error.source().and_then(|source| source.downcast_ref::<RuntimeError>()), Some(original) if std::ptr::eq(original,cause)) {
+                return Err("original mapping source identity lost".into());
+            }
+            let wanted = if expected.get("rust_cause").is_some_and(Json::is_object) {
+                RuntimeError::MappingException { node:3, message:Some("stop".into()) }
+            } else if expected["not_a_mapping_exception"] == true {
+                RuntimeError::Function(FunctionError::DivideByZero)
+            } else if expected.get("message_presence").is_some() {
+                RuntimeError::MappingException { node:3, message:if expected["message_presence"] == "Some" { Some(String::new()) } else { None } }
+            } else {
+                RuntimeError::MissingRuntimeValue { value:RuntimeValue::MappingFilePath }
+            };
+            if *cause != wanted || !matches!(typed, Some(Err(actual)) if *actual == wanted) {
+                return Err("complete original mapping payload or typed control differs".into());
+            }
+        }
+        _ => return Err("unbound failure stage".into()),
+    }
+    Ok(())
+}
