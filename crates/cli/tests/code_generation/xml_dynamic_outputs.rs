@@ -444,3 +444,7 @@ fn generated_csharp_dynamic_xml_document_lists_preserve_paths_outputs_and_origin
 -> TestResult<()> {
     exercise("csharp")
 }
+
+#[cfg(target_os = "linux")]
+#[path = "xml_dynamic_outputs/combined_output_bytes.rs"]
+mod combined_output_bytes;
