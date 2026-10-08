@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-07
+Updated: 2026-10-08
 
 ## Goal
 
@@ -84,6 +84,15 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 
 ### 5. Deepen memory and authoring coverage without changing contracts
 
+- [ ] Complete the Value map conversion/null increments: isolated integer
+  conversion in [#91](https://github.com/DeandreT/ferrule/issues/91) is locally
+  qualified and merged in [#123](https://github.com/DeandreT/ferrule/pull/123);
+  ordinary typed JSON-null matching in
+  [#113](https://github.com/DeandreT/ferrule/issues/113) remains pending. Preserve
+  their distinct contexts and complete interpreter/generated outcomes.
+- [ ] Preserve enabled absent Value map defaults through save/reload and history
+  in [#114](https://github.com/DeandreT/ferrule/issues/114), then qualify typed-cell
+  authoring in [#97](https://github.com/DeandreT/ferrule/issues/97) after #91/#114.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 

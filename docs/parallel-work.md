@@ -16,8 +16,9 @@ choose a lane and avoid conflicting changes.
 4. Keep one bounded result per PR and link its issue. For a newly discovered
    gap, open a scoped issue before implementing it; do not silently widen the
    issue you claimed.
-5. Leave concise updates: result, evidence link, blocker, and next step. Release
-   ownership when pausing or handing off so another contributor can take it.
+5. Leave concise updates in first person (I/me): result, evidence link, blocker,
+   and next step. Release ownership when pausing or handing off so another
+   contributor can take it.
 
 ## Dependencies and shared areas
 
