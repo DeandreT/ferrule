@@ -1,0 +1,80 @@
+use codegen_runtime::{DynamicXmlSourceLoader, ExecutionContext, RuntimeError, XmlBoundaryError, XmlExecutionError, XmlInputSetResourceError, XmlInputSource};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{cell::RefCell, error::Error, fmt::Debug, io::Write, path::{Path, PathBuf}};
+
+struct Host { document:PathBuf, calls:RefCell<Vec<Json>>, events:RefCell<std::fs::File> }
+impl DynamicXmlSourceLoader for Host {
+    fn load(&self,source:&str,path:&str)->Result<Vec<u8>,String> {
+        let mut calls=self.calls.borrow_mut();let record=json!({"ordinal":calls.len()+1,"source":source,"path":path});
+        let mut raw=serde_json::to_vec(&record).map_err(|error|error.to_string())?;raw.push(b'\n');
+        self.events.borrow_mut().write_all(&raw).map_err(|error|error.to_string())?;calls.push(record);
+        if source!="catalog" || path!="same.xml" {return Err("unexpected actual callback".into());}
+        std::fs::read(&self.document).map_err(|error|error.to_string())
+    }
+}
+fn observed<T:Debug>(result:Result<T,XmlExecutionError>,directory:&Path,
+    success:impl FnOnce(T)->Result<Json,Box<dyn Error>>)->Result<Json,Box<dyn Error>> {
+    std::fs::write(directory.join("original-typed-result.txt"),format!("{result:#?}\n"))?;
+    match result {
+        Ok(value)=>success(value),
+        Err(error)=>{
+            let mut chain=Vec::new();let mut current:Option<&dyn Error>=Some(&error);
+            while let Some(cause)=current {chain.push(json!({"debug":format!("{cause:?}"),"display":cause.to_string()}));current=cause.source();}
+            std::fs::write(directory.join("original-complete-error-chain.json"),serde_json::to_vec_pretty(&chain)?)?;
+            let resource=error.boundary.source().and_then(|cause|cause.downcast_ref::<XmlInputSetResourceError>());
+            let resource_json=resource.map(|cause|json!({"resource":cause.resource,"observed_count":cause.observed_count,"limit":cause.limit}));
+            let runtime=error.boundary.source().and_then(|cause|cause.downcast_ref::<RuntimeError>()).is_some();
+            let input=match error.input {None=>Json::Null,Some(XmlInputSource::Primary)=>json!({"kind":"Primary","index":null,"name":null}),
+                Some(XmlInputSource::Named {index,name})=>json!({"kind":"Named","index":index,"name":name})};
+            let request=error.request.as_ref().map(|request|json!({"declaration_index":request.declaration_index,"source":request.source,"path":request.path,"ordinal":request.ordinal,"callback_invoked":request.callback_invoked}));
+            let preserved=error.source().and_then(|cause|cause.downcast_ref::<XmlBoundaryError>()).is_some_and(|boundary|std::ptr::eq(boundary,error.boundary.as_ref()));
+            Ok(json!({"kind":format!("{:?}",error.boundary.kind),"returned":false,"input":input,
+                "output":error.output.map(|owner|format!("{owner:?}")),"request":request,"boundary_preserved":preserved,
+                "boundary_bytes":error.boundary.bytes,"boundary_limit":error.boundary.limit,"resource_cause_present":resource.is_some(),
+                "runtime_cause_present":runtime,"resource":resource_json,"chain":chain}))
+        }
+    }
+}
+fn text(value:String)->Result<Json,Box<dyn Error>> {Ok(json!({"kind":"ok","returned":true,"primary":value}))}
+fn bytes(value:Vec<u8>)->Result<Json,Box<dyn Error>> {
+    let original=value.clone();Ok(json!({"kind":"ok","returned":true,"primary":String::from_utf8(value)?,"original_return_bytes":original}))
+}
+fn input_path(root:&Path,name:&str)->Result<PathBuf,Box<dyn Error>> {
+    if name.is_empty() || name.len()>64 || !name.bytes().all(|byte|byte.is_ascii_alphanumeric() || matches!(byte,b'-'|b'.')) {return Err("invalid fixed basename".into());}
+    let path=root.join(name);let metadata=std::fs::symlink_metadata(&path)?;
+    if !metadata.file_type().is_file() || metadata.len()>1024*1024 {return Err("bounded ordinary input required".into());}Ok(path)
+}
+fn main()->Result<(),Box<dyn Error>> {
+    let args=std::env::args().collect::<Vec<_>>();if args.len()!=7 {return Err("manifest inputs case api project originals".into());}
+    let manifest:Json=serde_json::from_slice(&std::fs::read(&args[1])?)?;
+    let case=manifest.get(&args[3]).ok_or("fixed case missing")?;let root=Path::new(&args[2]);let original=Path::new(&args[6]);
+    let primary_path=input_path(root,case["path"].as_str().ok_or("fixed primary basename")?)?;
+    let rates=input_path(root,"rates.xml")?;let catalog=input_path(root,"same.xml")?;
+    let paths=[&primary_path,&rates,&catalog].into_iter().map(|path|Ok(json!({"path":path,"size":std::fs::metadata(path)?.len()}))).collect::<Result<Vec<_>,std::io::Error>>()?;
+    std::fs::write(original.join("actual-input-paths-and-sizes.json"),serde_json::to_vec_pretty(&paths)?)?;
+    let host=Host {document:catalog,calls:RefCell::default(),events:RefCell::new(std::fs::OpenOptions::new().write(true).create_new(true).open(original.join("original-callback-events.jsonl"))?)};
+    let context=ExecutionContext::new(Path::new(&args[5])).with_current_datetime("2026-10-08T00:00:00Z");let api=args[4].as_str();
+    let result=if api.starts_with("bytes") {
+        let primary=std::fs::read(&primary_path)?;let document=std::fs::read(rates)?;
+        let inputs=[generated::NamedXmlBytesInput {name:"rates",document:&document}];
+        match api {
+            "bytes"=>observed(generated::execute_xml_bytes_with_sources_and_dynamic_source_loader(&primary,&inputs,&host),original,bytes)?,
+            "bytes-context"=>observed(generated::execute_xml_bytes_with_sources_context_and_dynamic_source_loader(&primary,&inputs,&context,&host),original,bytes)?,
+            _=>return Err("unknown singular byte route".into()),
+        }
+    }else{
+        let primary=std::fs::read_to_string(&primary_path)?;let document=std::fs::read_to_string(rates)?;
+        let inputs=[generated::NamedXmlInput {name:"rates",document:&document}];
+        match api {
+            "text"=>observed(generated::execute_xml_with_sources_and_dynamic_source_loader(&primary,&inputs,&host),original,text)?,
+            "text-context"=>observed(generated::execute_xml_with_sources_context_and_dynamic_source_loader(&primary,&inputs,&context,&host),original,text)?,
+            _=>return Err("unknown singular text route".into()),
+        }
+    };
+    host.events.borrow().sync_all()?;
+    std::fs::write(original.join("original-complete-callback-log.json"),serde_json::to_vec_pretty(&*host.calls.borrow())?)?;
+    let row=json!({"case":args[3],"api":api,"result":result,"calls":&*host.calls.borrow()});
+    std::fs::write(original.join("actual-public-result.json"),serde_json::to_vec_pretty(&row)?)?;
+    println!("{}",serde_json::to_string(&row)?);Ok(())
+}
