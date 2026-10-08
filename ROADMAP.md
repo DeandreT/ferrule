@@ -22,6 +22,11 @@ This roadmap is an execution plan.
 
 ## Current Baseline
 
+Status snapshot: 2026-10-08 16:20:00 UTC, against merged main
+[`aabe158`](https://github.com/DeandreT/ferrule/commit/aabe158f117011aeda46382a5073bfa4b7123d3d).
+The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
+later ownership and qualification changes.
+
 | Area | Available now | Boundary to keep visible |
 | --- | --- | --- |
 | Mapping | Typed graphs and scopes; nested iteration, filters, grouping, sorting, windows, aggregates, generated sequences, multi-source inner joins, UDFs, dynamic properties, and ordered targets | Each context and format has an explicit validation subset |
@@ -29,7 +34,7 @@ This roadmap is an execution plan.
 | Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
 | Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
 | Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
-| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and optional bounded flat CSV companions | Supported emission, compiled calls, and external execution are separate gates |
+| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and explicit optional JSON5 or bounded flat CSV companions | Supported emission, compiled calls, physical resource checks, and external execution are separate gates |
 | Large files | Per-boundary byte/item/work budgets and CSV temporary-row release | Input/target trees and serialized buffers remain materialized; there is no total-RAM cap |
 | `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
 
@@ -80,22 +85,20 @@ survey design or backend.
 - [ ] Observe the external application's JSON5 setting and saved metadata in
   isolated checkbox and filename controls.
 - [ ] Identify an exact import/export representation before changing admission.
-- [ ] Keep generated JSON adapters strict JSON unless a separate eligible API
-  and tests are implemented.
-- [ ] Add explicit opt-in Rust and C# companions in parallel
-  [#142](https://github.com/DeandreT/ferrule/issues/142)/
-  [#143](https://github.com/DeandreT/ferrule/issues/143) lanes against the committed
-  policy; their qualification remains pending. Preserve ordinary strict JSON
-  APIs and artifact sets.
-- [ ] Qualify all 184 small public calls in
-  [#144](https://github.com/DeandreT/ferrule/issues/144) after both language
-  adapters, before the 48 opt-in physical byte-boundary calls in
-  [#145](https://github.com/DeandreT/ferrule/issues/145).
 
-Generated companions and native metadata are independent contracts. The native
-nonfinite-token verification lane
-[#130](https://github.com/DeandreT/ferrule/issues/130) also remains open; pure
-syntax qualification does not establish its behavior.
+Generated companions and native metadata are independent contracts. The
+[guide refresh](https://github.com/DeandreT/ferrule/issues/154) is merged in
+[PR #161](https://github.com/DeandreT/ferrule/pull/161), including the measured
+whole-host memory ranges. The initial generated companion scope in
+[#96](https://github.com/DeandreT/ferrule/issues/96) is complete and closed.
+Separate allocation attribution in
+[#160](https://github.com/DeandreT/ferrule/issues/160) is available, with no
+production optimization included. The native nonfinite-token
+verification lane [#130](https://github.com/DeandreT/ferrule/issues/130) is claimed
+after a public-reader witness confirmed eight nonfinite numeric inputs become
+JSON null under a nullable Float schema. Legitimate null and finite controls
+passed. A native admission fix and broader checks are pending; generated-host
+qualification does not establish native reader behavior.
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.
