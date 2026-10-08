@@ -53,6 +53,7 @@ pub(crate) mod property_counts;
 pub(crate) mod property_dependencies;
 pub(crate) mod property_names;
 pub(crate) mod ranges;
+mod ref_required;
 mod render;
 pub(crate) mod string_lengths;
 pub mod unique_items;
@@ -170,12 +171,24 @@ fn parse(
     let parsed = (|| {
         loop {
             let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) else {
+                if frames
+                    .iter()
+                    .any(|(frame, apply_siblings): &(&serde_json::Value, bool)| {
+                        *apply_siblings && frame.get("required").is_some()
+                    })
+                {
+                    ref_required::require_concrete_object(name, schema)?;
+                }
                 return parse_non_ref(name, schema, doc, active_refs);
             };
             reject_unsupported_dynamic_references(name, schema)?;
             let apply_siblings = files::ref_siblings_apply(schema);
             if apply_siblings {
-                reject_unsupported_ref_siblings(name, schema)?;
+                if schema.get("required").is_some() {
+                    ref_required::validate_siblings(name, schema)?;
+                } else {
+                    reject_unsupported_ref_siblings(name, schema)?;
+                }
             }
             // Cyclic and unresolved refs retain the legacy string fallback.
             let resolved = (!active_refs.iter().any(|active| active == reference))
@@ -183,6 +196,7 @@ fn parse(
                 .flatten();
             let Some(resolved) = resolved else {
                 if apply_siblings {
+                    ref_required::reject_unresolved(name, schema)?;
                     reject_unresolved_ref_constraints(name, schema)?;
                 }
                 let mut node = SchemaNode::scalar(name, ScalarType::String);
@@ -204,6 +218,7 @@ fn parse(
         active_refs.pop();
         if apply_siblings {
             result = result.and_then(|mut node| {
+                ref_required::apply(name, schema, &mut node)?;
                 apply_known_shape_constraints(name, schema, &mut node, doc, active_refs)?;
                 formats::apply(name, schema, &mut node)?;
                 Ok(node)
