@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use eframe::egui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
-use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
+use egui_snarl::{InPin, InPinId, NodeId as CanvasNodeId, OutPin, OutPinId, Snarl};
 use ir::Value;
 use mapping::{Graph, Node, NodeId, Scope};
 
@@ -303,6 +303,186 @@ pub(super) fn build_snarl(
     snarl
 }
 
+const FIT_MARGIN: f32 = 12.0;
+const MAX_FIT_PASSES: u8 = 32;
+const MIN_CANVAS_SCALE: f32 = f32::MIN_POSITIVE;
+const DEFAULT_MIN_CANVAS_SCALE: f32 = 0.2;
+
+/// A Fit request changes only the canvas transform. Keep measuring until the
+/// rendered rectangles and the applied fit agree, with a finite repaint budget.
+#[derive(Debug)]
+pub(super) struct CanvasView {
+    fit_passes: u8,
+    minimum_scale: f32,
+    rectangles: BTreeMap<CanvasNodeId, egui::Rect>,
+    viewport: Option<egui::Rect>,
+    transform: Option<egui::emath::TSTransform>,
+}
+
+impl Default for CanvasView {
+    fn default() -> Self {
+        Self {
+            fit_passes: MAX_FIT_PASSES,
+            minimum_scale: DEFAULT_MIN_CANVAS_SCALE,
+            rectangles: BTreeMap::new(),
+            viewport: None,
+            transform: None,
+        }
+    }
+}
+
+impl CanvasView {
+    pub(super) fn request_fit(&mut self) {
+        self.fit_passes = MAX_FIT_PASSES;
+    }
+
+    pub(super) fn previous_transform(&self) -> Option<egui::emath::TSTransform> {
+        self.transform
+    }
+
+    pub(super) fn minimum_scale(&self) -> f32 {
+        self.minimum_scale
+    }
+
+    pub(super) fn prepare(
+        &mut self,
+        snarl: &Snarl<CanvasNode>,
+        viewport: egui::Rect,
+    ) -> Option<egui::emath::TSTransform> {
+        if self.fit_passes == 0 {
+            return None;
+        }
+        let transform = fit_transform(measured_bounds(snarl, &self.rectangles)?, viewport)?;
+        // Only a valid requested Fit establishes a smaller manual zoom floor.
+        self.minimum_scale = DEFAULT_MIN_CANVAS_SCALE.min(transform.scaling);
+        Some(transform)
+    }
+
+    pub(super) fn finish(
+        &mut self,
+        snarl: &Snarl<CanvasNode>,
+        rectangles: BTreeMap<CanvasNodeId, egui::Rect>,
+        viewport: egui::Rect,
+        transform: Option<egui::emath::TSTransform>,
+    ) -> bool {
+        let stable = self.fit_passes != 0
+            && rectangles == self.rectangles
+            && self.viewport == Some(viewport);
+        self.rectangles = rectangles;
+        self.viewport = Some(viewport);
+        self.transform = transform;
+        if self.fit_passes == 0 {
+            return false;
+        }
+        let desired = measured_bounds(snarl, &self.rectangles)
+            .and_then(|bounds| fit_transform(bounds, viewport));
+        if stable && desired.is_some() && desired == self.transform {
+            self.fit_passes = 0;
+        } else {
+            self.fit_passes -= 1;
+        }
+        self.fit_passes != 0
+    }
+}
+
+fn measured_bounds(
+    snarl: &Snarl<CanvasNode>,
+    rectangles: &BTreeMap<CanvasNodeId, egui::Rect>,
+) -> Option<Option<egui::Rect>> {
+    if rectangles.len() != snarl.node_ids().count() {
+        return None;
+    }
+    let mut bounds = None;
+    for (id, _) in snarl.node_ids() {
+        let rect = *rectangles.get(&id)?;
+        if !rect.is_finite() || rect.min.x > rect.max.x || rect.min.y > rect.max.y {
+            return None;
+        }
+        bounds = Some(bounds.map_or(rect, |bounds: egui::Rect| bounds.union(rect)));
+    }
+    Some(bounds)
+}
+
+pub(super) fn valid_viewport(viewport: egui::Rect) -> bool {
+    viewport.is_finite() && viewport.is_positive() && viewport.size().is_finite()
+}
+
+fn valid_canvas_transform(transform: egui::emath::TSTransform, viewport: egui::Rect) -> bool {
+    if !valid_viewport(viewport)
+        || !transform.scaling.is_finite()
+        || transform.scaling <= 0.0
+        || !transform.translation.is_finite()
+    {
+        return false;
+    }
+    let inverse = transform.inverse();
+    inverse.scaling.is_finite()
+        && inverse.translation.is_finite()
+        && (inverse * viewport).is_finite()
+}
+
+fn safe_transform(
+    current: egui::emath::TSTransform,
+    retained: Option<egui::emath::TSTransform>,
+    viewport: egui::Rect,
+) -> Option<egui::emath::TSTransform> {
+    if valid_canvas_transform(current, viewport) {
+        Some(current)
+    } else {
+        retained
+            .filter(|transform| valid_canvas_transform(*transform, viewport))
+            .or_else(|| fit_transform(None, viewport))
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn fit_transform(
+    bounds: Option<egui::Rect>,
+    viewport: egui::Rect,
+) -> Option<egui::emath::TSTransform> {
+    if !valid_viewport(viewport) {
+        return None;
+    }
+    let margin = egui::vec2(
+        FIT_MARGIN.min(viewport.width() / 4.0),
+        FIT_MARGIN.min(viewport.height() / 4.0),
+    );
+    let inner = viewport.shrink2(margin);
+    let screen_x = (f64::from(inner.min.x) + f64::from(inner.max.x)) / 2.0;
+    let screen_y = (f64::from(inner.min.y) + f64::from(inner.max.y)) / 2.0;
+    let (scaling, x, y) = if let Some(bounds) = bounds {
+        if !bounds.is_finite() || bounds.min.x > bounds.max.x || bounds.min.y > bounds.max.y {
+            return None;
+        }
+        let width = (f64::from(bounds.max.x) - f64::from(bounds.min.x)).max(1.0);
+        let height = (f64::from(bounds.max.y) - f64::from(bounds.min.y)).max(1.0);
+        let magnitude = [bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y]
+            .into_iter()
+            .map(|value| f64::from(value).abs())
+            .fold(1.0, f64::max);
+        // Keep cancellation in the f32 layer transform below a screen pixel
+        // even for a small node with a very distant finite world position.
+        let scaling = (f64::from(inner.width()) / width)
+            .min(f64::from(inner.height()) / height)
+            .min(1.0)
+            .min(1_048_576.0 / magnitude)
+            .max(f64::from(MIN_CANVAS_SCALE)) as f32;
+        let x = (f64::from(bounds.min.x) + f64::from(bounds.max.x)) / 2.0;
+        let y = (f64::from(bounds.min.y) + f64::from(bounds.max.y)) / 2.0;
+        (scaling, x, y)
+    } else {
+        (1.0, 0.0, 0.0)
+    };
+    let transform = egui::emath::TSTransform {
+        scaling,
+        translation: egui::vec2(
+            (screen_x - x * f64::from(scaling)) as f32,
+            (screen_y - y * f64::from(scaling)) as f32,
+        ),
+    };
+    valid_canvas_transform(transform, viewport).then_some(transform)
+}
+
 pub(super) struct DemoViewer<'a> {
     graph: &'a mut Graph,
     target_name: &'a str,
@@ -311,6 +491,11 @@ pub(super) struct DemoViewer<'a> {
     project_changed: &'a mut bool,
     edited_constant: &'a mut Option<NodeId>,
     focused_constant: &'a mut Option<NodeId>,
+    pub(super) viewport: Option<egui::Rect>,
+    pub(super) previous_transform: Option<egui::emath::TSTransform>,
+    pub(super) requested_transform: Option<egui::emath::TSTransform>,
+    pub(super) rendered_transform: Option<egui::emath::TSTransform>,
+    pub(super) rectangles: BTreeMap<CanvasNodeId, egui::Rect>,
 }
 
 impl<'a> DemoViewer<'a> {
@@ -331,11 +516,40 @@ impl<'a> DemoViewer<'a> {
             project_changed,
             edited_constant,
             focused_constant,
+            viewport: None,
+            previous_transform: None,
+            requested_transform: None,
+            rendered_transform: None,
+            rectangles: BTreeMap::new(),
         }
     }
 }
 
 impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
+    fn current_transform(
+        &mut self,
+        to_global: &mut egui::emath::TSTransform,
+        _snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let current = self.requested_transform.unwrap_or(*to_global);
+        self.rendered_transform = self
+            .viewport
+            .and_then(|viewport| safe_transform(current, self.previous_transform, viewport));
+        *to_global = self
+            .rendered_transform
+            .unwrap_or(egui::emath::TSTransform::IDENTITY);
+    }
+
+    fn final_node_rect(
+        &mut self,
+        node: CanvasNodeId,
+        rect: egui::Rect,
+        _ui: &mut egui::Ui,
+        _snarl: &mut Snarl<CanvasNode>,
+    ) {
+        self.rectangles.insert(node, rect);
+    }
+
     fn title(&mut self, node: &CanvasNode) -> String {
         match node {
             CanvasNode::Target => format!("{} (target)", self.target_name),
@@ -429,3 +643,6 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod fit_tests;
