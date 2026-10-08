@@ -40,6 +40,7 @@ mod trace_json;
 
 pub use code_generation::{
     GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_output,
+    generate_project_with_json5_adapters,
 };
 pub use engine::{
     RequiredTargetSources, TargetSelection, TraceEvent, TraceFilterPhase, TraceGrouping,

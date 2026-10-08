@@ -1,0 +1,261 @@
+using System.Collections;
+using System.Globalization;
+using System.Reflection;
+using System.Runtime.Loader;
+using System.Text;
+using System.Text.Json;
+
+if (args.Length != 1) { throw new ArgumentException("One retained cohort root is required."); }
+var root = Path.GetFullPath(args[0]);
+using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "CASES.json")));
+var total = 0;
+var failures = new List<string>();
+var fixtures = corpus.RootElement.GetProperty("cases").EnumerateArray()
+    .Select(item => item.GetProperty("fixture").GetString()!).Distinct().ToArray();
+foreach (var fixture in fixtures)
+{
+    var loading = new AssemblyLoadContext("json5-small-" + fixture, isCollectible: true);
+    try
+    {
+        var library = Path.Combine(root, "csharp", fixture, "bin", "Debug", "net10.0", "Ferrule.Generated.dll");
+        var assembly = loading.LoadFromAssemblyPath(library);
+        var mapping = assembly.GetType("Ferrule.Generated.GeneratedMapping", throwOnError: true)!;
+        var contextType = assembly.GetType("Ferrule.Runtime.FerruleExecutionContext", throwOnError: true)!;
+        var instanceType = assembly.GetType("Ferrule.Runtime.FerruleInstance", throwOnError: true)!;
+        foreach (var item in corpus.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            if (item.GetProperty("fixture").GetString() != fixture) { continue; }
+            for (var route = 0; route < 4; route++)
+            {
+                var input = item.GetProperty("input").GetString()!;
+                var bytes = route >= 2;
+                var withContext = route % 2 == 1;
+                var expected = item.GetProperty("expected");
+                if (expected.TryGetProperty("with_context", out var contextual))
+                { expected = withContext ? contextual : expected.GetProperty("without_context"); }
+                var parameters = withContext ? new[] { bytes ? typeof(byte[]) : typeof(string), contextType }
+                    : new[] { bytes ? typeof(byte[]) : typeof(string) };
+                var method = mapping.GetMethod(bytes ? "ExecuteJson5Bytes" : "ExecuteJson5", parameters)
+                    ?? throw new InvalidOperationException("Missing exact optional public signature.");
+                var context = withContext ? Activator.CreateInstance(contextType, new object[] { "/logical/active.json" }) : null;
+                var supplied = withContext ? new object?[] { bytes ? Encoding.UTF8.GetBytes(input) : input, context }
+                    : new object?[] { bytes ? Encoding.UTF8.GetBytes(input) : input };
+                var actual = Invoke(method, supplied);
+                var boundary = Unwrap(actual.Error);
+                object? typedInput = null; (object? Output, Exception? Error)? typed = null;
+                if (expected.TryGetProperty("complete_typed_input", out var manualInput)
+                    || item.TryGetProperty("manual_typed_input", out manualInput))
+                {
+                    typedInput = MakeTree(assembly, manualInput);
+                    var typedMethod = mapping.GetMethod("Execute", withContext ? new[] { instanceType, contextType } : new[] { instanceType })
+                        ?? throw new InvalidOperationException("Missing ordinary typed control.");
+                    typed = Invoke(typedMethod, withContext ? new object?[] { typedInput, context } : new object?[] { typedInput });
+                }
+                var stem = $"CSHARP-{fixture}-{item.GetProperty("id").GetString()}-route{route}";
+                // Complete input, public result, typed control, actual wrapper
+                // and every original inner exception precede comparisons.
+                var evidence = JsonSerializer.Serialize(new
+                {
+                    fixture, id = item.GetProperty("id").GetString(), route, method = method.ToString(),
+                    inputUtf16 = input.Select(character => (int)character).ToArray(),
+                    inputUtf8Hex = Convert.ToHexString(Encoding.UTF8.GetBytes(input)),
+                    suppliedContext = withContext ? "/logical/active.json" : null,
+                    completeManualOracle = item,
+                    text = actual.Output as string, bytesHex = actual.Output is byte[] raw ? Convert.ToHexString(raw) : null,
+                    originalWrapper = Cause(actual.Error), actualBoundary = Cause(boundary),
+                    completeTypedInput = typedInput is null ? null : Tree(typedInput),
+                    completeTypedOutput = !typed.HasValue || typed.Value.Output is null ? null : Tree(typed.Value.Output),
+                    originalTypedWrapper = Cause(typed?.Error),
+                });
+                File.WriteAllText(Path.Combine(root, stem + "-ORIGINAL.json"), evidence + "\n", new UTF8Encoding(false, true));
+                Console.WriteLine(evidence); total++;
+                try { Verify(actual, typed, boundary, expected, bytes); }
+                catch (Exception comparison) { failures.Add(stem + ": " + comparison); }
+            }
+        }
+    }
+    finally { loading.Unload(); }
+}
+File.WriteAllText(Path.Combine(root, "CSHARP-COMPARISON-FAILURES.json"), JsonSerializer.Serialize(failures) + "\n");
+File.WriteAllText(Path.Combine(root, "COMPLETE_CALL_COUNT_CSHARP.json"), JsonSerializer.Serialize(new
+{ total, expected = 92, failures = failures.Count, physical_calls = 0 }) + "\n");
+Check(total == 92 && failures.Count == 0, "complete C# small public comparison failed; all originals retained");
+
+static (object? Output, Exception? Error) Invoke(MethodInfo method, object?[] arguments)
+{
+    try { return (method.Invoke(null, arguments), null); }
+    catch (Exception original) { return (null, original); }
+}
+static Exception? Unwrap(Exception? error) => error is TargetInvocationException wrapper ? wrapper.InnerException : error;
+static object? Property(object value, string name) => value.GetType().GetProperty(name)?.GetValue(value);
+static object? Cause(Exception? error) => error is null ? null : new
+{
+    type = error.GetType().FullName, fullOriginal = error.ToString(),
+    publicFields = error.GetType().GetProperties().Where(property => property.Name != "InnerException" && property.GetIndexParameters().Length == 0)
+        .ToDictionary(property => property.Name, property => property.GetValue(error)?.ToString()),
+    inner = Cause(error.InnerException),
+};
+
+static object MakeTree(Assembly assembly, JsonElement tree)
+{
+    Type Type(string name) => assembly.GetType("Ferrule.Runtime." + name, throwOnError: true)!;
+    if (tree.GetProperty("kind").GetString() == "Group")
+    {
+        var fields = tree.GetProperty("fields").EnumerateArray().ToArray();
+        var values = Array.CreateInstance(Type("FerruleField"), fields.Length);
+        for (var index = 0; index < fields.Length; index++)
+        {
+            values.SetValue(Activator.CreateInstance(Type("FerruleField"), new object[]
+            { fields[index].GetProperty("name").GetString()!, MakeTree(assembly, fields[index].GetProperty("instance")) }), index);
+        }
+        return Activator.CreateInstance(Type("FerruleGroup"), new object[] { values })!;
+    }
+    var scalar = tree.GetProperty("value");
+    var valueType = Type("FerruleValue");
+    object Value(string method, object argument) => valueType.GetMethod(method)!.Invoke(null, new[] { argument })!;
+    var value = scalar.GetProperty("tag").GetString() switch
+    {
+        "Int" => Value("FromInt64", long.Parse(scalar.GetProperty("decimal").GetString()!, CultureInfo.InvariantCulture)),
+        "Float" => Value("FromDouble", BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(scalar.GetProperty("bits_hex").GetString()!, NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
+        "String" => Value("FromString", scalar.GetProperty("text").GetString()!),
+        "Bool" => Value("FromBoolean", scalar.GetProperty("boolean").GetBoolean()),
+        "Null" => valueType.GetProperty("Null")!.GetValue(null)!,
+        "JsonNull" => valueType.GetProperty("JsonNull")!.GetValue(null)!,
+        _ => throw new InvalidOperationException("Manual scalar tag outside this bounded cohort."),
+    };
+    return Activator.CreateInstance(Type("FerruleScalar"), new[] { value })!;
+}
+
+static object Tree(object instance)
+{
+    if (instance.GetType().Name == "FerruleGroup")
+    {
+        var fields = ((IEnumerable)Property(instance, "Fields")!).Cast<object>()
+            .Select(field => new { name = (string)Property(field, "Name")!, instance = Tree(Property(field, "Value")!) }).ToArray();
+        return new { kind = "Group", fields };
+    }
+    var value = Property(instance, "Value")!;
+    object scalar = Property(value, "Kind")!.ToString() switch
+    {
+        "Int64" => new { tag = "Int", @decimal = Convert.ToInt64(Property(value, "Int64Value"), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture) },
+        "Double" => new { tag = "Float", bits_hex = unchecked((ulong)BitConverter.DoubleToInt64Bits((double)Property(value, "DoubleValue")!)).ToString("x16", CultureInfo.InvariantCulture) },
+        "String" => new { tag = "String", text = (string)Property(value, "StringValue")! },
+        "Bool" => new { tag = "Bool", boolean = (bool)Property(value, "BooleanValue")! },
+        "Null" => new { tag = "Null" }, "JsonNull" => new { tag = "JsonNull" },
+        _ => throw new InvalidOperationException("Actual typed tag outside this bounded cohort."),
+    };
+    return new { kind = "Scalar", value = scalar };
+}
+
+static void CheckTree(object actual, JsonElement expected)
+{
+    using var tree = JsonDocument.Parse(JsonSerializer.Serialize(Tree(actual)));
+    EqualTree(tree.RootElement, expected);
+    static void EqualTree(JsonElement actual, JsonElement expected)
+    {
+        Check(actual.GetProperty("kind").GetString() == expected.GetProperty("kind").GetString(), "typed instance kind differs");
+        if (expected.GetProperty("kind").GetString() == "Group")
+        {
+            var actualFields = actual.GetProperty("fields").EnumerateArray().ToArray();
+            var expectedFields = expected.GetProperty("fields").EnumerateArray().ToArray();
+            Check(actualFields.Length == expectedFields.Length, "typed field count differs");
+            for (var index = 0; index < actualFields.Length; index++)
+            {
+                Check(actualFields[index].GetProperty("name").GetString() == expectedFields[index].GetProperty("name").GetString(), "typed field order/name differs");
+                EqualTree(actualFields[index].GetProperty("instance"), expectedFields[index].GetProperty("instance"));
+            }
+            return;
+        }
+        var av = actual.GetProperty("value"); var ev = expected.GetProperty("value");
+        Check(av.GetProperty("tag").GetString() == ev.GetProperty("tag").GetString(), "typed scalar tag differs");
+        foreach (var property in ev.EnumerateObject())
+        {
+            if (property.Name == "mathematical_value") { continue; }
+            var actualValue = av.GetProperty(property.Name);
+            Check(property.Value.ValueKind == JsonValueKind.String
+                ? actualValue.GetString() == property.Value.GetString()
+                : actualValue.GetRawText() == property.Value.GetRawText(), "complete typed scalar payload differs");
+        }
+    }
+}
+
+static void Verify((object? Output, Exception? Error) actual, (object? Output, Exception? Error)? typed,
+    Exception? boundary, JsonElement expected, bool bytes)
+{
+    if (expected.TryGetProperty("output_utf8_text", out var output))
+    {
+        Check(actual.Error is null && boundary is null, "successful adapter raised an exception");
+        var wanted = output.GetString()!;
+        Check(bytes ? actual.Output is byte[] raw && raw.SequenceEqual(Encoding.UTF8.GetBytes(wanted))
+            : actual.Output is string text && text == wanted, "complete independent output bytes differ");
+        Check(typed.HasValue && typed.Value.Error is null && typed.Value.Output is not null, "ordinary typed control failed");
+        CheckTree(typed!.Value.Output!, expected.GetProperty("complete_typed_output"));
+        return;
+    }
+    Check(actual.Output is null, "failed stage returned output");
+    Check(actual.Error is TargetInvocationException && ReferenceEquals(actual.Error.InnerException, boundary), "original reflection wrapper/identity lost");
+    Check(boundary?.GetType().FullName == "Ferrule.Runtime.FerruleJson5BoundaryException", "wrong optional wrapper");
+    Check(Property(boundary!, "Stage")?.ToString() == expected.GetProperty("stage").GetString(), "wrong original stage");
+    Check(Property(boundary!, "SchemaSide") is null && Property(boundary!, "Resource") is null
+        && Property(boundary!, "Requested") is null && Property(boundary!, "Maximum") is null, "unexpected small wrapper schema/resource fields");
+    var inner = boundary!.InnerException ?? throw new InvalidOperationException("Original cause lost.");
+    var stage = expected.GetProperty("stage").GetString();
+    if (stage == "Syntax")
+    {
+        Check(inner!.GetType().FullName == "Ferrule.Runtime.FerruleJson5SyntaxException", "original syntax cause lost");
+        Check(Property(inner, "Kind")?.ToString() == expected.GetProperty("kind").GetString(), "original syntax kind differs");
+        Check(Property(inner, "Failure")?.ToString() == "Syntax" && Property(inner, "Resource") is null
+            && Property(inner, "Requested") is null && Property(inner, "Maximum") is null && inner.InnerException is null, "original syntax fields changed");
+        Check(Property(boundary, "SyntaxKind")?.ToString() == Property(inner, "Kind")?.ToString()
+            && Convert.ToInt64(Property(boundary, "Utf8Offset")) == Convert.ToInt64(Property(inner, "Offset")), "complete wrapper syntax payload differs from original");
+        if (expected.TryGetProperty("original_utf8_byte_offset", out var offset))
+        {
+            Check(Convert.ToInt64(Property(inner, "Offset")) == offset.GetInt64(), "original syntax UTF8 offset differs");
+            Check(Convert.ToInt64(Property(boundary, "Utf8Offset")) == offset.GetInt64(), "boundary UTF8 offset differs");
+        }
+    }
+    else if (stage == "Input")
+    {
+        if (expected.GetProperty("kind").GetString() == "RootObjectRequired")
+        {
+            Check(inner!.GetType().FullName == "Ferrule.Runtime.FerruleJson5SchemaException", "original root-object cause lost");
+            Check(Property(inner, "Kind")?.ToString() == "RootObjectRequired", "wrong root-object cause");
+            Check(inner.InnerException is null && new[] { "Field", "Name", "Resource", "Requested", "Maximum" }.All(name => Property(inner, name) is null), "complete original root-object payload differs");
+        }
+        else
+        {
+            Check(inner!.GetType().FullName == "Ferrule.Runtime.FerruleRuntimeException", "original scalar projection cause lost");
+            Check(Property(inner, "Error")?.ToString() == "JsonBoundary", "wrong original projection category");
+            const string detail = "JSON field 'n' expected number, got integer outside the exact double range.";
+            Check(inner.Message == detail && (string?)Property(inner, "Detail") == detail && inner.InnerException is null, "complete original projection payload differs");
+            Check(inner.GetType().GetProperties().Where(property => property.DeclaringType == inner.GetType() && property.Name is not "Error" and not "Detail")
+                .All(property => property.GetValue(inner) is null), "unexpected original scalar projection payload");
+        }
+    }
+    else if (stage == "Mapping")
+    {
+        Check(inner!.GetType().FullName == "Ferrule.Runtime.FerruleRuntimeException", "original mapping cause lost");
+        var error = expected.TryGetProperty("not_a_mapping_exception", out var notMapping) && notMapping.GetBoolean()
+            ? "DivideByZero" : expected.TryGetProperty("node", out _) || expected.TryGetProperty("rust_cause", out var cause) && cause.ValueKind == JsonValueKind.Object
+            ? "MappingException" : "MissingRuntimeValue";
+        Check(Property(inner, "Error")?.ToString() == error, "wrong original mapping category");
+        if (error == "MappingException")
+        {
+            Check(Convert.ToUInt32(Property(inner, "Node")) == 3, "wrong Raise owner");
+            var message = expected.TryGetProperty("message_presence", out var presence)
+                ? presence.GetString() == "Some" ? "" : null : "stop";
+            Check((string?)Property(inner, "MappingExceptionMessage") == message, "message presence/value differs");
+        }
+        if (error == "MissingRuntimeValue")
+        { Check(Property(inner, "RuntimeValue")?.ToString() == "MappingFilePath", "wrong missing context value"); }
+        var typedCause = Unwrap(typed?.Error);
+        Check(typed?.Output is null && typedCause?.GetType() == inner.GetType(), "ordinary typed control cause differs");
+        // Compare every runtime-owned public payload property and inner cause,
+        // independently of changing reflection/stack metadata.
+        foreach (var property in inner.GetType().GetProperties().Where(property => property.DeclaringType == inner.GetType()))
+        { Check(property.GetValue(inner)?.ToString() == property.GetValue(typedCause)?.ToString(), "complete typed mapping cause payload differs"); }
+        Check(inner.InnerException is null && typedCause!.InnerException is null, "unexpected mapping inner cause");
+    }
+    else { throw new InvalidOperationException("Unbound failure stage."); }
+}
+static void Check(bool accepted, string reason) { if (!accepted) { throw new InvalidOperationException(reason); } }

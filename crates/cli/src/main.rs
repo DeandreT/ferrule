@@ -151,6 +151,9 @@ enum Command {
         /// Include bounded CSV output methods for a flat primary target.
         #[arg(long)]
         csv_output: bool,
+        /// Include singular JSON5 text and UTF-8 byte companion methods.
+        #[arg(long, conflicts_with = "csv_output")]
+        json5_adapters: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -609,6 +612,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             out,
             rust_runtime_path,
             csv_output,
+            json5_adapters,
         } => {
             let target = match language {
                 CodegenLanguage::Rust => cli::GenerateTarget::Rust {
@@ -623,7 +627,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if csv_output {
+            let outcome = if json5_adapters {
+                cli::generate_project_with_json5_adapters(&project, &out, target)?
+            } else if csv_output {
                 cli::generate_project_with_csv_output(&project, &out, target)?
             } else {
                 cli::generate_project(&project, &out, target)?
