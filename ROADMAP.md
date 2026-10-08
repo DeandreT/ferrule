@@ -137,8 +137,12 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 - [x] Record matched many-row and wide-row trials for input lifetime under a
   normal debug profile, retaining both repeats, full outputs and regressions;
   [report the workload-dependent results](docs/performance/filesystem-input-lifetime-2026-10-07.md).
-- [ ] Choose the next GUI authoring gap from an existing executable mapping;
-  preserve compact headers, complete hover/pin identities, locks, and history.
+- [x] Qualify local Value map **Input conversion** editing on main, named-target,
+  and function canvases: preserve typed imported tables/defaults and compact
+  geometry; check all five choices, locks, history, save/reopen, and Preview.
+  Four interaction groups and the full 703-test GUI suite pass, along with
+  formatting, fresh workspace warning checks, and the normal GUI build. Edited
+  table cells remain text, so this does not add typed table-cell authoring.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
