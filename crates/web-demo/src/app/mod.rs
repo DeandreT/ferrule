@@ -6,13 +6,13 @@ mod sample;
 
 use eframe::egui;
 use egui_snarl::Snarl;
-use egui_snarl::ui::SnarlWidget;
+use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 use mapping::{NodeId, Project, TabularBoundaryKind};
 use web_demo::browser_download::download_utf8_text;
 use web_demo::project_document::{self, ProjectDocumentError};
 use web_demo::runtime::{self, DataFormat, DataSide};
 
-use canvas::{CanvasNode, DemoViewer, build_snarl, flat_bindings};
+use canvas::{CanvasNode, CanvasView, DemoViewer, build_snarl, flat_bindings, valid_viewport};
 use history::ProjectHistory;
 use sample::{SAMPLE_XML, demo_project};
 
@@ -40,6 +40,7 @@ pub(super) struct DemoApp {
     run_pending: bool,
     project_changed: bool,
     canvas_view_generation: u64,
+    canvas_view: CanvasView,
     canvas_compact: bool,
     history: ProjectHistory,
     history_notice: Option<String>,
@@ -79,6 +80,7 @@ impl DemoApp {
             run_pending: true,
             project_changed: false,
             canvas_view_generation: 0,
+            canvas_view: CanvasView::default(),
             canvas_compact: false,
             history,
             history_notice,
@@ -151,6 +153,7 @@ impl DemoApp {
         self.project = project;
         self.bindings = bindings;
         self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+        self.canvas_view = CanvasView::default();
         self.project_changed = false;
         self.edited_constant = None;
         self.focused_constant = None;
@@ -346,7 +349,7 @@ impl DemoApp {
                     *self = Self::new();
                 }
                 if ui.button("Fit").clicked() {
-                    self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+                    self.canvas_view.request_fit();
                 }
                 ui.hyperlink_to("GitHub", "https://github.com/DeandreT/ferrule");
             });
@@ -434,6 +437,14 @@ impl DemoApp {
 
     fn show_mapping(&mut self, ui: &mut egui::Ui) {
         self.edited_constant = None;
+        let background = egui::Frame::canvas(ui.style());
+        let viewport =
+            (ui.available_rect_before_wrap() - background.total_margin()).intersect(ui.clip_rect());
+        if !valid_viewport(viewport) {
+            return;
+        }
+        let requested_transform = self.canvas_view.prepare(&self.snarl, viewport);
+        let minimum_scale = self.canvas_view.minimum_scale();
         let mut viewer = DemoViewer::new(
             &mut self.project.graph,
             &self.project.target.name,
@@ -443,12 +454,28 @@ impl DemoApp {
             &mut self.edited_constant,
             &mut self.focused_constant,
         );
+        viewer.viewport = Some(viewport);
+        viewer.previous_transform = self.canvas_view.previous_transform();
+        viewer.requested_transform = requested_transform;
         SnarlWidget::new()
+            .style(SnarlStyle {
+                bg_frame: Some(background),
+                min_scale: Some(minimum_scale),
+                ..SnarlStyle::new()
+            })
             .id(egui::Id::new((
                 "web_mapping_canvas",
                 self.canvas_view_generation,
             )))
             .show(&mut self.snarl, &mut viewer, ui);
+        if self.canvas_view.finish(
+            &self.snarl,
+            viewer.rectangles,
+            viewport,
+            viewer.rendered_transform,
+        ) {
+            ui.ctx().request_repaint();
+        }
     }
 
     fn show_workspace(&mut self, ui: &mut egui::Ui) {
@@ -460,6 +487,7 @@ impl DemoApp {
             self.canvas_compact = compact;
             self.snarl = build_snarl(&self.project, &self.bindings, compact);
             self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+            self.canvas_view = CanvasView::default();
         }
         if !compact
             && matches!(
