@@ -329,6 +329,10 @@ fn value_satisfies_constraints(node: &SchemaNode, value: &JsonAllowedValue) -> b
         return false;
     }
     let range_matches = match (node.numeric_range, value) {
+        (
+            Some(ir::NumericRange::Integer(_)),
+            JsonAllowedValue::String(_) | JsonAllowedValue::JsonNull,
+        ) if node.is_string_int_union() => true,
         (Some(ir::NumericRange::Integer(range)), JsonAllowedValue::Int(value)) => {
             range.contains(*value)
         }

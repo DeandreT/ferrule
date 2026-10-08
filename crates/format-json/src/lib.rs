@@ -595,6 +595,7 @@ fn read_node_with_patterns(
         SchemaKind::ScalarUnion { types } => {
             let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &parsed)?;
+            json_schema::ranges::validate_json(schema, value)?;
             json_schema::multiples::validate_json(schema, value)?;
             json_schema::string_lengths::validate_json(schema, value)?;
             patterns.validate_json(schema, value)?;
@@ -1072,6 +1073,7 @@ fn write_single_node_with_patterns(
             let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
             let normalized = read_scalar_union(&value, *types, schema.nullable, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &normalized)?;
+            json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
             json_schema::string_lengths::validate_json(schema, &value)?;
             patterns.validate_json(schema, &value)?;

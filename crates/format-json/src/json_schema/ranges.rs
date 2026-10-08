@@ -36,6 +36,10 @@ pub(super) fn apply(
         }
         | SchemaKind::Group { .. }
             if !type_was_absent => {}
+        SchemaKind::ScalarUnion { .. } if node.is_string_int_union() => {
+            let range = integer_range(name, &lower, &upper)?.map(NumericRange::Integer);
+            node.numeric_range = intersect(name, node.numeric_range, range, ScalarType::Int)?;
+        }
         SchemaKind::ScalarUnion { .. } => {
             return Err(unsupported(
                 name,
@@ -78,6 +82,12 @@ pub(crate) fn validate_json(
         return Ok(());
     };
     if value.is_null() && schema.nullable {
+        return Ok(());
+    }
+    if matches!(range, NumericRange::Integer(_))
+        && schema.is_string_int_union()
+        && value.is_string()
+    {
         return Ok(());
     }
     let matches = match (range, value) {
