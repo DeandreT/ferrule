@@ -1,0 +1,96 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+if (args.Length != 6) throw new InvalidOperationException("manifest inputs case api project originals");
+using var manifest=JsonDocument.Parse(File.ReadAllBytes(args[0]));
+var test=manifest.RootElement.GetProperty(args[2]);var original=args[5];var api=args[3];
+var primaryPath=InputPath(args[1],test.GetProperty("path").GetString()!);
+var rates=InputPath(args[1],"rates.xml");var catalog=InputPath(args[1],"same.xml");
+File.WriteAllText(Path.Combine(original,"actual-input-paths-and-sizes.json"),JsonSerializer.Serialize(
+    new[]{primaryPath,rates,catalog}.Select(path=>new{path,size=new FileInfo(path).Length})));
+using var host=new Host(catalog,original);
+var context=new FerruleExecutionContext(args[4],args[4],"2026-10-08T00:00:00Z",null);
+Dictionary<string,object?> result;
+if(api.StartsWith("bytes",StringComparison.Ordinal))
+{
+    var primary=File.ReadAllBytes(primaryPath);var inputs=new[]{new NamedXmlBytesInput("rates",File.ReadAllBytes(rates))};
+    result=api switch {
+        "bytes"=>Observe(()=>GeneratedMapping.ExecuteXmlBytesWithSourcesAndDynamicSourceLoader(primary,inputs,host),original,Bytes),
+        "bytes-context"=>Observe(()=>GeneratedMapping.ExecuteXmlBytesWithSourcesContextAndDynamicSourceLoader(primary,inputs,context,host),original,Bytes),
+        _=>throw new InvalidOperationException("unknown singular byte route"),
+    };
+}
+else
+{
+    var utf8=new UTF8Encoding(false,true);var primary=File.ReadAllText(primaryPath,utf8);
+    var inputs=new[]{new NamedXmlInput("rates",File.ReadAllText(rates,utf8))};
+    result=api switch {
+        "text"=>Observe(()=>GeneratedMapping.ExecuteXmlWithSourcesAndDynamicSourceLoader(primary,inputs,host),original,Text),
+        "text-context"=>Observe(()=>GeneratedMapping.ExecuteXmlWithSourcesContextAndDynamicSourceLoader(primary,inputs,context,host),original,Text),
+        _=>throw new InvalidOperationException("unknown singular text route"),
+    };
+}
+host.Flush();
+File.WriteAllText(Path.Combine(original,"original-complete-callback-log.json"),JsonSerializer.Serialize(host.Calls));
+var observation=new{@case=args[2],api,result,calls=host.Calls};var json=JsonSerializer.Serialize(observation);
+File.WriteAllText(Path.Combine(original,"actual-public-result.json"),json);Console.WriteLine(json);
+
+static string InputPath(string root,string name)
+{
+    if(name.Length is 0 or >64 || !name.All(c=>char.IsAsciiLetterOrDigit(c) || c is '-' or '.')) throw new InvalidOperationException("invalid fixed basename");
+    var path=Path.Combine(root,name);var file=new FileInfo(path);
+    if((file.Attributes&FileAttributes.ReparsePoint)!=0 || file.Length>1024*1024) throw new InvalidOperationException("bounded ordinary input required");return path;
+}
+static Dictionary<string,object?> Observe<T>(Func<T> run,string original,Func<T,Dictionary<string,object?>> success)
+{
+    try
+    {
+        var value=run();File.WriteAllText(Path.Combine(original,"original-typed-result.txt"),JsonSerializer.Serialize(value));return success(value);
+    }
+    catch(FerruleXmlExecutionException error)
+    {
+        File.WriteAllText(Path.Combine(original,"original-typed-result.txt"),error.ToString());var chain=new List<object>();
+        for(Exception? current=error;current is not null;current=current.InnerException)
+            chain.Add(new{type=current.GetType().FullName,detail=current.Message,full=current.ToString(),hresult=current.HResult,source=current.Source,stack=current.StackTrace,payload=Payload(current)});
+        File.WriteAllText(Path.Combine(original,"original-complete-error-chain.json"),JsonSerializer.Serialize(chain));
+        var resource=error.Boundary.InnerException as FerruleXmlInputSetResourceException;
+        return new(){
+            ["kind"]=error.Boundary.Kind.ToString(),["returned"]=false,
+            ["input"]=error.Input is null?null:new{kind=error.Input.Kind.ToString(),index=error.Input.Index,name=error.Input.Name},
+            ["output"]=error.Output,["request"]=error.Request is null?null:new{declaration_index=error.Request.DeclarationIndex,source=error.Request.Source,path=error.Request.Path,ordinal=error.Request.Ordinal,callback_invoked=error.Request.CallbackInvoked},
+            ["boundary_preserved"]=ReferenceEquals(error.Boundary,error.InnerException),["boundary_bytes"]=error.Boundary.Bytes,["boundary_limit"]=error.Boundary.Limit,
+            ["resource_cause_present"]=resource is not null,["runtime_cause_present"]=error.Boundary.InnerException is FerruleRuntimeException,
+            ["resource_type"]=resource?.GetType().FullName,["resource"]=resource is null?null:new{resource=resource.Resource,observed_count=resource.ObservedCount,limit=resource.Limit},["chain"]=chain,
+        };
+    }
+}
+static Dictionary<string,object?> Text(string value)=>new(){["kind"]="ok",["returned"]=true,["primary"]=value};
+static Dictionary<string,object?> Bytes(byte[] value)=>new(){["kind"]="ok",["returned"]=true,["primary"]=new UTF8Encoding(false,true).GetString(value),["original_return_bytes"]=value.Select(v=>(int)v).ToArray()};
+static object? Payload(Exception cause)=>cause switch {
+    FerruleXmlExecutionException value=>new{value.Input,value.Output,value.Request},
+    FerruleXmlBoundaryException value=>new{value.Kind,value.Detail,value.Bytes,value.Limit},
+    FerruleXmlInputSetResourceException value=>new{value.Resource,value.ObservedCount,value.Limit},
+    FerruleRuntimeException value=>new{value.Error,value.Node,value.Function,value.ExpectedArity,value.ActualArity,value.FoundKind,value.AggregateOperation,value.Detail,
+        value.RequestedItems,value.MaximumItems,value.MaximumDepth,value.RuntimeValue,value.FailureRule,value.MappingFailureMessage,value.MappingExceptionMessage,value.Join,
+        value.UserFunction,value.FunctionParameter,value.ExpectedScalarType,value.RuntimeParameter,value.SourceField,value.FoundInstance,value.PrimaryRoot},
+    _=>null,
+};
+sealed class Host:IFerruleDynamicXmlSourceLoader,IDisposable
+{
+    private readonly string _document;private readonly FileStream _file;private readonly StreamWriter _writer;
+    public List<object> Calls{get;}=[];
+    public Host(string document,string originals)
+    {
+        _document=document;_file=new FileStream(Path.Combine(originals,"original-callback-events.jsonl"),FileMode.CreateNew,FileAccess.Write);
+        _writer=new StreamWriter(_file,new UTF8Encoding(false)){AutoFlush=true};
+    }
+    public byte[] Load(string source,string path)
+    {
+        var record=new{ordinal=Calls.Count+1,source,path};_writer.WriteLine(JsonSerializer.Serialize(record));Calls.Add(record);
+        if(source!="catalog" || path!="same.xml") throw new InvalidOperationException("unexpected actual callback");return File.ReadAllBytes(_document);
+    }
+    public void Flush(){_writer.Flush();_file.Flush(true);}
+    public void Dispose(){_writer.Dispose();}
+}

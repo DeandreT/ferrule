@@ -444,3 +444,6 @@ fn generated_csharp_multiple_dynamic_xml_loaders_preserve_source_schemas_and_ori
 -> TestResult<()> {
     exercise("csharp", true)
 }
+
+#[path = "xml_dynamic_inputs/request_count.rs"]
+mod request_count;
