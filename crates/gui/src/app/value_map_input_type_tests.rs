@@ -520,7 +520,7 @@ fn open(app: &mut FerruleApp, context: &egui::Context) {
     assert_eq!(
         visible(
             &output,
-            "Edited keys are text. Conversion applies to the incoming value."
+            "Text cells update as you type. Apply typed edits. Conversion applies to the incoming value."
         )
         .len(),
         1
@@ -865,9 +865,10 @@ fn value_map_passive_imported_values_and_locked_open_dropdown_keep_all_table_tag
                 "disabled conversion popup opened"
             );
             assert!(conversion_options(&output, "int").is_empty());
-            assert!(
-                visible(&output, "int").is_empty(),
-                "disabled conversion combo opened"
+            assert_eq!(
+                conversion_control(&output, imported_mode, false),
+                points,
+                "disabled labelled conversion control changed after click"
             );
             assert_eq!(serde_json::to_vec(&app.project).unwrap(), before);
             assert_eq!(typed_values(&app), values);
