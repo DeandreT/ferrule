@@ -287,16 +287,18 @@ pub(super) fn build_snarl(
         }
     }
     for (i, (_, node)) in bindings.iter().enumerate() {
-        snarl.connect(
-            OutPinId {
-                node: snarl_ids[node],
-                output: 0,
-            },
-            InPinId {
-                node: target,
-                input: i,
-            },
-        );
+        if let Some(&from) = snarl_ids.get(node) {
+            snarl.connect(
+                OutPinId {
+                    node: from,
+                    output: 0,
+                },
+                InPinId {
+                    node: target,
+                    input: i,
+                },
+            );
+        }
     }
     snarl
 }
@@ -413,3 +415,6 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
         PinInfo::circle()
     }
 }
+
+#[cfg(test)]
+mod tests;
