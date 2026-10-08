@@ -36,12 +36,9 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleJson
 {
-    // serde_json 1.0.150's default number reader retains integers through u64,
-    // then accumulates a bounded u64 significand and scales it with binary64
-    // powers of ten. Its formatter uses zmij's shortest decimal representation.
-    // Share JSON numeric tags across boundary leaves, embedded metadata, and
-    // arbitrary-JSON graph text. Lexical string coercion has its own contract.
-    private static readonly double[] SerdePowersOfTen = BuildSerdePowersOfTen();
+    // Retain serde-compatible integer tags and correctly rounded finite floats
+    // across boundary leaves, embedded metadata, and arbitrary-JSON graph text.
+    // Lexical string coercion and shortest-decimal formatting remain separate.
 
     private sealed class CanonicalNumberOutOfRangeException : Exception;
 
@@ -168,9 +165,9 @@ public static partial class FerruleJson
         return text.ToString();
     }
 
-    // Output predicates inspect an already-normalized Value. Reinterpreting
-    // its number tokens through serde's input reader can change a float by one
-    // ULP, so only strings and object keys need canonical escaping here.
+    // Output predicates inspect an already-normalized Value. Retain its
+    // numeric tokens without another parse/format pass; only strings and
+    // object keys need canonical escaping here.
     private static string CanonicalizeOutputAnyJson(JsonElement element)
     {
         var text = new StringBuilder();
@@ -527,154 +524,52 @@ public static partial class FerruleJson
 
     private static SerdeParsedNumber ParseSerdeNumber(string token)
     {
-        var offset = token[0] == '-' ? 1 : 0;
-        var negative = offset != 0;
-        ulong significand = 0;
-        var decimalExponent = 0;
-        var integerOverflow = false;
-
-        while (offset < token.Length && token[offset] is >= '0' and <= '9')
+        // Callers supply a complete number token from validated JSON. Keep
+        // integer tags exact before rounding decimal/exponent tokens to binary64.
+        var negative = token[0] == '-';
+        if (token.IndexOfAny(['.', 'e', 'E']) < 0)
         {
-            var digit = (uint)(token[offset++] - '0');
-            if (!integerOverflow &&
-                significand <= (ulong.MaxValue - digit) / 10)
+            if (!negative && ulong.TryParse(
+                    token, NumberStyles.None, CultureInfo.InvariantCulture, out var unsigned))
             {
-                significand = significand * 10 + digit;
+                return SerdeParsedNumber.Unsigned(unsigned);
             }
-            else
+            if (negative && long.TryParse(
+                    token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var signed))
             {
-                integerOverflow = true;
-                decimalExponent++;
+                return signed == 0
+                    ? SerdeParsedNumber.Float(-0.0)
+                    : SerdeParsedNumber.Signed(signed);
             }
         }
 
-        var floating = integerOverflow;
-        if (offset < token.Length && token[offset] == '.')
+        // Zero remains finite even with an arbitrarily large exponent. Inspect
+        // every mantissa digit rather than a truncated significand.
+        var mantissaEnd = token.IndexOfAny(['e', 'E']);
+        if (mantissaEnd < 0)
         {
-            floating = true;
-            offset++;
-            var fractionOverflow = false;
-            while (offset < token.Length && token[offset] is >= '0' and <= '9')
-            {
-                var digit = (uint)(token[offset++] - '0');
-                if (!fractionOverflow &&
-                    significand <= (ulong.MaxValue - digit) / 10)
-                {
-                    significand = significand * 10 + digit;
-                    decimalExponent--;
-                }
-                else
-                {
-                    fractionOverflow = true;
-                }
-            }
+            mantissaEnd = token.Length;
+        }
+        var nonzero = false;
+        for (var offset = negative ? 1 : 0; offset < mantissaEnd; offset++)
+        {
+            nonzero |= token[offset] is >= '1' and <= '9';
+        }
+        if (!nonzero)
+        {
+            return SerdeParsedNumber.Float(negative ? -0.0 : 0.0);
         }
 
-        if (offset < token.Length && token[offset] is 'e' or 'E')
+        // .NET's full-token conversion rounds once, including midpoint tails,
+        // subnormals and saturated exponents. Reject overflow explicitly because
+        // TryParse can successfully return infinity for an out-of-range token.
+        if (!double.TryParse(
+                token, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
+            !double.IsFinite(number))
         {
-            floating = true;
-            offset++;
-            var positiveExponent = true;
-            if (offset < token.Length && token[offset] is '+' or '-')
-            {
-                positiveExponent = token[offset++] == '+';
-            }
-
-            var explicitExponent = 0;
-            var exponentOverflow = false;
-            while (offset < token.Length && token[offset] is >= '0' and <= '9')
-            {
-                var digit = token[offset++] - '0';
-                if (!exponentOverflow &&
-                    explicitExponent <= (int.MaxValue - digit) / 10)
-                {
-                    explicitExponent = explicitExponent * 10 + digit;
-                }
-                else
-                {
-                    exponentOverflow = true;
-                }
-            }
-
-            if (exponentOverflow)
-            {
-                if (positiveExponent && significand != 0)
-                {
-                    throw new CanonicalNumberOutOfRangeException();
-                }
-                return SerdeParsedNumber.Float(negative ? -0.0 : 0.0);
-            }
-
-            decimalExponent = positiveExponent
-                ? (int)Math.Min((long)decimalExponent + explicitExponent, int.MaxValue)
-                : (int)Math.Max((long)decimalExponent - explicitExponent, int.MinValue);
+            throw new CanonicalNumberOutOfRangeException();
         }
-
-        if (!floating)
-        {
-            if (!negative)
-            {
-                return SerdeParsedNumber.Unsigned(significand);
-            }
-            if (significand == 0)
-            {
-                return SerdeParsedNumber.Float(-0.0);
-            }
-            if (significand <= 9_223_372_036_854_775_808UL)
-            {
-                return SerdeParsedNumber.Signed(
-                    significand == 9_223_372_036_854_775_808UL
-                        ? long.MinValue
-                        : -(long)significand);
-            }
-        }
-
-        var number = (double)significand;
-        while (decimalExponent is < -308 or > 308)
-        {
-            if (number == 0)
-            {
-                return SerdeParsedNumber.Float(negative ? -0.0 : 0.0);
-            }
-            if (decimalExponent > 308)
-            {
-                throw new CanonicalNumberOutOfRangeException();
-            }
-            number /= SerdePowersOfTen[308];
-            decimalExponent += 308;
-        }
-
-        if (decimalExponent >= 0 && decimalExponent <= 308)
-        {
-            number *= SerdePowersOfTen[decimalExponent];
-            if (double.IsInfinity(number))
-            {
-                throw new CanonicalNumberOutOfRangeException();
-            }
-        }
-        else if (decimalExponent < 0)
-        {
-            number /= SerdePowersOfTen[-decimalExponent];
-        }
-
-        if (negative)
-        {
-            number = -number;
-        }
-        return SerdeParsedNumber.Float(number);
-    }
-
-    private static double[] BuildSerdePowersOfTen()
-    {
-        var powers = new double[309];
-        for (var exponent = 0; exponent < powers.Length; exponent++)
-        {
-            powers[exponent] = double.Parse(
-                "1e" + exponent.ToString(CultureInfo.InvariantCulture),
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture);
-        }
-        return powers;
+        return SerdeParsedNumber.Float(number == 0 && negative ? -0.0 : number);
     }
 
     internal static string FormatSerdeFloat(double number)

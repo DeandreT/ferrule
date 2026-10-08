@@ -18,11 +18,25 @@ fn emitted_package_enforces_exact_source_and_normalized_target_multiples()
     assert!(corpus.iter().any(|case| !case.expected_input));
     assert!(corpus.iter().any(|case| case.expected_output));
     assert!(corpus.iter().any(|case| !case.expected_output));
-    assert!(
-        corpus
-            .iter()
-            .any(|case| case.expected_input != case.expected_output)
-    );
+    let roundtrip_schema =
+        serde_json::to_string(&SchemaNode::scalar("Roundtrip", ScalarType::Float))?;
+    for case in &corpus {
+        assert_eq!(
+            case.expected_input, case.expected_output,
+            "{} divisor={} input={} bits={:016x}",
+            case.name, case.divisor_source, case.value_lexical, case.value_bits
+        );
+        let parsed = codegen_runtime::parse_json(&roundtrip_schema, &case.value_lexical);
+        assert!(
+            matches!(&parsed, Ok(ir::Instance::Scalar(ir::Value::Float(value)))
+                if value.to_bits() == case.value_bits),
+            "{} must preserve exact roundtrip bits {:016x}: {parsed:?}",
+            case.name,
+            case.value_bits
+        );
+    }
+    let boundary_controls = integer_adaptation_controls()?;
+    assert_eq!(boundary_controls.len(), 3);
 
     let mut source_fields = vec![
         multiple_of_scalar("Quantity", ScalarType::Int, "3")?,
@@ -69,7 +83,7 @@ fn emitted_package_enforces_exact_source_and_normalized_target_multiples()
         extra_targets: Vec::new(),
     };
 
-    let harness = render_harness(&corpus)?;
+    let harness = render_harness(&corpus, &boundary_controls)?;
     run_generated(&program, &harness)
 }
 
@@ -170,10 +184,10 @@ fn multiple_of_corpus() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error
                 ScalarType::Float,
                 divisor,
             )?)?;
-            // The raw token is parsed by serde_json before multipleOf is
-            // checked. Its default binary64 parser can reject an expanded
-            // finite f64 lexical or round it differently from the original
-            // value bits, so source and output expectations are independent.
+            // Input parses the roundtrip lexical before exact multipleOf
+            // validation; output checks the original finite value directly.
+            // Keep both expectations independent, and require the current
+            // roundtrip parser to preserve the same bits and constraint result.
             let expected_input = codegen_runtime::parse_json(&schema_json, &value_lexical).is_ok();
             cases.push(MultipleOfCase {
                 name,
@@ -190,6 +204,69 @@ fn multiple_of_corpus() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error
     Ok(cases)
 }
 
+fn integer_adaptation_controls() -> Result<Vec<MultipleOfCase>, Box<dyn std::error::Error>> {
+    // Integer tokens retain their exact tag. The two odd integers cannot be
+    // adapted exactly to Float, unlike the independently supplied +/-2^53
+    // output values. Divisor 1 accepts every supplied output here.
+    const CONTROLS: [(&str, &str, u64, bool); 3] = [
+        ("ExactInteger", "9007199254740992", 0x4340000000000000, true),
+        (
+            "InexactPositiveInteger",
+            "9007199254740993",
+            0x4340000000000000,
+            false,
+        ),
+        (
+            "InexactNegativeInteger",
+            "-9007199254740993",
+            0xc340000000000000,
+            false,
+        ),
+    ];
+    let divisor = JsonMultipleOf::from_decimal_lexical("1")
+        .ok_or("literal integer-adaptation divisor is representable")?;
+    let mut controls = Vec::with_capacity(CONTROLS.len());
+    for (name, input, bits, expected_input) in CONTROLS {
+        let schema_json = serde_json::to_string(&multiple_of_scalar_with_divisor(
+            name,
+            ScalarType::Float,
+            divisor,
+        )?)?;
+        let parsed = codegen_runtime::parse_json(&schema_json, input);
+        if expected_input {
+            assert!(
+                matches!(&parsed, Ok(ir::Instance::Scalar(ir::Value::Float(value)))
+                    if value.to_bits() == bits),
+                "literal input {name}: {parsed:?}"
+            );
+        } else {
+            assert!(
+                matches!(&parsed, Err(codegen_runtime::JsonBoundaryError::InvalidInput { message })
+                    if message.contains("integer outside the exact f64 range")),
+                "literal input {name}: {parsed:?}"
+            );
+        }
+        let value = f64::from_bits(bits);
+        assert!(divisor.divides_f64(value), "literal output {name}");
+        let output = codegen_runtime::serialize_json(
+            &schema_json,
+            &ir::Instance::Scalar(ir::Value::Float(value)),
+        );
+        assert!(output.is_ok(), "literal output {name}: {output:?}");
+        controls.push(MultipleOfCase {
+            name: name.into(),
+            divisor_source: "1",
+            divisor,
+            schema_json,
+            value_lexical: input.into(),
+            value_bits: bits,
+            expected_input,
+            expected_output: true,
+        });
+    }
+    Ok(controls)
+}
+
 fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = codegen_csharp::emit(program)?;
     assert!(artifacts.files().iter().any(|file| {
@@ -197,7 +274,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("JsonMultipleOfConstraints"))
     }));
-    let directory = TempDirectory::new()?;
+    let mut directory = TempDirectory::new()?;
     for file in artifacts.files() {
         let path = directory.path().join(file.path.as_str());
         if let Some(parent) = path.parent() {
@@ -207,34 +284,41 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
     }
     write_harness(directory.path(), harness)?;
 
-    let build = Command::new("dotnet")
-        .args([
-            "build",
-            "-warnaserror",
-            "--configuration",
-            "Release",
-            "Harness/Harness.csproj",
-        ])
-        .current_dir(directory.path())
-        .output()?;
+    let build = recorded_command(
+        Command::new("dotnet")
+            .args([
+                "build",
+                "-warnaserror",
+                "--configuration",
+                "Release",
+                "Harness/Harness.csproj",
+            ])
+            .current_dir(directory.path()),
+        directory.path(),
+        "build",
+    )?;
     assert_command_succeeded("dotnet build", &build);
 
-    let run = Command::new("dotnet")
-        .args([
-            "run",
-            "--project",
-            "Harness/Harness.csproj",
-            "--configuration",
-            "Release",
-            "--no-build",
-        ])
-        .current_dir(directory.path())
-        .output()?;
+    let run = recorded_command(
+        Command::new("dotnet")
+            .args([
+                "run",
+                "--project",
+                "Harness/Harness.csproj",
+                "--configuration",
+                "Release",
+                "--no-build",
+            ])
+            .current_dir(directory.path()),
+        directory.path(),
+        "run",
+    )?;
     assert_command_succeeded("generated harness", &run);
     assert_eq!(
         String::from_utf8_lossy(&run.stdout).trim(),
         "generated JSON multipleOf passed"
     );
+    directory.complete = true;
     Ok(())
 }
 
@@ -261,7 +345,10 @@ fn write_harness(root: &Path, program: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn render_harness(corpus: &[MultipleOfCase]) -> Result<String, Box<dyn std::error::Error>> {
+fn render_harness(
+    corpus: &[MultipleOfCase],
+    boundary_controls: &[MultipleOfCase],
+) -> Result<String, Box<dyn std::error::Error>> {
     let mut valid_fields = vec![
         r#""Quantity":6"#.to_owned(),
         r#""Fraction":0.3"#.to_owned(),
@@ -353,7 +440,7 @@ foreach (var (label, schema, input, bits, expectedInput, expectedOutput) in
          {
 "#,
     );
-    for case in corpus {
+    for case in corpus.iter().chain(boundary_controls) {
         writeln!(
             harness,
             "             ({}, {}, {}, 0x{:016x}UL, {}, {}),",
@@ -418,7 +505,47 @@ fn assert_command_succeeded(label: &str, output: &std::process::Output) {
     );
 }
 
-struct TempDirectory(PathBuf);
+fn recorded_command(
+    command: &mut Command,
+    directory: &Path,
+    name: &str,
+) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+    std::fs::write(
+        directory.join(format!("{name}-command.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "program": command.get_program().to_string_lossy(),
+            "argv": command.get_args().map(|arg| arg.to_string_lossy()).collect::<Vec<_>>(),
+            "cwd": command.get_current_dir(),
+            "debug": format!("{command:?}"),
+        }))?,
+    )?;
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(error) => {
+            std::fs::write(
+                directory.join(format!("{name}-spawn-error.txt")),
+                format!("{error:?}\n"),
+            )?;
+            return Err(error.into());
+        }
+    };
+    std::fs::write(directory.join(format!("{name}-stdout.bin")), &output.stdout)?;
+    std::fs::write(directory.join(format!("{name}-stderr.bin")), &output.stderr)?;
+    std::fs::write(
+        directory.join(format!("{name}-status.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "success": output.status.success(),
+            "code": output.status.code(),
+            "debug": format!("{:?}", output.status),
+        }))?,
+    )?;
+    Ok(output)
+}
+
+struct TempDirectory {
+    path: PathBuf,
+    complete: bool,
+}
 
 impl TempDirectory {
     fn new() -> Result<Self, std::io::Error> {
@@ -430,16 +557,29 @@ impl TempDirectory {
             unique
         ));
         std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
+        Ok(Self {
+            path,
+            complete: false,
+        })
     }
 
     fn path(&self) -> &Path {
-        &self.0
+        &self.path
     }
 }
 
 impl Drop for TempDirectory {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if self.complete
+            && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                != Some(std::ffi::OsStr::new("1"))
+        {
+            let _ = std::fs::remove_dir_all(&self.path);
+        } else {
+            eprintln!(
+                "Retained JSON multipleOf artifacts: {}",
+                self.path.display()
+            );
+        }
     }
 }

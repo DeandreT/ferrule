@@ -375,17 +375,22 @@ fn generated_json_output_constraints_match_interpreter() -> TestResult<()> {
 fn generated_unstable_schema_metadata_matches_native_outputs() -> TestResult<()> {
     let original = include_str!("../../../codegen/src/tests/fixtures/unstable_float_project.json");
     for (project_json, accepted) in [
-        (original.to_owned(), false),
+        (original.to_owned(), true),
         (
             original.replace(r#""value": 1.0000000000000001e-307"#, r#""value": 1e-307"#),
             true,
+        ),
+        (
+            original.replace(r#""value": 1.0000000000000001e-307"#, r#""value": 1e-308"#),
+            false,
         ),
     ] {
         let project: Project = serde_json::from_str(&project_json)?;
         let cases = interpreter_cases(&project, &["{}".into()])?;
         assert_eq!(cases[0]["reject_output"] == true, !accepted);
         assert_eq!(cases[0]["exact_output"] == true, accepted);
-        // Saving this project as JSON can itself alter its float metadata.
+        // Both adjacent finite values satisfy the exact physical minimum;
+        // the smaller control must fail before and after generated emission.
         // Generate from the physical fixture exactly as the CLI receives it.
         run_generated_boundary_cases_json(
             project_json.as_bytes(),
@@ -412,10 +417,12 @@ fn generated_unstable_source_schema_matches_native_json_inputs() -> TestResult<(
     let inputs = [
         r#"{"Value":1e-307}"#.into(),
         r#"{"Value":1.0000000000000001e-307}"#.into(),
+        r#"{"Value":1e-308}"#.into(),
     ];
     let cases = interpreter_cases(&project, &inputs)?;
     assert_eq!(cases[0]["exact_output"], true);
-    assert_eq!(cases[1]["reject"], true);
+    assert_eq!(cases[1]["exact_output"], true);
+    assert_eq!(cases[2]["reject"], true);
     run_generated_boundary_cases_json(project_json.as_bytes(), &cases, "unstable_source_metadata")
 }
 
@@ -447,7 +454,15 @@ fn generated_saved_project_preserves_exact_float_constants() -> TestResult<()> {
         },
     ];
     let encoded = mapping::project_file::encode_pretty(&project)?;
-    assert!(serde_json::from_str::<Project>(&encoded).is_err());
+    let decoded: Project = serde_json::from_str(&encoded)?;
+    let Node::Const {
+        value: Value::Float(value),
+    } = decoded.graph.nodes[&1]
+    else {
+        panic!("saved constant lost its Float tag");
+    };
+    assert_eq!(value.to_bits(), 0x0031_fa18_2c40_c60e);
+    assert_eq!(mapping::project_file::encode_pretty(&decoded)?, encoded);
     let cases = interpreter_cases(&project, &["{}".into()])?;
     run_generated_boundary_cases_json(encoded.as_bytes(), &cases, "saved_float_constants")
 }
@@ -581,16 +596,79 @@ pub(super) fn run_generated_boundary_cases(
     )
 }
 
+struct JsonBoundaryDirectory {
+    path: PathBuf,
+    complete: bool,
+}
+
+impl JsonBoundaryDirectory {
+    fn new(name: &str) -> io::Result<Self> {
+        let directory = TempDir::new(name)?;
+        let path = directory.0.clone();
+        std::mem::forget(directory);
+        Ok(Self {
+            path,
+            complete: false,
+        })
+    }
+}
+
+impl Drop for JsonBoundaryDirectory {
+    fn drop(&mut self) {
+        if self.complete
+            && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                != Some(std::ffi::OsStr::new("1"))
+        {
+            let _ = std::fs::remove_dir_all(&self.path);
+        } else {
+            eprintln!(
+                "Retained JSON boundary test artifacts: {}",
+                self.path.display()
+            );
+        }
+    }
+}
+
+fn recorded_json_boundary_command(
+    command: &mut Command,
+    directory: &Path,
+    name: &str,
+) -> io::Result<Output> {
+    std::fs::write(
+        directory.join(format!("{name}-command.txt")),
+        format!("{command:?}\n"),
+    )?;
+    let output = match command.isolated_output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::write(
+                directory.join(format!("{name}-spawn-error.txt")),
+                format!("{error:?}\n"),
+            );
+            return Err(error);
+        }
+    };
+    std::fs::write(directory.join(format!("{name}-stdout.txt")), &output.stdout)?;
+    std::fs::write(directory.join(format!("{name}-stderr.txt")), &output.stderr)?;
+    std::fs::write(
+        directory.join(format!("{name}-status.json")),
+        serde_json::to_vec(
+            &serde_json::json!({"success": output.status.success(), "code": output.status.code()}),
+        )?,
+    )?;
+    Ok(output)
+}
+
 fn run_generated_boundary_cases_json(
     project_json: &[u8],
     cases: &[serde_json::Value],
     name: &str,
 ) -> TestResult<()> {
-    let directory = TempDir::new(name)?;
-    let project_path = directory.0.join("project.json");
+    let mut directory = JsonBoundaryDirectory::new(name)?;
+    let project_path = directory.path.join("project.json");
     std::fs::write(&project_path, project_json)?;
     let fixtures = serde_json::to_vec(cases)?;
-    let rust_output = directory.0.join("rust");
+    let rust_output = directory.path.join("rust");
     generate_project(
         &project_path,
         &rust_output,
@@ -612,12 +690,21 @@ fn run_generated_boundary_cases_json(
         rust_output.join("src/main.rs"),
         include_str!("fixtures/json_text_boundaries_rust.rs.txt"),
     )?;
-    let rust = Command::new("cargo")
+    let target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
+        Some(path) => {
+            let path = PathBuf::from(path);
+            assert!(path.is_absolute(), "generated host target must be absolute");
+            path
+        }
+        None => directory.path.join("cargo-target"),
+    };
+    let mut rust_command = Command::new("cargo");
+    rust_command
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
-        .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .env("RUSTFLAGS", "-Dwarnings")
-        .isolated_output()?;
+        .env("CARGO_TARGET_DIR", target)
+        .env("RUSTFLAGS", "-Dwarnings");
+    let rust = recorded_json_boundary_command(&mut rust_command, &directory.path, "rust")?;
     assert!(
         rust.status.success(),
         "generated Rust text boundaries failed:\nstdout:\n{}\nstderr:\n{}",
@@ -625,7 +712,7 @@ fn run_generated_boundary_cases_json(
         String::from_utf8_lossy(&rust.stderr)
     );
 
-    let csharp_output = directory.0.join("csharp");
+    let csharp_output = directory.path.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
     std::fs::write(csharp_output.join("cases.json"), fixtures)?;
     let harness = csharp_output.join("Harness");
@@ -651,7 +738,8 @@ fn run_generated_boundary_cases_json(
         harness.join("Program.cs"),
         include_str!("fixtures/json_text_boundaries_csharp.cs.txt"),
     )?;
-    let csharp = dotnet_command(&csharp_output)
+    let mut csharp_command = dotnet_command(&csharp_output);
+    csharp_command
         .args([
             "run",
             "--project",
@@ -659,13 +747,14 @@ fn run_generated_boundary_cases_json(
             "--configuration",
             "Release",
         ])
-        .current_dir(&csharp_output)
-        .isolated_output()?;
+        .current_dir(&csharp_output);
+    let csharp = recorded_json_boundary_command(&mut csharp_command, &directory.path, "csharp")?;
     assert!(
         csharp.status.success(),
         "generated C# text boundaries failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&csharp.stdout),
         String::from_utf8_lossy(&csharp.stderr)
     );
+    directory.complete = true;
     Ok(())
 }

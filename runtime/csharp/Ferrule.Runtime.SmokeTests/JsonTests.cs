@@ -1497,8 +1497,28 @@ internal static partial class Program
 
         const string large =
             "{\"name\":\"Value\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":1,\"decimal_exponent\":20}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}";
-        _ = FerruleJson.Parse(large, "1e21");
-        _ = FerruleJson.Parse(large, "1.0000000000000001e21");
+        // Nearest-even parsing keeps these adjacent values distinct. Only
+        // the exact baseline is a multiple of 1e20; the old lossy parser
+        // incorrectly collapsed the first neighbor onto it.
+        var largeExact = CaptureCorrectRoundingScalar("multipleOf exact large baseline",
+            () => FerruleJson.Parse(large, "1e21"));
+        var largeNeighbor = CaptureCorrectRoundingScalar("multipleOf first large neighbor",
+            () => FerruleJson.Parse(CorrectRoundingFloatSchema, "1.0000000000000001e21"));
+        var largeNext = CaptureCorrectRoundingScalar("multipleOf second large neighbor",
+            () => FerruleJson.Parse(CorrectRoundingFloatSchema, "1.0000000000000002e21"));
+        AssertCorrectRoundingBits(largeExact, 0x444b1ae4d6e2ef50UL);
+        AssertCorrectRoundingBits(largeNeighbor, 0x444b1ae4d6e2ef51UL);
+        AssertCorrectRoundingBits(largeNext, 0x444b1ae4d6e2ef52UL);
+        RequireCorrectRoundingRefusal("multipleOf first large neighbor input",
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Parse(large, "1.0000000000000001e21"));
+        RequireCorrectRoundingRefusal("multipleOf first large neighbor byte input",
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.ParseBytes(large,
+                System.Text.Encoding.UTF8.GetBytes("1.0000000000000001e21")));
+        RequireCorrectRoundingRefusal("multipleOf first large neighbor output",
+            FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.Serialize(large, Scalar(largeNeighbor)));
         Error(
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Parse(large, "1.0000000000000002e21"));

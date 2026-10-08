@@ -232,10 +232,13 @@ mod tests {
             native,
             "[\n  0.9999999999998891,\n  0.9999999999998892\n]\n"
         );
-        // serde_json's fast reader rounds these two distinct emitted floats
-        // to one value. Output validation must use the normalized value tree.
+        // The corrected JSON reader retains both independent original bits.
+        // Output validation still checks the normalized value tree and rejects
+        // actual duplicates below rather than conflating adjacent floats.
         let reparsed: Vec<f64> = serde_json::from_str(&native)?;
-        assert_eq!(reparsed[0], reparsed[1]);
+        assert_eq!(reparsed.len(), 2);
+        assert_eq!(reparsed[0].to_bits(), 0x3fef_ffff_ffff_fc19);
+        assert_eq!(reparsed[1].to_bits(), 0x3fef_ffff_ffff_fc1a);
         assert_eq!(serialize_json(&encoded, &distinct)?, native);
 
         let duplicate = Instance::Repeated(vec![

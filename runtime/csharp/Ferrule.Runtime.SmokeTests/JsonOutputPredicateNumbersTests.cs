@@ -34,14 +34,14 @@ internal static partial class Program
 
     private static void JsonOutputPredicateNumericProvenance()
     {
-        // serde_json writes these adjacent values as 1e-307 and
-        // 1.0000000000000001e-307, then reparses those texts to the opposite
-        // double. Output predicates must inspect the original normalized value.
+        // These adjacent values retain distinct bits under correctly rounded
+        // parsing. Use the upper value as the threshold/constraint so the lower
+        // normalized value still fails each output predicate.
         var low = BitConverter.Int64BitsToDouble(0x0031fa182c40c60d);
         var high = BitConverter.Int64BitsToDouble(0x0031fa182c40c60e);
 
         const string minimum =
-            """{"kind":"number","bounds":{"minimum":{"value":1e-307}}}""";
+            """{"kind":"number","bounds":{"minimum":{"value":1.0000000000000001e-307}}}""";
         var contains =
             """{"name":"Values","repeating":true,"json_contains":[{"predicate":{"kind":"schema","schema":{"name":"item","numeric_range":__MINIMUM__,"kind":{"kind":"scalar","ty":"float"}}},"range":{"minimum":1}}],"kind":{"kind":"scalar","ty":"float"}}"""
                 .Replace("__MINIMUM__", minimum, StringComparison.Ordinal);
@@ -59,10 +59,10 @@ internal static partial class Program
             true,
             FerruleJson.Serialize(contains, values(high))
                 .Contains("1.0000000000000001e-307", StringComparison.Ordinal));
-        _ = FerruleJson.Parse(contains, "[1e-307]");
+        _ = FerruleJson.Parse(contains, "[1.0000000000000001e-307]");
         Error(
             FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(contains, "[1.0000000000000001e-307]"));
+            () => FerruleJson.Parse(contains, "[1e-307]"));
 
         var dependent =
             """{"name":"Root","json_dependent_schemas":[{"trigger":"Trigger","predicate":{"kind":"schema","schema":{"name":"predicate","kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","numeric_range":__MINIMUM__,"kind":{"kind":"scalar","ty":"float"}}],"required":["Value"]}}}}],"kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","kind":{"kind":"scalar","ty":"float"}}]}}"""
@@ -79,26 +79,26 @@ internal static partial class Program
             true,
             FerruleJson.Serialize(dependent, record(high))
                 .Contains("1.0000000000000001e-307", StringComparison.Ordinal));
-        _ = FerruleJson.Parse(dependent, "{\"Trigger\":true,\"Value\":1e-307}");
+        _ = FerruleJson.Parse(dependent, "{\"Trigger\":true,\"Value\":1.0000000000000001e-307}");
         Error(
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Parse(
                 dependent,
-                "{\"Trigger\":true,\"Value\":1.0000000000000001e-307}"));
+                "{\"Trigger\":true,\"Value\":1e-307}"));
 
         const string exactAlternative =
-            """{"name":"Root","json_dependent_schemas":[{"trigger":"Trigger","predicate":{"kind":"schema","schema":{"name":"predicate","kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","kind":{"kind":"scalar","ty":"float"}}],"alternatives":[{"members":["Trigger","Value"],"required":["Value"],"constraints":[{"member":"Value","value":{"type":"float","value":1e-307}}]}]}}}}],"kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","kind":{"kind":"scalar","ty":"float"}}]}}""";
+            """{"name":"Root","json_dependent_schemas":[{"trigger":"Trigger","predicate":{"kind":"schema","schema":{"name":"predicate","kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","kind":{"kind":"scalar","ty":"float"}}],"alternatives":[{"members":["Trigger","Value"],"required":["Value"],"constraints":[{"member":"Value","value":{"type":"float","value":1.0000000000000001e-307}}]}]}}}}],"kind":{"kind":"group","children":[{"name":"Trigger","kind":{"kind":"scalar","ty":"bool"}},{"name":"Value","kind":{"kind":"scalar","ty":"float"}}]}}""";
         Error(
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Serialize(exactAlternative, record(low)));
         _ = FerruleJson.Serialize(exactAlternative, record(high));
         _ = FerruleJson.Parse(
             exactAlternative,
-            "{\"Trigger\":true,\"Value\":1e-307}");
+            "{\"Trigger\":true,\"Value\":1.0000000000000001e-307}");
         Error(
             FerruleRuntimeError.JsonBoundary,
             () => FerruleJson.Parse(
                 exactAlternative,
-                "{\"Trigger\":true,\"Value\":1.0000000000000001e-307}"));
+                "{\"Trigger\":true,\"Value\":1e-307}"));
     }
 }
