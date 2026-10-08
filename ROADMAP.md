@@ -81,8 +81,6 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 
 ### 5. Deepen memory and authoring coverage without changing contracts
 
-- [ ] Choose the next GUI authoring gap from an existing executable mapping;
-  preserve compact headers, complete hover/pin identities, locks, and history.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
