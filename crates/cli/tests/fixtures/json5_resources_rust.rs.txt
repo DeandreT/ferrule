@@ -1,0 +1,87 @@
+use std::error::Error;
+use std::path::Path;
+use codegen_runtime::{ExecutionContext, Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxResource};
+use serde_json::{Value as Json, json};
+use sha2::{Digest, Sha256};
+
+const M: usize = 67_108_864;
+fn save(path: &Path, value: &Json) { std::fs::write(path, serde_json::to_vec_pretty(value).unwrap()).unwrap(); }
+fn sha(bytes: &[u8]) -> String { format!("{:x}",Sha256::digest(bytes)) }
+fn main() {
+    let args = std::env::args().collect::<Vec<_>>();
+    assert_eq!(args.len(),4,"one case path, route and owned observation directory required");
+    let case_path = Path::new(&args[1]); let route: usize = args[2].parse().unwrap();
+    let output = Path::new(&args[3]); assert!(route<4 && output.is_dir());
+    let case_bytes = std::fs::read(case_path).unwrap();
+    let case: Json = serde_json::from_slice(&case_bytes).unwrap();
+    let input_path = Path::new(case["input"]["path"].as_str().unwrap());
+    let input = std::fs::read(input_path).unwrap();
+    save(&output.join("ORIGINAL-INPUT.json"),&json!({"case":case,"case_sha256":sha(&case_bytes),"input_bytes":input.len(),"input_sha256":sha(&input),
+        "route":route,"public_method":(["execute_json5","execute_json5_with_context","execute_json5_bytes","execute_json5_bytes_with_context"][route]),
+        "context":if route%2==1 {Some("/logical/resource145.json")} else {None}}));
+    let original = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_eq!(input.len() as u64,case["input"]["bytes"].as_u64().unwrap());
+        assert_eq!(sha(&input),case["input"]["sha256"].as_str().unwrap());
+        let context = ExecutionContext::new(Path::new("/logical/resource145.json"));
+        // Exactly one selected public call. Converting an actual text result
+        // into its owned UTF-8 bytes preserves the complete original value.
+        let actual = match route {
+            0=>json5_resource_map::execute_json5(std::str::from_utf8(&input).unwrap()).map(String::into_bytes),
+            1=>json5_resource_map::execute_json5_with_context(std::str::from_utf8(&input).unwrap(),&context).map(String::into_bytes),
+            2=>json5_resource_map::execute_json5_bytes(&input),
+            3=>json5_resource_map::execute_json5_bytes_with_context(&input,&context),
+            _=>unreachable!(),
+        };
+        match &actual {
+            Ok(bytes)=>{
+                // Retain all returned bytes once, before size/hash/oracle assertions.
+                std::fs::write(output.join("ORIGINAL-RETURNED-UTF8.bin"),bytes).unwrap();
+                save(&output.join("ORIGINAL-PUBLIC-RESULT.json"),&json!({"variant":"Ok","original_type":if route<2 {"String"} else {"Vec<u8>"},
+                    "complete_value":"ORIGINAL-RETURNED-UTF8.bin","bytes":bytes.len(),"sha256":sha(bytes),"returned":true}));
+            }
+            Err(error)=>{
+                let mut chain=Vec::new(); let mut cause=error.source();
+                while let Some(original)=cause { chain.push(json!({"debug":format!("{original:#?}"),"display":original.to_string()})); cause=original.source(); }
+                let typed=match error {
+                    Json5BoundaryError::Limit {resource,requested,max}=>json!({"variant":"Limit","resource":format!("{resource:?}"),"requested":requested,"max":max}),
+                    Json5BoundaryError::Syntax(Json5SyntaxError::Limit {resource,offset,requested,max})=>json!({"variant":"Syntax","cause":"Json5SyntaxError::Limit","resource":format!("{resource:?}"),"offset":offset,"requested":requested,"max":max}),
+                    _=>json!({"variant":"unexpected-original"}),
+                };
+                save(&output.join("ORIGINAL-PUBLIC-RESULT.json"),&json!({"variant":"Err","debug":format!("{error:#?}"),"display":error.to_string(),"source_chain":chain,"typed":typed,"returned":false}));
+            }
+        }
+        match case["outcome"].as_str().unwrap() {
+            "success"=>{
+                let bytes=actual.unwrap();
+                assert_eq!(bytes.len() as u64,case["output_bytes"].as_u64().unwrap());
+                assert_eq!(sha(&bytes),case["output_sha256"].as_str().unwrap());
+                if case["profile"]=="output-exact" {
+                    assert!(bytes.starts_with(b"{\n  \"n\": \"")); assert!(bytes.ends_with(b"\"\n}\n"));
+                    assert!(bytes[10..bytes.len()-4].iter().all(|byte|*byte==b'x'));
+                } else { assert_eq!(bytes,b"{\n  \"n\": 7\n}\n"); }
+            }
+            "original-limit"=>assert!(matches!(actual,Err(Json5BoundaryError::Limit {resource:Json5BoundaryResource::OriginalDocumentBytes,requested,max}) if requested==M+1 && max==M)),
+            "normalized-limit"=>{
+                let error=actual.unwrap_err();
+                assert!(error.source().unwrap().downcast_ref::<Json5SyntaxError>().is_some());
+                assert!(matches!(error,Json5BoundaryError::Syntax(Json5SyntaxError::Limit {resource:Json5SyntaxResource::NormalizedDocumentBytes,offset:11_184_818,requested,max}) if requested==M+1 && max==M));
+            }
+            "output-limit"=>assert!(matches!(actual,Err(Json5BoundaryError::Limit {resource:Json5BoundaryResource::OutputDocumentBytes,requested,max}) if requested==M+1 && max==M)),
+            _=>panic!("unknown manual case"),
+        }
+    }));
+    // Always retain after observations on ordinary assertion unwinds. These
+    // are distinct from root's external timeout/process/complete source guards.
+    let after_input=std::fs::read(input_path); let after_case=std::fs::read(case_path);
+    save(&output.join("ORIGINAL-AFTER-GUARD.json"),&json!({"input":after_input.as_ref().map(|bytes|json!({"bytes":bytes.len(),"sha256":sha(bytes)})).map_err(|e|e.to_string()),
+        "case":after_case.as_ref().map(|bytes|json!({"bytes":bytes.len(),"sha256":sha(bytes)})).map_err(|e|e.to_string())}));
+    let guard=after_input.as_ref().is_ok_and(|bytes|sha(bytes)==case["input"]["sha256"].as_str().unwrap()) && after_case.as_ref().is_ok_and(|bytes|bytes==&case_bytes);
+    if let Err(original)=original {
+        let text=original.downcast_ref::<String>().cloned().or_else(||original.downcast_ref::<&str>().map(|s|s.to_string())).unwrap_or_else(||"opaque original panic payload; not fabricated".into());
+        std::fs::write(output.join("ORIGINAL-PANIC.txt"),text).unwrap();
+        save(&output.join("AFTER-GUARD-STATUS.json"),&json!({"exact":guard,"public_call_complete":false}));
+        std::panic::resume_unwind(original);
+    }
+    assert!(guard,"input/case changed after original call; originals retained");
+    save(&output.join("CALL-COMPLETE.json"),&json!({"calls":1,"failures":0,"route":route,"id":case["id"],"input_after_exact":true,"case_after_exact":true}));
+}

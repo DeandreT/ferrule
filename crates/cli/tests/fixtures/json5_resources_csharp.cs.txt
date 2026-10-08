@@ -1,0 +1,125 @@
+using System.Runtime.ExceptionServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+const long M = 67_108_864;
+var utf8 = new UTF8Encoding(false,true);
+if (args.Length != 3) { throw new ArgumentException("One case path, route and observation directory required."); }
+var casePath=Path.GetFullPath(args[0]); var route=int.Parse(args[1],System.Globalization.CultureInfo.InvariantCulture);
+var output=Path.GetFullPath(args[2]); Check(route is >=0 and <4 && Directory.Exists(output),"owned route/output required");
+var caseBytes=File.ReadAllBytes(casePath); using var parsed=JsonDocument.Parse(caseBytes); var item=parsed.RootElement;
+var inputPath=item.GetProperty("input").GetProperty("path").GetString()!; var input=File.ReadAllBytes(inputPath);
+Save("ORIGINAL-INPUT.json",new { casePath,caseSha256=Hash(caseBytes),inputPath,inputBytes=input.LongLength,inputSha256=Hash(input),route,
+    publicMethod=route<2?"ExecuteJson5":"ExecuteJson5Bytes",context=route%2==1?"/logical/resource145.json":null });
+Exception? primary=null; Exception? guardFailure=null; var afterExact=false;
+try
+{
+    Check(input.LongLength==item.GetProperty("input").GetProperty("bytes").GetInt64(),"original input length changed");
+    Check(Hash(input)==item.GetProperty("input").GetProperty("sha256").GetString(),"original input hash changed");
+    var context=new FerruleExecutionContext("/logical/resource145.json");
+    object? actual=null; Exception? original=null;
+    try
+    {
+        // Exactly one actual typed public signature; no reflection wrapper invented.
+        actual=route switch {
+            0=>GeneratedMapping.ExecuteJson5(utf8.GetString(input)),
+            1=>GeneratedMapping.ExecuteJson5(utf8.GetString(input),context),
+            2=>GeneratedMapping.ExecuteJson5Bytes(input),
+            3=>GeneratedMapping.ExecuteJson5Bytes(input,context),
+            _=>throw new InvalidOperationException("unknown route"),
+        };
+    }
+    catch (Exception error) { original=error; }
+    byte[]? returned=null;
+    if (original is null)
+    {
+        returned=actual switch { string text=>utf8.GetBytes(text),byte[] bytes=>bytes,_=>throw new InvalidOperationException("wrong public return type") };
+        // Full original bytes are retained once before comparisons/projections.
+        File.WriteAllBytes(Path.Combine(output,"ORIGINAL-RETURNED-UTF8.bin"),returned);
+    }
+    Save("ORIGINAL-PUBLIC-RESULT.json",new { variant=original is null?"Returned":"Thrown",actualType=actual?.GetType().FullName,
+        completeValue=returned is null?null:"ORIGINAL-RETURNED-UTF8.bin",bytes=returned?.LongLength,sha256=returned is null?null:Hash(returned),
+        returned=actual is not null,original=Cause(original) });
+    var outcome=item.GetProperty("outcome").GetString();
+    if (outcome=="success")
+    {
+        Check(original is null && returned is not null,"unexpected public refusal");
+        Check(returned!.LongLength==item.GetProperty("output_bytes").GetInt64(),"complete output bytes mismatch");
+        Check(Hash(returned)==item.GetProperty("output_sha256").GetString(),"manual full output digest mismatch");
+        if (item.GetProperty("profile").GetString()=="output-exact")
+        {
+            Check(returned.AsSpan(0,10).SequenceEqual("{\n  \"n\": \""u8),"literal strict writer prefix mismatch");
+            Check(returned.AsSpan(returned.Length-4).SequenceEqual("\"\n}\n"u8),"literal strict writer suffix mismatch");
+            for (var index=10;index<returned.Length-4;index++) { Check(returned[index]==(byte)'x',"manual complete string mismatch"); }
+        }
+        else { Check(returned.AsSpan().SequenceEqual("{\n  \"n\": 7\n}\n"u8),"complete constant strict output mismatch"); }
+    }
+    else
+    {
+        Check(actual is null && returned is null,"failed boundary returned a partial value");
+        Check(original is FerruleJson5BoundaryException,"actual optional boundary wrapper missing");
+        var boundary=(FerruleJson5BoundaryException)original!;
+        Check(boundary.Requested==M+1 && boundary.Maximum==M,"wrong requested/max fields");
+        if (outcome=="original-limit")
+        {
+            Check(boundary.Stage==FerruleJson5Stage.Encoding && boundary.Resource==FerruleJson5Resource.OriginalDocumentBytes,"original cap priority changed");
+            if (route<2)
+            {
+                Check(boundary.InnerException is FerruleJson5SyntaxException,"actual text-original cause missing");
+                var syntax=(FerruleJson5SyntaxException)boundary.InnerException!;
+                Check(syntax.Failure==FerruleJson5SyntaxFailure.Limit && syntax.Resource==FerruleJson5SyntaxResource.OriginalDocumentBytes && syntax.Offset==0 && syntax.Requested==M+1 && syntax.Maximum==M,"text-original fields changed");
+            }
+            else
+            {
+                Check(boundary.InnerException is FerruleJson5ResourceException,"actual bytes-original cause missing");
+                var limit=(FerruleJson5ResourceException)boundary.InnerException!;
+                Check(limit.Resource==FerruleJson5Resource.OriginalDocumentBytes && limit.Requested==M+1 && limit.Maximum==M,"bytes-original fields changed");
+            }
+        }
+        else if (outcome=="normalized-limit")
+        {
+            Check(boundary.Stage==FerruleJson5Stage.Syntax && boundary.Resource==FerruleJson5Resource.NormalizedDocumentBytes && boundary.Utf8Offset==11_184_818,"normalized cap/offset changed");
+            Check(boundary.InnerException is FerruleJson5SyntaxException,"original normalization cause missing");
+            var syntax=(FerruleJson5SyntaxException)boundary.InnerException!;
+            Check(syntax.Failure==FerruleJson5SyntaxFailure.Limit && syntax.Resource==FerruleJson5SyntaxResource.NormalizedDocumentBytes && syntax.Offset==11_184_818 && syntax.Requested==M+1 && syntax.Maximum==M,"original normalization fields changed");
+        }
+        else if (outcome=="output-limit")
+        {
+            Check(boundary.Stage==FerruleJson5Stage.Output && boundary.Resource==FerruleJson5Resource.OutputDocumentBytes,"output cap priority changed");
+            Check(boundary.InnerException is FerruleJson5ResourceException,"actual output cause missing");
+            var limit=(FerruleJson5ResourceException)boundary.InnerException!;
+            Check(limit.Resource==FerruleJson5Resource.OutputDocumentBytes && limit.Requested==M+1 && limit.Maximum==M,"output resource fields changed");
+        }
+        else { throw new InvalidOperationException("unknown literal outcome"); }
+        Check(boundary.InnerException!.InnerException is null,"unexpected extra error wrapper");
+    }
+}
+catch (Exception error) { primary=error; Save("ORIGINAL-ASSERTION-CAUSE.json",Cause(error)); }
+finally
+{
+    try
+    {
+        var afterInput=File.ReadAllBytes(inputPath); var afterCase=File.ReadAllBytes(casePath);
+        Save("ORIGINAL-AFTER-GUARD.json",new { inputBytes=afterInput.LongLength,inputSha256=Hash(afterInput),caseBytes=afterCase.LongLength,caseSha256=Hash(afterCase) });
+        afterExact=Hash(afterInput)==item.GetProperty("input").GetProperty("sha256").GetString() && afterCase.AsSpan().SequenceEqual(caseBytes);
+        Check(afterExact,"input/case after guard changed");
+    }
+    catch (Exception error) { guardFailure=error; Save("ORIGINAL-AFTER-GUARD-CAUSE.json",Cause(error)); }
+    Save("PRIMARY-AND-GUARD-RESULT.json",new { primary=Cause(primary),guard=Cause(guardFailure),afterExact });
+}
+if (primary is not null) { ExceptionDispatchInfo.Capture(primary).Throw(); }
+if (guardFailure is not null) { ExceptionDispatchInfo.Capture(guardFailure).Throw(); }
+Save("CALL-COMPLETE.json",new { calls=1,failures=0,route,id=item.GetProperty("id").GetString(),input_after_exact=true,case_after_exact=true });
+
+void Save(string name,object? value) { File.WriteAllText(Path.Combine(output,name),JsonSerializer.Serialize(value,new JsonSerializerOptions { WriteIndented=true })+"\n",utf8); }
+static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+static void Check(bool accepted,string reason) { if (!accepted) { throw new InvalidOperationException(reason); } }
+static object? Cause(Exception? error)=>error is null?null:new {
+    type=error.GetType().FullName,fullOriginal=error.ToString(),
+    fields=error.GetType().GetProperties().Where(property=>property.Name!="InnerException" && property.GetIndexParameters().Length==0)
+        .ToDictionary(property=>property.Name,property=>property.GetValue(error)?.ToString()),
+    inner=Cause(error.InnerException),
+};
