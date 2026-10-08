@@ -18,6 +18,8 @@ pub(crate) struct XlsxBoundaryDraft {
     pub(crate) has_header_row: bool,
     pub(crate) columns: Vec<String>,
     pub(crate) headers: Vec<String>,
+    pub(crate) transposed: bool,
+    pub(crate) rows: Vec<String>,
 }
 
 impl XlsxBoundaryDraft {
@@ -61,6 +63,10 @@ impl XlsxBoundaryDraft {
                 .map(|column| column.to_string())
                 .collect(),
             headers: fields.iter().map(|field| field.name.clone()).collect(),
+            transposed: false,
+            rows: (1..=fields.iter().filter(|field| field.name != "n").count())
+                .map(|row| row.to_string())
+                .collect(),
         })
     }
 
@@ -71,9 +77,72 @@ impl XlsxBoundaryDraft {
         }
     }
 
+    pub(crate) fn supports_transposed(&self) -> bool {
+        Self::transposed_field_count(&self.schema).is_ok()
+    }
+
+    fn transposed_field_count(schema: &SchemaNode) -> anyhow::Result<usize> {
+        let fields = Self::fields(schema)?;
+        let positions = fields
+            .iter()
+            .filter(|field| field.name == "n")
+            .collect::<Vec<_>>();
+        if positions.len() > 1
+            || positions.iter().any(|field| {
+                !matches!(
+                    &field.kind,
+                    ir::SchemaKind::Scalar {
+                        ty: ir::ScalarType::Int
+                    }
+                )
+            })
+        {
+            bail!("transposed source field `n` must be one integer physical-column position");
+        }
+        let count = fields.len() - positions.len();
+        if count == 0 {
+            bail!("transposed sources need at least one worksheet data field besides `n`");
+        }
+        Ok(count)
+    }
+
+    fn selected_rows(&self) -> anyhow::Result<Vec<u32>> {
+        let count = Self::transposed_field_count(&self.schema)?;
+        if self.rows.len() != count {
+            bail!(
+                "expected {count} worksheet row selector(s), got {}",
+                self.rows.len()
+            );
+        }
+        let mut selected = Vec::with_capacity(count);
+        let mut unique = BTreeSet::new();
+        for raw in &self.rows {
+            let row = raw
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .and_then(XlsxRow::new)
+                .context("worksheet row must be between 1 and 1,048,576")?;
+            if !unique.insert(row) {
+                bail!("each data field needs a different worksheet row");
+            }
+            selected.push(row.get());
+        }
+        Ok(selected)
+    }
+
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        self.validate_for(false)
+    }
+
+    pub(crate) fn validate_for(&self, target: bool) -> anyhow::Result<()> {
         let fields = Self::fields(&self.schema)?;
-        if self.columns.len() != fields.len() || self.headers.len() != fields.len() {
+        if target && self.transposed {
+            bail!("transposed workbook layout is available only for sources");
+        }
+        if self.transposed {
+            self.selected_rows()?;
+        } else if self.columns.len() != fields.len() || self.headers.len() != fields.len() {
             bail!(
                 "workbook column choices no longer match the schema; configure the workbook again"
             );
@@ -102,6 +171,9 @@ impl XlsxBoundaryDraft {
                 bail!("sheet name cannot start or end with an apostrophe");
             }
         }
+        if self.transposed {
+            return Ok(());
+        }
         self.start_row
             .trim()
             .parse::<u32>()
@@ -126,7 +198,19 @@ impl XlsxBoundaryDraft {
     }
 
     pub(crate) fn options(&self, target: bool) -> anyhow::Result<FormatOptions> {
-        self.validate()?;
+        if target {
+            self.validate_for(true)?;
+        } else {
+            self.validate()?;
+        }
+        if self.transposed {
+            return Ok(FormatOptions {
+                tabular_kind: Some(TabularBoundaryKind::Xlsx),
+                xlsx_sheet: (!self.sheet.is_empty()).then(|| self.sheet.clone()),
+                xlsx_rows: self.selected_rows()?,
+                ..FormatOptions::default()
+            });
+        }
         Ok(FormatOptions {
             tabular_kind: Some(TabularBoundaryKind::Xlsx),
             xlsx_sheet: (!self.sheet.is_empty()).then(|| self.sheet.clone()),
