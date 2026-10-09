@@ -355,11 +355,11 @@ fn failure_rules_match_engine_and_generated_backends() -> TestResult<()> {
         rust_output.join("src/main.rs"),
         include_str!("fixtures/failure_rules_rust_harness.rs.txt"),
     )?;
-    let rust = Command::new("cargo")
+    let mut rust_command = Command::new("cargo");
+    rust_command
         .args(["run", "--quiet"])
-        .current_dir(&rust_output)
-        .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .isolated_output()?;
+        .current_dir(&rust_output);
+    let rust = host_policy::recorded_output(&mut rust_command, &directory.0, "rust-host")?;
     assert!(
         rust.status.success(),
         "generated Rust failure rules failed:\nstdout:\n{}\nstderr:\n{}",
@@ -392,7 +392,8 @@ fn failure_rules_match_engine_and_generated_backends() -> TestResult<()> {
         harness.join("Program.cs"),
         include_str!("fixtures/failure_rules_csharp_harness.cs.txt"),
     )?;
-    let csharp = dotnet_command(&csharp_output)
+    let mut csharp_command = dotnet_command(&csharp_output);
+    csharp_command
         .args([
             "run",
             "--project",
@@ -400,8 +401,8 @@ fn failure_rules_match_engine_and_generated_backends() -> TestResult<()> {
             "--configuration",
             "Release",
         ])
-        .current_dir(&csharp_output)
-        .isolated_output()?;
+        .current_dir(&csharp_output);
+    let csharp = host_policy::recorded_output(&mut csharp_command, &directory.0, "csharp-host")?;
     assert!(
         csharp.status.success(),
         "generated C# failure rules failed:\nstdout:\n{}\nstderr:\n{}",
