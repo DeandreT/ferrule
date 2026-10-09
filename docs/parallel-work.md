@@ -113,7 +113,7 @@ restriction and are not green checks.
 | [#201 Sequence-consumer duplication](https://github.com/DeandreT/ferrule/issues/201) | Unassigned | Ownership/remapping contract, then release of #194 shared GUI files before adoption | Atomic private-owner remapping and focused history/layout controls; general clipboard/arbitrary graph copy excluded |
 | [#203 Scalar sequence saved-design interchange](https://github.com/DeandreT/ferrule/issues/203) | Unassigned | Faithful representation design and synthetic fixture qualification before implementation | New design/fixtures; preserve typed refusal; coordinate display only with metadata lanes |
 | [#205 Generated test artifact retention](https://github.com/DeandreT/ferrule/issues/205) | DeandreT; active | Three test-role source accepted; runtime and matched log/file-size checks unrun | Rust/C# JSON5 tests and one test-only helper; preserve complete originals/assertions; production excluded |
-| [#207 Eager scalar sequence memory study](https://github.com/DeandreT/ferrule/issues/207) | Unassigned | Freeze matched capture/value/item dimensions and full independent outputs before measurement | New performance fixtures/report; native/Rust/C#; no runtime optimization, policy change or RAM guarantee |
+| [#207 Eager scalar sequence memory study](https://github.com/DeandreT/ferrule/issues/207) | DeandreT; qualified, publication in [#249](https://github.com/DeandreT/ferrule/pull/249) | All 72 measured runs, 72 separate complete verifiers and three independent backend reviews pass; [report](performance/scalar-sequence-memory.md) retains both repetitions and 36 matched pairs | Bounded native/Rust/C# fixtures and report; allocation profiling is #248; no production optimization, policy change or RAM guarantee |
 | [#210 Sequence editor generation guidance](https://github.com/DeandreT/ferrule/issues/210) | Complete; [#214](https://github.com/DeandreT/ferrule/pull/214) merged | Reviewed one-sentence guidance and cohesive #194 local/finite desktop/generation qualification complete | Same editor source and cohesive GUI increment; no backend/save behavior change |
 | [#211 Compact GUI frame diagnostics](https://github.com/DeandreT/ferrule/issues/211) | Unassigned | #194 helper release, then same-fixture control/outcome and log-size comparison | Test-only frame evidence; preserve complete mapping outcomes; separate from generated artifact #205 |
 | [#212 Current roadmap and lane refresh](https://github.com/DeandreT/ferrule/issues/212) | DeandreT; active | Source/link/checklist/render review complete; two SVG/four PNG; final publication tracked in #212; verified #194 host/merge snapshot bound; owned cleanup and map zoom limits retained | ROADMAP.md and this map only; no implementation or gate promotion |
@@ -369,9 +369,10 @@ and prior memory/metadata boundaries remain open.
 - [ ] Execute #205's three test-only roles and failing-comparison retention controls,
   then compare identical focused log and retained-file sizes. Source is accepted;
   no measured log reduction, memory saving or semantic change is claimed.
-- [ ] Freeze #207's complete matched native/Rust/C# fixtures before large-capture
-  memory trials. Retain all repeats/outputs and distinguish process RSS from allocation
-  attribution; propose optimizations separately only after concrete evidence.
+- [x] Freeze and execute #207's matched native/Rust/C# fixtures: all 72 measured
+  runs and 72 separate complete verifiers pass. The
+  [report](performance/scalar-sequence-memory.md) retains repeats, outputs and raw
+  counters; allocation attribution remains a separate #248 analysis.
 - [ ] After #194 releases its frame helper, qualify #211's test-only diagnostic
   summary against the same controls and complete outcomes; log bytes are not RAM use.
 - [x] Review #212's final two-doc source/links/checklists and diagram renders;
