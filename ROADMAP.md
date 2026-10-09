@@ -564,11 +564,13 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   synthetic-fixture lane must establish exact stage/capture/position/error
   preservation before any importer/exporter implementation. Existing typed
   refusal remains; XML annotations and JSON5 metadata are separate contracts.
-- [ ] Measure large captures and eager mapped outputs in
-  [#207](https://github.com/DeandreT/ferrule/issues/207). This available fixture/report
-  lane varies capture/value length and kept item count across native/Rust/C#
-  routes with complete independent outputs. It excludes production optimization,
-  new resource policy, streaming and universal memory claims.
+- [x] Measure large captures and eager mapped outputs in
+  [#207](https://github.com/DeandreT/ferrule/issues/207): all 72 measured native/Rust/C#
+  runs and 72 separate complete verifiers pass. The
+  [report](docs/performance/scalar-sequence-memory.md) retains both repetitions,
+  36 matched pairs and whole-process counter limits. Allocation profiling is
+  [#248](https://github.com/DeandreT/ferrule/issues/248); production optimization,
+  new resource policy, streaming and universal memory claims remain outside this study.
 
 ### B. Visual Authoring and Debugging
 
