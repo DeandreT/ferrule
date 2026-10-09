@@ -1,0 +1,224 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private sealed class Cancellation(JsonNode? specification) : IFerruleFilterMapCancellation
+    {
+        public readonly List<FerruleFilterMapBoundary> Originals = new();
+        public bool IsCancelled(FerruleFilterMapBoundary at)
+        {
+            Originals.Add(at);
+            if (specification is JsonValue literal && literal.GetValue<string>() == "always_cancel") return true;
+            return specification is JsonObject row && row["cancel_exactly"] is JsonObject exact && at == Boundary(exact);
+        }
+    }
+    private sealed class Loader(JsonObject specification, string directory, string prefix) : IFerruleDynamicSourceLoader
+    {
+        public readonly List<(string Source, string Path)> Calls = new();
+        public readonly List<Exception> ThrownOriginals = new();
+        public FerruleInstance Load(string sourceName, string logicalPath)
+        {
+            var index = Calls.Count; Calls.Add((sourceName, logicalPath));
+            File.WriteAllText(Path.Combine(directory, $"{prefix}-loader{index}-request.original.json"),
+                JsonSerializer.Serialize(new { sourceName, logicalPath }));
+            var reply = specification["replies"]!.AsArray().Select(node => node!.AsObject()).FirstOrDefault(row =>
+                row["source"]!.GetValue<string>() == sourceName && row["logical_path"]!.GetValue<string>() == logicalPath);
+            if (reply?["Ok"] is JsonObject ok)
+            {
+                var instance = Instance(ok); Capture.Retain(directory, $"{prefix}-loader{index}-reply", instance); return instance;
+            }
+            var message = reply?["Err"]?["message"]?.GetValue<string>() ??
+                specification["any_other_request"]!["Err"]!["message"]!.GetValue<string>();
+            var error = new InvalidOperationException(message);
+            ThrownOriginals.Add(error); Capture.Retain(directory, $"{prefix}-loader{index}-reply", error); throw error;
+        }
+    }
+    private static FerruleValue Scalar(JsonObject value) => value["tag"]!.GetValue<string>() switch
+    {
+        "Null" => FerruleValue.Null, "JsonNull" => FerruleValue.JsonNull, "XmlNil" => FerruleValue.XmlNil,
+        "String" => FerruleValue.FromString(value["value"]!.GetValue<string>()),
+        "Int" => FerruleValue.FromInt64(value["value"]!.GetValue<long>()),
+        "Bool" => FerruleValue.FromBoolean(value["value"]!.GetValue<bool>()),
+        "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(value["ieee754_binary64_hex"]!.GetValue<string>(), NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
+        _ => throw new InvalidOperationException("Unknown independently authored scalar tag."),
+    };
+    private static FerruleInstance Instance(JsonObject value) => value["kind"]!.GetValue<string>() switch
+    {
+        "Scalar" => new FerruleScalar(Scalar(value["value"]!.AsObject())),
+        "Group" => Group(value),
+        "Repeated" => new FerruleRepeated(value["items"]!.AsArray().Select(node => node!.AsObject()).Select(Instance)),
+        "MappedSequence" => new FerruleMappedSequence(value["items"]!.AsArray().Select(node => node!.AsObject()).Select(Instance)),
+        "DocumentSet" => new FerruleDocumentSet(value["documents"]!.AsArray().Select(node => node!.AsObject()).Select(row =>
+            new FerruleDocument(row["path"]!.GetValue<string>(), Instance(row["instance"]!.AsObject()), row["resolved_source_path"]?.GetValue<string>()))),
+        _ => throw new InvalidOperationException("Unknown independently authored instance kind."),
+    };
+    private static FerruleGroup Group(JsonObject value)
+    {
+        var group = new FerruleGroup(value["fields"]!.AsArray().Select(node => node!.AsObject()).Select(row =>
+            new FerruleField(row["name"]!.GetValue<string>(), Instance(row["instance"]!.AsObject()))));
+        var origin = value["origin"]!.AsObject();
+        return origin["tag"]!.GetValue<string>() switch
+        {
+            "Unknown" => group,
+            "Absent" => group.WithXmlTypeOrigin(FerruleXmlTypeOrigin.Absent),
+            "Explicit" => group.WithXmlTypeOrigin(FerruleXmlTypeOrigin.Explicit(origin["identity"]!.GetValue<string>())),
+            "ExplicitPadded" => group.WithXmlTypeOrigin(FerruleXmlTypeOrigin.ExplicitPadded(origin["literal"]!.GetValue<string>(), origin["resolved_identity"]!.GetValue<string>())),
+            _ => throw new InvalidOperationException("Unknown independently authored origin tag."),
+        };
+    }
+    private static FerruleFilterMapBoundary Boundary(JsonObject value) => new(
+        value["item"]!.GetValue<uint>(), Enum.Parse<FerruleFilterMapPhase>(value["phase"]!.GetValue<string>()),
+        value["capture_index"]?.GetValue<int>(), value["source_position"]?.GetValue<int>(),
+        value["function"]?.GetValue<ulong>(), value["node"]?.GetValue<uint>(),
+        Enum.Parse<FerruleFilterMapBoundaryKind>(value["kind"]!.GetValue<string>()));
+    private static FerruleRuntimeException RuntimeExpected(JsonObject value)
+    {
+        var kind = value["kind"]!.GetValue<string>();
+        return kind switch
+        {
+            "UnknownTarget" => new(FerruleRuntimeError.UnknownTarget, value["display"]!.GetValue<string>(), detail: value["name"]!.GetValue<string>()),
+            "MappingException" => new(FerruleRuntimeError.MappingException,
+                $"node {value["node"]}: mapping exception: {value["message"]?.GetValue<string>() ?? "mapping exception was raised"}",
+                node: value["node"]!.GetValue<uint>(), mappingExceptionMessage: value["message"]?.GetValue<string>()),
+            "MappingFailure" => new(FerruleRuntimeError.MappingFailure,
+                $"mapping failure rule {value["rule"]}: {value["message"]?.GetValue<string>() ?? "mapping exception was raised"}",
+                failureRule: value["rule"]!.GetValue<int>(), mappingFailureMessage: value["message"]?.GetValue<string>()),
+            "MissingDynamicSourceLoader" => new(FerruleRuntimeError.MissingDynamicSourceLoader,
+                $"dynamic source '{value["source"]!.GetValue<string>()}' requires a host source loader", sourceField: value["source"]!.GetValue<string>()),
+            "DynamicSourceLoad" => new(FerruleRuntimeError.DynamicSourceLoad,
+                $"dynamic source '{value["source"]!.GetValue<string>()}' could not load '{value["path"]!.GetValue<string>()}': {value["message"]!.GetValue<string>()}",
+                new InvalidOperationException(value["csharp_inner"]!["message"]!.GetValue<string>()),
+                detail: value["path"]!.GetValue<string>(), sourceField: value["source"]!.GetValue<string>()),
+            _ => throw new InvalidOperationException("Unknown independently authored runtime error."),
+        };
+    }
+    private static JsonNode ExpectedError(JsonObject value)
+    {
+        if (value["kind"]!.GetValue<string>() != "FilterMapRuntime") return Capture.Json(Capture.Error(RuntimeExpected(value)))!;
+        var boundary = Boundary(value["boundary"]!.AsObject()); var causeSpec = value["cause"]!.AsObject();
+        var budget = causeSpec["kind"]!.GetValue<string>() == "FilterMapBudget";
+        var kind = budget ? "Budget" : "Cancelled";
+        var budgetKind = budget ? causeSpec["budget_kind"]!.GetValue<string>() : null;
+        var used = budget ? causeSpec["used"]!.ToJsonString() : null;
+        var requested = budget ? causeSpec["requested"]!.ToJsonString() : null;
+        var maximum = budget ? causeSpec["max"]!.ToJsonString() : null;
+        var message = $"filter/map {kind}: expected=; found=; bits=; budget={budgetKind}; used={used}; requested={requested}; maximum={maximum}";
+        // Full expected envelope metadata comes only from the frozen literal and
+        // the public/source-defined cause layout, never a returned exception.
+        var cause = Capture.Json(Capture.Error(new Exception(message)))!.AsObject();
+        cause["type"] = "Ferrule.Runtime.FerruleFilterMapFailure";
+        cause["feature"] = Capture.Json(new { kind, expected = (string?)null, found = (object?)null,
+            bits = (string?)null, budget = budgetKind, used, requested, maximum });
+        var envelope = Capture.Json(Capture.Error(new Exception($"filter/map {boundary}: {message}")))!.AsObject();
+        envelope["type"] = "Ferrule.Runtime.FerruleFilterMapException";
+        envelope["inner"] = cause;
+        envelope["envelope"] = Capture.Json(new { item = boundary.Item, phase = boundary.Phase.ToString(),
+            captureIndex = boundary.CaptureIndex, sourcePosition = boundary.SourcePosition,
+            function = boundary.Function, node = boundary.Node, kind = boundary.Kind.ToString() });
+        return envelope;
+    }
+    private static JsonNode Expected(JsonObject control)
+    {
+        if (control["expected"]!["Err"] is JsonObject error) return ExpectedError(error);
+        var ok = control["expected"]!["Ok"]!.AsObject();
+        return ok["variant"]!.GetValue<string>() == "Primary"
+            ? Capture.Json(new { variant = "Primary", instance = Capture.Tree(Instance(ok["instance"]!.AsObject())) })!
+            : Capture.Json(new { variant = "Named", output = new {
+                name = ok["output"]!["name"]!.GetValue<string>(), instance = Capture.Tree(Instance(ok["output"]!["instance"]!.AsObject())) } })!;
+    }
+    private static object Invoke(JsonObject control, FerruleInstance source, NamedInput[] inputs,
+        FerruleExecutionContext? context, Loader? loader)
+    {
+        var api = control["api"]!.GetValue<string>();
+        if (api is "selected" or "selected_controls")
+        {
+            var selection = control["selection"]!["Named"] is JsonValue named
+                ? FerruleTargetSelection.Named(named.GetValue<string>()) : FerruleTargetSelection.Primary();
+            return context is null && loader is null && inputs.Length == 0
+                ? GeneratedMapping.ExecuteSelectedTarget(source, selection)
+                : GeneratedMapping.ExecuteSelectedTargetWithHost(source, selection, inputs, context, loader);
+        }
+        var primary = api is "legacy_primary_convenience" or "legacy_primary_controls";
+        if (loader is not null)
+        {
+            if (context is not null) return primary
+                ? (object)GeneratedMapping.ExecuteWithSourcesContextAndDynamicSourceLoader(source, inputs, context, loader)
+                : GeneratedMapping.ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(source, inputs, context, loader);
+            return primary ? (object)GeneratedMapping.ExecuteWithSourcesAndDynamicSourceLoader(source, inputs, loader)
+                : GeneratedMapping.ExecuteOutputsWithSourcesAndDynamicSourceLoader(source, inputs, loader);
+        }
+        if (inputs.Length != 0) return context is not null
+            ? primary ? (object)GeneratedMapping.ExecuteWithSources(source, inputs, context) : GeneratedMapping.ExecuteOutputsWithSources(source, inputs, context)
+            : primary ? (object)GeneratedMapping.ExecuteWithSources(source, inputs) : GeneratedMapping.ExecuteOutputsWithSources(source, inputs);
+        return context is not null
+            ? primary ? (object)GeneratedMapping.Execute(source, context) : GeneratedMapping.ExecuteOutputs(source, context)
+            : primary ? (object)GeneratedMapping.Execute(source) : GeneratedMapping.ExecuteOutputs(source);
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3) throw new InvalidOperationException("Need full frozen controls, profile ordinal, and fresh originals directory.");
+        var raw = File.ReadAllText(args[0]); var ordinal = int.Parse(args[1], CultureInfo.InvariantCulture);
+        if (Directory.Exists(args[2]) || File.Exists(args[2]) || !Path.IsPathFullyQualified(args[2])) throw new InvalidOperationException("Originals directory must be fresh and absolute.");
+        Directory.CreateDirectory(args[2]); File.WriteAllText(Path.Combine(args[2], "COMPLETE-FROZEN-CONTROLS-ORIGINAL.json"), raw);
+        var corpus = JsonNode.Parse(raw)!.AsObject(); var profile = corpus["profiles"]!.AsArray()[ordinal]!.AsObject();
+        var source = Instance(profile["complete_source"]!.AsObject()); var checks = new List<object>();
+        var contexts = new Dictionary<string, (FerruleExecutionContext Context, Cancellation Checker)>(); var index = 0;
+        foreach (var control in profile["calls"]!.AsArray().Select(node => node!.AsObject()))
+        {
+            var prefix = $"{ordinal:00}-{index++:00}"; var id = control["id"]!.GetValue<string>();
+            File.WriteAllText(Path.Combine(args[2], prefix + "-COMPLETE-CONTROL-ORIGINAL.json"), control.ToJsonString());
+            var inputSpecs = control["named_inputs_override"] as JsonArray ?? profile["complete_named_inputs"]!.AsArray();
+            var inputs = inputSpecs.Select(node => node!.AsObject()).Select(row => new NamedInput(row["name"]!.GetValue<string>(), Instance(row["instance"]!.AsObject()))).ToArray();
+            var checker = new Cancellation(control["cancellation"]); FerruleExecutionContext? context = null;
+            if (profile["context"] is not null || control["limits"] is not null)
+            {
+                if (control["reuse_immutable_host_context_from"] is JsonValue previous)
+                {
+                    var original = contexts[previous.GetValue<string>()]; context = original.Context; checker = original.Checker;
+                }
+                else
+                {
+                    var limits = control["limits"] is JsonObject row ? new FerruleFilterMapLimits(
+                        UInt128.Parse(row["source_items"]!.ToJsonString(), CultureInfo.InvariantCulture),
+                        UInt128.Parse(row["work"]!.ToJsonString(), CultureInfo.InvariantCulture)) : FerruleFilterMapLimits.Default;
+                    context = new FerruleExecutionContext("selection-controls.mapping", "selection-controls.mapping", null,
+                        FerruleRuntimeParameters.Empty, limits, control["cancellation"] is null ? null : checker);
+                    contexts.Add(id, (context, checker));
+                }
+            }
+            var checkerStart = checker.Originals.Count;
+            var loader = control["loader"]?.GetValue<string>() == "present" ? new Loader(profile["complete_loader"]!.AsObject(), args[2], prefix) : null;
+            File.WriteAllText(Path.Combine(args[2], prefix + "-COMPLETE-INPUT-ORIGINAL.json"), JsonSerializer.Serialize(new {
+                source = Capture.Tree(source), inputs = inputs.Select(row => new { row.Name, instance = Capture.Tree(row.Instance) }).ToArray(),
+                hostContext = context is null ? null : Capture.Json(new { context.MappingFilePath, context.MainMappingFilePath, context.CurrentDateTime,
+                    parameters = Array.Empty<object>(), sourceItems = context.FilterMapLimits.SourceItems.ToString(CultureInfo.InvariantCulture),
+                    work = context.FilterMapLimits.Work.ToString(CultureInfo.InvariantCulture), checkerPresent = context.FilterMapCancellation is not null }),
+                reuse = control["reuse_immutable_host_context_from"], loaderPresent = loader is not null, checkerStart }));
+            var actual = Capture.Attempt(() => Invoke(control, source, inputs, context, loader));
+            // Complete public output/error and every host observation precede
+            // expected encoding, status, category, count, or equality checks.
+            Capture.Retain(args[2], prefix + "-COMPLETE-ACTUAL", actual);
+            File.WriteAllText(Path.Combine(args[2], prefix + "-COMPLETE-CHECKER-ORIGINAL.json"), JsonSerializer.Serialize(checker.Originals));
+            File.WriteAllText(Path.Combine(args[2], prefix + "-COMPLETE-LOADER-CALLS-ORIGINAL.json"), JsonSerializer.Serialize(loader?.Calls.Select(row => new[] { row.Source, row.Path }).ToArray() ?? Array.Empty<string[]>()));
+            var wanted = Expected(control); File.WriteAllText(Path.Combine(args[2], prefix + "-COMPLETE-EXPECTED-ORIGINAL.json"), wanted.ToJsonString());
+            var matched = JsonNode.DeepEquals(Capture.Json(Capture.Raw(actual)), wanted);
+            if (control["expected_loader_calls"] is JsonArray calls) matched &= JsonNode.DeepEquals(calls,
+                Capture.Json(loader?.Calls.Select(row => new[] { row.Source, row.Path }).ToArray() ?? Array.Empty<string[]>()));
+            if (control["expected_reservation_output_owners"] is JsonArray owners) matched &= JsonNode.DeepEquals(owners,
+                Capture.Json(checker.Originals.Skip(checkerStart).Where(at => at.Kind == FerruleFilterMapBoundaryKind.SourceReservation).Select(at => at.Item).ToArray()));
+            if (control["expected_cancellation_calls"] is JsonValue count) matched &= checker.Originals.Count - checkerStart == count.GetValue<int>();
+            if (control["expected"]!["Err"]?["kind"]?.GetValue<string>() == "DynamicSourceLoad") matched &= actual is FerruleRuntimeException error
+                && loader is not null && loader.ThrownOriginals.Count == 1 && ReferenceEquals(error.InnerException, loader.ThrownOriginals[0]);
+            checks.Add(new { id, matched });
+        }
+        File.WriteAllText(Path.Combine(args[2], "COMPLETE-PROFILE-COMPARISONS.json"), JsonSerializer.Serialize(checks));
+        // Each profile has its frozen count; all four hosts together make 30.
+        var expectedCount = new[] { 9, 5, 7, 9 }[ordinal];
+        var allMatched = checks.Select(row => JsonSerializer.SerializeToNode(row)!["matched"]!.GetValue<bool>()).All(value => value);
+        return checks.Count == expectedCount && allMatched ? 0 : 1;
+    }
+}

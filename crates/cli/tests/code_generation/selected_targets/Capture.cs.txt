@@ -1,0 +1,82 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Capture
+{
+    internal static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+    internal static object Attempt(Func<object> action)
+    {
+        try { return action(); }
+        catch (Exception error) { return error; }
+    }
+    internal static object Value(FerruleValue value) => value.Kind switch
+    {
+        FerruleValueKind.Null => new { tag = "null" },
+        FerruleValueKind.JsonNull => new { tag = "json null" },
+        FerruleValueKind.XmlNil => new { tag = "xml nil" },
+        FerruleValueKind.Bool => new { tag = "bool", value = value.BooleanValue },
+        FerruleValueKind.Int64 => new { tag = "int", value = value.Int64Value },
+        FerruleValueKind.String => new { tag = "string", value = value.StringValue },
+        FerruleValueKind.Double => new { tag = "float",
+            value = double.IsFinite(value.DoubleValue) ? (object)value.DoubleValue : value.DoubleValue.ToString("R", CultureInfo.InvariantCulture),
+            ieee754_binary64_hex = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture) },
+        _ => new { unknownKind = value.Kind.ToString(), completeValue = value.ToString() },
+    };
+    internal static object Tree(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => new { kind = "Scalar", value = Value(scalar.Value) },
+        FerruleGroup group => new { kind = "Group", origin = new {
+            kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity,
+            literal = group.XmlTypeOrigin.Literal },
+            fields = group.Fields.Select(field => new { name = field.Name, value = Tree(field.Value) }).ToArray() },
+        FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Tree).ToArray() },
+        FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(Tree).ToArray() },
+        FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document => new {
+            path = document.Path, resolvedSourcePath = document.ResolvedSourcePath, value = Tree(document.Value) }).ToArray() },
+        _ => new { unknownClass = instance.GetType().FullName, completeInstance = instance.ToString() },
+    };
+    internal static object Error(Exception error) => new {
+        type = error.GetType().FullName, error.Message, error.HResult,
+        data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new {
+            key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+        inner = error.InnerException is null ? null : Error(error.InnerException),
+        envelope = error is FerruleFilterMapException envelope ? Json(new {
+            item = envelope.Boundary.Item, phase = envelope.Boundary.Phase.ToString(),
+            captureIndex = envelope.Boundary.CaptureIndex, sourcePosition = envelope.Boundary.SourcePosition,
+            function = envelope.Boundary.Function, node = envelope.Boundary.Node, kind = envelope.Boundary.Kind.ToString() }) : null,
+        feature = error is FerruleFilterMapFailure feature ? Json(new {
+            kind = feature.Kind.ToString(), expected = feature.ExpectedType?.ToString(),
+            found = feature.Found.HasValue ? Value(feature.Found.Value) : null,
+            bits = feature.FloatBits?.ToString("x16", CultureInfo.InvariantCulture),
+            budget = feature.BudgetKind?.ToString(), used = feature.Used?.ToString(CultureInfo.InvariantCulture),
+            requested = feature.Requested?.ToString(CultureInfo.InvariantCulture), maximum = feature.Maximum?.ToString(CultureInfo.InvariantCulture) }) : null,
+        runtime = error is FerruleRuntimeException runtime ? Json(new {
+            category = runtime.Error.ToString(), runtime.Node, runtime.Function, runtime.ExpectedArity, runtime.ActualArity,
+            foundKind = runtime.FoundKind?.ToString(), aggregateOperation = runtime.AggregateOperation?.ToString(), runtime.Detail,
+            requestedItems = runtime.RequestedItems?.ToString(CultureInfo.InvariantCulture), maximumItems = runtime.MaximumItems?.ToString(CultureInfo.InvariantCulture),
+            runtime.MaximumDepth, runtimeValue = runtime.RuntimeValue?.ToString(), runtime.FailureRule, runtime.MappingFailureMessage,
+            runtime.MappingExceptionMessage, runtime.Join, runtime.UserFunction, runtime.FunctionParameter,
+            expectedScalarType = runtime.ExpectedScalarType?.ToString(), runtime.RuntimeParameter, runtime.SourceField,
+            runtime.FoundInstance, runtime.PrimaryRoot }) : null,
+    };
+    internal static object Raw(object result) => result switch
+    {
+        Exception error => Error(error),
+        SelectedTargetOutput.Primary primary => new { variant = "Primary", instance = Tree(primary.Instance) },
+        SelectedTargetOutput.Named named => new { variant = "Named", output = new { name = named.Output.Name, instance = Tree(named.Output.Instance) } },
+        FerruleInstance instance => new { variant = "Primary", instance = Tree(instance) },
+        FerruleValue value => Value(value),
+        ExecutionOutputs outputs => new { primary = Tree(outputs.Primary), extras = outputs.Extras.Select(extra => new { name = extra.Name, value = Tree(extra.Instance) }).ToArray() },
+        IReadOnlyList<FerruleValue> values => values.Select(Value).ToArray(),
+        _ => result,
+    };
+    // Complete exception text and typed originals precede all expectation checks.
+    internal static void Retain(string directory, string label, object result)
+    {
+        File.WriteAllText(Path.Combine(directory, label + ".exception.txt"), result is Exception error ? error.ToString() : "successful public result\n");
+        File.WriteAllText(Path.Combine(directory, label + ".original.json"), JsonSerializer.Serialize(Raw(result)));
+    }
+}
