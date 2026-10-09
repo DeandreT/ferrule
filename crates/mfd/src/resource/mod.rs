@@ -2,6 +2,8 @@
 
 mod manifest;
 
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::MfdError;
@@ -17,6 +19,7 @@ pub(crate) struct ResourceResolver {
     explicit_package_root: bool,
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
+    resource_refusals: RefCell<BTreeSet<String>>,
 }
 
 impl ResourceResolver {
@@ -59,6 +62,7 @@ impl ResourceResolver {
             explicit_package_root,
             edi_catalog_roots: Vec::new(),
             json_schema_catalog_roots: Vec::new(),
+            resource_refusals: RefCell::default(),
         })
     }
 
@@ -102,6 +106,42 @@ impl ResourceResolver {
 
     pub(crate) fn package_root(&self) -> &Path {
         &self.package_root
+    }
+
+    /// Keeps authoritative resource failures visible across recognizers that
+    /// discard their local warnings when a specialized recipe does not match.
+    pub(crate) fn record_refusal(&self, message: impl Into<String>) {
+        self.resource_refusals.borrow_mut().insert(message.into());
+    }
+
+    pub(crate) fn append_refusals(&self, warnings: &mut Vec<String>) {
+        for message in self.resource_refusals.borrow().iter() {
+            if !warnings.iter().any(|warning| warning.contains(message)) {
+                warnings.push(format!("mapping resource refused: {message}"));
+            }
+        }
+    }
+
+    /// Resolves an adjacent extension module before its contents are opened.
+    /// Missing candidates permit ordinary module discovery to continue; an
+    /// existing symlink that escapes or cannot resolve is an explicit refusal.
+    pub(crate) fn resolve_discovered_file(
+        &self,
+        candidate: &Path,
+    ) -> Result<Option<PathBuf>, String> {
+        match std::fs::symlink_metadata(candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("could not inspect module resource ({error})")),
+        }
+        let canonical = std::fs::canonicalize(candidate)
+            .map_err(|error| format!("could not resolve module resource ({error})"))?;
+        if !canonical.starts_with(&self.package_root) {
+            return Err(
+                "module resource resolves outside the authorizing package root".to_string(),
+            );
+        }
+        Ok(canonical.is_file().then_some(canonical))
     }
 
     pub(crate) fn edi_catalog_roots(&self) -> &[PathBuf] {

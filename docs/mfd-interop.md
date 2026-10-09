@@ -56,6 +56,44 @@ Resource references accept both slash styles and may contain parent components
 when their canonical target remains inside the package. Symlink escapes,
 absolute Windows paths, ambiguous case-insensitive matches, and traversal above
 the root are rejected.
+Every local XSD opened during mapping import uses that package root, including
+`xs:include` and `xs:import` chains, named-type and base-type lookup, selected
+wildcard roots, and conditioned `xsi:type` refinement. This applies to ordinary
+XML components, typed HTTP and WSDL bodies, and XML-valued database columns.
+Embedded function parameters, lookup catalogs, and structured or recursive
+definitions carry the same resolver, including definitions that a recipe
+recognizer rejects or that the primary graph does not call. Refusals remain in
+the mapping's diagnostics when a recognizer discards its local fallback warnings.
+Contained transitive absolute paths, parent aliases, and symlinks retain their
+types; a canonical target outside the authorizing root is refused before its
+contents are opened. The standalone `format_xml::xsd` import APIs retain their
+host-owned resource behavior; their `*_with_resource_root` variants select this
+explicit boundary.
+
+Adjacent C#, Java, XQuery, and XSLT extension modules use the same canonical
+package boundary before bounded source decoding and recipe recognition. A
+missing candidate permits ordinary discovery to continue; an existing escaping
+or dangling symlink produces an explicit diagnostic. Contained file and
+directory symlinks remain valid. Resource refusals remain visible in best-effort
+import warnings and cause the executable import profile to refuse publication.
+Canonical checks do not isolate the host filesystem or prevent a concurrent
+filesystem change between resolution and opening. Hosts performing offline
+qualification use operating-system confinement with read-only input mounts and
+disabled outbound network access when those guarantees are required.
+
+The authored resource-boundary fixtures live in
+`crates/format-xml/tests/resource_boundary.rs` and
+`crates/mfd/tests/resource_boundary.rs`; rejected and unused embedded function
+controls live in `crates/mfd/tests/udf_resource_boundary.rs`. XML-column and
+conditioned-type refinement controls also run in the MFD library tests. Run the
+integration cohort with
+`cargo +nightly test -p format-xml -p mfd --test resource_boundary` and
+`cargo +nightly test -p mfd --test udf_resource_boundary`.
+Each fixture retains its authored temporary tree and complete schema/import
+outcomes before assertions, including failed runs, and prints the evidence
+location. Use an owned `TMPDIR` for repeatable collection, and copy those
+artifacts outside the repository before interpreting them.
+
 External FlexText `.mft`, visual PDF `.pxt`, and XBRL `.sps` compiler inputs
 use this same package boundary. Their compiled layouts or fact metadata are
 embedded in the imported project, and FlexText data paths remain portable

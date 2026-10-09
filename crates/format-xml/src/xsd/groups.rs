@@ -7,7 +7,7 @@ use crate::XmlFormatError;
 
 use super::{
     ParseState, ParsedComplexType, collect_sequence, is_local_qname, is_repeating, local_name,
-    parse_attribute, parse_attribute_wildcard, read_xml_text, schema_node_count, top_level,
+    parse_attribute, parse_attribute_wildcard, schema_node_count, top_level,
 };
 
 pub(super) fn resolve_model_group(
@@ -34,7 +34,7 @@ pub(super) fn resolve_model_group(
             .ok_or_else(|| {
                 XmlFormatError::MissingElement(format!("named xs:group `{reference}`"))
             })?;
-        let text = read_xml_text(&path)?;
+        let text = state.reader.read(&path)?;
         let document = roxmltree::Document::parse(&text)?;
         let external_schema = document.root_element();
         let declaration = top_level(&external_schema, "group", local).ok_or_else(|| {
@@ -70,7 +70,7 @@ pub(super) fn resolve_attribute_group(
         .ok_or_else(|| {
             XmlFormatError::MissingElement(format!("named xs:attributeGroup `{reference}`"))
         })?;
-    let text = read_xml_text(&path)?;
+    let text = state.reader.read(&path)?;
     let document = roxmltree::Document::parse(&text)?;
     let external_schema = document.root_element();
     let declaration = top_level(&external_schema, "attributeGroup", local).ok_or_else(|| {

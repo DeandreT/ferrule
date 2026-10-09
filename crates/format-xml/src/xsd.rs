@@ -43,8 +43,11 @@ use crate::XmlFormatError;
 
 mod export;
 mod groups;
+mod resources;
 mod restriction;
 mod substitution;
+
+use resources::SchemaReader;
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
@@ -70,6 +73,7 @@ struct DeclarationQuery {
 
 #[derive(Default)]
 struct ParseState {
+    reader: SchemaReader,
     active: Vec<ActiveDeclaration>,
     complex_types: BTreeMap<ActiveDeclaration, CachedComplexType>,
     complex_type_anchors: Vec<String>,
@@ -182,7 +186,7 @@ impl ParseState {
         if let Some(path) = self.declaration_paths.get(&query) {
             return path.clone();
         }
-        let path = find_external_declaration(schema_el, schema_path, kind, qname);
+        let path = find_external_declaration(schema_el, schema_path, kind, qname, &self.reader);
         self.declaration_paths.insert(query, path.clone());
         path
     }
@@ -292,10 +296,6 @@ pub fn read_text(path: &Path, max_bytes: u64) -> std::io::Result<String> {
     decoded.map_err(|error| invalid_xml_encoding(&format!("schema is not UTF-8: {error}")))
 }
 
-fn read_xml_text(path: &Path) -> std::io::Result<String> {
-    read_text(path, MAX_SCHEMA_BYTES)
-}
-
 fn decode_utf16(bytes: &[u8], decode: fn([u8; 2]) -> u16) -> std::io::Result<String> {
     let (chunks, remainder) = bytes.as_chunks::<2>();
     let units = chunks.iter().copied().map(decode).collect::<Vec<_>>();
@@ -325,7 +325,26 @@ pub fn import_root(
     path: &std::path::Path,
     root: Option<&str>,
 ) -> Result<SchemaNode, XmlFormatError> {
-    let text = read_xml_text(path)?;
+    import_root_with_reader(path, root, &SchemaReader::default())
+}
+
+/// Imports an element while confining all local XSD reads to one canonical
+/// authorizing root. Contained absolute paths, aliases, and symlinks are valid.
+pub fn import_root_with_resource_root(
+    path: &Path,
+    root: Option<&str>,
+    resource_root: &Path,
+) -> Result<SchemaNode, XmlFormatError> {
+    let reader = SchemaReader::confined(resource_root)?;
+    reader.finish(import_root_with_reader(path, root, &reader))
+}
+
+fn import_root_with_reader(
+    path: &Path,
+    root: Option<&str>,
+    reader: &SchemaReader,
+) -> Result<SchemaNode, XmlFormatError> {
+    let text = reader.read(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
     let root_local =
@@ -340,7 +359,8 @@ pub fn import_root(
     });
     if let Some(root_element) = root_element {
         let mut state = ParseState {
-            substitutions: substitution::build(&schema_el, path),
+            reader: reader.clone(),
+            substitutions: substitution::build(&schema_el, path, reader),
             ..ParseState::default()
         };
         let schema = parse_element_declaration(
@@ -363,15 +383,17 @@ pub fn import_root(
     // document. When the caller names the instance root, honor a root that
     // lives in one of those sibling files too.
     if let Some(root) = root
-        && let Some(external_path) = find_external_declaration(&schema_el, path, "element", root)
+        && let Some(external_path) =
+            find_external_declaration(&schema_el, path, "element", root, reader)
     {
-        let external_text = read_xml_text(&external_path)?;
+        let external_text = reader.read(&external_path)?;
         let external_doc = roxmltree::Document::parse(&external_text)?;
         let external_schema = external_doc.root_element();
         let root_local = expanded_name(root).map_or(local_name(root), |(_, local)| local);
         if let Some(root_element) = top_level(&external_schema, "element", root_local) {
             let mut state = ParseState {
-                substitutions: substitution::build(&schema_el, path),
+                reader: reader.clone(),
+                substitutions: substitution::build(&schema_el, path, reader),
                 ..ParseState::default()
             };
             let schema = parse_element_declaration(
@@ -395,11 +417,30 @@ pub fn import_root(
 /// Imports a named complex type, resolving it through local includes and
 /// imports. The returned group is named after the type's local QName.
 pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormatError> {
-    let text = read_xml_text(path)?;
+    import_type_with_reader(path, type_name, &SchemaReader::default())
+}
+
+/// Imports a named type with the same resource boundary for all dependencies.
+pub fn import_type_with_resource_root(
+    path: &Path,
+    type_name: &str,
+    resource_root: &Path,
+) -> Result<SchemaNode, XmlFormatError> {
+    let reader = SchemaReader::confined(resource_root)?;
+    reader.finish(import_type_with_reader(path, type_name, &reader))
+}
+
+fn import_type_with_reader(
+    path: &Path,
+    type_name: &str,
+    reader: &SchemaReader,
+) -> Result<SchemaNode, XmlFormatError> {
+    let text = reader.read(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
     let mut state = ParseState {
-        substitutions: substitution::build(&schema_el, path),
+        reader: reader.clone(),
+        substitutions: substitution::build(&schema_el, path, reader),
         ..ParseState::default()
     };
     let (namespace, local) = type_name
@@ -425,9 +466,10 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
                 Some(namespace),
                 effective_namespace,
                 &mut visited,
+                reader,
             )
             .and_then(|external_path| {
-                let text = read_xml_text(&external_path).ok()?;
+                let text = reader.read(&external_path).ok()?;
                 let doc = roxmltree::Document::parse(&text).ok()?;
                 let external_schema = doc.root_element();
                 let declaration = top_level(&external_schema, "complexType", local)?;
@@ -454,7 +496,25 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
 /// The returned name uses ferrule's expanded `{namespace}local` form when
 /// the base belongs to a target namespace.
 pub fn import_type_base(path: &Path, type_name: &str) -> Result<Option<String>, XmlFormatError> {
-    let text = read_xml_text(path)?;
+    import_type_base_with_reader(path, type_name, &SchemaReader::default())
+}
+
+/// Resolves a type's direct base without opening dependencies outside the root.
+pub fn import_type_base_with_resource_root(
+    path: &Path,
+    type_name: &str,
+    resource_root: &Path,
+) -> Result<Option<String>, XmlFormatError> {
+    let reader = SchemaReader::confined(resource_root)?;
+    reader.finish(import_type_base_with_reader(path, type_name, &reader))
+}
+
+fn import_type_base_with_reader(
+    path: &Path,
+    type_name: &str,
+    reader: &SchemaReader,
+) -> Result<Option<String>, XmlFormatError> {
+    let text = reader.read(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
     let local = expanded_name(type_name).map_or(local_name(type_name), |(_, local)| local);
@@ -478,9 +538,10 @@ pub fn import_type_base(path: &Path, type_name: &str) -> Result<Option<String>, 
         } else {
             local
         },
+        reader,
     )
     .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`")))?;
-    let external_text = read_xml_text(&declaration_path)?;
+    let external_text = reader.read(&declaration_path)?;
     let external_doc = roxmltree::Document::parse(&external_text)?;
     let external_schema = external_doc.root_element();
     let declaration = top_level(&external_schema, "complexType", local).ok_or_else(|| {
@@ -813,6 +874,7 @@ fn attach_type_alternatives(
         schema_el.attribute("targetNamespace"),
         &mut BTreeSet::new(),
         &mut index,
+        &state.reader,
     );
     if index.limit_reached {
         state.materialization_limit_reached = true;
@@ -839,7 +901,7 @@ fn attach_type_alternatives(
     let original_children = base_children.clone();
     let mut resolved = Vec::new();
     for derived in &derived {
-        let Ok(text) = read_xml_text(&derived.path) else {
+        let Ok(text) = state.reader.read(&derived.path) else {
             return;
         };
         let Ok(document) = roxmltree::Document::parse(&text) else {
@@ -1132,7 +1194,7 @@ fn complex_type_abstractness(
         return abstractness(&declaration);
     }
     let path = state.find_external_declaration(schema_el, schema_path, "complexType", qname)?;
-    let text = read_xml_text(&path).ok()?;
+    let text = state.reader.read(&path).ok()?;
     let document = roxmltree::Document::parse(&text).ok()?;
     top_level(&document.root_element(), "complexType", local)
         .and_then(|declaration| abstractness(&declaration))
@@ -1144,6 +1206,7 @@ fn collect_derived_type_declarations(
     inherited_namespace: Option<&str>,
     visited: &mut BTreeSet<(PathBuf, Option<String>)>,
     index: &mut DerivedTypeIndex,
+    reader: &SchemaReader,
 ) {
     if index.limit_reached {
         return;
@@ -1201,7 +1264,7 @@ fn collect_derived_type_declarations(
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(location);
-        let Ok(text) = read_xml_text(&dependency) else {
+        let Ok(text) = reader.read(&dependency) else {
             continue;
         };
         let Ok(document) = roxmltree::Document::parse(&text) else {
@@ -1217,6 +1280,7 @@ fn collect_derived_type_declarations(
             dependency_inherited,
             visited,
             index,
+            reader,
         );
     }
 }
@@ -1292,7 +1356,7 @@ fn resolve_element(
     }
 
     let path = state.find_external_declaration(schema_el, schema_path, "element", qname)?;
-    let text = read_xml_text(&path).ok()?;
+    let text = state.reader.read(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
     let declaration = top_level(&external_schema, "element", local)?;
@@ -1443,7 +1507,7 @@ fn attach_substitution_alternatives(
     }
 
     for descendant in descendants {
-        let text = read_xml_text(&descendant.path)?;
+        let text = state.reader.read(&descendant.path)?;
         let document = roxmltree::Document::parse(&text)?;
         let member_schema = document.root_element();
         let member_declaration = top_level(&member_schema, "element", &descendant.local)
@@ -1578,7 +1642,7 @@ fn resolve_complex_type(
     }
 
     let path = state.find_external_declaration(schema_el, schema_path, "complexType", qname)?;
-    let text = read_xml_text(&path).ok()?;
+    let text = state.reader.read(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
     let declaration = top_level(&external_schema, "complexType", local)?;
@@ -1669,7 +1733,7 @@ fn resolve_simple_type(
     }
 
     let path = state.find_external_declaration(schema_el, schema_path, "simpleType", qname)?;
-    let text = read_xml_text(&path).ok()?;
+    let text = state.reader.read(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     top_level(&doc.root_element(), "simpleType", local)
         .map(|declaration| simple_type_scalar(&declaration))
@@ -1697,6 +1761,7 @@ fn find_external_declaration(
     schema_path: &Path,
     tag: &str,
     qname: &str,
+    reader: &SchemaReader,
 ) -> Option<PathBuf> {
     let expanded = expanded_name(qname);
     let wanted_namespace = expanded
@@ -1715,9 +1780,9 @@ fn find_external_declaration(
         schema_path,
         tag,
         expanded.map_or(local_name(qname), |(_, local)| local),
-        wanted_namespace.as_deref(),
-        effective_namespace.as_deref(),
+        (wanted_namespace.as_deref(), effective_namespace.as_deref()),
         &mut visited,
+        reader,
     )
 }
 
@@ -1726,10 +1791,11 @@ fn search_dependencies(
     schema_path: &Path,
     tag: &str,
     name: &str,
-    wanted_namespace: Option<&str>,
-    effective_namespace: Option<&str>,
+    namespaces: (Option<&str>, Option<&str>),
     visited: &mut BTreeSet<PathBuf>,
+    reader: &SchemaReader,
 ) -> Option<PathBuf> {
+    let (wanted_namespace, effective_namespace) = namespaces;
     for link in schema_el
         .children()
         .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
@@ -1765,6 +1831,7 @@ fn search_dependencies(
             wanted_namespace,
             inherited_namespace,
             visited,
+            reader,
         ) {
             return Some(found);
         }
@@ -1779,12 +1846,13 @@ fn search_schema_file(
     wanted_namespace: Option<&str>,
     inherited_namespace: Option<&str>,
     visited: &mut BTreeSet<PathBuf>,
+    reader: &SchemaReader,
 ) -> Option<PathBuf> {
     let path = normalized_path(schema_path);
     if !visited.insert(path.clone()) {
         return None;
     }
-    let text = read_xml_text(&path).ok()?;
+    let text = reader.read(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let schema_el = doc.root_element();
     let declared_namespace = schema_el.attribute("targetNamespace");
@@ -1801,9 +1869,9 @@ fn search_schema_file(
         &path,
         tag,
         name,
-        wanted_namespace,
-        effective_namespace,
+        (wanted_namespace, effective_namespace),
         visited,
+        reader,
     )
 }
 
@@ -2128,7 +2196,7 @@ fn resolve_attribute(
         return Some(parse_attribute(&declaration, schema, schema_path, state));
     }
     let path = state.find_external_declaration(schema, schema_path, "attribute", qname)?;
-    let text = read_xml_text(&path).ok()?;
+    let text = state.reader.read(&path).ok()?;
     let document = roxmltree::Document::parse(&text).ok()?;
     let external_schema = document.root_element();
     let declaration = top_level(&external_schema, "attribute", local)?;
@@ -2735,7 +2803,7 @@ fn parse_known_wildcard_declarations(
         .collect::<Vec<_>>();
     let mut children = Vec::with_capacity(declarations.len());
     for declaration in declarations {
-        let text = read_xml_text(&declaration.path)?;
+        let text = state.reader.read(&declaration.path)?;
         let document = roxmltree::Document::parse(&text)?;
         let declaration_schema = document.root_element();
         let element = top_level(&declaration_schema, "element", &declaration.local)
@@ -2966,7 +3034,7 @@ fn parse_attribute_wildcard(
                     "resolved wildcard attributes with the same local name cannot become unique mapping ports",
                 ));
             }
-            let text = read_xml_text(&declaration.path)?;
+            let text = state.reader.read(&declaration.path)?;
             let document = roxmltree::Document::parse(&text)?;
             let declaration_schema = document.root_element();
             let attribute = top_level(&declaration_schema, "attribute", &declaration.local)
