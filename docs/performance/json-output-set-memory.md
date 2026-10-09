@@ -7,6 +7,10 @@ output documents. These are observations from one ordinary debug-build workload,
 not a universal memory bound or a statistically established result.
 Scope: [#107](https://github.com/DeandreT/ferrule/issues/107).
 
+The writer lifetimes below describe this historical baseline. The subsequent
+[borrowed-writer report](borrowed-json-output-memory.md) records the updated
+implementation and fresh matched comparisons.
+
 ## Workload and build
 
 One ordinary filesystem JSON-to-JSON Project copies ordered `Rows` groups,
