@@ -488,7 +488,7 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 #### A1. Executable `.mfd` Common Profile
 
-- [ ] Qualify nested cloned target groups with unique declared ancestor owners
+- [x] Support nested cloned target groups with unique declared ancestor owners
   and exact binding provenance in [#239](https://github.com/DeandreT/ferrule/issues/239),
   following the [import contract](docs/mfd-interop.md). Unequal child partitions
   retain declaration order and relative anchors; every replaced placeholder
