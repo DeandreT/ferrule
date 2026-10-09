@@ -174,6 +174,7 @@ recognized user-function shapes. Adjacent XSLT extension modules also import
 when a named one-parameter template returns a direct count, sum, average,
 minimum, or maximum over a descendant path; ferrule lowers that template to a
 native aggregate rather than retaining an XSLT runtime dependency.
+
 Nested cloned target groups retain their declared ancestor entry ownership.
 Child branches attach to that exact owner in declaration order, including
 unequal branch counts; source anchors and branch conditions remain relative to
@@ -184,11 +185,13 @@ binding must survive once in its assigned descendant subtree. An unclaimed,
 missing, broadcast, or controlled placeholder remains intact with a refusal
 diagnostic. A unique child entry may reuse its parent's marker lineage when its
 deeper declared target path establishes containment; retained provenance is
-restricted to that descendant path. Numeric port order, equal branch counts, and similar source paths
+restricted to that descendant path. Numeric port order, equal branch counts,
+and similar source paths
 do not establish ownership. Direct IR without declared entry owners remains
 subject to the ordinary concatenation validator. Multiple distinct feeds to a
 singular target retain their duplicate-binding refusal; their selection
 semantics are tracked separately in [#241](https://github.com/DeandreT/ferrule/issues/241).
+
 Bounded adjacent C# and Java source modules can likewise lower direct numeric
 picture wrappers to ferrule's deterministic formatter, while bounded XQuery
 modules can lower scalar parameter/number arithmetic to the native call graph.
