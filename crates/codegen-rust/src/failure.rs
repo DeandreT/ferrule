@@ -1,11 +1,11 @@
 use codegen::{FailureIteration, FailureRule, FailureSelection, Program};
 
-use super::{render_generated_values, render_string_path};
+use super::{EmitError, render_generated_values, render_string_path};
 
-pub(super) fn render(program: &Program) -> String {
+pub(super) fn render(program: &Program) -> Result<String, EmitError> {
     let mut output = String::new();
     for (index, rule) in program.failure_rules.iter().enumerate() {
-        output.push_str(&render_rule(index, rule));
+        output.push_str(&render_rule(index, rule)?);
     }
     output.push_str(
         "fn evaluate_failure_rules(context: &ScopeContext<'_>) -> Result<(), RuntimeError> {\n",
@@ -18,10 +18,10 @@ pub(super) fn render(program: &Program) -> String {
         }
     }
     output.push_str("    Ok(())\n}\n\n");
-    output
+    Ok(output)
 }
 
-fn render_rule(index: usize, rule: &FailureRule) -> String {
+fn render_rule(index: usize, rule: &FailureRule) -> Result<String, EmitError> {
     let mut output = format!(
         "fn evaluate_failure_rule_{index}(context: &ScopeContext<'_>) -> Result<(), RuntimeError> {{\n"
     );
@@ -33,7 +33,7 @@ fn render_rule(index: usize, rule: &FailureRule) -> String {
             ));
         }
         FailureIteration::Generated(sequence) => {
-            render_generated_values(sequence, "    ", &mut output);
+            render_generated_values(sequence, "    ", &mut output)?;
             output.push_str(
                 "    let generated_items = GeneratedItems::new(sequence_values);\n    let candidates = context.generated_items(&generated_items);\n",
             );
@@ -57,7 +57,7 @@ fn render_rule(index: usize, rule: &FailureRule) -> String {
         index + 1
     ));
     output.push_str("    }\n    Ok(())\n}\n\n");
-    output
+    Ok(output)
 }
 
 fn render_selection(selection: FailureSelection, output: &mut String) {

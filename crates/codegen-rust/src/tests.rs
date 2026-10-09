@@ -1,3 +1,4 @@
+mod filter_map_guard;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;

@@ -6,11 +6,12 @@ use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction
 use crate::{
     Binding, Diagnostic, DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding,
     DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
-    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
-    ProgramValidationError, ScalarFunction, ScalarTargetDomain, ScopeFeature, SequenceWindow,
-    SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
-    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
+    FailureSelection, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
+    GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource, JoinId, JoinPlan,
+    LowerError, NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError,
+    ScalarFunction, ScalarTargetDomain, ScopeFeature, SequenceWindow, SortKey, SortPlan,
+    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
+    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -25,12 +26,6 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
                 })
                 .collect(),
         ));
-    }
-
-    if let Some(composition) = project.filter_map_v1_descriptors().first() {
-        return Err(LowerError::new(vec![Diagnostic::UnsupportedSequence {
-            item: composition.item,
-        }]));
     }
 
     let primary_xml = project.source_options.xml_root_view_read_policy;
@@ -311,7 +306,20 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             Err(diagnostic) => diagnostics.push(diagnostic),
         }
     }
-    let user_functions = lower_user_functions(project, &reachable, &mut diagnostics);
+    let mut stage_roots = BTreeSet::new();
+    collect_stage_roots(&root, &mut stage_roots);
+    for target in &extra_targets {
+        collect_stage_roots(&target.root, &mut stage_roots);
+    }
+    for node in &expressions {
+        if let Expression::SequenceExists { sequence, .. }
+        | Expression::SequenceItemAt { sequence, .. }
+        | Expression::SequenceAggregate { sequence, .. } = &node.expression
+        {
+            stage_roots.extend(sequence.stage_functions());
+        }
+    }
+    let user_functions = lower_user_functions(project, &reachable, stage_roots, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         return Err(LowerError::new(diagnostics));
@@ -412,8 +420,13 @@ fn lower_failure_rule(
             FailureIteration::Source(SourceIteration::new(collection.clone()))
         }
         mapping::FailureIteration::Sequence { sequence } => {
+            if matches!(sequence, mapping::SequenceExpr::FilterMapV1(_)) {
+                return Err(Diagnostic::UnsupportedSequence {
+                    item: sequence.item(),
+                });
+            }
             roots.extend(sequence.inputs());
-            roots.push(sequence.item());
+            roots.extend(sequence.owned_items());
             FailureIteration::Generated(lower_generated_sequence(sequence)?)
         }
     };
@@ -489,7 +502,7 @@ fn lower_scope(
     );
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());
-        roots.push(sequence.item());
+        roots.extend(sequence.owned_items());
     }
     roots.extend(scope.output_path());
     let base_construction = match &scope.construction {
@@ -783,9 +796,31 @@ fn lower_generated_sequence(
 ) -> Result<GeneratedSequence, Diagnostic> {
     Ok(match sequence {
         mapping::SequenceExpr::FilterMapV1(composition) => {
-            return Err(Diagnostic::UnsupportedSequence {
+            let mapping::SequenceExpr::Generate { from, to, item } = composition.source.as_ref()
+            else {
+                return Err(Diagnostic::UnsupportedSequence {
+                    item: composition.item,
+                });
+            };
+            GeneratedSequence::FilterMapV1(GeneratedFilterMapV1 {
+                source: GeneratedRange {
+                    from: *from,
+                    to: *to,
+                    item: *item,
+                },
                 item: composition.item,
-            });
+                predicate: composition.predicate,
+                mapper: composition.mapper,
+                output_type: composition.output_type,
+                captures: composition
+                    .captures
+                    .iter()
+                    .map(|capture| GeneratedFilterMapCapture {
+                        node: capture.node,
+                        ty: capture.ty,
+                    })
+                    .collect(),
+            })
         }
         mapping::SequenceExpr::Tokenize {
             input,
@@ -884,12 +919,33 @@ fn reachable_nodes(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BT
     reachable
 }
 
+fn collect_stage_roots(scope: &TargetScope, calls: &mut BTreeSet<FunctionId>) {
+    if let Some(iteration) = &scope.iteration {
+        if let Some(sequence) = iteration.generated_sequence() {
+            calls.extend(sequence.stage_functions());
+        }
+        if let Some(segments) = iteration.concatenated() {
+            for segment in segments.iter() {
+                collect_stage_roots(segment, calls);
+            }
+        }
+    }
+    for child in &scope.children {
+        collect_stage_roots(child, calls);
+    }
+    if let crate::TargetConstruction::DynamicGroup { children, .. } = &scope.construction {
+        for child in children {
+            collect_stage_roots(&child.scope, calls);
+        }
+    }
+}
+
 fn lower_user_functions(
     project: &Project,
     main_reachable: &BTreeSet<NodeId>,
+    mut calls: BTreeSet<FunctionId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<UserFunctionProgram> {
-    let mut calls = BTreeSet::new();
     for id in main_reachable {
         if let Some(Node::UserFunctionCall { function, .. }) = project.graph.nodes.get(id) {
             calls.insert(*function);

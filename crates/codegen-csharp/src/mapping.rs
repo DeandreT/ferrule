@@ -61,7 +61,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
     xml_api::render(program, &mut output)?;
-    failures::render(&program.failure_rules, &mut output);
+    failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
         render_user_function(function, &functions, &mut output)?;
     }
@@ -438,7 +438,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             } => {
                 output.push_str("\n    {\n");
                 let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output);
+                render_generated_values(&identifier, sequence, &mut output)?;
                 output.push_str(&format!(
                     "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n"
                 ));
@@ -446,7 +446,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             Expression::SequenceItemAt { sequence, index } => {
                 output.push_str("\n    {\n");
                 let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output);
+                render_generated_values(&identifier, sequence, &mut output)?;
                 output.push_str(&format!(
                     "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
                 ));
@@ -460,7 +460,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             } => {
                 output.push_str("\n    {\n");
                 let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output);
+                render_generated_values(&identifier, sequence, &mut output)?;
                 output.push_str(&format!(
                     "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
                 ));
@@ -507,7 +507,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                         TargetConstruction::DynamicGroup { merge: true, .. }
                     ),
                     &mut output,
-                );
+                )?;
             }
         } else {
             output.push_str(&format!(
@@ -1487,8 +1487,8 @@ fn render_iteration_scope(
     iteration: &IterationPlan,
     merge_dynamic_fields: bool,
     output: &mut String,
-) {
-    render_iteration_candidates(program, scope, iteration.input(), output);
+) -> Result<(), EmitError> {
+    render_iteration_candidates(program, scope, iteration.input(), output)?;
 
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
@@ -1586,13 +1586,13 @@ fn render_iteration_scope(
         output.push_str(&format!(
             "        return new global::Ferrule.Runtime.FerruleDocumentSet(documents_{scope});\n"
         ));
-        return;
+        return Ok(());
     }
     if merge_dynamic_fields {
         output.push_str(&format!(
             "        return global::Ferrule.Runtime.FerruleDynamicTargets.Merge(items_{scope});\n"
         ));
-        return;
+        return Ok(());
     }
     match iteration.output() {
         IterationOutput::Repeated => output.push_str(&format!(
@@ -1605,6 +1605,7 @@ fn render_iteration_scope(
             "        return items_{scope}.Count == 0\n            ? new global::Ferrule.Runtime.FerruleGroup(global::System.Array.Empty<global::Ferrule.Runtime.FerruleField>())\n            : items_{scope}[0];\n"
         )),
     }
+    Ok(())
 }
 
 fn render_grouping_setup(scope: usize, grouping: Option<GroupingPlan>, output: &mut String) {
@@ -1732,7 +1733,7 @@ fn render_iteration_candidates(
     scope: usize,
     input: &IterationSource,
     output: &mut String,
-) {
+) -> Result<(), EmitError> {
     match input {
         IterationSource::Source(source) => {
             render_source_iteration_candidates(program, scope, source.path(), output);
@@ -1742,7 +1743,7 @@ fn render_iteration_candidates(
         }
         IterationSource::Generated(sequence) => {
             let identifier = format!("scope_{scope}");
-            render_generated_values(&identifier, sequence, output);
+            render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
                 "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}));\n"
             ));
@@ -1752,6 +1753,7 @@ fn render_iteration_candidates(
             unreachable!("concatenated scopes render before candidate iteration")
         }
     }
+    Ok(())
 }
 
 fn render_concatenated_scope(iteration: &IterationPlan, segments: &[usize], output: &mut String) {
@@ -1823,11 +1825,18 @@ fn render_join_source(source: &JoinSource, output: &mut String) {
     output.push(')');
 }
 
-fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, output: &mut String) {
+fn render_generated_values(
+    identifier: &str,
+    sequence: &GeneratedSequence,
+    output: &mut String,
+) -> Result<(), EmitError> {
     output.push_str(&format!(
         "        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> sequence_values_{identifier} = global::System.Array.Empty<global::Ferrule.Runtime.FerruleValue>();\n"
     ));
     match sequence {
+        GeneratedSequence::FilterMapV1(composition) => {
+            return Err(EmitError::UnsupportedFilterMapV1 { item: composition.item });
+        }
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(
@@ -1892,6 +1901,7 @@ fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, outpu
             "        var sequence_to_{identifier} = Node_{to}(context);\n        if (sequence_to_{identifier}.Kind is not (global::Ferrule.Runtime.FerruleValueKind.Null or global::Ferrule.Runtime.FerruleValueKind.JsonNull))\n        {{\n            sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.GenerateRange(null, sequence_to_{identifier});\n        }}\n"
         )),
     }
+    Ok(())
 }
 
 fn render_prefilter(scope: usize, filter: Option<u32>, output: &mut String) {

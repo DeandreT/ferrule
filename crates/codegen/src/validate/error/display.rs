@@ -8,6 +8,9 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FilterMapAdmission { item, kind } => {
+                write!(formatter, "compiled filter_map_v1 item {item}: {kind:?}")
+            }
             Self::InvalidXmlBoundary { reason } => {
                 write!(formatter, "invalid XML document boundary: {reason}")
             }
