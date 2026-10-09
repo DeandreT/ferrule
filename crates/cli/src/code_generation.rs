@@ -6,6 +6,8 @@ use codegen::ArtifactSet;
 
 use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
+mod x12;
+
 /// Source language and runtime linkage for one generated mapping project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenerateTarget {
@@ -52,11 +54,26 @@ pub fn generate_project_with_json5_adapters(
     generate_project_impl(project_path, output_directory, target, Adapter::Json5)
 }
 
+/// Generate explicit raw X12 004010 companions for a singular C# mapping.
+/// The stored primary format identities and all retained options must agree
+/// with the selected bounded boundary before any source tree is published.
+pub fn generate_project_with_x12_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    if target != GenerateTarget::CSharp {
+        bail!("generated raw X12 adapters currently require the C# backend");
+    }
+    generate_project_impl(project_path, output_directory, target, Adapter::X12)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Adapter {
     Ordinary,
     Csv,
     Json5,
+    X12,
 }
 
 fn generate_project_impl(
@@ -66,6 +83,11 @@ fn generate_project_impl(
     adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
+    let x12_policy = if adapter == Adapter::X12 {
+        Some(x12::policy(&project)?)
+    } else {
+        None
+    };
     if adapter == Adapter::Json5 {
         // Admission borrows the loaded schemas before ordinary lowering clones them.
         // The shared policy owns every option/schema decision and original cause.
@@ -133,7 +155,9 @@ fn generate_project_impl(
             }
         }
         GenerateTarget::CSharp => {
-            if adapter == Adapter::Json5 {
+            if let Some(policy) = &x12_policy {
+                codegen_csharp::emit_with_x12(&program, policy)?
+            } else if adapter == Adapter::Json5 {
                 codegen_csharp::emit_with_json5(&program)?
             } else {
                 match &csv_policy {

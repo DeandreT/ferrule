@@ -10,11 +10,17 @@ mod json5_output;
 mod literal;
 mod mapping;
 mod runtime;
+mod x12_output;
 
 #[cfg(test)]
 mod csv_output_tests;
 #[cfg(test)]
+#[path = "../../codegen/tests/fixtures/generated_artifact_evidence.rs"]
+mod generated_artifact_evidence;
+#[cfg(test)]
 mod json5_output_tests;
+#[cfg(test)]
+mod x12_output_tests;
 
 #[cfg(test)]
 mod dynamic_targets_tests;
@@ -28,6 +34,7 @@ mod xml_input_tests;
 
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
+pub use x12_output::X12EmitError;
 
 use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};
 
@@ -79,6 +86,18 @@ pub fn emit_with_csv_output(
 /// Shared optional-profile admission precedes artifacts; ordinary [`emit`] is unchanged.
 pub fn emit_with_json5(program: &Program) -> Result<ArtifactSet, Json5EmitError> {
     json5_output::emit(program)
+}
+
+/// Emit explicitly selected singular X12 004010 text and strict UTF-8 adapters.
+///
+/// The shared policy embeds the admitted schema and format constraints. The
+/// companion calls the ordinary mapping once, preserves its typed errors, and
+/// returns a complete serialized target. Ordinary [`emit`] is unchanged.
+pub fn emit_with_x12(
+    program: &Program,
+    policy: &codegen::X12BoundaryPolicy,
+) -> Result<ArtifactSet, X12EmitError> {
+    x12_output::emit(program, policy)
 }
 
 fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitError> {
