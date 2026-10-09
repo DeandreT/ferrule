@@ -1,0 +1,32 @@
+{
+  "orderNumber": "ORDER-00042",
+  "purchaseOrder": "PO-0042",
+  "totalQuantity": 5,
+  "notes": [{"kind": "ADD", "code": "0002", "count": 7}],
+  "dates": [
+    {"qualifier": "04", "date": "20261009"},
+    {"qualifier": "10", "date": "20261010"},
+    {"qualifier": "02", "date": "20261012"}
+  ],
+  "billTo": {
+    "qualifier": "BT", "name": "Example Buyer", "idQualifier": "92", "id": "000001",
+    "streets": [{"first": "100 Invented Road", "second": "Suite 02"}],
+    "city": "Example City", "state": "CA", "postalCode": "00001", "country": "US"
+  },
+  "shipTo": {
+    "qualifier": "ST", "name": "Example Destination", "idQualifier": "92", "id": "000002",
+    "streets": [{"first": "200 Fictitious Avenue"}, {"second": "Dock 007"}],
+    "city": "Example Town", "state": "NV", "postalCode": "00002", "country": "US"
+  },
+  "lines": [
+    {
+      "lx": "0009", "li": "006", "quantity": 2, "unit": "EA", "upc": "000123456789",
+      "firstQualifier": "VN", "firstIdentifier": "WIDGET-A/BLUE",
+      "secondQualifier": "BP", "secondIdentifier": "0000456"
+    },
+    {
+      "lx": "0012", "li": "007", "quantity": 3, "unit": "EA", "upc": "000987654321",
+      "thirdQualifier": "VN", "thirdIdentifier": "WIDGET-B/GREEN"
+    }
+  ]
+}

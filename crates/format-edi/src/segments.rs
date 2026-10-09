@@ -649,9 +649,23 @@ pub(crate) fn write_segments(
     instance: &Instance,
     opts: &WriteOptions,
 ) -> Result<String, EdiFormatError> {
+    write_segments_with_encoding(schema, instance, opts, None)
+}
+
+/// A dialect boundary can encode positional fields immediately before writing
+/// a segment, without changing the common scalar or escaping conventions.
+pub(crate) type SegmentEncoding =
+    fn(&str, &mut [String], &WriteOptions) -> Result<(), EdiFormatError>;
+
+pub(crate) fn write_segments_with_encoding(
+    schema: &SchemaNode,
+    instance: &Instance,
+    opts: &WriteOptions,
+    encoding: Option<SegmentEncoding>,
+) -> Result<String, EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut out = String::new();
-    write_node(schema, instance, opts, &mut out, true)?;
+    write_node(schema, instance, opts, &mut out, true, encoding)?;
     Ok(out)
 }
 
@@ -661,6 +675,14 @@ pub(crate) fn write_segments(
 pub(crate) fn serialize_segments(
     segments: &[Segment],
     opts: &WriteOptions,
+) -> Result<String, EdiFormatError> {
+    serialize_segments_with_encoding(segments, opts, None)
+}
+
+pub(crate) fn serialize_segments_with_encoding(
+    segments: &[Segment],
+    opts: &WriteOptions,
+    encoding: Option<SegmentEncoding>,
 ) -> Result<String, EdiFormatError> {
     let mut out = String::new();
     for segment in segments {
@@ -701,6 +723,9 @@ pub(crate) fn serialize_segments(
                 )));
             }
             serialized.push(repeats.join(&opts.repetition.unwrap_or_default().to_string()));
+        }
+        if let Some(encode) = encoding {
+            encode(&segment.id, &mut serialized, opts)?;
         }
         serialize_segment(&segment.id, &serialized, opts, &mut out);
     }
@@ -803,10 +828,11 @@ fn write_node(
     opts: &WriteOptions,
     out: &mut String,
     is_root: bool,
+    encoding: Option<SegmentEncoding>,
 ) -> Result<(), EdiFormatError> {
     if let Instance::Repeated(items) = instance {
         for item in items {
-            write_node(node, item, opts, out, is_root)?;
+            write_node(node, item, opts, out, is_root, encoding)?;
         }
         return Ok(());
     }
@@ -866,12 +892,15 @@ fn write_node(
                     elements.pop();
                 }
             }
+            if let Some(encode) = encoding {
+                encode(segment_id, &mut elements, opts)?;
+            }
             serialize_segment(segment_id, &elements, opts, out);
         }
         Shape::Container(children) => {
             for child in children {
                 if let Some(field) = instance.field(&child.name) {
-                    write_node(child, field, opts, out, false)?;
+                    write_node(child, field, opts, out, false, encoding)?;
                 }
             }
         }
