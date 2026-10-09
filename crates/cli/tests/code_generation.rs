@@ -86,10 +86,10 @@ mod structured_xml_public;
 mod structured_xml_snapshot;
 #[path = "code_generation/user_function_argument_order.rs"]
 mod user_function_argument_order;
-#[path = "code_generation/variadic_logical.rs"]
-mod variadic_logical;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
+#[path = "code_generation/variadic_logical.rs"]
+mod variadic_logical;
 #[path = "code_generation/xml_dynamic_inputs.rs"]
 mod xml_dynamic_inputs;
 #[path = "code_generation/xml_dynamic_outputs.rs"]

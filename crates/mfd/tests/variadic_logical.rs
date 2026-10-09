@@ -121,7 +121,7 @@ fn authored_variadic_logical_mfds_retain_positions_and_complete_boolean_results(
                 if expected { "true" } else { "false" }
             );
             let original = (
-                serde_json::to_value(&actual.as_ref().ok())?,
+                serde_json::to_value(actual.as_ref().ok())?,
                 complete_wire_original,
                 match &source {
                     Instance::Group(fields) => Some(format!("{:?}", fields.xml_type_origin())),
