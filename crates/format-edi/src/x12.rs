@@ -15,8 +15,8 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::autocomplete as envelope;
 use crate::segments::{
-    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments, validate_instance_shape,
-    write_segments,
+    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments_with_encoding,
+    validate_instance_shape, write_segments, write_segments_with_encoding,
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
@@ -24,6 +24,10 @@ use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 mod segment_descriptions;
 
 pub use segment_descriptions::segment_description;
+
+#[cfg(test)]
+#[path = "x12/isa_encoding_tests.rs"]
+mod isa_encoding_tests;
 
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '*',
@@ -478,7 +482,13 @@ fn to_string_with_syntax_inner(
         .map(parse_interchange_version)
         .transpose()?;
     let options = write_options(schema, instance, options)?;
-    let mut out = write_segments(schema, instance, &options)?;
+    // Completion consumes the mapped lexicals before physical encoding. Its
+    // existing date/time/control normalization must run before width checks.
+    let mut out = if autocomplete.is_some() {
+        write_segments(schema, instance, &options)?
+    } else {
+        write_segments_with_encoding(schema, instance, &options, Some(encode_complete_isa))?
+    };
     if let Some(autocomplete) = autocomplete {
         let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
         let completed = envelope::x12(
@@ -487,9 +497,53 @@ fn to_string_with_syntax_inner(
             autocomplete.request_acknowledgement,
             autocomplete.transaction_set,
         )?;
-        out = serialize_segments(&completed, &options)?;
+        out = serialize_segments_with_encoding(&completed, &options, Some(encode_complete_isa))?;
     }
     Ok(out)
+}
+
+/// Encodes a complete ISA's fixed ASCII positions. Partial schemas retain
+/// their existing positional serialization; controls are never synthesized.
+fn encode_complete_isa(
+    segment: &str,
+    elements: &mut [String],
+    syntax: &WriteOptions,
+) -> Result<(), EdiFormatError> {
+    if segment != "ISA" || elements.len() != 16 {
+        return Ok(());
+    }
+    if !syntax.element.is_ascii()
+        || !syntax.component.is_ascii()
+        || !syntax.terminator.is_ascii()
+        || syntax.repetition.is_some_and(|value| !value.is_ascii())
+    {
+        return Err(EdiFormatError::InvalidX12Separators(
+            "complete ISA encoding requires ASCII syntax separators".into(),
+        ));
+    }
+    let widths = [2, 10, 2, 10, 2, 15, 2, 15, 6, 4, 1, 5, 9, 1, 1, 1];
+    for (index, (value, width)) in elements.iter_mut().zip(widths).enumerate() {
+        let invalid_text = value.bytes().any(|byte| !(b' '..=b'~').contains(&byte))
+            || value.chars().any(|character| {
+                character == syntax.element
+                    || character == syntax.terminator
+                    || Some(character) == syntax.release
+                    || (index != 15 && character == syntax.component)
+                    || (index != 10 && Some(character) == syntax.repetition)
+            });
+        let padded = matches!(index, 1 | 3 | 5 | 7);
+        if invalid_text || value.len() > width || (!padded && value.len() != width) {
+            return Err(EdiFormatError::InvalidEnvelopeElement {
+                element: format!("ISA{:02}", index + 1),
+                value: value.clone(),
+                reason: "fixed-width ISA fields require printable ASCII without reserved syntax; text fields may be space-padded and other fields must have their exact width",
+            });
+        }
+        if padded {
+            value.extend(std::iter::repeat_n(' ', width - value.len()));
+        }
+    }
+    Ok(())
 }
 
 fn parse_interchange_version(value: &str) -> Result<[u8; 5], EdiFormatError> {
