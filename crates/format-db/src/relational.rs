@@ -6,7 +6,8 @@ use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use super::{
-    DbFormatError, ForeignKeyColumns, ForeignKeyRelation, ForeignKeySide, quote, read, read_value,
+    DbFormatError, ForeignKeyColumns, ForeignKeyRelation, ForeignKeySide, open_metadata_connection,
+    quote, read, read_value,
 };
 
 struct TablePlan<'a> {
@@ -82,7 +83,7 @@ pub(super) fn read_instance(
 }
 
 pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(), DbFormatError> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_metadata_connection(db_path)?;
     if schema.repeating {
         let physical_table = physical_table_name(&schema.name)?;
         build_table_plan(&conn, schema, physical_table)?;
@@ -123,7 +124,7 @@ pub(super) fn resolve_foreign_key_relation(
     child_table: &str,
     child_column: &str,
 ) -> Result<ForeignKeyRelation, DbFormatError> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_metadata_connection(db_path)?;
     let mut matches = Vec::new();
     matches.extend(
         foreign_keys(&conn, child_table)?
@@ -174,7 +175,7 @@ pub(super) fn resolve_foreign_key_columns(
     child_table: &str,
     join_column: &str,
 ) -> Result<ForeignKeyColumns, DbFormatError> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_metadata_connection(db_path)?;
     relation_columns(&conn, parent_table, child_table, join_column)
 }
 
