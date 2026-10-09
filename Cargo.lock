@@ -975,6 +975,8 @@ dependencies = [
  "codegen-runtime",
  "codegen-rust",
  "engine",
+ "format-edi",
+ "format-json",
  "ir",
  "mapping",
  "serde_json",
