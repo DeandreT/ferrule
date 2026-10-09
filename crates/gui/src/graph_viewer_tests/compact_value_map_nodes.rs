@@ -824,6 +824,23 @@ fn compact_value_map_real_canvas_geometry_pins_hover_and_popup_wheel_isolate_the
         for _ in 0..4 {
             frame = canvas(&mut fx, &mut snarl, &context, &mut search, Vec::new());
         }
+        // The wheel probes deliberately move the fitted header out of view.
+        // Restore it with ordinary opposite wheel input before locating its popup.
+        canvas(
+            &mut fx,
+            &mut snarl,
+            &context,
+            &mut search,
+            vec![wheel(egui::vec2(-36.0, 0.0)), wheel(egui::vec2(0.0, 40.0))],
+        );
+        for _ in 0..4 {
+            frame = canvas(&mut fx, &mut snarl, &context, &mut search, Vec::new());
+        }
+        assert!(
+            (frame.transform.translation - before_pan.translation).length() < 0.001
+                && (frame.transform.scaling - before_pan.scaling).abs() < 0.001,
+            "opposite wheel input did not restore the popup setup view"
+        );
         let header = positions(&frame.output, &icon)[0];
         let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
         let edit = positions(&frame.output, &pencil)
@@ -923,6 +940,23 @@ fn compact_value_map_real_canvas_geometry_pins_hover_and_popup_wheel_isolate_the
         assert_eq!(
             frame.pins.iter().map(|(id, _, _)| *id).collect::<Vec<_>>(),
             pin_ids
+        );
+        // Keep the closed-popup wheel assertion above, then restore the fitted
+        // view before the next control requires a visible literal and pin.
+        frame = canvas(
+            &mut fx,
+            &mut snarl,
+            &context,
+            &mut search,
+            vec![wheel(egui::vec2(0.0, 30.0))],
+        );
+        for _ in 0..4 {
+            frame = canvas(&mut fx, &mut snarl, &context, &mut search, Vec::new());
+        }
+        assert!(
+            (frame.transform.translation - closed_transform.translation).length() < 0.001
+                && (frame.transform.scaling - closed_transform.scaling).abs() < 0.001,
+            "opposite wheel input did not restore the literal drag setup view"
         );
         let literal = positions(&frame.output, "1")[0];
         let (drag_id, _, drag_at) = frame
