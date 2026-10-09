@@ -1,0 +1,17 @@
+{
+  "envelope": {
+    "ISA01": "00", "ISA02": "", "ISA03": "00", "ISA04": "",
+    "ISA05": "ZZ", "ISA06": "DEMO-WAREHOUSE", "ISA07": "ZZ", "ISA08": "DEMO-BUYER",
+    "ISA09": "261009", "ISA10": "1430", "ISA11": "U", "ISA12": "00401",
+    "ISA13": "000000456", "ISA14": "0", "ISA15": "T", "ISA16": ":",
+    "GS01": "SW", "GS02": "DEMO-WAREHOUSE", "GS03": "DEMO-BUYER", "GS04": "20261009",
+    "GS05": "1430", "GS06": "00456", "GS07": "X", "GS08": "004010",
+    "ST01": "945", "ST02": "0008", "SE01": "7", "SE02": "0008",
+    "GE01": "1", "GE02": "00456", "IEA01": "1", "IEA02": "000000456"
+  },
+  "shipment": {"status": "F", "orderNumber": "ORDER-00042", "shipDate": "20261009"},
+  "lines": [
+    {"lx": "0009", "status": "CC", "ordered": "2", "shipped": "2", "difference": "0", "unit": "EA", "upc": "000123456789", "qualifier": "VN", "identifier": "WIDGET-A/BLUE"},
+    {"lx": "0012", "status": "CC", "ordered": "3", "shipped": "3", "difference": "0", "unit": "EA", "upc": "000987654321", "qualifier": "VN", "identifier": "WIDGET-B/GREEN"}
+  ]
+}

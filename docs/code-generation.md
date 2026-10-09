@@ -95,6 +95,18 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
 
+## Explicit C# X12 Companions
+
+Add `--x12-adapters` to the C# CLI generation command for singular raw 004010
+X12 input/output methods around the ordinary typed mapping. The flag defaults
+to false and conflicts with `--csv-output` and `--json5-adapters`. The public
+writer is `generate_project_with_x12_adapters`; ordinary generation retains its
+existing typed/JSON APIs and artifact tree. The optional, package-free .NET 10
+boundary embeds its admitted schema and metadata and returns complete text or
+strict UTF-8 bytes. It validates envelope controls and counts supplied by the
+host. See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
+for direction selection, rejected metadata and typed boundary failures.
+
 ## Explicit JSON5 Companions
 
 Add `--json5-adapters` to either CLI generation command to include singular
