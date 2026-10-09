@@ -1054,6 +1054,9 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
     fn expected_unconnected_inputs(template: NodeTemplate) -> usize {
         match template {
             NodeTemplate::If => 3,
+            NodeTemplate::FilterMapItemAt
+            | NodeTemplate::FilterMapExists
+            | NodeTemplate::FilterMapSum => 0,
             NodeTemplate::DynamicSourceField | NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
             NodeTemplate::HostInputDefault => 1,
             NodeTemplate::CollectionFind => 2,
@@ -1123,7 +1126,11 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
     for template in node_palette::templates().filter(|template| {
         !matches!(
             template,
-            NodeTemplate::SourceRootField | NodeTemplate::SourceRootXmlTypeEquals
+            NodeTemplate::SourceRootField
+                | NodeTemplate::SourceRootXmlTypeEquals
+                | NodeTemplate::FilterMapItemAt
+                | NodeTemplate::FilterMapExists
+                | NodeTemplate::FilterMapSum
         )
     }) {
         let mut fx = fixture();
@@ -2004,3 +2011,6 @@ mod computed_aggregates;
 
 #[path = "graph_viewer_tests/filter_map_guards.rs"]
 mod filter_map_guard_tests;
+
+#[path = "graph_viewer_tests/filter_map_editor.rs"]
+mod filter_map_editor_tests;

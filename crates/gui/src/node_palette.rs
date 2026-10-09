@@ -45,6 +45,9 @@ pub(super) enum NodeTemplate {
     XmlSerialize,
     Lookup,
     CollectionFind,
+    FilterMapItemAt,
+    FilterMapExists,
+    FilterMapSum,
     Aggregate(AggregateOp),
 }
 
@@ -90,7 +93,28 @@ struct PaletteEntry {
     template: NodeTemplate,
 }
 
-const STRUCTURAL_ENTRIES: [PaletteEntry; 25] = [
+const STRUCTURAL_ENTRIES: [PaletteEntry; 28] = [
+    PaletteEntry {
+        category: Category::Collection,
+        label: "Filter/map item at",
+        keywords: "filter map sequence transform stages generate",
+        documentation: "Filters and transforms an integer range with existing scalar functions, then selects an output item. Edit stages with the pencil.",
+        template: NodeTemplate::FilterMapItemAt,
+    },
+    PaletteEntry {
+        category: Category::Collection,
+        label: "Filter/map any",
+        keywords: "filter map sequence transform stages exists any generate",
+        documentation: "Filters and transforms an integer range with existing scalar functions, then checks an output predicate. Edit stages with the pencil.",
+        template: NodeTemplate::FilterMapExists,
+    },
+    PaletteEntry {
+        category: Category::Collection,
+        label: "Filter/map sum",
+        keywords: "filter map sequence transform stages aggregate sum generate",
+        documentation: "Filters and transforms an integer range with existing numeric scalar functions, then sums its mapped output. Edit stages with the pencil.",
+        template: NodeTemplate::FilterMapSum,
+    },
     PaletteEntry {
         category: Category::Input,
         label: "Constant",
@@ -295,6 +319,7 @@ pub(super) fn show_available(
     open_objects: bool,
     source_document_paths: bool,
     xml_source_elements: bool,
+    filter_map: bool,
 ) -> Option<NodeTemplate> {
     #[cfg(test)]
     tests::begin_palette_response_capture();
@@ -329,6 +354,9 @@ pub(super) fn show_available(
             NodeTemplate::DynamicSourceField => open_objects,
             NodeTemplate::SourceDocumentPath => source_document_paths,
             NodeTemplate::XmlSerialize => xml_source_elements,
+            NodeTemplate::FilterMapItemAt
+            | NodeTemplate::FilterMapExists
+            | NodeTemplate::FilterMapSum => filter_map,
             NodeTemplate::SourceRootField => root_fields,
             NodeTemplate::SourceRootXmlTypeEquals => root_types,
             _ => true,

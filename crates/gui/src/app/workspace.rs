@@ -925,6 +925,7 @@ impl FerruleApp {
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
             .show(ui, |ui| {
+                self.show_filter_map_scope_editor(ui, editing_enabled);
                 ui.add_enabled_ui(editing_enabled, |ui| {
                     let nested = !self.selected_scope.is_empty();
                     match active_target {
@@ -1107,7 +1108,8 @@ impl FerruleApp {
                 project_references: crate::graph_viewer::ProjectGraphReferences::new(
                     &self.project.failure_rules,
                     &self.project.extra_sources,
-                ),
+                )
+                .with_user_functions(&self.project.user_functions),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,

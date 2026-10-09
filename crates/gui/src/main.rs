@@ -17,6 +17,7 @@ mod diagnostics;
 mod document;
 mod extra_sources;
 mod extra_targets;
+mod filter_map_editor;
 mod graph_viewer;
 mod icons;
 mod layout_store;
