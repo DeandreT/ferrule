@@ -1,8 +1,9 @@
+use crate::EmitError;
 use codegen::{FailureIteration, FailureRule, FailureSelection};
 
-pub(super) fn render(rules: &[FailureRule], output: &mut String) {
+pub(super) fn render(rules: &[FailureRule], output: &mut String) -> Result<(), EmitError> {
     if rules.is_empty() {
-        return;
+        return Ok(());
     }
 
     output.push_str(
@@ -14,11 +15,12 @@ pub(super) fn render(rules: &[FailureRule], output: &mut String) {
     output.push_str("    }\n");
 
     for (index, rule) in rules.iter().enumerate() {
-        render_rule(index, rule, output);
+        render_rule(index, rule, output)?;
     }
+    Ok(())
 }
 
-fn render_rule(index: usize, rule: &FailureRule, output: &mut String) {
+fn render_rule(index: usize, rule: &FailureRule, output: &mut String) -> Result<(), EmitError> {
     output.push_str(&format!(
         "\n    private static void FailureRule_{index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
     ));
@@ -32,7 +34,7 @@ fn render_rule(index: usize, rule: &FailureRule, output: &mut String) {
         }
         FailureIteration::Generated(sequence) => {
             let identifier = format!("failure_{index}");
-            super::render_generated_values(&identifier, sequence, output);
+            super::render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
                 "        var candidates_failure_{index} = context.IterateGenerated(sequence_values_{identifier});\n"
             ));
@@ -58,6 +60,7 @@ fn render_rule(index: usize, rule: &FailureRule, output: &mut String) {
         }
     }
     output.push_str("        }\n    }\n");
+    Ok(())
 }
 
 fn render_failure(index: usize, message: Option<u32>, output: &mut String, indent: usize) {

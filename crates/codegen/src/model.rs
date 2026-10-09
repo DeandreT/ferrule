@@ -443,6 +443,65 @@ pub enum XmlOutputMode {
 }
 
 impl Program {
+    /// All retained compositions, including unselected direct-Program expressions.
+    /// Common lowering has already pruned unreachable project expressions.
+    pub fn filter_map_v1_sequences(&self) -> Vec<&GeneratedFilterMapV1> {
+        fn expression<'a>(node: &'a ExpressionNode, sequences: &mut Vec<&'a GeneratedFilterMapV1>) {
+            let sequence = match &node.expression {
+                Expression::SequenceExists { sequence, .. }
+                | Expression::SequenceItemAt { sequence, .. }
+                | Expression::SequenceAggregate { sequence, .. } => sequence,
+                _ => return,
+            };
+            if let GeneratedSequence::FilterMapV1(composition) = sequence {
+                sequences.push(composition);
+            }
+        }
+        fn scope<'a>(node: &'a TargetScope, sequences: &mut Vec<&'a GeneratedFilterMapV1>) {
+            if let Some(iteration) = &node.iteration {
+                if let Some(GeneratedSequence::FilterMapV1(composition)) =
+                    iteration.generated_sequence()
+                {
+                    sequences.push(composition);
+                }
+                if let Some(segments) = iteration.concatenated() {
+                    for segment in segments.iter() {
+                        scope(segment, sequences);
+                    }
+                }
+            }
+            for child in &node.children {
+                scope(child, sequences);
+            }
+            if let TargetConstruction::DynamicGroup { children, .. } = &node.construction {
+                for child in children {
+                    scope(&child.scope, sequences);
+                }
+            }
+        }
+        let mut sequences = Vec::new();
+        scope(&self.root, &mut sequences);
+        for target in &self.extra_targets {
+            scope(&target.root, &mut sequences);
+        }
+        for node in &self.expressions {
+            expression(node, &mut sequences);
+        }
+        for rule in &self.failure_rules {
+            if let FailureIteration::Generated(GeneratedSequence::FilterMapV1(composition)) =
+                &rule.iteration
+            {
+                sequences.push(composition);
+            }
+        }
+        for function in &self.user_functions {
+            for node in &function.expressions {
+                expression(node, &mut sequences);
+            }
+        }
+        sequences
+    }
+
     /// Returns a proved XML adapter mode, or no adapter, without changing its policy ABI.
     /// An invalid program returns its original typed validation error.
     pub fn xml_output_mode(&self) -> Result<Option<XmlOutputMode>, crate::ProgramValidationError> {
@@ -1125,6 +1184,34 @@ pub enum GeneratedSequence {
         to: NodeId,
         item: NodeId,
     },
+    /// Lowered composition; execution is a separately admitted backend capability.
+    FilterMapV1(GeneratedFilterMapV1),
+}
+
+/// The sole admitted filter/map source, retaining its inclusive Generate descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedRange {
+    pub from: Option<NodeId>,
+    pub to: NodeId,
+    pub item: NodeId,
+}
+
+/// One explicitly ordered, typed parent capture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedFilterMapCapture {
+    pub node: NodeId,
+    pub ty: ScalarType,
+}
+
+/// Both private identities and project-local stages survive common lowering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedFilterMapV1 {
+    pub source: GeneratedRange,
+    pub item: NodeId,
+    pub predicate: FunctionId,
+    pub mapper: FunctionId,
+    pub output_type: ScalarType,
+    pub captures: Vec<GeneratedFilterMapCapture>,
 }
 
 impl GeneratedSequence {
@@ -1135,31 +1222,64 @@ impl GeneratedSequence {
             | Self::TokenizeRegex { item, .. }
             | Self::RecursiveCollect { item, .. }
             | Self::Range { item, .. } => *item,
+            Self::FilterMapV1(composition) => composition.item,
         }
     }
 
     pub fn inputs(&self) -> impl Iterator<Item = NodeId> + '_ {
-        let inputs = match self {
+        let (inputs, captures): (_, &[GeneratedFilterMapCapture]) = match self {
             Self::Tokenize {
                 input, delimiter, ..
-            } => [Some(*input), Some(*delimiter), None],
-            Self::TokenizeByLength { input, length, .. } => [Some(*input), Some(*length), None],
+            } => ([Some(*input), Some(*delimiter), None], &[]),
+            Self::TokenizeByLength { input, length, .. } => {
+                ([Some(*input), Some(*length), None], &[])
+            }
             Self::TokenizeRegex {
                 input,
                 pattern,
                 flags,
                 ..
-            } => [Some(*input), Some(*pattern), *flags],
+            } => ([Some(*input), Some(*pattern), *flags], &[]),
             Self::RecursiveCollect {
                 prefix, separator, ..
-            } => [Some(*prefix), Some(*separator), None],
-            Self::Range { from, to, .. } => [*from, Some(*to), None],
+            } => ([Some(*prefix), Some(*separator), None], &[]),
+            Self::Range { from, to, .. } => ([*from, Some(*to), None], &[]),
+            Self::FilterMapV1(composition) => (
+                [composition.source.from, Some(composition.source.to), None],
+                &composition.captures,
+            ),
         };
-        inputs.into_iter().flatten()
+        inputs
+            .into_iter()
+            .flatten()
+            .chain(captures.iter().map(|capture| capture.node))
+    }
+
+    /// The source owner is reserved metadata, never a downstream item permission.
+    pub fn owned_items(&self) -> impl Iterator<Item = NodeId> {
+        match self {
+            Self::FilterMapV1(composition) => {
+                [Some(composition.source.item), Some(composition.item)]
+            }
+            _ => [Some(self.item()), None],
+        }
+        .into_iter()
+        .flatten()
+    }
+
+    pub fn stage_functions(&self) -> impl Iterator<Item = FunctionId> {
+        match self {
+            Self::FilterMapV1(composition) => {
+                [Some(composition.predicate), Some(composition.mapper)]
+            }
+            _ => [None, None],
+        }
+        .into_iter()
+        .flatten()
     }
 
     pub fn roots(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.inputs().chain([self.item()])
+        self.inputs().chain(self.owned_items())
     }
 }
 
