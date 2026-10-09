@@ -1,7 +1,41 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use super::schema::retain_xsd_resource_refusal;
+use crate::resource::ResourceResolver;
 use ir::{GroupAlternative, SchemaKind, SchemaNode};
+
+fn import_type(
+    path: &Path,
+    name: &str,
+    resources: Option<&ResourceResolver>,
+) -> Result<SchemaNode, format_xml::XmlFormatError> {
+    let result = match resources {
+        Some(resources) => {
+            format_xml::xsd::import_type_with_resource_root(path, name, resources.package_root())
+        }
+        None => format_xml::xsd::import_type(path, name),
+    };
+    retain_xsd_resource_refusal(resources, &result);
+    result
+}
+
+fn import_type_base(
+    path: &Path,
+    name: &str,
+    resources: Option<&ResourceResolver>,
+) -> Result<Option<String>, format_xml::XmlFormatError> {
+    let result = match resources {
+        Some(resources) => format_xml::xsd::import_type_base_with_resource_root(
+            path,
+            name,
+            resources.package_root(),
+        ),
+        None => format_xml::xsd::import_type_base(path, name),
+    };
+    retain_xsd_resource_refusal(resources, &result);
+    result
+}
 
 pub(super) fn conditioned_port_types(structure: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, String> {
     let mut types = BTreeMap::new();
@@ -27,6 +61,7 @@ pub(super) fn merge_conditioned_xml_types(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
 ) {
@@ -34,6 +69,7 @@ pub(super) fn merge_conditioned_xml_types(
         entry,
         schema,
         xsd_path,
+        resources,
         schema_from_entry_tree,
         warnings,
         &mut Vec::new(),
@@ -42,6 +78,7 @@ pub(super) fn merge_conditioned_xml_types(
         entry,
         schema,
         xsd_path,
+        resources,
         schema_from_entry_tree,
         warnings,
         &mut Vec::new(),
@@ -52,6 +89,7 @@ fn merge_selected_roots(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
     path: &mut Vec<String>,
@@ -89,7 +127,16 @@ fn merge_selected_roots(
                 ));
                 continue;
             };
-            match format_xml::xsd::import_root(xsd_path, Some(qname)) {
+            let selected = match resources {
+                Some(resources) => format_xml::xsd::import_root_with_resource_root(
+                    xsd_path,
+                    Some(qname),
+                    resources.package_root(),
+                ),
+                None => format_xml::xsd::import_root(xsd_path, Some(qname)),
+            };
+            retain_xsd_resource_refusal(resources, &selected);
+            match selected {
                 Ok(mut selected_schema) => {
                     // A concrete QName selected from `xs:any` is still a
                     // sequence projection over wildcard children, even when
@@ -162,6 +209,7 @@ fn merge_selected_roots(
             &child_entry,
             child_schema,
             xsd_path,
+            resources,
             schema_from_entry_tree,
             warnings,
             path,
@@ -342,6 +390,7 @@ fn merge_entry_children(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
     path: &mut Vec<String>,
@@ -363,9 +412,14 @@ fn merge_entry_children(
     }
     for (name, entries) in conditioned {
         path.push(name);
-        if let Err(reason) =
-            merge_alternatives_at(schema, path, &entries, xsd_path, schema_from_entry_tree)
-        {
+        if let Err(reason) = merge_alternatives_at(
+            schema,
+            path,
+            &entries,
+            xsd_path,
+            resources,
+            schema_from_entry_tree,
+        ) {
             warnings.push(format!(
                 "conditional XML type alternatives at `{}` could not be represented: {reason}",
                 path.join("/")
@@ -381,6 +435,7 @@ fn merge_entry_children(
             &child,
             schema,
             xsd_path,
+            resources,
             schema_from_entry_tree,
             warnings,
             path,
@@ -394,6 +449,7 @@ fn merge_alternatives_at(
     path: &[String],
     entries: &[roxmltree::Node<'_, '_>],
     xsd_path: &Path,
+    resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
 ) -> Result<(), String> {
     let node = schema_node_at_mut(schema, path)
@@ -404,12 +460,12 @@ fn merge_alternatives_at(
             "a condition is not an exact equality between xsi:type and a constant QName".to_string()
         })?;
         let base_name = (entries.len() == 1 || schema_from_entry_tree)
-            .then(|| format_xml::xsd::import_type_base(xsd_path, &type_name))
+            .then(|| import_type_base(xsd_path, &type_name, resources))
             .transpose()
             .map_err(|error| error.to_string())?
             .flatten();
-        let derived = format_xml::xsd::import_type(xsd_path, &type_name)
-            .map_err(|error| error.to_string())?;
+        let derived =
+            import_type(xsd_path, &type_name, resources).map_err(|error| error.to_string())?;
         let SchemaKind::Group {
             children: derived_children,
             ..
@@ -445,7 +501,7 @@ fn merge_alternatives_at(
         let base_children = common_base
             .as_ref()
             .map(|base| {
-                format_xml::xsd::import_type(xsd_path, base)
+                import_type(xsd_path, base, resources)
                     .map_err(|error| error.to_string())
                     .and_then(|base_schema| match base_schema.kind {
                         SchemaKind::Group { children, .. } => Ok(children),
@@ -612,6 +668,119 @@ mod tests {
     use super::*;
 
     #[test]
+    fn selected_roots_and_conditioned_types_keep_the_authorizing_resource_root()
+    -> Result<(), Box<dyn std::error::Error>> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        for (location, contained) in [("types.xsd", true), ("../outside/types.xsd", false)] {
+            let folder = std::env::temp_dir().join(format!(
+                "ferrule_alternative_boundary_{}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let package = folder.join("package");
+            std::fs::create_dir_all(&package)?;
+            std::fs::create_dir_all(folder.join("outside"))?;
+            let types = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:neutral:types" targetNamespace="urn:neutral:types">
+              <xs:element name="Chosen"><xs:complexType><xs:sequence><xs:element name="Count" type="xs:int"/></xs:sequence></xs:complexType></xs:element>
+              <xs:complexType name="Base"><xs:sequence><xs:element name="Count" type="xs:int"/></xs:sequence></xs:complexType>
+              <xs:complexType name="Derived"><xs:complexContent><xs:extension base="t:Base"><xs:sequence><xs:element name="Label" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+            </xs:schema>"#;
+            std::fs::write(package.join("types.xsd"), types)?;
+            std::fs::write(folder.join("outside/types.xsd"), types)?;
+            let main = package.join("root.xsd");
+            let mapping = package.join("mapping.mfd");
+            std::fs::write(&mapping, "<mapping/>")?;
+            let resources = ResourceResolver::new(&mapping, Some(&package))?;
+            eprintln!(
+                "ALTERNATIVE_RESOURCE_BOUNDARY_ORIGINALS={}",
+                folder.display()
+            );
+            std::fs::write(
+                &main,
+                format!(
+                    r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:import namespace="urn:neutral:types" schemaLocation="{location}"/></xs:schema>"#
+                ),
+            )?;
+            let selected_text = r#"<entry name="Envelope"><entry name="Body"><entry name="*"><selections><qname QNameAsString="{urn:neutral:types}Chosen"/></selections></entry><entry name="Chosen"><entry name="Count"/></entry></entry></entry>"#;
+            let selected = roxmltree::Document::parse(selected_text)?;
+            let mut selected_schema =
+                SchemaNode::group("Envelope", vec![SchemaNode::group("Body", Vec::new())]);
+            let mut selected_warnings = Vec::new();
+            merge_conditioned_xml_types(
+                &selected.root_element(),
+                &mut selected_schema,
+                &main,
+                Some(&resources),
+                false,
+                &mut selected_warnings,
+            );
+            let conditioned_text = r#"<entry name="Root"><entry name="Field"><condition><expression><function name="equal" library="core"><expression><attribute name="type" ns="http://www.w3.org/2001/XMLSchema-instance"/></expression><expression><constant datatype="QName" value="{urn:neutral:types}Derived"/></expression></function></expression></condition></entry></entry>"#;
+            let conditioned = roxmltree::Document::parse(conditioned_text)?;
+            let mut conditioned_schema = SchemaNode::group(
+                "Root",
+                vec![SchemaNode::scalar("Field", ScalarType::String)],
+            );
+            let mut conditioned_warnings = Vec::new();
+            merge_conditioned_xml_types(
+                &conditioned.root_element(),
+                &mut conditioned_schema,
+                &main,
+                Some(&resources),
+                true,
+                &mut conditioned_warnings,
+            );
+            std::fs::write(folder.join("selected-entry.xml"), selected_text)?;
+            std::fs::write(folder.join("conditioned-entry.xml"), conditioned_text)?;
+            std::fs::write(
+                folder.join("outcome.txt"),
+                format!(
+                    "selected: {selected_schema:#?}\nselected warnings: {selected_warnings:#?}\nconditioned: {conditioned_schema:#?}\nconditioned warnings: {conditioned_warnings:#?}"
+                ),
+            )?;
+            if contained {
+                assert!(selected_warnings.is_empty(), "{selected_warnings:?}");
+                assert_eq!(
+                    selected_schema
+                        .child("Body")
+                        .and_then(|body| body.child("Chosen"))
+                        .and_then(|chosen| chosen.child("Count"))
+                        .map(|node| &node.kind),
+                    Some(&SchemaKind::Scalar {
+                        ty: ScalarType::Int
+                    })
+                );
+                assert!(conditioned_warnings.is_empty(), "{conditioned_warnings:?}");
+                let field = conditioned_schema.child("Field").unwrap();
+                assert!(field.child("Count").is_some());
+                assert!(field.child("Label").is_some());
+                assert_eq!(field.alternatives().len(), 2);
+            } else {
+                assert!(
+                    selected_warnings
+                        .iter()
+                        .any(|warning| warning.contains("outside authorizing root")),
+                    "{selected_warnings:?}"
+                );
+                assert!(
+                    conditioned_warnings
+                        .iter()
+                        .any(|warning| warning.contains("outside authorizing root")),
+                    "{conditioned_warnings:?}"
+                );
+                assert!(
+                    selected_schema
+                        .child("Body")
+                        .unwrap()
+                        .child("Chosen")
+                        .is_none()
+                );
+                assert!(conditioned_schema.child("Field").unwrap().is_scalar());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn wildcard_qname_selections_import_their_concrete_schema_roots() {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
@@ -661,6 +830,7 @@ mod tests {
             &entry.root_element(),
             &mut schema,
             &main,
+            None,
             false,
             &mut warnings,
         );
@@ -738,6 +908,7 @@ mod tests {
             &entry.root_element(),
             &mut schema_backed,
             &schema_path,
+            None,
             false,
             &mut schema_warnings,
         );
@@ -754,6 +925,7 @@ mod tests {
             &entry.root_element(),
             &mut entry_backed,
             &schema_path,
+            None,
             true,
             &mut fallback_warnings,
         );
@@ -845,7 +1017,7 @@ mod tests {
         let mut schema =
             format_xml::xsd::import_root(&main, Some("{urn:ferrule:qname-port:message}Envelope"))?;
         let mut warnings = Vec::new();
-        merge_conditioned_xml_types(&entry, &mut schema, &main, false, &mut warnings);
+        merge_conditioned_xml_types(&entry, &mut schema, &main, None, false, &mut warnings);
         std::fs::remove_dir_all(dir)?;
 
         assert!(warnings.is_empty(), "{warnings:?}");

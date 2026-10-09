@@ -30,7 +30,7 @@ pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configurati
 
 pub(super) use shared::{
     XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
-    read_xsd_metadata_text, resolve_xml_schema_reference,
+    read_xsd_metadata_text, resolve_xml_schema_reference, retain_xsd_resource_refusal,
 };
 
 pub(super) fn enrich_unresolved_edi_source_schemas(project: &mut mapping::Project) {
@@ -67,10 +67,16 @@ fn resolve_resource_reference(
     declared: &str,
     description: &str,
 ) -> Result<std::path::PathBuf, String> {
-    match resources {
+    let result = match resources {
         Some(resources) => resources.resolve_file(declared, description),
         None => resolve_xml_schema_reference(mfd_path, declared),
+    };
+    if let Some(resources) = resources
+        && let Err(error) = &result
+    {
+        resources.record_refusal(error.clone());
     }
+    result
 }
 
 pub(super) fn restore_connected_structural_ports(
@@ -285,12 +291,23 @@ fn nested_file_instance(root: &roxmltree::Node<'_, '_>, role: &str) -> Option<St
 
 /// Reads an xml schema component: entry tree, ports, and the schema itself
 /// (from the referenced XSD when it resolves, else derived from entries).
+#[cfg(test)]
 pub(super) fn read_schema_component(
     component: &roxmltree::Node,
     mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     read_schema_component_resolved(component, mfd_path, None, None, warnings)
+        .map(|read| read.component)
+}
+
+pub(super) fn read_schema_component_with_resources(
+    component: &roxmltree::Node,
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    read_schema_component_resolved(component, mfd_path, resources, None, warnings)
         .map(|read| read.component)
 }
 
@@ -481,7 +498,11 @@ fn read_schema_component_resolved(
                         return None;
                     }
                 };
-            match read_xml_schema_file(&schema_path, instance_root.first().map(String::as_str)) {
+            match read_xml_schema_file(
+                &schema_path,
+                instance_root.first().map(String::as_str),
+                resources,
+            ) {
                 Ok(schema) => {
                     authoritative_schema_path = Some(schema_path.clone());
                     if instance_root.len() <= 1 {
@@ -535,6 +556,7 @@ fn read_schema_component_resolved(
             &entry,
             &mut schema,
             &schema_path,
+            resources,
             schema_from_entry_tree,
             warnings,
         );
@@ -1352,9 +1374,10 @@ pub(super) fn read_edi_component(
 pub(super) fn read_definition_parameter_component(
     component: &roxmltree::Node,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    definition_parameter::read(component, mfd_path, warnings)
+    definition_parameter::read(component, mfd_path, resources, warnings)
 }
 
 fn collect_entry_ports(

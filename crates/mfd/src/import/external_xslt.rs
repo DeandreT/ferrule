@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use ir::SchemaKind;
 use mapping::{AggregateOp, Node, NodeId};
 
+use crate::resource::ResourceResolver;
+
 use super::graph::GraphBuilder;
 use super::iteration::split_at_innermost_repeating;
 use super::schema::{SchemaComponent, parse_u32, schema_node_at, schema_node_at_resolved};
@@ -28,17 +30,22 @@ pub(super) struct Recipe {
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mapping_path: &Path,
+    resources: &ResourceResolver,
 ) -> Result<Option<Recipe>, String> {
     if component.attribute("kind") != Some("5") {
         return Ok(None);
     }
     let library = component.attribute("library").unwrap_or_default();
-    let Some(module_path) = module_path(mapping_path, library) else {
+    let mut module_path = None;
+    for candidate in module_paths(mapping_path, library) {
+        if let Some(path) = resources.resolve_discovered_file(&candidate)? {
+            module_path = Some(path);
+            break;
+        }
+    }
+    let Some(module_path) = module_path else {
         return Ok(None);
     };
-    if !module_path.is_file() {
-        return Ok(None);
-    }
 
     let name = component
         .attribute("name")
@@ -92,20 +99,20 @@ pub(super) fn read(
     }))
 }
 
-fn module_path(mapping_path: &Path, library: &str) -> Option<PathBuf> {
+fn module_paths(mapping_path: &Path, library: &str) -> Vec<PathBuf> {
     if library.is_empty()
         || library.len() > 255
         || library.contains('/')
         || library.contains('\\')
         || matches!(library, "." | "..")
     {
-        return None;
+        return Vec::new();
     }
     let parent = mapping_path.parent().unwrap_or_else(|| Path::new("."));
     ["xslt", "xsl"]
         .into_iter()
         .map(|extension| parent.join(format!("{library}.{extension}")))
-        .find(|path| path.is_file())
+        .collect()
 }
 
 fn read_module(path: &Path) -> Result<String, String> {

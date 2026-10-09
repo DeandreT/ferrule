@@ -6,12 +6,14 @@ use ir::{ScalarType, SchemaKind};
 use super::{ImportedDefinition, Recipe, RecipeSource};
 use crate::import::function::{FnComponent, is_filter, read as read_function};
 use crate::import::graph::read_edges;
-use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component};
+use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component_with_resources};
 use crate::import::udf::{Definition, OutputExpr};
+use crate::resource::ResourceResolver;
 
 pub(in crate::import) fn try_read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<Option<ImportedDefinition>, String> {
     let Some(structure) = component
         .children()
@@ -43,10 +45,12 @@ pub(in crate::import) fn try_read(
         _ => return Ok(None),
     };
     let mut warnings = Vec::new();
-    let input = read_schema_component(&input_node, mfd_path, &mut warnings)
-        .ok_or("adjacency hierarchy input schema cannot be read")?;
-    let output = read_schema_component(&output_node, mfd_path, &mut warnings)
-        .ok_or("adjacency hierarchy output schema cannot be read")?;
+    let input =
+        read_schema_component_with_resources(&input_node, mfd_path, resources, &mut warnings)
+            .ok_or("adjacency hierarchy input schema cannot be read")?;
+    let output =
+        read_schema_component_with_resources(&output_node, mfd_path, resources, &mut warnings)
+            .ok_or("adjacency hierarchy output schema cannot be read")?;
     let Some((collection, key, parent)) = adjacency_source_shape(&input.schema) else {
         return Ok(None);
     };

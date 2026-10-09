@@ -8,6 +8,7 @@ use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
 use crate::import::schema::read_definition_parameter_component;
 use crate::import::schema::{SchemaComponent, parse_u32, schema_node_at};
+use crate::resource::ResourceResolver;
 
 mod adjacency;
 mod hierarchy;
@@ -135,6 +136,7 @@ enum Expr {
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     registry: &Registry,
 ) -> Result<ImportedDefinition, String> {
     let structure = component
@@ -149,13 +151,14 @@ pub(super) fn read(
         .filter(|node| node.has_tag_name("component"))
         .collect::<Vec<_>>();
 
-    if let Some(definition) =
-        try_read_scalar_find(component, &structure, &children, mfd_path, registry)?
-    {
+    if let Some(definition) = try_read_scalar_find(
+        component, &structure, &children, mfd_path, resources, registry,
+    )? {
         return Ok(definition);
     }
 
-    if let Some(definition) = sequence_record::try_read(component, &structure, &children, mfd_path)?
+    if let Some(definition) =
+        sequence_record::try_read(component, &structure, &children, mfd_path, resources)?
     {
         return Ok(definition);
     }
@@ -177,11 +180,20 @@ pub(super) fn read(
     };
 
     let mut schema_warnings = Vec::new();
-    let catalog =
-        read_definition_parameter_component(&catalog_node, mfd_path, &mut schema_warnings)
-            .ok_or("structured lookup input schema cannot be read")?;
-    let output = read_definition_parameter_component(&output_node, mfd_path, &mut schema_warnings)
-        .ok_or("structured lookup output schema cannot be read")?;
+    let catalog = read_definition_parameter_component(
+        &catalog_node,
+        mfd_path,
+        resources,
+        &mut schema_warnings,
+    )
+    .ok_or("structured lookup input schema cannot be read")?;
+    let output = read_definition_parameter_component(
+        &output_node,
+        mfd_path,
+        resources,
+        &mut schema_warnings,
+    )
+    .ok_or("structured lookup output schema cannot be read")?;
     if catalog.is_source
         && catalog.input_instance.is_none()
         && !output.is_source
@@ -412,6 +424,7 @@ fn try_read_scalar_find(
     structure: &roxmltree::Node<'_, '_>,
     children: &[roxmltree::Node<'_, '_>],
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     registry: &Registry,
 ) -> Result<Option<ImportedDefinition>, String> {
     let declarations = children
@@ -442,8 +455,13 @@ fn try_read_scalar_find(
     };
 
     let mut schema_warnings = Vec::new();
-    let catalog = read_definition_parameter_component(catalog_node, mfd_path, &mut schema_warnings)
-        .ok_or("scalar structured lookup input schema cannot be read")?;
+    let catalog = read_definition_parameter_component(
+        catalog_node,
+        mfd_path,
+        resources,
+        &mut schema_warnings,
+    )
+    .ok_or("scalar structured lookup input schema cannot be read")?;
     let parameter_source = catalog.is_source
         && catalog.input_instance.is_none()
         && record::is_input_parameter(*catalog_node);
