@@ -1,0 +1,2649 @@
+{
+  "issue": 198,
+  "status": "SOURCE_ONLY_PLAN_ALL_EXECUTABLE_GATES_UNRUN",
+  "representation": "Complete typed constructor recipes, not current Project serialized wire. Public schema constructor defaults are pinned; every Scope and Project member is explicit. Future adapters must capture complete constructed typed Project/schema/graph/UDF/options/inputs before comparisons. No execution or expected-from-actual generation.",
+  "profile_count": 4,
+  "call_count": 30,
+  "profiles": [
+    {
+      "id": "literal-raise-laziness-and-exact-names",
+      "complete_project_typed_constructor_literal": {
+        "source": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Input",
+          "scalar_type": null,
+          "children": [],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "target": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Primary",
+          "scalar_type": null,
+          "children": [
+            {
+              "public_constructor": "SchemaNode::scalar",
+              "name": "Value",
+              "scalar_type": "String",
+              "children": [],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            }
+          ],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "chosen",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "chosen",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "String",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 2
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "broken",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "broken",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "String",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 3
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "String": "main untouched"
+              }
+            },
+            "2": {
+              "Const": {
+                "String": "chosen complete"
+              }
+            },
+            "3": {
+              "Raise": {
+                "message": 4
+              }
+            },
+            "4": {
+              "Const": {
+                "String": "unselected boom"
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": "Constructed",
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      },
+      "complete_source": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": []
+      },
+      "complete_named_inputs": [],
+      "complete_loader": null,
+      "context": null,
+      "calls": [
+        {
+          "id": "primary-skips-raise",
+          "api": "selected",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Primary",
+              "instance": {
+                "kind": "Group",
+                "origin": {
+                  "tag": "Unknown"
+                },
+                "fields": [
+                  {
+                    "name": "Value",
+                    "instance": {
+                      "kind": "Scalar",
+                      "value": {
+                        "tag": "String",
+                        "value": "main untouched"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "named-skips-primary-and-raise",
+          "api": "selected",
+          "selection": {
+            "Named": "chosen"
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Named",
+              "output": {
+                "name": "chosen",
+                "instance": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": "chosen complete"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "selected-raise-reached",
+          "api": "selected",
+          "selection": {
+            "Named": "broken"
+          },
+          "expected": {
+            "Err": {
+              "kind": "MappingException",
+              "node": 3,
+              "message": "unselected boom"
+            }
+          }
+        },
+        {
+          "id": "exact-name-\"missing\"",
+          "api": "selected",
+          "selection": {
+            "Named": "missing"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "missing",
+              "display": "project has no named target `missing`"
+            }
+          }
+        },
+        {
+          "id": "exact-name-\"CHOSEN\"",
+          "api": "selected",
+          "selection": {
+            "Named": "CHOSEN"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "CHOSEN",
+              "display": "project has no named target `CHOSEN`"
+            }
+          }
+        },
+        {
+          "id": "exact-name-\" chosen\"",
+          "api": "selected",
+          "selection": {
+            "Named": " chosen"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": " chosen",
+              "display": "project has no named target ` chosen`"
+            }
+          }
+        },
+        {
+          "id": "exact-name-\"Primary\"",
+          "api": "selected",
+          "selection": {
+            "Named": "Primary"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "Primary",
+              "display": "project has no named target `Primary`"
+            }
+          }
+        },
+        {
+          "id": "legacy-primary-still-all",
+          "api": "legacy_primary_convenience",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "MappingException",
+              "node": 3,
+              "message": "unselected boom"
+            }
+          }
+        },
+        {
+          "id": "legacy-all-still-all",
+          "api": "legacy_all_outputs",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "MappingException",
+              "node": 3,
+              "message": "unselected boom"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ordered-global-failure-lazy-messages-and-unknown-first",
+      "complete_project_typed_constructor_literal": {
+        "source": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Input",
+          "scalar_type": null,
+          "children": [],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "target": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Primary",
+          "scalar_type": null,
+          "children": [
+            {
+              "public_constructor": "SchemaNode::scalar",
+              "name": "Value",
+              "scalar_type": "String",
+              "children": [],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            }
+          ],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "chosen",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "chosen",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "String",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 2
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "broken",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "broken",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "String",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 3
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [
+          {
+            "iteration": {
+              "Source": {
+                "collection": []
+              }
+            },
+            "selection": {
+              "WhenTrue": {
+                "predicate": 8
+              }
+            },
+            "message": 9
+          },
+          {
+            "iteration": {
+              "Source": {
+                "collection": []
+              }
+            },
+            "selection": {
+              "All": null
+            },
+            "message": 10
+          },
+          {
+            "iteration": {
+              "Source": {
+                "collection": []
+              }
+            },
+            "selection": {
+              "All": null
+            },
+            "message": 11
+          }
+        ],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "String": "main untouched"
+              }
+            },
+            "2": {
+              "Const": {
+                "String": "chosen complete"
+              }
+            },
+            "3": {
+              "Raise": {
+                "message": 4
+              }
+            },
+            "4": {
+              "Const": {
+                "String": "unselected boom"
+              }
+            },
+            "8": {
+              "Const": {
+                "Bool": false
+              }
+            },
+            "9": {
+              "Raise": {
+                "message": null
+              }
+            },
+            "10": {
+              "Const": {
+                "String": "guard first"
+              }
+            },
+            "11": {
+              "Raise": {
+                "message": null
+              }
+            },
+            "20": {
+              "Raise": {
+                "message": null
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": "Constructed",
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 20
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      },
+      "complete_source": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": []
+      },
+      "complete_named_inputs": [],
+      "complete_loader": null,
+      "context": null,
+      "calls": [
+        {
+          "id": "primary-rule-before-target-raise",
+          "api": "selected",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Err": {
+              "kind": "MappingFailure",
+              "rule": 2,
+              "message": "guard first"
+            }
+          }
+        },
+        {
+          "id": "named-rule-before-target",
+          "api": "selected",
+          "selection": {
+            "Named": "chosen"
+          },
+          "expected": {
+            "Err": {
+              "kind": "MappingFailure",
+              "rule": 2,
+              "message": "guard first"
+            }
+          }
+        },
+        {
+          "id": "unknown-before-rules",
+          "api": "selected",
+          "selection": {
+            "Named": "missing"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "missing",
+              "display": "project has no named target `missing`"
+            }
+          }
+        },
+        {
+          "id": "legacy-primary-rule-order",
+          "api": "legacy_primary_convenience",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "MappingFailure",
+              "rule": 2,
+              "message": "guard first"
+            }
+          }
+        },
+        {
+          "id": "legacy-all-rule-order",
+          "api": "legacy_all_outputs",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "MappingFailure",
+              "rule": 2,
+              "message": "guard first"
+            }
+          }
+        }
+      ],
+      "expected_unreached_nodes": [
+        9,
+        11,
+        20,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "target-specific-dynamic-loader-laziness-and-static-admission",
+      "complete_project_typed_constructor_literal": {
+        "source": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Files",
+          "scalar_type": null,
+          "children": [
+            {
+              "public_constructor": "SchemaNode::scalar",
+              "name": "File",
+              "scalar_type": "String",
+              "children": [],
+              "repeating": true,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            }
+          ],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "target": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Primary",
+          "scalar_type": null,
+          "children": [
+            {
+              "public_constructor": "SchemaNode::scalar",
+              "name": "Value",
+              "scalar_type": "String",
+              "children": [],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            }
+          ],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [
+          {
+            "name": "unused_static",
+            "path": "unused-static.fixture",
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "Unused",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "String",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": null
+          },
+          {
+            "name": "catalog",
+            "path": "",
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "catalog",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "Rows",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "String",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": {
+              "node": 5,
+              "iteration": [
+                "File"
+              ]
+            }
+          },
+          {
+            "name": "poison",
+            "path": "",
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "poison",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "Rows",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "String",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": {
+              "node": 5,
+              "iteration": [
+                "File"
+              ]
+            }
+          }
+        ],
+        "extra_targets": [
+          {
+            "name": "loaded",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "Loaded",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "Row",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "String",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "Row",
+                  "iteration": {
+                    "Source": [
+                      "catalog",
+                      "Rows"
+                    ]
+                  },
+                  "construction": "Constructed",
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "Value",
+                      "node": 6
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "poisoned",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "Loaded",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "Row",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "String",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "Row",
+                  "iteration": {
+                    "Source": [
+                      "poison",
+                      "Rows"
+                    ]
+                  },
+                  "construction": "Constructed",
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "Value",
+                      "node": 7
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "String": "no dynamic request"
+              }
+            },
+            "5": {
+              "SourceField": {
+                "path": [],
+                "frame": [
+                  "File"
+                ]
+              }
+            },
+            "6": {
+              "SourceField": {
+                "path": [
+                  "Value"
+                ],
+                "frame": [
+                  "catalog",
+                  "Rows"
+                ]
+              }
+            },
+            "7": {
+              "SourceField": {
+                "path": [
+                  "Value"
+                ],
+                "frame": [
+                  "poison",
+                  "Rows"
+                ]
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": "Constructed",
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      },
+      "complete_source": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "File",
+            "instance": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Scalar",
+                  "value": {
+                    "tag": "String",
+                    "value": "left.fixture"
+                  }
+                },
+                {
+                  "kind": "Scalar",
+                  "value": {
+                    "tag": "String",
+                    "value": "right.fixture"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "complete_named_inputs": [
+        {
+          "name": "unused_static",
+          "instance": {
+            "kind": "Group",
+            "origin": {
+              "tag": "Unknown"
+            },
+            "fields": [
+              {
+                "name": "Value",
+                "instance": {
+                  "kind": "Scalar",
+                  "value": {
+                    "tag": "String",
+                    "value": "retained static input"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "complete_loader": {
+        "kind": "literal typed host",
+        "replies": [
+          {
+            "source": "catalog",
+            "logical_path": "left.fixture",
+            "Ok": {
+              "kind": "Group",
+              "origin": {
+                "tag": "Unknown"
+              },
+              "fields": [
+                {
+                  "name": "Rows",
+                  "instance": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "origin": {
+                          "tag": "Unknown"
+                        },
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "instance": {
+                              "kind": "Scalar",
+                              "value": {
+                                "tag": "String",
+                                "value": "left loaded"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "source": "catalog",
+            "logical_path": "right.fixture",
+            "Ok": {
+              "kind": "Group",
+              "origin": {
+                "tag": "Unknown"
+              },
+              "fields": [
+                {
+                  "name": "Rows",
+                  "instance": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "origin": {
+                          "tag": "Unknown"
+                        },
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "instance": {
+                              "kind": "Scalar",
+                              "value": {
+                                "tag": "String",
+                                "value": "right loaded"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "source": "poison",
+            "logical_path": "left.fixture",
+            "Err": {
+              "message": "poison-only",
+              "csharp_host_type": "System.InvalidOperationException"
+            }
+          }
+        ],
+        "any_other_request": {
+          "Err": {
+            "message": "unexpected literal loader request"
+          }
+        }
+      },
+      "context": {
+        "mapping_file_path": "selection-controls.mapping",
+        "main_mapping_file_path": "selection-controls.mapping",
+        "current_datetime": null,
+        "parameters": []
+      },
+      "calls": [
+        {
+          "id": "primary-skips-all-dynamic",
+          "api": "selected",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Primary",
+              "instance": {
+                "kind": "Group",
+                "origin": {
+                  "tag": "Unknown"
+                },
+                "fields": [
+                  {
+                    "name": "Value",
+                    "instance": {
+                      "kind": "Scalar",
+                      "value": {
+                        "tag": "String",
+                        "value": "no dynamic request"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "loader": "present",
+          "expected_loader_calls": []
+        },
+        {
+          "id": "one-named-loads-two-documents",
+          "api": "selected",
+          "selection": {
+            "Named": "loaded"
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Named",
+              "output": {
+                "name": "loaded",
+                "instance": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Row",
+                      "instance": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "String",
+                                    "value": "left loaded"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "String",
+                                    "value": "right loaded"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "loader": "present",
+          "expected_loader_calls": [
+            [
+              "catalog",
+              "left.fixture"
+            ],
+            [
+              "catalog",
+              "right.fixture"
+            ]
+          ]
+        },
+        {
+          "id": "selected-poison-error",
+          "api": "selected",
+          "selection": {
+            "Named": "poisoned"
+          },
+          "expected": {
+            "Err": {
+              "kind": "DynamicSourceLoad",
+              "source": "poison",
+              "path": "left.fixture",
+              "message": "poison-only",
+              "csharp_inner": {
+                "type": "System.InvalidOperationException",
+                "message": "poison-only"
+              }
+            }
+          },
+          "loader": "present",
+          "expected_loader_calls": [
+            [
+              "poison",
+              "left.fixture"
+            ]
+          ]
+        },
+        {
+          "id": "missing-loader-only-if-reached",
+          "api": "selected",
+          "selection": {
+            "Named": "loaded"
+          },
+          "expected": {
+            "Err": {
+              "kind": "MissingDynamicSourceLoader",
+              "source": "catalog"
+            }
+          },
+          "loader": "absent",
+          "expected_loader_calls": []
+        },
+        {
+          "id": "unknown-before-static-input-and-loader",
+          "api": "selected",
+          "selection": {
+            "Named": "missing"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "missing",
+              "display": "project has no named target `missing`"
+            }
+          },
+          "loader": "present",
+          "named_inputs_override": [],
+          "expected_loader_calls": []
+        },
+        {
+          "id": "legacy-primary-still-loads-unselected",
+          "api": "legacy_primary_convenience",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "DynamicSourceLoad",
+              "source": "poison",
+              "path": "left.fixture",
+              "message": "poison-only",
+              "csharp_inner": {
+                "type": "System.InvalidOperationException",
+                "message": "poison-only"
+              }
+            }
+          },
+          "loader": "present",
+          "expected_loader_calls": [
+            [
+              "catalog",
+              "left.fixture"
+            ],
+            [
+              "catalog",
+              "right.fixture"
+            ],
+            [
+              "poison",
+              "left.fixture"
+            ]
+          ]
+        },
+        {
+          "id": "legacy-all-still-loads-unselected",
+          "api": "legacy_all_outputs",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "DynamicSourceLoad",
+              "source": "poison",
+              "path": "left.fixture",
+              "message": "poison-only",
+              "csharp_inner": {
+                "type": "System.InvalidOperationException",
+                "message": "poison-only"
+              }
+            }
+          },
+          "loader": "present",
+          "expected_loader_calls": [
+            [
+              "catalog",
+              "left.fixture"
+            ],
+            [
+              "catalog",
+              "right.fixture"
+            ],
+            [
+              "poison",
+              "left.fixture"
+            ]
+          ]
+        }
+      ],
+      "boundary_note": "Admitted paired calls supply the existing required static input. Unknown-name call deliberately omits it to freeze resolution before input/context admission. Native supplied-input admission and generated static-input admission are not asserted identical."
+    },
+    {
+      "id": "global-false-rule-and-selected-scopes-share-budgets-fresh-runs",
+      "complete_project_typed_constructor_literal": {
+        "source": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Input",
+          "scalar_type": null,
+          "children": [],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "target": {
+          "public_constructor": "SchemaNode::group",
+          "name": "Primary",
+          "scalar_type": null,
+          "children": [
+            {
+              "public_constructor": "SchemaNode::group",
+              "name": "A",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "Int",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": true,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            {
+              "public_constructor": "SchemaNode::group",
+              "name": "B",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::scalar",
+                  "name": "Value",
+                  "scalar_type": "Int",
+                  "children": [],
+                  "repeating": false,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": true,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            }
+          ],
+          "repeating": false,
+          "other_metadata": "exact pinned public constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "chosen",
+            "path": null,
+            "schema": {
+              "public_constructor": "SchemaNode::group",
+              "name": "Chosen",
+              "scalar_type": null,
+              "children": [
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "A",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "Int",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                },
+                {
+                  "public_constructor": "SchemaNode::group",
+                  "name": "B",
+                  "scalar_type": null,
+                  "children": [
+                    {
+                      "public_constructor": "SchemaNode::scalar",
+                      "name": "Value",
+                      "scalar_type": "Int",
+                      "children": [],
+                      "repeating": false,
+                      "other_metadata": "exact pinned public constructor defaults; no overrides"
+                    }
+                  ],
+                  "repeating": true,
+                  "other_metadata": "exact pinned public constructor defaults; no overrides"
+                }
+              ],
+              "repeating": false,
+              "other_metadata": "exact pinned public constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "A",
+                  "iteration": {
+                    "Sequence": {
+                      "FilterMapV1": {
+                        "source": {
+                          "Generate": {
+                            "from": 1,
+                            "to": 2,
+                            "item": 30
+                          }
+                        },
+                        "item": 31,
+                        "predicate": 100,
+                        "mapper": 101,
+                        "output_type": "Int",
+                        "captures": []
+                      }
+                    }
+                  },
+                  "construction": "Constructed",
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "Value",
+                      "node": 31
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                },
+                {
+                  "target_field": "B",
+                  "iteration": {
+                    "Sequence": {
+                      "FilterMapV1": {
+                        "source": {
+                          "Generate": {
+                            "from": 1,
+                            "to": 2,
+                            "item": 40
+                          }
+                        },
+                        "item": 41,
+                        "predicate": 100,
+                        "mapper": 101,
+                        "output_type": "Int",
+                        "captures": []
+                      }
+                    }
+                  },
+                  "construction": "Constructed",
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "Value",
+                      "node": 41
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [
+          {
+            "iteration": {
+              "Source": {
+                "collection": []
+              }
+            },
+            "selection": {
+              "WhenTrue": {
+                "predicate": 60
+              }
+            },
+            "message": 94
+          }
+        ],
+        "user_functions": {
+          "100": {
+            "library": "selection-control",
+            "name": "keep",
+            "description": null,
+            "parameters": [
+              {
+                "id": 1,
+                "name": "item",
+                "ty": "Int"
+              },
+              {
+                "id": 2,
+                "name": "source_position",
+                "ty": "Int"
+              }
+            ],
+            "output_name": "value",
+            "output_type": "Bool",
+            "body": {
+              "nodes": {
+                "1": {
+                  "Const": {
+                    "Bool": true
+                  }
+                }
+              }
+            },
+            "output": 1
+          },
+          "101": {
+            "library": "selection-control",
+            "name": "identity",
+            "description": null,
+            "parameters": [
+              {
+                "id": 1,
+                "name": "item",
+                "ty": "Int"
+              },
+              {
+                "id": 2,
+                "name": "source_position",
+                "ty": "Int"
+              }
+            ],
+            "output_name": "value",
+            "output_type": "Int",
+            "body": {
+              "nodes": {
+                "1": {
+                  "FunctionParameter": {
+                    "parameter": 1
+                  }
+                }
+              }
+            },
+            "output": 1
+          }
+        },
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "Int": 1
+              }
+            },
+            "2": {
+              "Const": {
+                "Int": 2
+              }
+            },
+            "10": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "11": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "20": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "21": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "30": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "31": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "40": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "41": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "50": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "51": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "60": {
+              "SequenceExists": {
+                "sequence": {
+                  "FilterMapV1": {
+                    "source": {
+                      "Generate": {
+                        "from": 1,
+                        "to": 2,
+                        "item": 50
+                      }
+                    },
+                    "item": 51,
+                    "predicate": 100,
+                    "mapper": 101,
+                    "output_type": "Int",
+                    "captures": []
+                  }
+                },
+                "predicate": 99
+              }
+            },
+            "94": {
+              "Raise": {
+                "message": null
+              }
+            },
+            "99": {
+              "Const": {
+                "Bool": false
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": "Constructed",
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [],
+          "dynamic_bindings": [],
+          "children": [
+            {
+              "target_field": "A",
+              "iteration": {
+                "Sequence": {
+                  "FilterMapV1": {
+                    "source": {
+                      "Generate": {
+                        "from": 1,
+                        "to": 2,
+                        "item": 10
+                      }
+                    },
+                    "item": 11,
+                    "predicate": 100,
+                    "mapper": 101,
+                    "output_type": "Int",
+                    "captures": []
+                  }
+                }
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 11
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            },
+            {
+              "target_field": "B",
+              "iteration": {
+                "Sequence": {
+                  "FilterMapV1": {
+                    "source": {
+                      "Generate": {
+                        "from": 1,
+                        "to": 2,
+                        "item": 20
+                      }
+                    },
+                    "item": 21,
+                    "predicate": 100,
+                    "mapper": 101,
+                    "output_type": "Int",
+                    "captures": []
+                  }
+                }
+              },
+              "construction": "Constructed",
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "Value",
+                  "node": 21
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          ],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      },
+      "complete_source": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": []
+      },
+      "complete_named_inputs": [],
+      "complete_loader": null,
+      "context": {
+        "mapping_file_path": "selection-controls.mapping",
+        "main_mapping_file_path": "selection-controls.mapping",
+        "current_datetime": null,
+        "parameters": []
+      },
+      "calls": [
+        {
+          "id": "primary-rule-and-two-scopes",
+          "api": "selected_controls",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Primary",
+              "instance": {
+                "kind": "Group",
+                "origin": {
+                  "tag": "Unknown"
+                },
+                "fields": [
+                  {
+                    "name": "A",
+                    "instance": {
+                      "kind": "Repeated",
+                      "items": [
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 2
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "B",
+                    "instance": {
+                      "kind": "Repeated",
+                      "items": [
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 2
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 36
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 36
+          }
+        },
+        {
+          "id": "named-rule-and-only-named-scopes",
+          "api": "selected_controls",
+          "selection": {
+            "Named": "chosen"
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Named",
+              "output": {
+                "name": "chosen",
+                "instance": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "A",
+                      "instance": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "Int",
+                                    "value": 1
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "Int",
+                                    "value": 2
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "name": "B",
+                      "instance": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "Int",
+                                    "value": 1
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "Group",
+                            "origin": {
+                              "tag": "Unknown"
+                            },
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "instance": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "tag": "Int",
+                                    "value": 2
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 36
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            31,
+            41
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 36
+          }
+        },
+        {
+          "id": "same-host-context-fresh-second-primary",
+          "api": "selected_controls",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Ok": {
+              "variant": "Primary",
+              "instance": {
+                "kind": "Group",
+                "origin": {
+                  "tag": "Unknown"
+                },
+                "fields": [
+                  {
+                    "name": "A",
+                    "instance": {
+                      "kind": "Repeated",
+                      "items": [
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 2
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "B",
+                    "instance": {
+                      "kind": "Repeated",
+                      "items": [
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Group",
+                          "origin": {
+                            "tag": "Unknown"
+                          },
+                          "fields": [
+                            {
+                              "name": "Value",
+                              "instance": {
+                                "kind": "Scalar",
+                                "value": {
+                                  "tag": "Int",
+                                  "value": 2
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 36
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21
+          ],
+          "reuse_immutable_host_context_from": "primary-rule-and-two-scopes",
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 36
+          }
+        },
+        {
+          "id": "shared-item-limit-not-reset-per-scope",
+          "api": "selected_controls",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Err": {
+              "kind": "FilterMapRuntime",
+              "boundary": {
+                "item": 21,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "cause": {
+                "kind": "FilterMapBudget",
+                "budget_kind": "SourceItems",
+                "used": 4,
+                "requested": 2,
+                "max": 4
+              }
+            }
+          },
+          "limits": {
+            "source_items": 4,
+            "work": 100
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 4,
+            "work": 26
+          }
+        },
+        {
+          "id": "shared-work-limit",
+          "api": "selected_controls",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Err": {
+              "kind": "FilterMapRuntime",
+              "boundary": {
+                "item": 21,
+                "phase": "Mapper",
+                "capture_index": null,
+                "source_position": 2,
+                "function": 101,
+                "node": 1,
+                "kind": "NodeEvaluation"
+              },
+              "cause": {
+                "kind": "FilterMapBudget",
+                "budget_kind": "Work",
+                "used": 35,
+                "requested": 1,
+                "max": 35
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 35
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 35
+          }
+        },
+        {
+          "id": "cancel-global-rule-before-reservation",
+          "api": "selected_controls",
+          "selection": {
+            "Primary": null
+          },
+          "expected": {
+            "Err": {
+              "kind": "FilterMapRuntime",
+              "boundary": {
+                "item": 51,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "cause": {
+                "kind": "FilterMapCancelled"
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 36
+          },
+          "cancellation": {
+            "cancel_exactly": {
+              "item": 51,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": null,
+              "kind": "SourceReservation"
+            }
+          },
+          "expected_reservation_output_owners": [
+            51
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 0,
+            "work": 2
+          }
+        },
+        {
+          "id": "unknown-before-zero-budgets-and-cancellation",
+          "api": "selected_controls",
+          "selection": {
+            "Named": "missing"
+          },
+          "expected": {
+            "Err": {
+              "kind": "UnknownTarget",
+              "name": "missing",
+              "display": "project has no named target `missing`"
+            }
+          },
+          "limits": {
+            "source_items": 0,
+            "work": 0
+          },
+          "cancellation": "always_cancel",
+          "expected_reservation_output_owners": [],
+          "expected_wrapper_location": "outer admission error; no FilterMapExecution object",
+          "expected_cancellation_calls": 0
+        },
+        {
+          "id": "legacy-primary-all-set-charges",
+          "api": "legacy_primary_controls",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "FilterMapRuntime",
+              "boundary": {
+                "item": 31,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "cause": {
+                "kind": "FilterMapBudget",
+                "budget_kind": "SourceItems",
+                "used": 6,
+                "requested": 2,
+                "max": 6
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 100
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21,
+            31
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 38
+          }
+        },
+        {
+          "id": "legacy-all-same-full-set-order",
+          "api": "legacy_all_controls",
+          "selection": null,
+          "expected": {
+            "Err": {
+              "kind": "FilterMapRuntime",
+              "boundary": {
+                "item": 31,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "cause": {
+                "kind": "FilterMapBudget",
+                "budget_kind": "SourceItems",
+                "used": 6,
+                "requested": 2,
+                "max": 6
+              }
+            }
+          },
+          "limits": {
+            "source_items": 6,
+            "work": 100
+          },
+          "cancellation": "observe_never_cancel",
+          "expected_reservation_output_owners": [
+            51,
+            11,
+            21,
+            31
+          ],
+          "expected_rust_public_counters": {
+            "source_items": 6,
+            "work": 38
+          }
+        }
+      ],
+      "manual_work_equation": "Each identity descriptor 1..2: two bound node evaluations + two source reservation work units + two times (predicate call entry + Bool Const output node + mapper call entry + parameter output node) = 12 work. Global false rule eagerly materializes one descriptor once; selected target has two more: 6 source items and 36 work. Downstream Exists predicates and target bindings lie outside descriptor work. Refused reservation retains prior source-bound work only.",
+      "csharp_counter_limit": "No new C# production counter observation API proposed. Public budget error fields and complete cancellation/checker observations prove sharing/refusal; only existing internal/direct qualification may observe hidden counters. Do not call hidden counters public telemetry.",
+      "failure_iteration_limit": "Rule iteration is ordinary Source(empty). FilterMapV1 occurs in its reached SequenceExists predicate. FilterMapV1 FailureIteration::Sequence remains refused."
+    }
+  ]
+}

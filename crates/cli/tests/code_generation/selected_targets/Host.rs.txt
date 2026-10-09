@@ -1,0 +1,246 @@
+use codegen_runtime::{DynamicSourceLoader, ExecutionContext, FilterMapBoundary, FilterMapBoundaryKind,
+    FilterMapBudgetKind, FilterMapCancellation, FilterMapCounters, FilterMapLimits, FilterMapPhase,
+    Instance, NamedInput, RuntimeError, TargetSelection, Value, XmlTypeOrigin};
+use serde_json::Value as Json;
+use std::{cell::RefCell, fmt::Write as _, io::Write as _, path::{Path, PathBuf}};
+
+// CASE_MODULES is replaced by the preparer with four ordinary emitted modules.
+// No mapping evaluation supplies an expected value.
+#[derive(Debug, PartialEq)]
+enum Output { Primary(Instance), Named { name: String, instance: Instance },
+    All { primary: Instance, extras: Vec<(String, Instance)> } }
+#[derive(Debug)]
+struct Actual { outcome: Result<Output, RuntimeError>, counters: Option<FilterMapCounters>, wrapper: &'static str }
+
+fn typed_instance(value: &Json) -> Instance {
+    match value["kind"].as_str().unwrap() {
+        "Scalar" => Instance::Scalar(match value["value"]["tag"].as_str().unwrap() {
+            "String" => Value::String(value["value"]["value"].as_str().unwrap().into()),
+            "Int" => Value::Int(value["value"]["value"].as_i64().unwrap()),
+            "Bool" => Value::Bool(value["value"]["value"].as_bool().unwrap()),
+            "Float" => Value::Float(f64::from_bits(u64::from_str_radix(value["value"]["ieee754_binary64_hex"].as_str().unwrap(),16).unwrap())),
+            "Null" => Value::Null,
+            "JsonNull" => serde_json::from_str(r#"{"$json_null":true}"#).unwrap(),
+            "XmlNil" => serde_json::from_str(r#"{"$xml_nil":true}"#).unwrap(),
+            _ => panic!("unknown independently authored scalar tag"),
+        }),
+        "Group" => {
+            let fields = value["fields"].as_array().unwrap().iter().map(|field|
+                (field["name"].as_str().unwrap().into(), typed_instance(&field["instance"]))).collect::<Vec<_>>();
+            let origin = &value["origin"];
+            let origin = match origin["tag"].as_str().unwrap() {
+                "Unknown" => XmlTypeOrigin::Unknown, "Absent" => XmlTypeOrigin::Absent,
+                "Explicit" => XmlTypeOrigin::Explicit(origin["identity"].as_str().unwrap()),
+                "ExplicitPadded" => XmlTypeOrigin::ExplicitPadded { literal: origin["literal"].as_str().unwrap(),
+                    resolved_identity: origin["resolved_identity"].as_str().unwrap() },
+                _ => panic!("unknown independent origin tag"),
+            };
+            Instance::Group(codegen_runtime::InstanceGroup::from(fields).with_xml_type_origin(origin).unwrap())
+        }
+        "Repeated" => Instance::Repeated(value["items"].as_array().unwrap().iter().map(typed_instance).collect()),
+        "MappedSequence" => Instance::MappedSequence(value["items"].as_array().unwrap().iter().map(typed_instance).collect()),
+        "DocumentSet" => Instance::DocumentSet(value["documents"].as_array().unwrap().iter().map(|d| {
+            if let Some(resolved) = d["resolved_source_path"].as_str() {
+                codegen_runtime::DocumentMember::new_source(d["path"].as_str().unwrap(), resolved, typed_instance(&d["instance"])).unwrap()
+            } else { codegen_runtime::DocumentMember::new(d["path"].as_str().unwrap(), typed_instance(&d["instance"])).unwrap() }
+        }).collect()),
+        _ => panic!("unknown independent instance kind"),
+    }
+}
+fn instance_original(value: &Instance, path: &str, original: &mut String) {
+    writeln!(original, "path={path:?};complete-instance={value:#?}").unwrap();
+    match value {
+        Instance::Scalar(Value::Float(value)) => writeln!(original, "path={path:?};ieee754_binary64_hex={:016x}",value.to_bits()).unwrap(),
+        Instance::Scalar(_) => {},
+        Instance::Group(fields) => {
+            writeln!(original, "path={path:?};xml-type-origin={:?}", fields.xml_type_origin()).unwrap();
+            for (index, (name, child)) in fields.iter().enumerate() { instance_original(child, &format!("{path}/field[{index}]={name:?}"), original); }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            let kind = if matches!(value, Instance::Repeated(_)) { "Repeated" } else { "MappedSequence" };
+            for (index, child) in items.iter().enumerate() { instance_original(child, &format!("{path}/{kind}[{index}]"), original); }
+        }
+        Instance::DocumentSet(documents) => for (index, document) in documents.iter().enumerate() {
+            writeln!(original, "document[{index}].path={:?};effective-source-path={:?}", document.path(), document.source_path()).unwrap();
+            instance_original(document.value(), &format!("{path}/document[{index}]"), original);
+        },
+    }
+}
+fn output_original(value: &Output, original: &mut String) {
+    match value {
+        Output::Primary(instance) => instance_original(instance,"Primary",original),
+        Output::Named { name, instance } => instance_original(instance,&format!("Named({name:?})"),original),
+        Output::All { primary, extras } => {
+            instance_original(primary,"All/Primary",original);
+            for (index,(name,instance)) in extras.iter().enumerate() { instance_original(instance,&format!("All/extra[{index}]={name:?}"),original); }
+        }
+    }
+}
+fn error_original(value: &RuntimeError, original: &mut String) {
+    writeln!(original,"complete-error={value:#?};display={value}").unwrap();
+    match value {
+        RuntimeError::FilterMapRuntime { source, .. } => error_original(source,original),
+        RuntimeError::FilterMapValueType { found: Value::Float(value), .. } => writeln!(original,"found.ieee754_binary64_hex={:016x}",value.to_bits()).unwrap(),
+        RuntimeError::FilterMapNonFinite { bits } => writeln!(original,"ieee754_binary64_hex={bits:016x}").unwrap(),
+        _ => {},
+    }
+}
+fn boundary(value: &Json) -> FilterMapBoundary {
+    FilterMapBoundary { item: value["item"].as_u64().unwrap() as u32,
+        phase: match value["phase"].as_str().unwrap() { "Source"=>FilterMapPhase::Source,"Capture"=>FilterMapPhase::Capture,"Predicate"=>FilterMapPhase::Predicate,"Mapper"=>FilterMapPhase::Mapper,_=>panic!("phase") },
+        capture_index: value["capture_index"].as_u64().map(|v|v as usize),
+        source_position: value["source_position"].as_u64().map(|v|v as usize),
+        function: value["function"].as_u64(), node: value["node"].as_u64().map(|v|v as u32),
+        kind: match value["kind"].as_str().unwrap() { "SourceReservation"=>FilterMapBoundaryKind::SourceReservation,"NodeEvaluation"=>FilterMapBoundaryKind::NodeEvaluation,"CallEntry"=>FilterMapBoundaryKind::CallEntry,"StageItem"=>FilterMapBoundaryKind::StageItem,"Result"=>FilterMapBoundaryKind::Result,_=>panic!("boundary") } }
+}
+fn expected_error(value: &Json) -> RuntimeError {
+    match value["kind"].as_str().unwrap() {
+        "UnknownTarget"=>RuntimeError::UnknownTarget { name: value["name"].as_str().unwrap().into() },
+        "MappingException"=>RuntimeError::MappingException { node: value["node"].as_u64().unwrap() as u32, message: value["message"].as_str().map(str::to_owned) },
+        "MappingFailure"=>RuntimeError::MappingFailure { rule: value["rule"].as_u64().unwrap() as usize, message: value["message"].as_str().map(str::to_owned) },
+        "DynamicSourceLoad"=>RuntimeError::DynamicSourceLoad { source: match value["source"].as_str().unwrap() {"poison"=>"poison", "catalog"=>"catalog", _=>panic!("source")}, path: value["path"].as_str().unwrap().into(), message: value["message"].as_str().unwrap().into() },
+        "MissingDynamicSourceLoader"=>RuntimeError::MissingDynamicSourceLoader { source: match value["source"].as_str().unwrap() {"catalog"=>"catalog","poison"=>"poison",_=>panic!("source")} },
+        "FilterMapRuntime"=>RuntimeError::FilterMapRuntime { boundary: boundary(&value["boundary"]), source: Box::new(expected_error(&value["cause"])) },
+        "FilterMapBudget"=>RuntimeError::FilterMapBudget {kind:match value["budget_kind"].as_str().unwrap(){"SourceItems"=>FilterMapBudgetKind::SourceItems,"Work"=>FilterMapBudgetKind::Work,_=>panic!("budget")}, used:value["used"].as_u64().unwrap() as u128, requested:value["requested"].as_u64().unwrap() as u128, max:value["max"].as_u64().unwrap() as u128},
+        "FilterMapCancelled"=>RuntimeError::FilterMapCancelled,
+        _=>panic!("unknown independently authored error"),
+    }
+}
+fn expected_output(value: &Json) -> Output {
+    match value["variant"].as_str().unwrap() {
+        "Primary"=>Output::Primary(typed_instance(&value["instance"])),
+        "Named"=>Output::Named {name:value["output"]["name"].as_str().unwrap().into(), instance:typed_instance(&value["output"]["instance"])},
+        _=>panic!("unknown independently authored output variant"),
+    }
+}
+struct Checker { specification: Json, originals: RefCell<Vec<FilterMapBoundary>> }
+impl FilterMapCancellation for Checker {
+    fn is_cancelled(&self, at: &FilterMapBoundary) -> bool {
+        self.originals.borrow_mut().push(*at);
+        if self.specification == "always_cancel" { true }
+        else if let Some(exact) = self.specification.get("cancel_exactly") { *at == boundary(exact) }
+        else { false }
+    }
+}
+#[derive(Debug)]
+struct LoaderEvent { source: String, logical_path: String, outcome: Result<Instance,String> }
+struct Loader { specification: Json, originals: RefCell<Vec<LoaderEvent>> }
+impl DynamicSourceLoader for Loader {
+    fn load(&self, source: &str, logical_path: &str) -> Result<Instance,String> {
+        let reply=self.specification["replies"].as_array().unwrap().iter().find(|row|
+            row["source"]==source && row["logical_path"]==logical_path);
+        let outcome=match reply {
+            Some(row) if row.get("Ok").is_some()=>Ok(typed_instance(&row["Ok"])),
+            Some(row)=>Err(row["Err"]["message"].as_str().unwrap().into()),
+            None=>Err(self.specification["any_other_request"]["Err"]["message"].as_str().unwrap().into()),
+        };
+        self.originals.borrow_mut().push(LoaderEvent {source:source.into(),logical_path:logical_path.into(),outcome:outcome.clone()});outcome
+    }
+}
+
+macro_rules! route {
+    ($module:ident,$control:expr,$source:expr,$inputs:expr,$execution:expr,$loader:expr,$checker:expr,$limits:expr) => {{
+        let control=$control;
+        let selected=|value|match value {
+            $module::SelectedTargetOutput::Primary(instance)=>Output::Primary(instance),
+            $module::SelectedTargetOutput::Named(output)=>Output::Named {name:output.name.into(),instance:output.instance},
+        };
+        let all=|value:$module::ExecutionOutputs|Output::All {primary:value.primary,extras:value.extras.into_iter().map(|v|(v.name.into(),v.instance)).collect()};
+        let selection=control["selection"].get("Named").and_then(Json::as_str).map_or(TargetSelection::Primary,TargetSelection::Named);
+        let api=control["api"].as_str().unwrap();
+        if api=="selected_controls" {
+            match $module::execute_selected_target_with_filter_map_controls($source,$inputs,$execution,$loader,selection,$limits,Some($checker)) {
+                Ok(result)=>Actual {outcome:result.outcome.map(selected),counters:Some(result.counters),wrapper:"execution-envelope"},
+                Err(error)=>Actual {outcome:Err(error),counters:None,wrapper:"outer-admission"},
+            }
+        } else if api=="legacy_primary_controls" || api=="legacy_all_controls" {
+            match $module::execute_outputs_with_filter_map_controls($source,$inputs,$execution,$loader,$limits,Some($checker)) {
+                Ok(result)=>Actual {outcome:result.outcome.map(|output|if api=="legacy_primary_controls" {Output::Primary(output.primary)} else {all(output)}),counters:Some(result.counters),wrapper:"execution-envelope"},
+                Err(error)=>Actual {outcome:Err(error),counters:None,wrapper:"outer-admission"},
+            }
+        } else if api=="selected" {
+            let outcome=if $execution.is_none() && $loader.is_none() && $inputs.is_empty() {
+                $module::execute_selected_target($source,selection)
+            } else { $module::execute_selected_target_with_host($source,$inputs,$execution,$loader,selection) };
+            Actual {outcome:outcome.map(selected),counters:None,wrapper:"direct"}
+        } else {
+            // The legacy convenience route must itself be called, rather than
+            // an assumed all-output equivalence used as a substituted oracle.
+            if api=="legacy_primary_convenience" {
+                let outcome=if $inputs.is_empty() && $loader.is_none() {
+                    match $execution {Some(execution)=>$module::execute_with_context($source,execution),None=>$module::execute($source)}
+                } else {match ($execution,$loader) {
+                    (Some(execution),Some(loader))=>$module::execute_with_sources_context_and_dynamic_source_loader($source,$inputs,execution,loader),
+                    (Some(execution),None)=>$module::execute_with_sources_and_context($source,$inputs,execution),
+                    (None,Some(loader))=>$module::execute_with_sources_and_dynamic_source_loader($source,$inputs,loader),
+                    (None,None)=>$module::execute_with_sources($source,$inputs),
+                }};
+                Actual {outcome:outcome.map(Output::Primary),counters:None,wrapper:"direct"}
+            } else {
+                let outcome=if $inputs.is_empty() && $loader.is_none() {
+                    match $execution {Some(execution)=>$module::execute_outputs_with_context($source,execution),None=>$module::execute_outputs($source)}
+                } else {match ($execution,$loader) {
+                    (Some(execution),Some(loader))=>$module::execute_outputs_with_sources_context_and_dynamic_source_loader($source,$inputs,execution,loader),
+                    (Some(execution),None)=>$module::execute_outputs_with_sources_and_context($source,$inputs,execution),
+                    (None,Some(loader))=>$module::execute_outputs_with_sources_and_dynamic_source_loader($source,$inputs,loader),
+                    (None,None)=>$module::execute_outputs_with_sources($source,$inputs),
+                }};
+                Actual {outcome:outcome.map(all),counters:None,wrapper:"direct"}
+            }
+        }
+    }};
+}
+// CASE_DISPATCH is replaced with a fixed four-arm invocation of this macro.
+
+fn retain(directory: &Path, label: &str, bytes: &[u8]) {
+    let mut file=std::fs::OpenOptions::new().create_new(true).write(true).open(directory.join(label)).unwrap();
+    file.write_all(bytes).unwrap();file.flush().unwrap();
+}
+fn main() {
+    let args=std::env::args_os().skip(1).collect::<Vec<_>>();assert_eq!(args.len(),2,"controls and fresh originals directory");
+    let raw=std::fs::read(&args[0]).unwrap();let directory=PathBuf::from(&args[1]);assert!(directory.is_absolute());assert!(!directory.exists());std::fs::create_dir(&directory).unwrap();
+    retain(&directory,"COMPLETE-FROZEN-CONTROLS-ORIGINAL.json",&raw);
+    let corpus:Json=serde_json::from_slice(&raw).unwrap();let mut checks=Vec::new();let mut ordinal=0;
+    for (profile_index,profile) in corpus["profiles"].as_array().unwrap().iter().enumerate() {
+        let source=typed_instance(&profile["complete_source"]);
+        let execution=ExecutionContext::new(Path::new("selection-controls.mapping"));
+        for control in profile["calls"].as_array().unwrap() {
+            let prefix=format!("{ordinal:02}");ordinal+=1;
+            retain(&directory,&format!("{prefix}-COMPLETE-CONTROL-ORIGINAL.json"),&serde_json::to_vec_pretty(control).unwrap());
+            let named=control.get("named_inputs_override").unwrap_or(&profile["complete_named_inputs"]).as_array().unwrap().iter().map(|input|
+                (input["name"].as_str().unwrap().to_owned(),typed_instance(&input["instance"]))).collect::<Vec<_>>();
+            let inputs=named.iter().map(|(name,instance)|NamedInput {name,instance}).collect::<Vec<_>>();
+            let checker=Checker {specification:control["cancellation"].clone(),originals:RefCell::new(Vec::new())};
+            let loader=Loader {specification:profile["complete_loader"].clone(),originals:RefCell::new(Vec::new())};
+            let loader_reference=if control["loader"]=="present" {Some(&loader as &dyn DynamicSourceLoader)} else {None};
+            let execution_reference=if profile["context"].is_null() {None} else {Some(&execution)};
+            let limits=if control.get("limits").is_some() {FilterMapLimits::new(control["limits"]["source_items"].as_u64().unwrap() as u128,control["limits"]["work"].as_u64().unwrap() as u128).unwrap()} else {FilterMapLimits::default()};
+            let mut input_original=format!("profile={profile_index};control={control:#?};context-literal={:#?};limits={limits:#?};loader-present={}\n",profile["context"],loader_reference.is_some());
+            instance_original(&source,"source",&mut input_original);
+            for (name,instance) in &named {instance_original(instance,&format!("named-input[{name:?}]"),&mut input_original);}
+            retain(&directory,&format!("{prefix}-COMPLETE-INPUT-ORIGINAL.txt"),input_original.as_bytes());
+            let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||invoke(profile_index,control,&source,&inputs,execution_reference,loader_reference,&checker,limits)));
+            let mut original=match &result {Ok(actual)=>format!("complete-actual={actual:#?}\n"),Err(payload)=>format!("complete-panic-text={:?};payload-type-id={:?}\n",payload.downcast_ref::<String>().map(String::as_str).or_else(||payload.downcast_ref::<&str>().copied()),payload.as_ref().type_id())};
+            if let Ok(actual)=&result {match &actual.outcome {Ok(output)=>output_original(output,&mut original),Err(error)=>error_original(error,&mut original)}}
+            writeln!(original,"complete-checker-boundaries={:#?};complete-loader-events={:#?}",checker.originals.borrow(),loader.originals.borrow()).unwrap();
+            for (index,event) in loader.originals.borrow().iter().enumerate() {if let Ok(instance)=&event.outcome {instance_original(instance,&format!("loader-event[{index}]/Ok"),&mut original);}}
+            retain(&directory,&format!("{prefix}-COMPLETE-ACTUAL-ORIGINAL.txt"),original.as_bytes());
+            // Only now construct and compare the independent typed expectation.
+            let expected:Result<Output,RuntimeError>=if let Some(ok)=control["expected"].get("Ok") {Ok(expected_output(ok))} else {Err(expected_error(&control["expected"]["Err"]))};
+            let mut expected_original=format!("complete-expected={expected:#?}\n");match &expected {Ok(value)=>output_original(value,&mut expected_original),Err(error)=>error_original(error,&mut expected_original)}
+            retain(&directory,&format!("{prefix}-COMPLETE-EXPECTED-ORIGINAL.txt"),expected_original.as_bytes());
+            let mut matches=matches!(&result,Ok(actual) if actual.outcome==expected);
+            if let Ok(actual)=&result {
+                if let Some(text)=control["expected"]["Err"]["display"].as_str() {matches &= matches!(&actual.outcome,Err(error) if error.to_string()==text);}
+                if let Some(counters)=control.get("expected_rust_public_counters") {matches &= actual.counters==Some(FilterMapCounters {source_items:counters["source_items"].as_u64().unwrap() as u128,work:counters["work"].as_u64().unwrap() as u128});}
+                if control.get("expected_wrapper_location").is_some() {matches &= actual.wrapper=="outer-admission" && actual.counters.is_none();}
+            }
+            if let Some(expected)=control.get("expected_loader_calls") {let actual=loader.originals.borrow().iter().map(|event|serde_json::json!([event.source,event.logical_path])).collect::<Vec<_>>();matches &= Json::Array(actual)==*expected;}
+            if let Some(expected)=control.get("expected_reservation_output_owners") {let actual=checker.originals.borrow().iter().filter(|at|at.kind==FilterMapBoundaryKind::SourceReservation).map(|at|serde_json::json!(at.item)).collect::<Vec<_>>();matches &= Json::Array(actual)==*expected;}
+            if let Some(count)=control["expected_cancellation_calls"].as_u64(){matches &= checker.originals.borrow().len()==count as usize;}
+            checks.push((profile_index,control["id"].as_str().unwrap().to_owned(),matches));
+        }
+    }
+    retain(&directory,"ALL30-COMPLETE-COMPARISONS.json",&serde_json::to_vec_pretty(&checks).unwrap());
+    assert_eq!(checks.len(),30);assert!(checks.iter().all(|(_,_,matched)|*matched),"complete originals retained; selected-target cohort differs");
+}
