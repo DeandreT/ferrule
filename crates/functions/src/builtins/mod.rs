@@ -61,8 +61,8 @@ pub(super) fn call_builtin(
         BuiltinId::GreaterOrEqual => {
             comparison(args, "greater_or_equal", |o| o != std::cmp::Ordering::Less)
         }
-        BuiltinId::And => binary_bool(args, "and", |a, b| a && b),
-        BuiltinId::Or => binary_bool(args, "or", |a, b| a || b),
+        BuiltinId::And => reduce_booleans(args, "and", true, |a, b| a && b),
+        BuiltinId::Or => reduce_booleans(args, "or", false, |a, b| a || b),
         BuiltinId::Not => unary_bool(args, "not", |a| !a),
         BuiltinId::Substring => substring(args),
         BuiltinId::SubstringBefore => split_string(args, "substring_before", true),
@@ -284,26 +284,35 @@ fn binary_scalar_string(
     }
 }
 
-fn binary_bool(
+fn reduce_booleans(
     args: &[Value],
     name: &'static str,
+    identity: bool,
     f: impl Fn(bool, bool) -> bool,
 ) -> Result<Value, FunctionError> {
-    match args {
-        [Value::Bool(a), Value::Bool(b)] => Ok(Value::Bool(f(*a, *b))),
-        [a, b] => {
-            let bad = if matches!(a, Value::Bool(_)) { b } else { a };
-            Err(FunctionError::TypeMismatch {
-                function: name,
-                got: bad.type_name(),
-            })
-        }
-        _ => Err(FunctionError::ArityMismatch {
+    if args.len() < 2 {
+        return Err(FunctionError::ArityMismatch {
             function: name,
             expected: 2,
             got: args.len(),
-        }),
+        });
     }
+    // Arguments were evaluated before this call. Check every operand even
+    // after a decisive value, preserving the first non-Bool error in order.
+    for value in args {
+        if !matches!(value, Value::Bool(_)) {
+            return Err(FunctionError::TypeMismatch {
+                function: name,
+                got: value.type_name(),
+            });
+        }
+    }
+    Ok(Value::Bool(args.iter().fold(identity, |result, value| {
+        let Value::Bool(value) = value else {
+            unreachable!("all operands were checked as Bool")
+        };
+        f(result, *value)
+    })))
 }
 
 fn unary_bool(

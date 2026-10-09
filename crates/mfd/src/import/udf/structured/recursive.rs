@@ -6,12 +6,16 @@ use ir::{SchemaKind, Value};
 use super::{ImportedDefinition, Recipe, RecipeSource};
 use crate::import::function::read as read_function;
 use crate::import::graph::read_edges;
-use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component, schema_node_at};
+use crate::import::schema::{
+    SchemaComponent, parse_u32, read_schema_component_with_resources, schema_node_at,
+};
 use crate::import::udf::{Definition, OutputExpr};
+use crate::resource::ResourceResolver;
 
 pub(in crate::import) fn try_read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<Option<ImportedDefinition>, String> {
     let Some(structure) = component
         .children()
@@ -38,22 +42,24 @@ pub(in crate::import) fn try_read(
         _ => return Ok(None),
     };
     let mut warnings = Vec::new();
-    let input = read_schema_component(&input_node, mfd_path, &mut warnings)
-        .ok_or("recursive XML input schema cannot be read")?;
-    let output = read_schema_component(&output_node, mfd_path, &mut warnings)
-        .ok_or("recursive XML output schema cannot be read")?;
+    let input =
+        read_schema_component_with_resources(&input_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive XML input schema cannot be read")?;
+    let output =
+        read_schema_component_with_resources(&output_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive XML output schema cannot be read")?;
     let recursive_input = matches!(&input.schema.kind, SchemaKind::Group { children, .. }
         if children.iter().any(|child| child.repeating && child.recursive_ref.is_some()));
     if !recursive_input {
         return Ok(None);
     }
     if input.schema == output.schema {
-        return try_read_filter(component, mfd_path).map(Some);
+        return try_read_filter(component, mfd_path, resources).map(Some);
     }
     let scalar_output = matches!(&output.schema.kind, SchemaKind::Group { children, .. }
         if children.iter().any(|child| child.repeating && child.is_scalar()));
     if scalar_output {
-        return try_read_collect(component, mfd_path).map(Some);
+        return try_read_collect(component, mfd_path, resources).map(Some);
     }
     Ok(None)
 }
@@ -61,6 +67,7 @@ pub(in crate::import) fn try_read(
 fn try_read_collect(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<ImportedDefinition, String> {
     let structure = component
         .children()
@@ -87,10 +94,12 @@ fn try_read_collect(
         _ => return Err("recursive XML parameter roles are ambiguous".to_string()),
     };
     let mut warnings = Vec::new();
-    let input = read_schema_component(&input_node, mfd_path, &mut warnings)
-        .ok_or("recursive XML input schema cannot be read")?;
-    let output = read_schema_component(&output_node, mfd_path, &mut warnings)
-        .ok_or("recursive XML output schema cannot be read")?;
+    let input =
+        read_schema_component_with_resources(&input_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive XML input schema cannot be read")?;
+    let output =
+        read_schema_component_with_resources(&output_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive XML output schema cannot be read")?;
     let input_id = component_id(input_node)?;
     let output_id = component_id(output_node)?;
 
@@ -295,6 +304,7 @@ fn try_read_collect(
 fn try_read_filter(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<ImportedDefinition, String> {
     let structure = component
         .children()
@@ -321,10 +331,12 @@ fn try_read_filter(
         _ => return Err("recursive filter XML parameter roles are ambiguous".to_string()),
     };
     let mut warnings = Vec::new();
-    let input = read_schema_component(&input_node, mfd_path, &mut warnings)
-        .ok_or("recursive filter input schema cannot be read")?;
-    let output = read_schema_component(&output_node, mfd_path, &mut warnings)
-        .ok_or("recursive filter output schema cannot be read")?;
+    let input =
+        read_schema_component_with_resources(&input_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive filter input schema cannot be read")?;
+    let output =
+        read_schema_component_with_resources(&output_node, mfd_path, resources, &mut warnings)
+            .ok_or("recursive filter output schema cannot be read")?;
     if input.schema != output.schema {
         return Err("recursive filter input and output schemas must match".to_string());
     }

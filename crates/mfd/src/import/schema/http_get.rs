@@ -162,7 +162,7 @@ fn read_get(
     let schema =
         resolve_resource_reference(mfd_path, resources, schema_file, "HTTP response XML Schema")
             .and_then(|schema_path| {
-                read_xml_schema_file(&schema_path, Some(root_name))
+                read_xml_schema_file(&schema_path, Some(root_name), resources)
                     .map_err(|error| error.to_string())
             });
     let mut schema = match schema {

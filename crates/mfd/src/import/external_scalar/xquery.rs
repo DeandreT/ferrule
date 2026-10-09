@@ -7,15 +7,15 @@ use super::lexer::{Token, ident, lex, matching};
 
 const MAX_EXPRESSION_NODES: usize = 256;
 
-pub(super) fn source_path(mapping_path: &Path, library: &str) -> Option<PathBuf> {
+pub(super) fn source_paths(mapping_path: &Path, library: &str) -> Vec<PathBuf> {
     if !safe_module_name(library) {
-        return None;
+        return Vec::new();
     }
     let parent = mapping_path.parent().unwrap_or_else(|| Path::new("."));
     ["xq", "xquery"]
         .into_iter()
         .map(|extension| parent.join(format!("{library}.{extension}")))
-        .find(|path| path.is_file())
+        .collect()
 }
 
 pub(super) fn parse(source: &str, function_name: &str, input_count: usize) -> Result<Expr, String> {

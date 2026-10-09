@@ -8,7 +8,8 @@ use mapping::{
 
 use super::function::read as read_function;
 use super::graph::{GraphBuilder, read_edges};
-use super::schema::{parse_u32, read_schema_component, schema_node_at};
+use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
+use crate::resource::ResourceResolver;
 
 mod scalar;
 mod sequence;
@@ -219,9 +220,27 @@ pub(super) struct Registry {
 }
 
 impl Registry {
+    #[cfg(test)]
     pub(super) fn read(
         mapping: &roxmltree::Node<'_, '_>,
         mfd_path: &std::path::Path,
+        warnings: &mut Vec<String>,
+    ) -> Self {
+        Self::read_resolved(mapping, mfd_path, None, warnings)
+    }
+
+    pub(super) fn read_in_package(
+        mapping: &roxmltree::Node<'_, '_>,
+        resources: &ResourceResolver,
+        warnings: &mut Vec<String>,
+    ) -> Self {
+        Self::read_resolved(mapping, resources.mapping_path(), Some(resources), warnings)
+    }
+
+    fn read_resolved(
+        mapping: &roxmltree::Node<'_, '_>,
+        mfd_path: &std::path::Path,
+        resources: Option<&ResourceResolver>,
         warnings: &mut Vec<String>,
     ) -> Self {
         let mut registry = Self::default();
@@ -251,6 +270,7 @@ impl Registry {
                 &declaration_by_key,
                 &mut Vec::new(),
                 mfd_path,
+                resources,
                 warnings,
             );
         }
@@ -263,6 +283,7 @@ impl Registry {
         declarations: &BTreeMap<(String, String), roxmltree::Node<'a, 'input>>,
         active: &mut Vec<(String, String)>,
         mfd_path: &std::path::Path,
+        resources: Option<&ResourceResolver>,
         warnings: &mut Vec<String>,
     ) -> Result<usize, String> {
         if let Some(idx) = self.supported.get(key) {
@@ -307,37 +328,45 @@ impl Registry {
                 if !declarations.contains_key(&dependency) {
                     return Ok(());
                 }
-                self.resolve(&dependency, declarations, active, mfd_path, warnings)
-                    .map(|_| ())
-                    .map_err(|reason| {
-                        if reason.contains("definition dependency cycle")
-                            || reason.starts_with("definition is recursive")
-                            || reason.contains("dependency depth exceeds")
-                        {
-                            reason
-                        } else {
-                            format!(
-                                "nested user-defined function `{}` ({}) is unsupported: {reason}",
-                                dependency.1, dependency.0
-                            )
-                        }
-                    })
+                self.resolve(
+                    &dependency,
+                    declarations,
+                    active,
+                    mfd_path,
+                    resources,
+                    warnings,
+                )
+                .map(|_| ())
+                .map_err(|reason| {
+                    if reason.contains("definition dependency cycle")
+                        || reason.starts_with("definition is recursive")
+                        || reason.contains("dependency depth exceeds")
+                    {
+                        reason
+                    } else {
+                        format!(
+                            "nested user-defined function `{}` ({}) is unsupported: {reason}",
+                            dependency.1, dependency.0
+                        )
+                    }
+                })
             });
         let result = dependency_result.and_then(|()| {
             if direct_recursive {
-                if let Some(definition) = structured::try_read_adjacency_tree(&component, mfd_path)?
+                if let Some(definition) =
+                    structured::try_read_adjacency_tree(&component, mfd_path, resources)?
                 {
                     Ok(definition)
                 } else if let Some(definition) =
-                    structured::try_read_path_hierarchy(&component, mfd_path)?
+                    structured::try_read_path_hierarchy(&component, mfd_path, resources)?
                 {
                     Ok(definition)
                 } else {
-                    structured::try_read_recursive(&component, mfd_path)?
+                    structured::try_read_recursive(&component, mfd_path, resources)?
                         .ok_or_else(|| format!("definition is recursive: `{}` ({})", key.1, key.0))
                 }
             } else {
-                read_definition(&component, mfd_path, self)
+                read_definition(&component, mfd_path, resources, self)
             }
         });
         active.pop();
@@ -767,6 +796,7 @@ fn schema_node_at_mut<'a>(
 fn read_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
+    resources: Option<&ResourceResolver>,
     registry: &Registry,
 ) -> Result<
     (
@@ -780,10 +810,10 @@ fn read_definition(
         Ok(definition) => Ok((definition, None, Vec::new())),
         Err(scalar::ReadError::Nested(reason)) => Err(reason),
         Err(scalar::ReadError::Shape(scalar_reason)) => {
-            match read_lookup_definition(component, mfd_path) {
+            match read_lookup_definition(component, mfd_path, resources) {
                 Ok(definition) => Ok(definition),
-                Err(_) => {
-                    structured::read(component, mfd_path, registry).map_err(|structured_reason| {
+                Err(_) => structured::read(component, mfd_path, resources, registry).map_err(
+                    |structured_reason| {
                         if component.descendants().any(|node| {
                             node.has_tag_name("properties")
                                 && node.attribute("UsageKind") == Some("output")
@@ -794,8 +824,8 @@ fn read_definition(
                         } else {
                             scalar_reason
                         }
-                    })
-                }
+                    },
+                ),
             }
         }
     }
@@ -804,6 +834,7 @@ fn read_definition(
 fn read_lookup_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<
     (
         Definition,
@@ -902,8 +933,13 @@ fn read_lookup_definition(
     let ports = if parameter_catalog {
         xml_output_paths(document)?
     } else {
-        let parsed = read_schema_component(&document, mfd_path, &mut schema_warnings)
-            .ok_or("lookup XML catalog schema cannot be read")?;
+        let parsed = read_schema_component_with_resources(
+            &document,
+            mfd_path,
+            resources,
+            &mut schema_warnings,
+        )
+        .ok_or("lookup XML catalog schema cannot be read")?;
         if !parsed.is_source || parsed.input_instance.is_none() {
             return Err(
                 "lookup XML component must be an input parameter or have a static input instance"
