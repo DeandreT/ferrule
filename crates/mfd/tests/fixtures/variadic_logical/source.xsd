@@ -1,0 +1,1 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Arg1" type="xs:boolean"/><xs:element name="Arg2" type="xs:boolean"/><xs:element name="Arg3" type="xs:boolean"/><xs:element name="Arg4" type="xs:boolean"/><xs:element name="Arg5" type="xs:boolean"/></xs:sequence></xs:complexType></xs:element></xs:schema>
