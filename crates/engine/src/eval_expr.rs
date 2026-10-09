@@ -9,6 +9,7 @@ use mapping::{FunctionId, Graph, Node, NodeId, UserFunction};
 
 use crate::aggregate::aggregate;
 use crate::context::{parameter_value, runtime_field};
+use crate::filter_map::{FilterMapRunState, FilterMapWork};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
@@ -29,6 +30,8 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) first_failure_reported: &'a Cell<bool>,
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
+    pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
+    pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -46,6 +49,8 @@ impl<'a> EvalProgram<'a> {
             first_failure_reported,
             purpose: ExecutionPurpose::Run,
             primary_source: None,
+            filter_map_run_state: None,
+            filter_map_work: None,
         }
     }
 
@@ -64,6 +69,20 @@ impl<'a> EvalProgram<'a> {
         self
     }
 
+    pub(crate) fn with_filter_map_run_state(mut self, state: &'a FilterMapRunState<'a>) -> Self {
+        self.filter_map_run_state = Some(state);
+        self
+    }
+
+    pub(crate) fn with_filter_map_work(mut self, work: FilterMapWork<'a>) -> Self {
+        self.filter_map_work = Some(work);
+        self
+    }
+
+    pub(super) fn purpose(self) -> ExecutionPurpose {
+        self.purpose
+    }
+
     pub(super) fn primary_source(self) -> Option<&'a Instance> {
         self.primary_source
     }
@@ -76,7 +95,16 @@ pub(crate) fn eval_expr(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let result = eval_expr_inner(program, node_id, context, positions, in_progress);
+    let work = program
+        .filter_map_work
+        .map(|work| work.at_node(None, node_id));
+    let result = work
+        .map_or(Ok(()), FilterMapWork::charge)
+        .and_then(|()| eval_expr_inner(program, node_id, context, positions, in_progress))
+        .map_err(|error| match work {
+            Some(work) => work.wrap(error),
+            None => error,
+        });
     if let Err(error) = &result {
         crate::debug::after_node_failure(
             program.debug_hook,
@@ -258,6 +286,7 @@ fn eval_expr_inner(
                 program.first_failure_reported,
                 positions,
                 program.purpose,
+                program.filter_map_work,
             )
         }
         Node::If {
