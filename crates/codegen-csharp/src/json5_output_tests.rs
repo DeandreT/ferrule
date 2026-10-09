@@ -41,7 +41,7 @@ fn program() -> Program {
 }
 
 #[test]
-fn json5_opt_in_preserves_ordinary_artifacts_and_all73_sources() {
+fn json5_opt_in_preserves_ordinary_artifacts_and_all74_sources() {
     let candidate = program();
     let evidence = Evidence::new("csharp-json5-selection");
     evidence.debug("PROGRAM.original.txt", &candidate);
@@ -59,7 +59,7 @@ fn json5_opt_in_preserves_ordinary_artifacts_and_all73_sources() {
     let after = after.unwrap();
     assert_eq!(before, after);
     assert_eq!(optional, repeated);
-    assert_eq!(runtime::SOURCES.len(), 73);
+    assert_eq!(runtime::SOURCES.len(), 74);
     assert_eq!(
         optional.files().len(),
         before.files().len() + runtime::JSON5_SOURCES.len() + 1
