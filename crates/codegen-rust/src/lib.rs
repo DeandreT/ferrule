@@ -186,6 +186,35 @@ fn render_manifest(options: &Options) -> String {
     )
 }
 
+fn render_selected_target_api(program: &Program, filter_map: bool) -> String {
+    let mut output = String::from(
+        "#[derive(Clone, Debug, PartialEq)]\npub enum SelectedTargetOutput {\n    Primary(Instance),\n    Named(NamedOutput),\n}\n\n#[derive(Clone, Copy)]\nenum ResolvedTarget {\n    Primary,\n",
+    );
+    for index in 0..program.extra_targets.len() {
+        output.push_str(&format!("    Named{index},\n"));
+    }
+    output.push_str("}\n\nfn resolve_target(selection: TargetSelection<'_>) -> Result<ResolvedTarget, RuntimeError> {\n    match selection {\n        TargetSelection::Primary => Ok(ResolvedTarget::Primary),\n        TargetSelection::Named(name) => match name {\n");
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        output.push_str(&format!(
+            "            {} => Ok(ResolvedTarget::Named{index}),\n",
+            rust_string(&target.name)
+        ));
+    }
+    output.push_str("            _ => Err(RuntimeError::UnknownTarget { name: name.to_string() }),\n        },\n    }\n}\n\n");
+    output.push_str(
+        "pub fn execute_selected_target(\n    source: &Instance,\n    selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    execute_selected_target_with_host(source, &[], None, None, selection)\n}\n\npub fn execute_selected_target_with_host<'a>(\n    source: &'a Instance,\n    inputs: &[NamedInput<'a>],\n    execution: Option<&ExecutionContext<'a>>,\n    loader: Option<&'a dyn DynamicSourceLoader>,\n    selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    let selected = resolve_target(selection)?;\n    let inputs = validate_named_inputs(inputs)?;\n    let context = match execution {\n        Some(execution) => ScopeContext::with_named_inputs_and_execution_context(source, &inputs, execution),\n        None => ScopeContext::with_named_inputs(source, &inputs),\n    };\n    let context = match loader { Some(loader) => context.with_dynamic_source_loader(loader), None => context };\n    execute_selected_target_from_context(&context, selected)\n}\n\npub fn execute_selected_target_with_filter_map_controls<'a>(\n    source: &'a Instance,\n    inputs: &[NamedInput<'a>],\n    execution: Option<&ExecutionContext<'a>>,\n    loader: Option<&'a dyn DynamicSourceLoader>,\n    selection: TargetSelection<'_>,\n    limits: FilterMapLimits,\n    cancellation: Option<&'a dyn FilterMapCancellation>,\n) -> Result<FilterMapExecution<SelectedTargetOutput>, RuntimeError> {\n    let selected = resolve_target(selection)?;\n    let inputs = validate_named_inputs(inputs)?;\n    let run = FilterMapRun::new(limits, cancellation);\n    let context = match execution {\n        Some(execution) => ScopeContext::with_named_inputs_and_execution_context(source, &inputs, execution),\n        None => ScopeContext::with_named_inputs(source, &inputs),\n    };\n    let context = context.with_filter_map_run(&run);\n    let context = match loader { Some(loader) => context.with_dynamic_source_loader(loader), None => context };\n    let outcome = execute_selected_target_from_context(&context, selected);\n    Ok(FilterMapExecution { outcome, counters: run.counters() })\n}\n\nfn execute_selected_target_from_context(\n    context: &ScopeContext<'_>,\n    selected: ResolvedTarget,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n",
+    );
+    if filter_map {
+        output.push_str("    let run_context = context.with_filter_map_defaults();\n    let context = &run_context;\n");
+    }
+    output.push_str("    evaluate_failure_rules(context)?;\n    match selected {\n        ResolvedTarget::Primary => Ok(SelectedTargetOutput::Primary(scope_root(context)?)),\n");
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        output.push_str(&format!("        ResolvedTarget::Named{index} => Ok(SelectedTargetOutput::Named(NamedOutput {{\n            name: {},\n            instance: scope_extra_{index}(context)?,\n        }})),\n", rust_string(&target.name)));
+    }
+    output.push_str("    }\n}\n\n");
+    output
+}
+
 fn render_source(program: &Program) -> Result<String, EmitError> {
     let filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut source = String::from(
@@ -212,6 +241,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     );
     source.push_str(
         "pub use codegen_runtime::NamedInput;\n\
+         pub use codegen_runtime::TargetSelection;\n\
          pub use codegen_runtime::{DynamicJsonSourceLoader, DynamicSourceLoader};\n\n",
     );
     source.push_str(
@@ -328,6 +358,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              )\n\
          }\n\n",
     );
+    source.push_str(&render_selected_target_api(program, filter_map));
     source.push_str(&render_json_api(program)?);
     source.push_str(&xml_api::render(program)?);
 
