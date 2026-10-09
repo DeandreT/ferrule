@@ -1,0 +1,8 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+ <xs:complexType name="Row"><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType>
+ <xs:complexType name="Batch"><xs:sequence><xs:element name="Allow" type="xs:string" minOccurs="0"/><xs:element name="Item" type="Row" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType>
+ <xs:element name="Source"><xs:complexType><xs:sequence>
+  <xs:element name="Left" type="Batch" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:element name="Right" type="Batch" minOccurs="0" maxOccurs="unbounded"/>
+ </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

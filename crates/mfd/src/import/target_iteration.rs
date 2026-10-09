@@ -13,6 +13,9 @@ use super::schema::{
 use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use super::source::SourcePath;
 
+mod branch_owners;
+use branch_owners::{BindingOrigins, DeclaredBranch, DeclaredBranches};
+
 pub(super) fn build(
     iterations: Vec<TargetIteration>,
     target: &SchemaComponent,
@@ -26,6 +29,7 @@ pub(super) fn build(
         .collect();
     let mut skipped = builder.rejected_join_paths.iter().cloned().collect();
     let mut claimed_bindings = BTreeSet::new();
+    let mut declared_branches = DeclaredBranches::default();
     for iteration in iterations {
         if iteration.additional_feeds.is_empty() {
             build_one(iteration, target, &connected, builder, scopes, &mut skipped);
@@ -38,10 +42,11 @@ pub(super) fn build(
                 scopes,
                 &mut skipped,
                 &mut claimed_bindings,
+                &mut declared_branches,
             );
         }
     }
-    distribute_nested_concatenations(&mut scopes.root);
+    declared_branches.distribute(&mut scopes.root, &mut builder.warnings);
     let mut index = 0;
     bindings.retain(|_| {
         let keep = !claimed_bindings.contains(&index);
@@ -51,49 +56,7 @@ pub(super) fn build(
     skipped
 }
 
-fn distribute_nested_concatenations(scope: &mut mapping::Scope) {
-    let Some(parent_count) = scope.concatenated().map(mapping::ScopeSequence::len) else {
-        for child in &mut scope.children {
-            distribute_nested_concatenations(child);
-        }
-        return;
-    };
-    let mut distributions = Vec::new();
-    scope.children.retain(|child| {
-        let Some(segments) = child.concatenated() else {
-            return true;
-        };
-        if segments.len() != parent_count {
-            return true;
-        }
-        distributions.push((
-            child.target_field.clone(),
-            segments.iter().cloned().collect::<Vec<_>>(),
-        ));
-        false
-    });
-    let Some(parent_segments) = scope.concatenated_mut() else {
-        return;
-    };
-    for (target_field, child_segments) in distributions {
-        for (parent, mut child) in parent_segments.iter_mut().zip(child_segments) {
-            child.target_field.clone_from(&target_field);
-            if let Some(existing) = parent
-                .children
-                .iter_mut()
-                .find(|existing| existing.target_field == target_field)
-            {
-                *existing = child;
-            } else {
-                parent.children.push(child);
-            }
-        }
-    }
-    for parent in parent_segments.iter_mut() {
-        distribute_nested_concatenations(parent);
-    }
-}
-
+#[allow(clippy::too_many_arguments)]
 fn build_concatenated(
     iteration: TargetIteration,
     target: &SchemaComponent,
@@ -102,6 +65,7 @@ fn build_concatenated(
     scopes: &mut ScopeBuilder,
     skipped: &mut Vec<Vec<String>>,
     claimed_bindings: &mut BTreeSet<usize>,
+    declared_branches: &mut DeclaredBranches,
 ) {
     let target_path = iteration.target_path.clone();
     let feeds = std::iter::once((
@@ -136,6 +100,7 @@ fn build_concatenated(
             scopes,
             skipped,
             claimed_bindings,
+            declared_branches,
         );
         return;
     }
@@ -144,6 +109,8 @@ fn build_concatenated(
         .filter_map(|(_, target_port, _)| *target_port)
         .collect::<BTreeSet<_>>();
     let mut segments = Vec::with_capacity(feeds.len());
+    let mut declared = Vec::with_capacity(feeds.len());
+    let mut complete_lineages = true;
     let mut segment_binding_indices = BTreeSet::new();
     for (feed, target_port, projects_whole_group) in feeds {
         let branch_bindings = target_port.map_or_else(Vec::new, |target_port| {
@@ -172,9 +139,24 @@ fn build_concatenated(
             .iter()
             .map(|index| bindings[*index].0.path())
             .collect::<BTreeSet<_>>();
+        let lineage = target_port.and_then(|port| branch_owners::lineage(target, port));
+        let anchors = match &lineage {
+            Some(lineage) => {
+                declared_branches.enclosing_anchors(&target_path, lineage, &scopes.anchors)
+            }
+            None => Some(scopes.anchors.clone()),
+        };
+        let Some(anchors) = anchors else {
+            builder.warnings.push(format!(
+                "nested cloned target `{}` has ambiguous declared ancestor ownership; iteration skipped",
+                target_path.join("/")
+            ));
+            skipped.push(target_path);
+            return;
+        };
         let mut segment_builder = ScopeBuilder {
             root: mapping::Scope::default(),
-            anchors: scopes.anchors.clone(),
+            anchors,
         };
         let mut segment_skipped = Vec::new();
         build_one(
@@ -193,11 +175,13 @@ fn build_concatenated(
             &mut segment_builder,
             &mut segment_skipped,
         );
+        let mut origins = BindingOrigins::new();
         for index in &branch_bindings {
             let (binding, feed, _) = &bindings[*index];
             let path = binding.path();
             let active_anchor = segment_builder.enclosing_anchor(&path);
             if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
+                origins.entry((path, node)).or_default().insert(*index);
                 segment_builder.add_binding(binding.clone(), node);
             }
         }
@@ -212,6 +196,15 @@ fn build_concatenated(
             return;
         }
         segment.target_field.clear();
+        if let Some(lineage) = lineage {
+            declared.push(DeclaredBranch {
+                lineage,
+                anchors: segment_builder.anchors,
+                bindings: origins,
+            });
+        } else {
+            complete_lineages = false;
+        }
         segments.push(segment);
         segment_binding_indices.extend(branch_bindings);
     }
@@ -220,6 +213,9 @@ fn build_concatenated(
         return;
     };
     scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
+    if complete_lineages {
+        declared_branches.record(&target_path, declared);
+    }
     claimed_bindings.extend(segment_binding_indices);
 }
 
@@ -234,6 +230,7 @@ fn build_ordered_branches(
     scopes: &mut ScopeBuilder,
     skipped: &mut Vec<Vec<String>>,
     claimed_bindings: &mut BTreeSet<usize>,
+    declared_branches: &mut DeclaredBranches,
 ) {
     let target_path = iteration.target_path.clone();
     let feeds = feeds
@@ -260,6 +257,7 @@ fn build_ordered_branches(
         .copied()
         .collect::<BTreeSet<_>>();
     let mut segments = Vec::with_capacity(branches.len());
+    let mut declared = Vec::with_capacity(branches.len());
     let mut segment_binding_indices = BTreeSet::new();
     for branch in branches {
         let owned = branch_bindings.get(&branch).map_or(&[][..], Vec::as_slice);
@@ -272,9 +270,22 @@ fn build_ordered_branches(
             .iter()
             .map(|index| bindings[*index].0.path())
             .collect::<BTreeSet<_>>();
+        let anchors = branch_owners::lineage(target, branch).and_then(|lineage| {
+            declared_branches
+                .enclosing_anchors(&target_path, &lineage, &scopes.anchors)
+                .map(|anchors| (lineage, anchors))
+        });
+        let Some((lineage, anchors)) = anchors else {
+            builder.warnings.push(format!(
+                "nested cloned target `{}` has ambiguous declared ancestor ownership; iteration skipped",
+                target_path.join("/")
+            ));
+            skipped.push(target_path);
+            return;
+        };
         let mut segment_builder = ScopeBuilder {
             root: mapping::Scope::default(),
-            anchors: scopes.anchors.clone(),
+            anchors,
         };
         let mut segment_skipped = Vec::new();
         if let Some((feed, projects_whole_group)) = feeds.get(&branch) {
@@ -295,11 +306,13 @@ fn build_ordered_branches(
                 &mut segment_skipped,
             );
         }
+        let mut origins = BindingOrigins::new();
         for index in &indices {
             let (binding, feed, _) = &bindings[*index];
             let path = binding.path();
             let active_anchor = segment_builder.enclosing_anchor(&path);
             if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
+                origins.entry((path, node)).or_default().insert(*index);
                 segment_builder.add_binding(binding.clone(), node);
             }
         }
@@ -315,6 +328,11 @@ fn build_ordered_branches(
         }
         segment.target_field.clear();
         segment.iteration_output = iteration.output;
+        declared.push(DeclaredBranch {
+            lineage,
+            anchors: segment_builder.anchors,
+            bindings: origins,
+        });
         segments.push(segment);
         segment_binding_indices.extend(indices);
     }
@@ -323,6 +341,7 @@ fn build_ordered_branches(
         return;
     };
     scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
+    declared_branches.record(&target_path, declared);
     claimed_bindings.extend(segment_binding_indices);
 }
 
@@ -1154,7 +1173,7 @@ fn project_connected_fields(
 mod tests {
     use mapping::{Scope, ScopeIteration, ScopeSequence};
 
-    use super::distribute_nested_concatenations;
+    use super::branch_owners::{DeclaredBranch, DeclaredBranches};
 
     fn sourced(path: &str) -> Scope {
         Scope {
@@ -1192,7 +1211,38 @@ mod tests {
             ..Scope::default()
         });
 
-        distribute_nested_concatenations(&mut parent);
+        let mut declared = DeclaredBranches::default();
+        declared.record(
+            &[],
+            vec![
+                DeclaredBranch {
+                    lineage: vec![1],
+                    anchors: Default::default(),
+                    bindings: Default::default(),
+                },
+                DeclaredBranch {
+                    lineage: vec![2],
+                    anchors: Default::default(),
+                    bindings: Default::default(),
+                },
+            ],
+        );
+        declared.record(
+            &["Child".to_string()],
+            vec![
+                DeclaredBranch {
+                    lineage: vec![1, 3],
+                    anchors: Default::default(),
+                    bindings: Default::default(),
+                },
+                DeclaredBranch {
+                    lineage: vec![2, 4],
+                    anchors: Default::default(),
+                    bindings: Default::default(),
+                },
+            ],
+        );
+        declared.distribute(&mut parent, &mut Vec::new());
 
         assert!(parent.children.is_empty());
         let sources = parent

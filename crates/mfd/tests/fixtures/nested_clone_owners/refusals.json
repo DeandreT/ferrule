@@ -1,0 +1,36 @@
+[
+  {
+    "design": "same_source_owners.mfd",
+    "require_refusal": true,
+    "selection_semantics_qualified": false,
+    "findings": [
+      {
+        "location": "scope `Group`",
+        "message": "target field `Side` is bound more than once"
+      },
+      {
+        "location": "scope `Group/Row`",
+        "message": "target field `Value` is bound more than once"
+      },
+      {
+        "location": "scope `Group/Row`",
+        "message": "target field `Value` is bound more than once"
+      },
+      {
+        "location": "scope `Group/Row`",
+        "message": "target field `Value` is bound more than once"
+      }
+    ]
+  },
+  {
+    "design": "distinct_scalar_feeds.mfd",
+    "require_refusal": true,
+    "selection_semantics_qualified": false,
+    "message": "target field `Side` is bound more than once"
+  },
+  {
+    "project": "ambiguous-ownerless.json",
+    "require_refusal": true,
+    "message": "concatenated scope wrapper cannot contain construction, controls, bindings, or child content"
+  }
+]

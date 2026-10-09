@@ -1,0 +1,183 @@
+{
+  "source": {
+    "name": "Source",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Parents",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": []
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Result",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Group",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Row",
+                "repeating": true,
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "Value",
+                      "repeating": false,
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "const",
+        "value": "0"
+      },
+      "1": {
+        "kind": "const",
+        "value": "1"
+      },
+      "2": {
+        "kind": "const",
+        "value": "2"
+      },
+      "3": {
+        "kind": "const",
+        "value": "3"
+      },
+      "4": {
+        "kind": "const",
+        "value": "4"
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "Group",
+        "source": null,
+        "filter": null,
+        "bindings": [],
+        "children": [
+          {
+            "target_field": "Row",
+            "source": null,
+            "filter": null,
+            "bindings": [],
+            "children": [],
+            "segments": [
+              {
+                "target_field": "",
+                "source": null,
+                "filter": null,
+                "bindings": [
+                  {
+                    "target_field": "Value",
+                    "node": 0
+                  }
+                ],
+                "children": []
+              },
+              {
+                "target_field": "",
+                "source": null,
+                "filter": null,
+                "bindings": [
+                  {
+                    "target_field": "Value",
+                    "node": 1
+                  }
+                ],
+                "children": []
+              },
+              {
+                "target_field": "",
+                "source": null,
+                "filter": null,
+                "bindings": [
+                  {
+                    "target_field": "Value",
+                    "node": 2
+                  }
+                ],
+                "children": []
+              },
+              {
+                "target_field": "",
+                "source": null,
+                "filter": null,
+                "bindings": [
+                  {
+                    "target_field": "Value",
+                    "node": 3
+                  }
+                ],
+                "children": []
+              },
+              {
+                "target_field": "",
+                "source": null,
+                "filter": null,
+                "bindings": [
+                  {
+                    "target_field": "Value",
+                    "node": 4
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ],
+        "segments": [
+          {
+            "target_field": "",
+            "source": [
+              "Parents"
+            ],
+            "filter": null,
+            "bindings": [],
+            "children": []
+          },
+          {
+            "target_field": "",
+            "source": [
+              "Parents"
+            ],
+            "filter": null,
+            "bindings": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}
