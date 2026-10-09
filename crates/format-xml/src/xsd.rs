@@ -463,8 +463,7 @@ fn import_type_with_reader(
                 path,
                 "complexType",
                 local,
-                Some(namespace),
-                effective_namespace,
+                (Some(namespace), effective_namespace),
                 &mut visited,
                 reader,
             )
