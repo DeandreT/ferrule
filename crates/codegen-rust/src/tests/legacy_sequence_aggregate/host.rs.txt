@@ -1,0 +1,97 @@
+use std::error::Error;
+use std::io::{self, Write};
+use codegen_runtime::{Instance, JsonBoundaryError, RuntimeError, Value, field, group, scalar};
+
+enum Expected {
+    Value { value: Value, json: &'static str },
+    Error { error: RuntimeError, message: &'static str },
+}
+struct Case {
+    id: &'static str,
+    execute: fn(&Instance) -> Result<Instance, RuntimeError>,
+    text: fn(&str) -> Result<String, JsonBoundaryError>,
+    bytes: fn(&[u8]) -> Result<Vec<u8>, JsonBoundaryError>,
+    expected: Expected,
+}
+struct Original {
+    typed: Result<Instance, RuntimeError>,
+    text: Result<String, JsonBoundaryError>,
+    bytes: Result<Vec<u8>, JsonBoundaryError>,
+}
+fn causes(error: &dyn Error) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = error.source();
+    while let Some(error) = current { values.push(error.to_string()); current = error.source(); }
+    values
+}
+fn retain_instance(instance: &Instance, path: &str) {
+    println!("whole instance path={path:?} actual={instance:#?}");
+    match instance {
+        Instance::Scalar(value) => println!("typed scalar path={path:?} tag={} actual={value:?} binary64={:?}",
+            value.type_name(), match value { Value::Float(value) => Some(value.to_bits()), _ => None }),
+        Instance::Group(group) => {
+            println!("actual group origin path={path:?} value={:?}", group.xml_type_origin());
+            for (index, (name, value)) in group.iter().enumerate() {
+                println!("ordered field path={path:?} index={index} name={name:?}");
+                retain_instance(value, &format!("{path}/field-{index}"));
+            }
+        }
+        Instance::Repeated(values) | Instance::MappedSequence(values) => {
+            for (index, value) in values.iter().enumerate() { retain_instance(value, &format!("{path}/item-{index}")); }
+        }
+        Instance::DocumentSet(values) => {
+            for (index, value) in values.iter().enumerate() {
+                println!("whole original document path={path:?} index={index} actual={value:#?}");
+                retain_instance(value.value(), &format!("{path}/document-{index}"));
+            }
+        }
+    }
+}
+fn retain_runtime(error: &RuntimeError) {
+    println!("whole typed runtime error={error:#?}\nmessage={error}\ncomplete cause chain={:#?}", causes(error));
+}
+fn retain_json(error: &JsonBoundaryError) {
+    println!("whole typed JSON boundary error={error:#?}\nmessage={error}\ncomplete cause chain={:#?}", causes(error));
+    if let JsonBoundaryError::Execution(error) = error { retain_runtime(error); }
+}
+fn run(cases: &[Case]) {
+    let source = group(Vec::new());
+    retain_instance(&source, "input");
+    // Every declared route runs and retains its full original before any expectation is checked.
+    let originals = cases.iter().map(|case| {
+        let typed = (case.execute)(&source);
+        let text = (case.text)("{}");
+        let bytes = (case.bytes)(b"{}");
+        println!("case={} full typed original={typed:#?}\nfull text original={text:#?}\nfull UTF8 bytes original={bytes:#?}", case.id);
+        match &typed { Ok(value) => retain_instance(value, case.id), Err(error) => retain_runtime(error) }
+        if let Err(error) = &text { retain_json(error); }
+        if let Err(error) = &bytes { retain_json(error); }
+        Original { typed, text, bytes }
+    }).collect::<Vec<_>>();
+    io::stdout().flush().unwrap();
+    let mut comparisons = 0;
+    for (case, actual) in cases.iter().zip(&originals) {
+        match &case.expected {
+            Expected::Value { value, json } => {
+                let expected = group([field("Result", scalar(value.clone()))]);
+                println!("independent expected case={} whole typed={expected:#?} full JSON bytes={:?}", case.id, json.as_bytes());
+                assert_eq!(actual.typed.as_ref().unwrap(), &expected, "{} typed", case.id);
+                assert_eq!(actual.text.as_ref().unwrap().as_bytes(), json.as_bytes(), "{} text", case.id);
+                assert_eq!(actual.bytes.as_ref().unwrap().as_slice(), json.as_bytes(), "{} bytes", case.id);
+            }
+            Expected::Error { error, message } => {
+                assert_eq!(actual.typed.as_ref().unwrap_err(), error, "{} typed category/fields", case.id);
+                assert_eq!(actual.typed.as_ref().unwrap_err().to_string(), *message, "{} typed message", case.id);
+                assert!(causes(actual.typed.as_ref().unwrap_err()).is_empty(), "{} typed causes", case.id);
+                for found in [actual.text.as_ref().unwrap_err(), actual.bytes.as_ref().unwrap_err()] {
+                    assert!(matches!(found, JsonBoundaryError::Execution(inner) if inner == error), "{} JSON execution envelope", case.id);
+                    assert_eq!(found.to_string(), *message, "{} JSON message", case.id);
+                    assert_eq!(causes(found), vec![(*message).to_owned()], "{} complete JSON cause chain", case.id);
+                }
+            }
+        }
+        comparisons += 3;
+    }
+    println!("complete legacy controls={} public calls={} qualified comparisons={comparisons}", cases.len(), originals.len() * 3);
+    assert_eq!(cases.len(), 15); assert_eq!(originals.len(), 15); assert_eq!(comparisons, 45);
+}

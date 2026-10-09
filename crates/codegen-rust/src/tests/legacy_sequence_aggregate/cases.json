@@ -1,0 +1,543 @@
+{
+  "status": "SOURCE_ONLY_FROZEN_BEFORE_TEST_PRODUCTION_AUTHORING_ALL_EXECUTION_UNRUN",
+  "scope": "One legacy Generate1..=3 SequenceAggregate per complete mapping. No FilterMap descriptor or stage.",
+  "cases": [
+    {
+      "id": "sum",
+      "aggregate": "Sum",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 5
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 5\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20350a7d0a"
+      }
+    },
+    {
+      "id": "count",
+      "aggregate": "Count",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 2\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20320a7d0a"
+      }
+    },
+    {
+      "id": "average",
+      "aggregate": "Avg",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "float",
+                "value": 2.5,
+                "ieee754_binary64_hex": "4004000000000000"
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 2.5\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20322e350a7d0a"
+      }
+    },
+    {
+      "id": "minimum",
+      "aggregate": "Min",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 2\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20320a7d0a"
+      }
+    },
+    {
+      "id": "maximum",
+      "aggregate": "Max",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 3
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 3\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20330a7d0a"
+      }
+    },
+    {
+      "id": "join",
+      "aggregate": "Join",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": "comma",
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "string",
+                "value": "2,3"
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": \"2,3\"\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a2022322c33220a7d0a"
+      }
+    },
+    {
+      "id": "item_at",
+      "aggregate": "ItemAt",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "item",
+      "argument_kind": "first",
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 2
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 2\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20320a7d0a"
+      }
+    },
+    {
+      "id": "source_positions",
+      "aggregate": "Sum",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "position",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 5
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 5\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20350a7d0a"
+      }
+    },
+    {
+      "id": "lazy_skipped_expression",
+      "aggregate": "Sum",
+      "predicate_kind": "greater_than_one",
+      "expression_kind": "lazy_raise",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [
+          2,
+          3
+        ],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 5
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 5\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20350a7d0a"
+      }
+    },
+    {
+      "id": "all_false_skips_expression",
+      "aggregate": "Sum",
+      "predicate_kind": "false",
+      "expression_kind": "lazy_raise",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "ok",
+        "selected_source_positions": [],
+        "typed_result": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Result",
+              {
+                "tag": "int",
+                "value": 0
+              }
+            ]
+          ]
+        },
+        "complete_expected_utf8": "{\n  \"Result\": 0\n}\n",
+        "complete_expected_utf8_hex": "7b0a202022526573756c74223a20300a7d0a"
+      }
+    },
+    {
+      "id": "predicate_int",
+      "aggregate": "Sum",
+      "predicate_kind": "int",
+      "expression_kind": "lazy_raise",
+      "argument_kind": "raise",
+      "predicate_literal": {
+        "tag": "int",
+        "value": 9
+      },
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "error",
+        "first_source_position": 1,
+        "typed_diagnostic": {
+          "category": "NotABool",
+          "node": 4,
+          "found": "int",
+          "message": "node 4: expected a bool, got int",
+          "source_chain": []
+        },
+        "json_envelope": "Execution",
+        "json_message": "node 4: expected a bool, got int",
+        "json_source_chain": [
+          "node 4: expected a bool, got int"
+        ]
+      }
+    },
+    {
+      "id": "predicate_float",
+      "aggregate": "Sum",
+      "predicate_kind": "float",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "predicate_literal": {
+        "tag": "float",
+        "value": 1.25,
+        "ieee754_binary64_hex": "3ff4000000000000"
+      },
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "error",
+        "first_source_position": 1,
+        "typed_diagnostic": {
+          "category": "NotABool",
+          "node": 4,
+          "found": "float",
+          "message": "node 4: expected a bool, got float",
+          "source_chain": []
+        },
+        "json_envelope": "Execution",
+        "json_message": "node 4: expected a bool, got float",
+        "json_source_chain": [
+          "node 4: expected a bool, got float"
+        ]
+      }
+    },
+    {
+      "id": "predicate_string",
+      "aggregate": "Sum",
+      "predicate_kind": "string",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "predicate_literal": {
+        "tag": "string",
+        "value": "bad λ"
+      },
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "error",
+        "first_source_position": 1,
+        "typed_diagnostic": {
+          "category": "NotABool",
+          "node": 4,
+          "found": "string",
+          "message": "node 4: expected a bool, got string",
+          "source_chain": []
+        },
+        "json_envelope": "Execution",
+        "json_message": "node 4: expected a bool, got string",
+        "json_source_chain": [
+          "node 4: expected a bool, got string"
+        ]
+      }
+    },
+    {
+      "id": "predicate_null",
+      "aggregate": "Sum",
+      "predicate_kind": "null",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "predicate_literal": {
+        "tag": "null",
+        "value": null
+      },
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "error",
+        "first_source_position": 1,
+        "typed_diagnostic": {
+          "category": "NotABool",
+          "node": 4,
+          "found": "null",
+          "message": "node 4: expected a bool, got null",
+          "source_chain": []
+        },
+        "json_envelope": "Execution",
+        "json_message": "node 4: expected a bool, got null",
+        "json_source_chain": [
+          "node 4: expected a bool, got null"
+        ]
+      }
+    },
+    {
+      "id": "predicate_raise",
+      "aggregate": "Sum",
+      "predicate_kind": "raise",
+      "expression_kind": "item",
+      "argument_kind": null,
+      "generate": {
+        "from": 1,
+        "to": 3,
+        "owner": 10
+      },
+      "predicate_node": 4,
+      "source_json": "{}",
+      "expected": {
+        "status": "error",
+        "first_source_position": 1,
+        "typed_diagnostic": {
+          "category": "MappingException",
+          "node": 4,
+          "message_payload": "predicate λ",
+          "message": "node 4: mapping exception: predicate λ",
+          "source_chain": []
+        },
+        "json_envelope": "Execution",
+        "json_message": "node 4: mapping exception: predicate λ",
+        "json_source_chain": [
+          "node 4: mapping exception: predicate λ"
+        ]
+      }
+    }
+  ],
+  "planned_public_calls": 45,
+  "routes": [
+    "execute full typed Instance",
+    "execute_json complete text",
+    "execute_json_bytes complete bytes"
+  ],
+  "observability": [
+    "Selected source positions are independent semantic expectations, not claimed runtime callback observations. Position-sum and lazy Raise behavior establish declared effects through complete outputs.",
+    "A failed public mapping exposes its error only, with no successful prefix claim.",
+    "All actual outcomes of all cases must be retained before any comparisons; baseline compilation failure can mean zero host calls executed."
+  ],
+  "baseline_requirement": "Root executes test-only additions against unchanged old production emitter first and retains genuine generated compiler failure and all ordinary emitted artifacts before adopting the one literal correction."
+}
