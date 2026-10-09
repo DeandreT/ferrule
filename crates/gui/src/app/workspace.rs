@@ -1289,3 +1289,7 @@ fn show_schema_result_count(
 #[cfg(test)]
 #[path = "workspace/inspector_lock_tests.rs"]
 mod inspector_lock_tests;
+
+#[cfg(test)]
+#[path = "fit_tests.rs"]
+mod fit_tests;
