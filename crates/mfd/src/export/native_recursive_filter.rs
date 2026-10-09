@@ -99,19 +99,12 @@ impl NativeRecursiveFilter {
         }
         let item = source.schema.child(plan.items())?;
         let recursive = source.schema.child(plan.children())?;
-        if source
-            .schema
-            .xml_repeating_choices
-            .as_slice()
-            .iter()
-            .any(|choice| {
-                choice.required
-                    || !choice.repeating
-                    || choice.members.as_slice() != [item.name.as_str(), recursive.name.as_str()]
-                        && choice.members.as_slice()
-                            != [recursive.name.as_str(), item.name.as_str()]
-            })
-            || source.schema.xml_repeating_choices.len() > 1
+        if source.schema.xml_repeating_choices.iter().any(|choice| {
+            choice.required
+                || !choice.repeating
+                || choice.members.as_slice() != [item.name.as_str(), recursive.name.as_str()]
+                    && choice.members.as_slice() != [recursive.name.as_str(), item.name.as_str()]
+        }) || source.schema.xml_repeating_choices.len() > 1
         {
             return None;
         }
