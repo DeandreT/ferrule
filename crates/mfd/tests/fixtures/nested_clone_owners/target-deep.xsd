@@ -1,0 +1,10 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+ <xs:element name="Result"><xs:complexType><xs:sequence>
+  <xs:element name="Group" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+   <xs:element name="Side" type="xs:string"/>
+   <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+    <xs:element name="Label" type="xs:string"/><xs:element name="Cell" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+   </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+ </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

@@ -48,6 +48,8 @@ mod json_text_boundaries;
 mod lookups;
 #[path = "code_generation/optional_runtime_defaults.rs"]
 mod optional_runtime_defaults;
+#[path = "code_generation/nested_clone_owners.rs"]
+mod nested_clone_owners;
 #[path = "code_generation/path_hierarchy.rs"]
 mod path_hierarchy;
 #[path = "code_generation/recursive_sequences.rs"]
