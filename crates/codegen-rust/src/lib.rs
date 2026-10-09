@@ -45,6 +45,7 @@ pub struct Options {
 /// Failure to render a complete Rust project.
 #[derive(Debug)]
 pub enum EmitError {
+    UnsupportedFilterMapV1 { item: NodeId },
     CsvOutput(CsvOutputError),
     InvalidProgram(ProgramValidationError),
     InvalidPackageName(String),
@@ -57,6 +58,10 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedFilterMapV1 { item } => write!(
+                formatter,
+                "generated Rust filter_map_v1 item {item} is not implemented"
+            ),
             Self::CsvOutput(error) => error.fmt(formatter),
             Self::InvalidProgram(error) => error.fmt(formatter),
             Self::InvalidPackageName(name) => {
@@ -80,7 +85,9 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::InvalidPackageName(_) | Self::SchemaSerialization(_) => None,
+            Self::UnsupportedFilterMapV1 { .. }
+            | Self::InvalidPackageName(_)
+            | Self::SchemaSerialization(_) => None,
         }
     }
 }
@@ -118,6 +125,11 @@ impl From<ArtifactSetError> for EmitError {
 /// Emits one buildable Rust library project.
 pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
+    if let Some(composition) = program.filter_map_v1_sequences().first() {
+        return Err(EmitError::UnsupportedFilterMapV1 {
+            item: composition.item,
+        });
+    }
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
@@ -438,7 +450,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
         }
         source.push_str(&rendered);
     }
-    source.push_str(&failure::render(program));
+    source.push_str(&failure::render(program)?);
 
     for (name, scope, child_names, segment_names) in scopes {
         source.push_str(&render_scope(
@@ -1553,7 +1565,7 @@ fn render_expression(
             predicate,
         } => {
             let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body);
+            render_generated_values(sequence, "        ", &mut body)?;
             body.push_str(&format!(
                 "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
             ));
@@ -1561,7 +1573,7 @@ fn render_expression(
         }
         Expression::SequenceItemAt { sequence, index } => {
             let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body);
+            render_generated_values(sequence, "        ", &mut body)?;
             body.push_str(&format!(
                 "        let index = expression_{index}(context)?;\n        aggregate(AggregateFunction::ItemAt, &sequence_values, Some(index))\n    }}"
             ));
@@ -1575,7 +1587,7 @@ fn render_expression(
             arg,
         } => {
             let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body);
+            render_generated_values(sequence, "        ", &mut body)?;
             body.push_str(
                 "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n",
             );
@@ -1716,7 +1728,7 @@ fn render_scope(
                 scope,
                 iteration,
                 child_names,
-            ));
+            )?);
         }
     } else {
         output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
@@ -1752,7 +1764,7 @@ fn render_iteration_scope(
     scope: &TargetScope,
     iteration: &IterationPlan,
     child_names: &[String],
-) -> String {
+) -> Result<String, EmitError> {
     let mut output = String::new();
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
@@ -1770,7 +1782,7 @@ fn render_iteration_scope(
         iteration.input(),
         candidates_are_reassigned,
         &mut output,
-    );
+    )?;
     if filter_before_sort {
         render_prefilter(iteration.filter(), &mut output);
     }
@@ -1853,14 +1865,14 @@ fn render_iteration_scope(
     output.push_str("    }\n");
     if iteration.dynamic_document_iteration().is_some() {
         output.push_str("    Ok(Instance::DocumentSet(outputs))\n");
-        return output;
+        return Ok(output);
     }
     if matches!(
         &scope.construction,
         TargetConstruction::DynamicGroup { merge: true, .. }
     ) {
         output.push_str("    merge_dynamic_fragments(outputs)\n");
-        return output;
+        return Ok(output);
     }
     match iteration.output() {
         IterationOutput::Repeated => output.push_str("    Ok(repeated(outputs))\n"),
@@ -1870,7 +1882,7 @@ fn render_iteration_scope(
         IterationOutput::First => output
             .push_str("    Ok(outputs.into_iter().next().unwrap_or_else(|| group(Vec::new())))\n"),
     }
-    output
+    Ok(output)
 }
 
 fn render_grouping(
@@ -2041,7 +2053,7 @@ fn render_iteration_candidates(
     input: &IterationSource,
     candidates_are_reassigned: bool,
     output: &mut String,
-) {
+) -> Result<(), EmitError> {
     let binding = if candidates_are_reassigned {
         "let mut candidates"
     } else {
@@ -2055,7 +2067,7 @@ fn render_iteration_candidates(
             render_source_iteration_candidates(program, dynamic.source().path(), binding, output);
         }
         IterationSource::Generated(sequence) => {
-            render_generated_values(sequence, "    ", output);
+            render_generated_values(sequence, "    ", output)?;
             output.push_str(
                 &format!(
                     "    let generated_items = GeneratedItems::new(sequence_values);\n    {binding} = context.generated_items(&generated_items);\n"
@@ -2067,6 +2079,7 @@ fn render_iteration_candidates(
             unreachable!("concatenated scopes render before candidate iteration")
         }
     }
+    Ok(())
 }
 
 fn render_inner_join(join: &InnerJoin, binding: &str, output: &mut String) {
@@ -2114,8 +2127,15 @@ fn render_inner_join_stage(
     format!("InnerJoinStage {{ collection: &[{collection}], keys: &[{keys}] }}")
 }
 
-fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &mut String) {
+fn render_generated_values(
+    sequence: &GeneratedSequence,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), EmitError> {
     match sequence {
+        GeneratedSequence::FilterMapV1(composition) => {
+            return Err(EmitError::UnsupportedFilterMapV1 { item: composition.item });
+        }
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(
@@ -2180,6 +2200,7 @@ fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &
             "{indent}let sequence_to = expression_{to}(context)?;\n{indent}let sequence_values = if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
         )),
     }
+    Ok(())
 }
 
 fn render_prefilter(filter: Option<NodeId>, output: &mut String) {

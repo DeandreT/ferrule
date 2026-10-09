@@ -33,32 +33,90 @@ pub(super) fn register_item(
     expressions: &BTreeMap<NodeId, &Expression>,
     owners: &mut BTreeMap<NodeId, SequenceOwner>,
 ) -> Result<(), ProgramValidationError> {
-    let item = sequence.item();
-    if let Some(first_owner) = owners.insert(item, owner.clone()) {
-        return Err(ProgramValidationError::DuplicateSequenceItem {
-            owner,
-            first_owner,
-            expression: item,
-        });
+    for item in sequence.owned_items() {
+        if let Some(first_owner) = owners.insert(item, owner.clone()) {
+            return Err(ProgramValidationError::DuplicateSequenceItem {
+                owner,
+                first_owner,
+                expression: item,
+            });
+        }
+        let Some(expression) = expressions.get(&item) else {
+            return Err(ProgramValidationError::MissingSequenceExpression {
+                owner,
+                role: SequenceExpressionRole::Item,
+                expression: item,
+            });
+        };
+        if !matches!(
+            expression,
+            Expression::SourceField {
+                frame: None,
+                path
+            } if path.is_empty()
+        ) {
+            return Err(ProgramValidationError::InvalidSequenceItem {
+                owner,
+                expression: item,
+            });
+        }
     }
-    let Some(expression) = expressions.get(&item) else {
-        return Err(ProgramValidationError::MissingSequenceExpression {
-            owner,
-            role: SequenceExpressionRole::Item,
-            expression: item,
-        });
-    };
-    if !matches!(
-        expression,
-        Expression::SourceField {
-            frame: None,
-            path
-        } if path.is_empty()
-    ) {
-        return Err(ProgramValidationError::InvalidSequenceItem {
-            owner,
-            expression: item,
-        });
+    Ok(())
+}
+
+pub(super) fn validate_retained_filter_map_inputs(
+    expressions: &BTreeMap<NodeId, &Expression>,
+    sequence_items: &BTreeSet<NodeId>,
+) -> Result<(), ProgramValidationError> {
+    for (&node, expression) in expressions {
+        let sequence = match expression {
+            Expression::SequenceExists { sequence, .. }
+            | Expression::SequenceItemAt { sequence, .. }
+            | Expression::SequenceAggregate { sequence, .. }
+                if matches!(sequence, GeneratedSequence::FilterMapV1(_)) =>
+            {
+                sequence
+            }
+            _ => continue,
+        };
+        let owner = SequenceOwner::Expression(node);
+        let mut visited = BTreeSet::new();
+        match expression {
+            Expression::SequenceItemAt { .. } => {
+                // ItemAt source arguments, captures and index have no private
+                // item context, including the composition's output owner.
+                validate_context(node, expressions, sequence_items, &[], &owner)?;
+            }
+            Expression::SequenceExists { predicate, .. } => {
+                visit_context(
+                    *predicate,
+                    node,
+                    expressions,
+                    sequence_items,
+                    &[sequence.item()],
+                    &owner,
+                    &mut visited,
+                )?;
+            }
+            Expression::SequenceAggregate {
+                predicate,
+                expression,
+                ..
+            } => {
+                for input in predicate.iter().chain(expression.iter()) {
+                    visit_context(
+                        *input,
+                        node,
+                        expressions,
+                        sequence_items,
+                        &[sequence.item()],
+                        &owner,
+                        &mut visited,
+                    )?;
+                }
+            }
+            _ => unreachable!(),
+        }
     }
     Ok(())
 }

@@ -13,6 +13,7 @@ mod collection_find;
 mod context;
 mod error;
 mod failures;
+mod filter_map;
 mod graph_dependencies;
 mod grouping;
 mod joins;
@@ -67,6 +68,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     targets::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     failures::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     let sequence_items = sequence_items.keys().copied().collect::<BTreeSet<_>>();
+    filter_map::validate(program, &expressions, &sequence_items)?;
     // Path/driver validation above keeps its existing diagnostic precedence.
     // Generated-item permissions require the complete expression/scope/failure
     // inventory, and a source driver grants no outer generated-item permission.
@@ -83,7 +85,11 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     }
     validate_expression_sequence_paths(sources, &expressions)?;
     failures::validate(program, &expressions, &sequence_items)?;
-    targets::validate(program, &expressions, &sequence_items)
+    targets::validate(program, &expressions, &sequence_items)?;
+    // Preserve existing reached lexical-error precedence, then defensively
+    // admit private inputs of every retained new reducer, including reducers
+    // that no target/failure root reaches in a directly constructed Program.
+    sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)
 }
 
 fn validate_schema_metadata(
