@@ -185,6 +185,9 @@ enum Command {
         /// Import a connected serial XML design as a typed pipeline.
         #[arg(long)]
         pipeline: bool,
+        /// Refuse incomplete single-project imports before writing the project.
+        #[arg(long, conflicts_with = "pipeline")]
+        require_executable: bool,
         /// Preserve supported row error order; refuse unsupported exception shapes.
         #[arg(long)]
         item_ordered_exceptions: bool,
@@ -666,26 +669,39 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             mfd,
             out,
             pipeline,
+            require_executable,
             item_ordered_exceptions,
             package_root,
             package_manifest,
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
-            let import = if pipeline {
-                cli::import_mfd_pipeline_with_exception_order
+            let warnings = if require_executable && !item_ordered_exceptions {
+                cli::import_mfd_with_profile(
+                    &mfd,
+                    &out,
+                    package_root.as_deref(),
+                    package_manifest.as_deref(),
+                    &edi_catalog_roots,
+                    &json_schema_catalog_roots,
+                    mfd::ImportProfile::Executable,
+                )?
             } else {
-                cli::import_mfd_with_exception_order
+                let import = if pipeline {
+                    cli::import_mfd_pipeline_with_exception_order
+                } else {
+                    cli::import_mfd_with_exception_order
+                };
+                import(
+                    &mfd,
+                    &out,
+                    package_root.as_deref(),
+                    package_manifest.as_deref(),
+                    &edi_catalog_roots,
+                    &json_schema_catalog_roots,
+                    item_ordered_exceptions,
+                )?
             };
-            let warnings = import(
-                &mfd,
-                &out,
-                package_root.as_deref(),
-                package_manifest.as_deref(),
-                &edi_catalog_roots,
-                &json_schema_catalog_roots,
-                item_ordered_exceptions,
-            )?;
             for warning in &warnings {
                 diagnostics.warning("import-mfd", warning);
             }
