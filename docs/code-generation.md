@@ -5,6 +5,11 @@ mapping library. Both backends use the same backend-neutral program, so supporte
 projects retain matching evaluation order, Null behavior, output shape, and
 typed failures.
 
+Standard Boolean `and` and `or` calls accept two or more strict Bool operands
+and evaluate every argument in declaration order. See
+[Variadic Boolean calls](design/variadic-boolean-calls.md) for type and error
+ordering, including the strict Null boundary.
+
 Generation rejects unsupported reachable constructs with capability diagnostics
 before creating the destination. Unreachable graph nodes do not prevent an
 otherwise portable project from being generated.

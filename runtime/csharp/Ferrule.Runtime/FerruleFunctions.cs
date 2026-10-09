@@ -77,8 +77,8 @@ public static partial class FerruleFunctions
             "get_fileext" => UnaryString(function, arguments, GetFileExtension),
             "resolve_filepath" => ResolveFilePath(arguments),
             "isbn10_to_isbn13" => Isbn10ToIsbn13(arguments),
-            "and" => BinaryBoolean(function, arguments, (left, right) => left && right),
-            "or" => BinaryBoolean(function, arguments, (left, right) => left || right),
+            "and" => ReduceBooleans(function, arguments, true, (left, right) => left && right),
+            "or" => ReduceBooleans(function, arguments, false, (left, right) => left || right),
             "not" => UnaryBoolean(function, arguments, value => !value),
             "exists" => Exists(arguments),
             "is_empty" => IsEmpty(arguments),
@@ -150,15 +150,30 @@ public static partial class FerruleFunctions
         return FerruleValue.FromBoolean(operation(RequireBooleanArgument(arguments[0], function)));
     }
 
-    private static FerruleValue BinaryBoolean(
+    private static FerruleValue ReduceBooleans(
         string function,
         IReadOnlyList<FerruleValue> arguments,
+        bool identity,
         Func<bool, bool, bool> operation)
     {
-        RequireArity(function, arguments, 2);
-        var left = RequireBooleanArgument(arguments[0], function);
-        var right = RequireBooleanArgument(arguments[1], function);
-        return FerruleValue.FromBoolean(operation(left, right));
+        if (arguments.Count < 2)
+        {
+            RequireArity(function, arguments, 2);
+        }
+
+        // Generated callers evaluate arguments eagerly. Validate the complete
+        // list in order before reducing, including operands after a decisive value.
+        foreach (var argument in arguments)
+        {
+            RequireBooleanArgument(argument, function);
+        }
+
+        var result = identity;
+        foreach (var argument in arguments)
+        {
+            result = operation(result, argument.BooleanValue);
+        }
+        return FerruleValue.FromBoolean(result);
     }
 
     private static FerruleValue BinaryString(
