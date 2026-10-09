@@ -123,8 +123,8 @@ fn read_column(
         return Err("document root name is missing".to_string());
     }
     let schema_path = resources.resolve_file(schema_file, "database XML column schema")?;
-    let schema =
-        read_xml_schema_file(&schema_path, Some(root)).map_err(|error| error.to_string())?;
+    let schema = read_xml_schema_file(&schema_path, Some(root), Some(resources))
+        .map_err(|error| error.to_string())?;
     let namespace = metadata
         .attribute("root")
         .and_then(expanded_namespace)
@@ -153,6 +153,78 @@ fn expanded_namespace(name: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{expanded_namespace, local_name};
+
+    #[test]
+    fn database_xml_column_dependencies_use_the_mapping_resource_root()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        for (location, contained) in [("types.xsd", true), ("../outside/types.xsd", false)] {
+            let folder = std::env::temp_dir().join(format!(
+                "ferrule_db_xml_boundary_{}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let package = folder.join("package");
+            std::fs::create_dir_all(&package)?;
+            std::fs::create_dir_all(folder.join("outside"))?;
+            let mapping = package.join("mapping.mfd");
+            std::fs::write(&mapping, "<mapping/>")?;
+            let types = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:simpleType name="SelectedType"><xs:restriction base="xs:int"/></xs:simpleType></xs:schema>"#;
+            std::fs::write(package.join("types.xsd"), types)?;
+            std::fs::write(folder.join("outside/types.xsd"), types)?;
+            std::fs::write(
+                package.join("column.xsd"),
+                format!(
+                    r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:include schemaLocation="{location}"/><xs:element name="Item"><xs:complexType><xs:sequence><xs:element name="Value" type="SelectedType"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#
+                ),
+            )?;
+            let document = roxmltree::Document::parse(
+                r#"<entry name="Rows" type="table"><entry name="payload"><entry type="doc-xml"><document schemafile="column.xsd" root="Item"/><entry name="Item" inpkey="30"/></entry></entry></entry>"#,
+            )?;
+            let resources = crate::resource::ResourceResolver::new(&mapping, Some(&package))?;
+            eprintln!("COLUMN_RESOURCE_BOUNDARY_ORIGINALS={}", folder.display());
+            let mut warnings = Vec::new();
+            let columns = super::collect(
+                &[document.root_element()],
+                false,
+                &resources,
+                "rows",
+                &mut warnings,
+            );
+            std::fs::write(
+                folder.join("outcome.txt"),
+                format!(
+                    "columns: {:?}\nwarnings: {warnings:#?}",
+                    columns
+                        .values()
+                        .map(|column| &column.schema)
+                        .collect::<Vec<_>>()
+                ),
+            )?;
+            if contained {
+                assert!(warnings.is_empty(), "{warnings:?}");
+                assert_eq!(
+                    columns
+                        .get(&30)
+                        .and_then(|column| column.schema.child("Value"))
+                        .map(|node| &node.kind),
+                    Some(&ir::SchemaKind::Scalar {
+                        ty: ir::ScalarType::Int
+                    })
+                );
+            } else {
+                assert!(columns.is_empty());
+                assert!(
+                    warnings
+                        .iter()
+                        .any(|warning| warning.contains("outside authorizing root")),
+                    "{warnings:?}"
+                );
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn expanded_root_names_are_split_without_affecting_plain_names() {

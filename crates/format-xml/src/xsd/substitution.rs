@@ -6,7 +6,7 @@ use roxmltree::Node;
 use crate::XmlFormatError;
 
 use super::{
-    MAX_MATERIALIZED_SCHEMA_ELEMENTS, expanded_qname_identity, normalized_path, read_xml_text,
+    MAX_MATERIALIZED_SCHEMA_ELEMENTS, SchemaReader, expanded_qname_identity, normalized_path,
     type_identity_in_namespace,
 };
 
@@ -230,7 +230,11 @@ impl SubstitutionIndex {
     }
 }
 
-pub(super) fn build(schema: &Node<'_, '_>, schema_path: &Path) -> SubstitutionIndex {
+pub(super) fn build(
+    schema: &Node<'_, '_>,
+    schema_path: &Path,
+    reader: &SchemaReader,
+) -> SubstitutionIndex {
     let mut index = SubstitutionIndex::default();
     collect_declarations(
         schema,
@@ -238,6 +242,7 @@ pub(super) fn build(schema: &Node<'_, '_>, schema_path: &Path) -> SubstitutionIn
         schema.attribute("targetNamespace"),
         &mut BTreeSet::new(),
         &mut index,
+        reader,
     );
     index
 }
@@ -248,6 +253,7 @@ fn collect_declarations(
     inherited_namespace: Option<&str>,
     visited: &mut BTreeSet<(PathBuf, Option<String>)>,
     index: &mut SubstitutionIndex,
+    reader: &SchemaReader,
 ) {
     if index.limit_reached {
         return;
@@ -335,7 +341,7 @@ fn collect_declarations(
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(location);
-        let Ok(text) = read_xml_text(&dependency) else {
+        let Ok(text) = reader.read(&dependency) else {
             index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         };
@@ -353,6 +359,7 @@ fn collect_declarations(
             dependency_inherited,
             visited,
             index,
+            reader,
         );
     }
 }

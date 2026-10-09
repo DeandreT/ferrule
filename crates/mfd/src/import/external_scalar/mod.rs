@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use ir::Value;
 use mapping::{Node, NodeId};
 
+use crate::resource::ResourceResolver;
+
 use super::graph::GraphBuilder;
 use super::schema::parse_u32;
 
@@ -32,6 +34,7 @@ pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mapping_path: &Path,
     selected_language: &str,
+    resources: &ResourceResolver,
 ) -> Result<Option<Recipe>, String> {
     if component.attribute("kind") != Some("5") {
         return Ok(None);
@@ -39,13 +42,12 @@ pub(super) fn read(
     let library = component.attribute("library").unwrap_or_default();
     let name = component.attribute("name").unwrap_or_default();
     let module = match selected_language {
-        "cs" | "csharp" => csharp::source_path(mapping_path, library, name)
-            .filter(|path| path.is_file())
+        "cs" | "csharp" => discover(csharp::source_path(mapping_path, library, name), resources)?
             .map(Module::CSharp),
-        "java" => java::source_path(mapping_path, library)
-            .filter(|path| path.is_file())
-            .map(Module::Java),
-        "xquery" => xquery::source_path(mapping_path, library).map(Module::XQuery),
+        "java" => discover(java::source_path(mapping_path, library), resources)?.map(Module::Java),
+        "xquery" => {
+            discover(xquery::source_paths(mapping_path, library), resources)?.map(Module::XQuery)
+        }
         _ => None,
     };
     let Some(module) = module else {
@@ -99,6 +101,18 @@ enum Module {
     CSharp(PathBuf),
     Java(PathBuf),
     XQuery(PathBuf),
+}
+
+fn discover(
+    candidates: impl IntoIterator<Item = PathBuf>,
+    resources: &ResourceResolver,
+) -> Result<Option<PathBuf>, String> {
+    for candidate in candidates {
+        if let Some(path) = resources.resolve_discovered_file(&candidate)? {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
 }
 
 fn format_number_expr(picture: String) -> Expr {
