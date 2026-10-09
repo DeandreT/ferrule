@@ -20,7 +20,10 @@ impl RegressionDirectory {
 }
 impl Drop for RegressionDirectory {
     fn drop(&mut self) {
-        if self.complete {
+        if self.complete
+            && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                != Some(std::ffi::OsStr::new("1"))
+        {
             let _ = std::fs::remove_dir_all(&self.path);
         } else {
             eprintln!(
