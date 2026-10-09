@@ -1,0 +1,227 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Runtime;
+
+internal static class RuntimeControls
+{
+    private sealed class Checker(Func<FerruleFilterMapBoundary, bool> rule) : IFerruleFilterMapCancellation
+    {
+        public readonly List<FerruleFilterMapBoundary> Seen = new();
+        public bool IsCancelled(FerruleFilterMapBoundary boundary) { Seen.Add(boundary); return rule(boundary); }
+    }
+    private static FerruleValue I(long value) => FerruleValue.FromInt64(value);
+    private static ScopeContext Context(ulong items = 1_000_000, ulong work = 10_000_000, Checker? checker = null)
+    {
+        var execution = new FerruleExecutionContext("fixture.json").WithFilterMapLimits(new(items, work));
+        if (checker is not null) execution = execution.WithFilterMapCancellation(checker);
+        return ScopeContext.FromSource(new FerruleGroup(Array.Empty<FerruleField>()), execution);
+    }
+    private static FerruleValue Node(ScopeContext context, uint node, ulong? function, Func<FerruleValue> action) =>
+        context.EvaluateFilterMapNode(node, function, action);
+    private static IReadOnlyList<FerruleValue> Identity(ScopeContext context, long count = 3,
+        List<object>? observations = null, FerruleValue? mapped = null, FerruleScalarType type = FerruleScalarType.Int64) =>
+        FerruleFilterMap.Evaluate(context, 11, new(1, c => Node(c, 1, null, () => I(1))), new(2, c => Node(c, 2, null, () => I(count))),
+            Array.Empty<FerruleFilterMapCapture>(),
+            new(100, 1, (c, arguments) => Node(c, 1, 100, () => FerruleValue.FromBoolean(true))),
+            new(101, 1, (c, arguments) => {
+                observations?.Add(new { arguments = arguments.Select(Capture.Value).ToArray() });
+                var value = Node(c, 1, 101, () => mapped ?? arguments[0]);
+                observations?.Add(new { returned = Capture.Value(value) });
+                return value;
+            }), type);
+    private static JsonNode Values(string literal) => JsonNode.Parse(literal)!;
+    private static JsonNode Ints(params long[] values) => Capture.Json(values.Select(value => new { tag = "int", value }).ToArray())!;
+    private static JsonObject Diagnostic(string category, string phase, int? position = null, ulong? function = null,
+        uint? node = null, int? captureIndex = null) => new() {
+            ["category"] = category, ["output_owner"] = 11U, ["phase"] = phase,
+            ["capture_index"] = captureIndex, ["source_position"] = position, ["function"] = function,
+            ["node"] = node, ["original_cause"] = null,
+        };
+    private static JsonNode Budget(string category, string phase, ulong maximum, ulong used, ulong requested,
+        int? position = null, ulong? function = null, uint? node = null)
+    {
+        var diagnostic = Diagnostic(category, phase, position, function, node);
+        diagnostic["limit"] = maximum; diagnostic["used"] = used; diagnostic["requested"] = requested;
+        return Driver.ExpectedError(diagnostic);
+    }
+    private static JsonNode Envelope(FerruleFilterMapBoundary boundary, Exception original)
+    {
+        var cause = Capture.Json(Capture.Error(original))!;
+        var expected = Capture.Json(Capture.Error(new Exception($"filter/map {boundary}: {original.Message}")))!.AsObject();
+        expected["type"] = "Ferrule.Runtime.FerruleFilterMapException"; expected["inner"] = cause;
+        expected["envelope"] = Capture.Json(new { item = boundary.Item, phase = boundary.Phase.ToString(),
+            captureIndex = boundary.CaptureIndex, sourcePosition = boundary.SourcePosition,
+            function = boundary.Function, node = boundary.Node, kind = boundary.Kind.ToString() });
+        return expected;
+    }
+    internal static int Run(string directory)
+    {
+        var cases = new List<(string Label, Func<object> Action, JsonNode Expected, List<object>? Observations, JsonNode? ExpectedObservations)>();
+        void Add(string label, Func<object> action, JsonNode expected, List<object>? observations = null, JsonNode? wantedObservations = null) =>
+            cases.Add((label, action, expected, observations, wantedObservations));
+
+        var positions = new List<object>();
+        var parent = Context().IterateGenerated(Enumerable.Range(1, 7).Select(value => I(value)).ToArray()).Last();
+        Add("parent-source-dense", () => FerruleFilterMap.Evaluate(parent, 11,
+            new(1, c => Node(c, 1, null, () => I(1))), new(2, c => Node(c, 2, null, () => I(5))),
+            new[] { new FerruleFilterMapCapture(20, FerruleScalarType.Int64, c => {
+                var value = Node(c, 20, null, () => I(c.Position(Array.Empty<string>())));
+                positions.Add(new { capture = Capture.Value(value) }); return value;
+            }) }, new(100, 1, (c, args) => Node(c, 1, 100, () => FerruleValue.FromBoolean(args[0].Int64Value > 2))),
+            new(101, 1, (c, args) => {
+                positions.Add(new { arguments = args.Select(Capture.Value).ToArray() });
+                return Node(c, 1, 101, () => I(args[0].Int64Value * 10 + args[1].Int64Value + args[2].Int64Value));
+            }), FerruleScalarType.Int64), Ints(40, 51, 62), positions,
+            Values("[{\"capture\":{\"tag\":\"int\",\"value\":7}},{\"arguments\":[{\"tag\":\"int\",\"value\":3},{\"tag\":\"int\",\"value\":3},{\"tag\":\"int\",\"value\":7}]},{\"arguments\":[{\"tag\":\"int\",\"value\":4},{\"tag\":\"int\",\"value\":4},{\"tag\":\"int\",\"value\":7}]},{\"arguments\":[{\"tag\":\"int\",\"value\":5},{\"tag\":\"int\",\"value\":5},{\"tag\":\"int\",\"value\":7}]}]"));
+        var emptyCapture = new List<object>();
+        Add("empty-capture-once", () => FerruleFilterMap.Evaluate(Context(), 11, new(1, c => I(4)), new(2, c => I(2)),
+            new[] { new FerruleFilterMapCapture(20, FerruleScalarType.String, c => {
+                var value = FerruleValue.FromString("captured"); emptyCapture.Add(Capture.Value(value)); return value;
+            }) }, new(100, 1, (_, _) => throw new InvalidOperationException("predicate must remain uncalled")),
+            new(101, 1, (_, _) => throw new InvalidOperationException("mapper must remain uncalled")), FerruleScalarType.Int64),
+            Ints(), emptyCapture, Values("[{\"tag\":\"string\",\"value\":\"captured\"}]"));
+        var absent = new List<object>();
+        Add("absent-skips-upper", () => FerruleFilterMap.Evaluate(Context(), 11, new(1, _ => FerruleValue.JsonNull),
+            new(2, _ => { absent.Add("upper called"); throw new InvalidOperationException("upper"); }), Array.Empty<FerruleFilterMapCapture>(),
+            new(100, 1, (_, _) => FerruleValue.FromBoolean(true)), new(101, 1, (_, _) => I(9)), FerruleScalarType.Int64),
+            Ints(), absent, Values("[]"));
+        var captureOrder = new List<object>();
+        var badCapture = Diagnostic("CaptureTag", "capture", node: 20, captureIndex: 0);
+        badCapture["expected_tag"] = "int"; badCapture["found_value"] = Values("{\"tag\":\"string\",\"value\":\"7\"}");
+        Add("capture-refusal-before-next", () => FerruleFilterMap.Evaluate(Context(), 11, new(1, _ => I(1)), new(2, _ => I(0)),
+            new[] { new FerruleFilterMapCapture(20, FerruleScalarType.Int64, _ => {
+                var value = FerruleValue.FromString("7"); captureOrder.Add(Capture.Value(value)); return value;
+            }), new FerruleFilterMapCapture(21, FerruleScalarType.Int64, _ => {
+                captureOrder.Add("second called"); throw new InvalidOperationException("later capture");
+            }) }, new(100, 1, (_, _) => FerruleValue.FromBoolean(true)), new(101, 1, (_, _) => I(1)), FerruleScalarType.Int64),
+            Driver.ExpectedError(badCapture), captureOrder, Values("[{\"tag\":\"string\",\"value\":\"7\"}]"));
+
+        var sharedItems = Context(5, 100);
+        Add("shared-item-first", () => Identity(sharedItems), Ints(1, 2, 3));
+        Add("shared-item-second-refused", () => Identity(sharedItems), Budget("ItemLimit", "source", 5, 3, 3));
+        Add("failed-item-reservation-not-consumed", () => Identity(sharedItems, 2), Ints(1, 2));
+        Add("fresh-run-item-counters", () => Identity(Context(5, 100)), Ints(1, 2, 3));
+        var sharedWork = Context(6, 19);
+        Add("shared-work-first", () => Identity(sharedWork), Ints(1, 2, 3));
+        Add("shared-work-second-reservation", () => Identity(sharedWork), Budget("WorkLimit", "source", 19, 19, 3));
+        var nextWork = Budget("WorkLimit", "source", 19, 19, 1, node: 1).AsObject();
+        // A node charge, as opposed to a range reservation, refuses at the same used=19.
+        nextWork["envelope"]!["kind"] = "NodeEvaluation";
+        var nextBoundary = new FerruleFilterMapBoundary(11, FerruleFilterMapPhase.Source, Node: 1, Kind: FerruleFilterMapBoundaryKind.NodeEvaluation);
+        nextWork["Message"] = $"filter/map {nextBoundary}: {nextWork["inner"]!["Message"]!.GetValue<string>()}";
+        Add("failed-work-reservation-not-consumed", () => Identity(sharedWork), nextWork);
+        Add("fresh-run-work-counters", () => Identity(Context(6, 19)), Ints(1, 2, 3));
+        Add("work-first-mapper-node", () => Identity(Context(work: 8)), Budget("WorkLimit", "mapper", 8, 8, 1, 1, 101, 1));
+        var cancel = new Checker(boundary => boundary.Phase == FerruleFilterMapPhase.Mapper && boundary.SourcePosition == 2 && boundary.Kind == FerruleFilterMapBoundaryKind.CallEntry);
+        var prefix = new List<object>();
+        Add("cancelled-prefix-evidence-only", () => Identity(Context(checker: cancel), observations: prefix),
+            Driver.ExpectedError(Diagnostic("Cancelled", "mapper", 2, 101)), prefix,
+            Values("[{\"arguments\":[{\"tag\":\"int\",\"value\":1},{\"tag\":\"int\",\"value\":1}]},{\"returned\":{\"tag\":\"int\",\"value\":1}}]"));
+        var primitiveCancel = new Checker(boundary => boundary.Kind == FerruleFilterMapBoundaryKind.SourceReservation);
+        var primitiveCancelled = Diagnostic("Cancelled", "source"); primitiveCancelled["boundary_override"] = "SourceReservation";
+        Add("cancel-before-primitive-and-cumulative", () => Identity(Context(3, 100, primitiveCancel), 1_000_001), Driver.ExpectedError(primitiveCancelled));
+        var primitive = Diagnostic("OriginalEvaluationError", "source");
+        primitive["original_cause"] = Values("{\"category\":\"GeneratedSequenceTooLarge\",\"requested\":1000001,\"max\":1000000}");
+        Add("primitive-before-cumulative", () => Identity(Context(3, 100), 1_000_001), Driver.ExpectedError(primitive));
+        var nodeCancel = Diagnostic("Cancelled", "source", node: 1); nodeCancel["boundary_override"] = "NodeEvaluation";
+        Add("cancel-before-zero-work", () => Identity(Context(work: 0, checker: new Checker(_ => true))), Driver.ExpectedError(nodeCancel));
+        var originalChecker = new Checker(_ => throw new InvalidOperationException("checker original"));
+        Add("checker-original-cause", () => Identity(Context(work: 0, checker: originalChecker)),
+            Envelope(new(11, FerruleFilterMapPhase.Source, Node: 1, Kind: FerruleFilterMapBoundaryKind.NodeEvaluation),
+                new InvalidOperationException("checker original")));
+
+        foreach (var (label, value, tag) in new[] { ("null", FerruleValue.Null, "null"), ("json-null", FerruleValue.JsonNull, "json null"), ("xml-nil", FerruleValue.XmlNil, "xml nil") })
+        {
+            var diagnostic = Diagnostic("OutputTag", "mapper", 1, 101, 1);
+            diagnostic["expected_tag"] = "int"; diagnostic["found_value"] = Capture.Json(new { tag });
+            Add("strict-output-" + label, () => Identity(Context(), mapped: value), Driver.ExpectedError(diagnostic));
+        }
+        Add("signed-zero-bits", () => Identity(Context(), 1, mapped: FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)0x8000000000000000UL))), type: FerruleScalarType.Double),
+            Values("[{\"tag\":\"float\",\"value\":0.0,\"ieee754_binary64_hex\":\"8000000000000000\"}]"));
+        foreach (var bits in new[] { 0x7ff0000000000000UL, 0x7ff8000000000042UL })
+        {
+            var diagnostic = Diagnostic("OutputNonFinite", "mapper", 1, 101, 1);
+            diagnostic["found_ieee754_binary64_hex"] = bits.ToString("x16");
+            Add("nonfinite-" + bits.ToString("x16"), () => Identity(Context(), 1,
+                mapped: FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)bits))), type: FerruleScalarType.Double), Driver.ExpectedError(diagnostic));
+        }
+        var captureNonfinite = Diagnostic("CaptureNonFinite", "capture", node: 20, captureIndex: 0);
+        captureNonfinite["found_ieee754_binary64_hex"] = "fff0000000000000";
+        Add("nonfinite-capture", () => FerruleFilterMap.Evaluate(Context(), 11, new(1, _ => I(1)), new(2, _ => I(0)),
+            new[] { new FerruleFilterMapCapture(20, FerruleScalarType.Double, _ => FerruleValue.FromDouble(double.NegativeInfinity)) },
+            new(100, 1, (_, _) => FerruleValue.FromBoolean(true)), new(101, 1, (_, _) => I(1)), FerruleScalarType.Int64),
+            Driver.ExpectedError(captureNonfinite));
+        var skipped = new List<object>();
+        Add("false-predicate-lazy-mapper", () => FerruleFilterMap.Evaluate(Context(), 11, new(1, _ => I(1)), new(2, _ => I(3)), Array.Empty<FerruleFilterMapCapture>(),
+            new(100, 1, (_, _) => FerruleValue.FromBoolean(false)), new(101, 1, (_, _) => {
+                skipped.Add("called"); throw new InvalidOperationException("mapper"); }), FerruleScalarType.Int64), Ints(), skipped, Values("[]"));
+        foreach (var entered in new[] { 63, 64 })
+        {
+            var depth = Diagnostic("OriginalEvaluationError", "mapper", 1, 101, 1);
+            depth["boundary_override"] = "Result";
+            depth["original_cause"] = Values("{\"category\":\"UserFunctionDepth\",\"max\":64}");
+            Add("call-depth-" + (entered + 1), () => FerruleFilterMap.Evaluate(Context(), 11, new(1, _ => I(1)), new(2, _ => I(1)), Array.Empty<FerruleFilterMapCapture>(),
+                new(100, 1, (_, _) => FerruleValue.FromBoolean(true)), new(101, 1, (context, _) => {
+                    for (var index = 0; index < entered; index++) context = context.EnterFilterMapCall(101);
+                    return I(1);
+                }), FerruleScalarType.Int64), entered == 63 ? Ints(1) : Driver.ExpectedError(depth));
+        }
+        var legacyChecker = new Checker(_ => true);
+        var legacyContext = Context(0, 0, legacyChecker);
+        Add("legacy-nodes-outside-feature", () => legacyContext.EvaluateFilterMapNode(1, null, () => I(42)), Capture.Json(Capture.Value(I(42)))!);
+        Add("legacy-generate-outside-feature", () => FerruleSequences.GenerateRange(null, I(3)), Ints(1, 2, 3));
+        Add("zero-limits-are-lowerable", () => new { source = new FerruleFilterMapLimits(0, 0).SourceItems.ToString(), work = new FerruleFilterMapLimits(0, 0).Work.ToString() },
+            Values("{\"source\":\"0\",\"work\":\"0\"}"));
+        Add("item-ceiling-cannot-be-raised", () => new FerruleFilterMapLimits(1_000_001, 1), Capture.Json(Capture.Error(new ArgumentOutOfRangeException("sourceItems")))!);
+        Add("work-ceiling-cannot-be-raised", () => new FerruleFilterMapLimits(1, 10_000_001), Capture.Json(Capture.Error(new ArgumentOutOfRangeException("work")))!);
+
+        foreach (var lower in new[] { true, false })
+        {
+            var observations = new List<object>();
+            var node = lower ? 1U : 2U;
+            var boundary = new FerruleFilterMapBoundary(11, FerruleFilterMapPhase.Source, Node: node);
+            var original = new FerruleRuntimeException(FerruleRuntimeError.FunctionType,
+                "`generate-sequence` cannot accept a bool argument.", function: "generate-sequence", foundKind: FerruleValueKind.Bool);
+            Add("source-" + (lower ? "lower" : "upper") + "-bool-coercion-node", () => FerruleFilterMap.Evaluate(Context(), 11,
+                new(1, context => {
+                    var value = Node(context, 1, null, () => lower ? FerruleValue.FromBoolean(true) : I(1));
+                    observations.Add(new { bound = "from", node = 1, value = Capture.Value(value) }); return value;
+                }),
+                new(2, context => {
+                    var value = Node(context, 2, null, () => lower ? I(3) : FerruleValue.FromBoolean(true));
+                    observations.Add(new { bound = "to", node = 2, value = Capture.Value(value) }); return value;
+                }), Array.Empty<FerruleFilterMapCapture>(),
+                new(100, 1, (_, _) => throw new InvalidOperationException("predicate must remain uncalled")),
+                new(101, 1, (_, _) => throw new InvalidOperationException("mapper must remain uncalled")), FerruleScalarType.Int64),
+                Envelope(boundary, original), observations,
+                lower ? Values("[{\"bound\":\"from\",\"node\":1,\"value\":{\"tag\":\"bool\",\"value\":true}},{\"bound\":\"to\",\"node\":2,\"value\":{\"tag\":\"int\",\"value\":3}}]")
+                    : Values("[{\"bound\":\"from\",\"node\":1,\"value\":{\"tag\":\"int\",\"value\":1}},{\"bound\":\"to\",\"node\":2,\"value\":{\"tag\":\"bool\",\"value\":true}}]"));
+        }
+
+        var actual = new List<(string Label, object Result, JsonNode? Observations)>();
+        foreach (var item in cases)
+        {
+            var result = Capture.Attempt(item.Action);
+            Capture.Retain(directory, item.Label, result);
+            var observed = item.Observations is null ? null : Capture.Json(item.Observations.ToArray());
+            File.WriteAllText(Path.Combine(directory, item.Label + ".stage-original.json"), observed?.ToJsonString() ?? "null");
+            actual.Add((item.Label, result, observed));
+        }
+        // Entire case cohort and actual delegated values precede every expected comparison.
+        File.WriteAllText(Path.Combine(directory, "COMPLETE-CHECKER-ORIGINALS.json"), JsonSerializer.Serialize(new { primitiveCancel.Seen, cancel = cancel.Seen, legacy = legacyChecker.Seen }));
+        var mismatches = new List<object>();
+        for (var index = 0; index < cases.Count; index++)
+        {
+            var observed = Capture.Json(Capture.Raw(actual[index].Result));
+            if (!JsonNode.DeepEquals(observed, cases[index].Expected) || !JsonNode.DeepEquals(actual[index].Observations, cases[index].ExpectedObservations))
+                mismatches.Add(new { actual[index].Label, completeActual = observed, completeExpected = cases[index].Expected,
+                    actualStages = actual[index].Observations, expectedStages = cases[index].ExpectedObservations });
+        }
+        if (legacyChecker.Seen.Count != 0) mismatches.Add(new { error = "legacy context reached feature cancellation" });
+        File.WriteAllText(Path.Combine(directory, "COMPLETE-RUNTIME-COMPARISONS.json"), JsonSerializer.Serialize(new { calls = cases.Count, mismatches,
+            scope = "direct public runtime and independently authored delegates; pre-error stage values are diagnostic evidence, never public mapping output" }));
+        if (mismatches.Count != 0) throw new InvalidOperationException($"{mismatches.Count} direct runtime mismatches.");
+        Console.WriteLine($"DIRECT_RUNTIME_CALLS={cases.Count}; COMPLETE_MATCHES={cases.Count}");
+        return 0;
+    }
+}

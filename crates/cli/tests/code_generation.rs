@@ -28,6 +28,8 @@ mod dynamic_properties;
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]
 mod failure_rules;
+#[path = "code_generation/filter_map_csharp.rs"]
+mod filter_map_csharp;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/grouping.rs"]
@@ -731,7 +733,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 75,
+            files_written: 76,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -750,6 +752,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleEmbeddedSchema.cs",
             "Runtime/FerruleExecutionContext.cs",
             "Runtime/FerruleFailures.cs",
+            "Runtime/FerruleFilterMap.cs",
             "Runtime/FerruleFunctions.DateTime.cs",
             "Runtime/FerruleFunctions.DateTimeAdd.cs",
             "Runtime/FerruleFunctions.DateTimeFormatting.cs",

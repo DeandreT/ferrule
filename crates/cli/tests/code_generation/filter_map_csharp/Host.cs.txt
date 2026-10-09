@@ -1,0 +1,196 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private sealed class Cancellation(JsonObject specification) : IFerruleFilterMapCancellation
+    {
+        public readonly List<FerruleFilterMapBoundary> Observed = new();
+        public bool IsCancelled(FerruleFilterMapBoundary boundary)
+        {
+            Observed.Add(boundary);
+            return specification["kind"]!.GetValue<string>() != "never"
+                && boundary.Phase.ToString().ToLowerInvariant() == specification["phase"]!.GetValue<string>()
+                && boundary.SourcePosition == specification["source_position"]!.GetValue<int>()
+                && boundary.Function == specification["function"]!.GetValue<ulong>()
+                && boundary.Kind == FerruleFilterMapBoundaryKind.CallEntry;
+        }
+    }
+    private static FerruleExecutionContext Context(JsonObject profile, Cancellation cancellation) =>
+        new FerruleExecutionContext("fixture.json").WithFilterMapLimits(new FerruleFilterMapLimits(
+            UInt128.Parse(profile["limits"]!["source_items"]!.ToJsonString(), CultureInfo.InvariantCulture),
+            UInt128.Parse(profile["limits"]!["work"]!.ToJsonString(), CultureInfo.InvariantCulture)))
+            .WithFilterMapCancellation(cancellation);
+    private static FerruleScalarType Scalar(string tag) => tag switch
+    {
+        "int" => FerruleScalarType.Int64, "float" => FerruleScalarType.Double,
+        "bool" => FerruleScalarType.Bool, "string" => FerruleScalarType.String,
+        _ => throw new InvalidOperationException("Unknown expected finite scalar tag."),
+    };
+    private static FerruleValueKind Tag(string tag) => tag switch
+    {
+        "null" => FerruleValueKind.Null, "json null" => FerruleValueKind.JsonNull,
+        "xml nil" => FerruleValueKind.XmlNil, "int" => FerruleValueKind.Int64,
+        "float" => FerruleValueKind.Double, "bool" => FerruleValueKind.Bool,
+        "string" => FerruleValueKind.String, _ => throw new InvalidOperationException("Unknown expected scalar tag."),
+    };
+    private static JsonNode ExpectedCause(JsonObject diagnostic)
+    {
+        if (diagnostic["original_cause"] is JsonObject original)
+        {
+            var category = original["category"]!.GetValue<string>();
+            FerruleRuntimeException originalExpected = category switch
+            {
+                "MappingException" => new(FerruleRuntimeError.MappingException,
+                    $"node {original["node"]}: mapping exception: {original["message"]?.GetValue<string>() ?? "mapping exception was raised"}",
+                    node: original["node"]!.GetValue<uint>(), mappingExceptionMessage: original["message"]?.GetValue<string>()),
+                "GeneratedSequenceTooLarge" => new(FerruleRuntimeError.GeneratedSequenceTooLarge,
+                    $"generate-sequence requested {original["requested"]} items; maximum is {original["max"]}",
+                    requestedItems: UInt128.Parse(original["requested"]!.ToJsonString(), CultureInfo.InvariantCulture),
+                    maximumItems: UInt128.Parse(original["max"]!.ToJsonString(), CultureInfo.InvariantCulture)),
+                "UserFunctionDepth" => new(FerruleRuntimeError.UserFunctionDepth, "user function exceeds the 64-call depth limit", maximumDepth: 64),
+                "FunctionType" => new(FerruleRuntimeError.FunctionType,
+                    original["message"]!.GetValue<string>(),
+                    function: original["function"]!.GetValue<string>(), foundKind: Tag(original["found"]!.GetValue<string>())),
+                "UserFunctionOutputType" => new(FerruleRuntimeError.UserFunctionType,
+                    $"user function {original["function"]} output: expected {Scalar(original["expected"]!.GetValue<string>())}, got {Tag(original["found"]!.GetValue<string>())}",
+                    foundKind: Tag(original["found"]!.GetValue<string>()), userFunction: original["function"]!.GetValue<ulong>(),
+                    expectedScalarType: Scalar(original["expected"]!.GetValue<string>())),
+                "UserFunctionParameterType" => new(FerruleRuntimeError.UserFunctionType,
+                    $"user function {original["function"]} parameter {original["parameter"]}: expected {Scalar(original["expected"]!.GetValue<string>())}, got {Tag(original["found"]!.GetValue<string>())}",
+                    foundKind: Tag(original["found"]!.GetValue<string>()), userFunction: original["function"]!.GetValue<ulong>(),
+                    functionParameter: original["parameter"]!.GetValue<ulong>(), expectedScalarType: Scalar(original["expected"]!.GetValue<string>())),
+                _ => throw new InvalidOperationException("Unknown authored original-cause category."),
+            };
+            return Capture.Json(Capture.Error(originalExpected))!;
+        }
+        var categoryName = diagnostic["category"]!.GetValue<string>();
+        var kind = categoryName switch {
+            "CaptureTag" or "PredicateTag" or "OutputTag" => "ValueType", "OutputNonFinite" or "CaptureNonFinite" => "NonFinite",
+            "ItemLimit" or "WorkLimit" => "Budget", "Cancelled" => "Cancelled",
+            _ => throw new InvalidOperationException("Unknown expected feature cause."),
+        };
+        var expected = kind == "ValueType" ? Scalar(diagnostic["expected_tag"]!.GetValue<string>()).ToString() : null;
+        var found = kind == "ValueType" ? diagnostic["found_value"]!.DeepClone() : null;
+        var bits = diagnostic["found_ieee754_binary64_hex"]?.GetValue<string>();
+        var budget = categoryName == "ItemLimit" ? "SourceItems" : categoryName == "WorkLimit" ? "Work" : null;
+        var used = diagnostic["used"]?.ToJsonString(); var requested = diagnostic["requested"]?.ToJsonString();
+        var maximum = diagnostic["limit"]?.ToJsonString();
+        var message = $"filter/map {kind}: expected={expected}; found={(found is null ? null : Tag(found["tag"]!.GetValue<string>()).ToString())}; bits={bits?.ToUpperInvariant()}; budget={budget}; used={used}; requested={requested}; maximum={maximum}";
+        var cause = Capture.Json(Capture.Error(new Exception(message)))!.AsObject();
+        cause["type"] = "Ferrule.Runtime.FerruleFilterMapFailure";
+        cause["feature"] = Capture.Json(new { kind, expected, found, bits, budget, used, requested, maximum });
+        return cause;
+    }
+    internal static JsonNode ExpectedError(JsonObject diagnostic)
+    {
+        var category = diagnostic["category"]!.GetValue<string>();
+        var kind = category switch {
+            "ItemLimit" => FerruleFilterMapBoundaryKind.SourceReservation,
+            "WorkLimit" when diagnostic["phase"]!.GetValue<string>() == "source" && diagnostic["node"] is null => FerruleFilterMapBoundaryKind.SourceReservation,
+            "WorkLimit" => FerruleFilterMapBoundaryKind.NodeEvaluation,
+            "Cancelled" => FerruleFilterMapBoundaryKind.CallEntry,
+            "OriginalEvaluationError" when diagnostic["original_cause"]!["category"]!.GetValue<string>() == "GeneratedSequenceTooLarge" => FerruleFilterMapBoundaryKind.SourceReservation,
+            "OriginalEvaluationError" => FerruleFilterMapBoundaryKind.NodeEvaluation,
+            _ => FerruleFilterMapBoundaryKind.Result,
+        };
+        if (diagnostic["boundary_override"] is JsonValue explicitBoundary) kind = Enum.Parse<FerruleFilterMapBoundaryKind>(explicitBoundary.GetValue<string>());
+        var boundary = new FerruleFilterMapBoundary(diagnostic["output_owner"]!.GetValue<uint>(),
+            Enum.Parse<FerruleFilterMapPhase>(diagnostic["phase"]!.GetValue<string>(), true),
+            diagnostic["capture_index"]?.GetValue<int>(), diagnostic["source_position"]?.GetValue<int>(),
+            diagnostic["function"]?.GetValue<ulong>(), diagnostic["node"]?.GetValue<uint>(), kind);
+        var cause = ExpectedCause(diagnostic);
+        var error = Capture.Json(Capture.Error(new Exception($"filter/map {boundary}: {cause["Message"]!.GetValue<string>()}")))!.AsObject();
+        error["type"] = "Ferrule.Runtime.FerruleFilterMapException";
+        error["inner"] = cause;
+        error["envelope"] = Capture.Json(new { item = boundary.Item, phase = boundary.Phase.ToString(), captureIndex = boundary.CaptureIndex,
+            sourcePosition = boundary.SourcePosition, function = boundary.Function, node = boundary.Node, kind = boundary.Kind.ToString() });
+        return error;
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length != 2) throw new InvalidOperationException("Need complete profile and fresh evidence directory.");
+        var profileText = File.ReadAllText(args[0]);
+        var profile = JsonNode.Parse(profileText)!.AsObject();
+        if (Directory.Exists(args[1]) || File.Exists(args[1])) throw new InvalidOperationException("Evidence directory must be fresh.");
+        Directory.CreateDirectory(args[1]);
+        File.WriteAllText(Path.Combine(args[1], "COMPLETE-PROFILE-ORIGINAL.json"), profileText);
+        if (profile["mode"]?.GetValue<string>() == "runtime-controls") return RuntimeControls.Run(args[1]);
+        var sourceText = profile["source_json"]!.GetValue<string>();
+        var sourceBytes = Encoding.UTF8.GetBytes(sourceText);
+        var source = profile["id"]!.GetValue<string>() == "positions-parent-source-dense"
+            ? new FerruleGroup(new[] { new FerruleField("Parents", new FerruleRepeated(
+                Enumerable.Range(0, 7).Select(_ => (FerruleInstance)new FerruleScalar(FerruleValue.FromInt64(7))))) })
+            : new FerruleGroup(Array.Empty<FerruleField>());
+        File.WriteAllText(Path.Combine(args[1], "SOURCE-INPUT-ORIGINAL.json"), sourceText);
+        File.WriteAllBytes(Path.Combine(args[1], "SOURCE-INPUT-ORIGINAL.bin"), sourceBytes);
+        Capture.Retain(args[1], "typed-source-input", source);
+        var calls = new List<(string Label, object Result, Cancellation Checker)>();
+        // Every public call has its own context/counters. Execute retains its existing all-target policy.
+        foreach (var route in new[] { "typed", "outputs", "json-text", "json-bytes" })
+        {
+            var checker = new Cancellation(profile["cancellation"]!.AsObject());
+            var context = Context(profile, checker);
+            var result = Capture.Attempt(() => route switch {
+                "typed" => GeneratedMapping.Execute(source, context),
+                "outputs" => GeneratedMapping.ExecuteOutputs(source, context),
+                "json-text" => GeneratedMapping.ExecuteJsonOutputs(sourceText, context),
+                _ => GeneratedMapping.ExecuteJsonBytesOutputs(sourceBytes, context),
+            });
+            calls.Add((route, result, checker));
+            Capture.Retain(args[1], route, result);
+            File.WriteAllText(Path.Combine(args[1], route + ".checker-original.json"), JsonSerializer.Serialize(checker.Observed));
+        }
+        var mismatches = new List<object>();
+        foreach (var (route, result, checker) in calls)
+        {
+            JsonNode wanted;
+            if (profile["expected"]!["status"]!.GetValue<string>() == "error") wanted = ExpectedError(profile["expected"]!["diagnostic"]!.AsObject());
+            else {
+                var tree = profile["tree"]!.DeepClone(); var extras = new JsonArray();
+                var value = route == "json-text" ? profile["pretty"]!.GetValue<string>()
+                    : route == "json-bytes" ? Convert.ToBase64String(Encoding.UTF8.GetBytes(profile["pretty"]!.GetValue<string>())) : null;
+                if (profile["named"]!.GetValue<bool>()) extras.Add(new JsonObject { ["name"] = "Other", ["value"] = value is null ? tree.DeepClone() : JsonValue.Create(value) });
+                wanted = route == "typed" ? tree : new JsonObject {
+                    ["primary"] = value is null ? tree : JsonValue.Create(value), ["extras"] = extras };
+            }
+            var observed = Capture.Json(Capture.Raw(result));
+            if (!JsonNode.DeepEquals(observed, wanted)) mismatches.Add(new { route, completeActual = observed, completeExpected = wanted });
+            if (profile["expected"]!["status"]!.GetValue<string>() == "ok")
+            {
+                try
+                {
+                    var documents = result switch {
+                        JsonExecutionOutputs text => new[] { text.Primary }.Concat(text.Extras.Select(extra => extra.Document)).ToArray(),
+                        JsonBytesExecutionOutputs bytes => new[] { bytes.Primary }.Concat(bytes.Extras.Select(extra => extra.Document))
+                            .Select(document => new UTF8Encoding(false, true).GetString(document)).ToArray(),
+                        _ => Array.Empty<string>(),
+                    };
+                    foreach (var document in documents)
+                        if (!JsonNode.DeepEquals(JsonNode.Parse(document), profile["document"]))
+                            mismatches.Add(new { route, wholeDocument = document, expectedDocument = profile["document"] });
+                }
+                catch (Exception error) { mismatches.Add(new { route, completeDocumentComparisonError = error.ToString() }); }
+            }
+            if (profile["expected"]!["status"]!.GetValue<string>() == "ok" && profile["expected"]!["kept_source_positions"] is JsonArray kept)
+            {
+                foreach (var owner in profile["named"]!.GetValue<bool>() ? new uint[] { 11, 13 } : new uint[] { 11 })
+                {
+                    var actualPositions = Capture.Json(checker.Observed.Where(boundary => boundary.Item == owner
+                        && boundary.Phase == FerruleFilterMapPhase.Mapper && boundary.Kind == FerruleFilterMapBoundaryKind.CallEntry
+                        && boundary.Function == 101).Select(boundary => boundary.SourcePosition).ToArray());
+                    if (!JsonNode.DeepEquals(actualPositions, kept)) mismatches.Add(new { route, owner, actualPositions, expectedPositions = kept });
+                }
+            }
+        }
+        File.WriteAllText(Path.Combine(args[1], "COMPLETE-COMPARISONS.json"), JsonSerializer.Serialize(new { calls = calls.Count, mismatches,
+            publicScope = "complete returned typed trees, full original causes, ordered output sets and UTF8 bytes; no public partial-output observation" }));
+        if (mismatches.Count != 0) throw new InvalidOperationException($"{mismatches.Count} complete public outcome mismatches.");
+        Console.WriteLine($"PUBLIC_CALLS={calls.Count}; COMPLETE_MATCHES={calls.Count}");
+        return 0;
+    }
+}
