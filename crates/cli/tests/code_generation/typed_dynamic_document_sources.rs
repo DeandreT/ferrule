@@ -359,7 +359,7 @@ fn exercise(language: &str) -> TestResult<()> {
             String::from_utf8_lossy(&output.stderr)
         );
         let unchanged = artifact_files(&generated)?;
-        assert_eq!(unchanged.len(), if language == "rust" { 2 } else { 75 });
+        assert_emitted_artifact_paths(&unchanged, language, false);
         let host = scope.join("host");
         std::fs::create_dir_all(host.join("src"))?;
         let output = if language == "rust" {

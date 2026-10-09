@@ -337,7 +337,7 @@ fn exercise(language: &str) -> TestResult<()> {
         String::from_utf8_lossy(&result.stderr)
     );
     let unchanged = artifact_files(&generated)?;
-    assert_eq!(unchanged.len(), if language == "rust" { 2 } else { 75 });
+    assert_emitted_artifact_paths(&unchanged, language, false);
     let api = std::fs::read_to_string(generated.join(if language == "rust" {
         "src/lib.rs"
     } else {
