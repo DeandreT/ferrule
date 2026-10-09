@@ -903,10 +903,16 @@ fn render_user_function_call(
         }
         .into());
     };
-    for (index, (argument, parameter)) in args.iter().zip(&definition.parameters).enumerate() {
+    // Match ordinary and nested interpreter calls: collect, then adapt.
+    for (index, argument) in args.iter().enumerate() {
         output.push_str(&format!(
-            "        var argument_{node}_{index} = global::Ferrule.Runtime.FerruleUserFunctions.Adapt(\n            {},\n            global::Ferrule.Runtime.FerruleScalarType.{},\n            {}UL,\n            {}UL);\n",
+            "        var raw_argument_{node}_{index} = {};\n",
             call(*argument),
+        ));
+    }
+    for (index, parameter) in definition.parameters.iter().enumerate() {
+        output.push_str(&format!(
+            "        var argument_{node}_{index} = global::Ferrule.Runtime.FerruleUserFunctions.Adapt(\n            raw_argument_{node}_{index},\n            global::Ferrule.Runtime.FerruleScalarType.{},\n            {}UL,\n            {}UL);\n",
             scalar_type_name(parameter.ty),
             function.get(),
             parameter.id.get(),

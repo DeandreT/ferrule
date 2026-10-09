@@ -1371,12 +1371,16 @@ fn render_expression(
                 }
             })?;
             let mut body = String::from("{\n");
-            for (index, (argument, parameter)) in
-                args.iter().zip(&definition.parameters).enumerate()
-            {
+            // Evaluate all expressions before adapting any declared parameter.
+            for (index, argument) in args.iter().enumerate() {
                 body.push_str(&format!(
-                    "        let argument_{index} = adapt_user_function_value(\n            {}?,\n            ScalarType::{},\n            {},\n            Some({}),\n        )?;\n",
+                    "        let raw_argument_{index} = {}?;\n",
                     call_expression(*argument, "context"),
+                ));
+            }
+            for (index, parameter) in definition.parameters.iter().enumerate() {
+                body.push_str(&format!(
+                    "        let argument_{index} = adapt_user_function_value(\n            raw_argument_{index},\n            ScalarType::{},\n            {},\n            Some({}),\n        )?;\n",
                     scalar_type_name(parameter.ty),
                     function.get(),
                     parameter.id.get(),

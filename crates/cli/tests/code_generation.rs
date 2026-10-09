@@ -80,6 +80,8 @@ mod string_int_range_boundaries;
 mod structured_xml_public;
 #[path = "code_generation/fixtures/structured_xml_snapshot.rs.txt"]
 mod structured_xml_snapshot;
+#[path = "code_generation/user_function_argument_order.rs"]
+mod user_function_argument_order;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
 #[path = "code_generation/xml_dynamic_inputs.rs"]

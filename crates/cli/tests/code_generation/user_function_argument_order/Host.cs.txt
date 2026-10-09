@@ -1,0 +1,91 @@
+using System.Globalization;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleScalar S(FerruleValue value) => new(value);
+static FerruleGroup G(params FerruleField[] fields) => new(fields);
+static FerruleInstance Input(params bool[] flags) => new FerruleGroup(
+    new[] { "FirstRaise", "SecondRaise", "FirstBad", "SecondBad", "FirstNull", "Skip" }
+        .Zip(flags, (name, value) => new FerruleField(name, S(FerruleValue.FromBoolean(value)))));
+static FerruleInstance Output(FerruleValue value) => G(new FerruleField("Result", S(value)));
+// These expected categories, identities, and messages are authored from the public runtime constructors.
+static FerruleRuntimeException Parameter(ulong id) => new(
+    FerruleRuntimeError.UserFunctionType,
+    $"user function 7 parameter {id}: expected Int64, got Bool",
+    foundKind: FerruleValueKind.Bool, userFunction: 7UL, functionParameter: id,
+    expectedScalarType: FerruleScalarType.Int64);
+static FerruleRuntimeException Raised(uint node, string? message) => new(
+    FerruleRuntimeError.MappingException,
+    $"node {node}: mapping exception: {message ?? "mapping exception was raised"}",
+    node: node, mappingExceptionMessage: message);
+static object RawValue(FerruleValue value) {
+    object? payload = value.Kind switch {
+        FerruleValueKind.Bool => value.BooleanValue, FerruleValueKind.Int64 => value.Int64Value,
+        FerruleValueKind.Double => new { text = value.DoubleValue.ToString("R", CultureInfo.InvariantCulture), bits = BitConverter.DoubleToInt64Bits(value.DoubleValue) },
+        FerruleValueKind.String => value.StringValue, _ => null,
+    };
+    return new { kind = value.Kind.ToString(), payload };
+}
+static object RawInstance(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", value = RawValue(scalar.Value) },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = RawInstance(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() },
+    FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document => new { document.Path, document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() },
+    _ => throw new InvalidOperationException("Unknown actual instance class: " + value.GetType().FullName),
+};
+static object RawError(FerruleRuntimeException error) => new {
+    type = error.GetType().FullName, error.Message, error.HResult,
+    inner = error.InnerException?.ToString(),
+    data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+    error.Error, error.Node, error.Function, error.ExpectedArity, error.ActualArity,
+    error.FoundKind, error.AggregateOperation, error.Detail, error.RequestedItems, error.MaximumItems, error.MaximumDepth,
+    error.RuntimeValue, error.FailureRule, error.MappingFailureMessage, error.MappingExceptionMessage, error.Join,
+    error.UserFunction, error.FunctionParameter, error.ExpectedScalarType, error.RuntimeParameter, error.SourceField,
+    error.FoundInstance, error.PrimaryRoot,
+};
+static object Raw(object result) => result switch {
+    FerruleInstance instance => RawInstance(instance),
+    FerruleRuntimeException error => RawError(error),
+    Exception error => new { unexpectedExceptionType = error.GetType().FullName, completeException = error.ToString() },
+    _ => throw new InvalidOperationException("Unknown actual outcome class"),
+};
+static object Capture(FerruleInstance source) {
+    try { return GeneratedMapping.Execute(source); }
+    catch (Exception error) { return error; }
+}
+
+if (args.Length != 2) throw new InvalidOperationException("Need exact mode and retained output directory.");
+var cases = new List<(string label, FerruleInstance source, object expected)>();
+if (args[0] == "literal") {
+    cases.Add(("literal", G(new FerruleField("Unused", S(FerruleValue.FromString("unused")))), Raised(2, null)));
+} else if (args[0] == "controls") {
+    cases.Add(("later-expression-before-adaptation", Input(false, true, true, false, false, false), Raised(22, null)));
+    cases.Add(("two-expression-failures", Input(true, true, false, false, false, false), Raised(21, "first-expression")));
+    cases.Add(("two-adaptation-failures", Input(false, false, true, true, false, false), Parameter(11)));
+    cases.Add(("second-adaptation-failure", Input(false, false, false, true, false, false), Parameter(12)));
+    cases.Add(("successful-coercion", Input(false, false, false, false, false, false), Output(FerruleValue.FromInt64(42))));
+    cases.Add(("null-preserved", Input(false, false, false, false, true, false), Output(FerruleValue.Null)));
+    cases.Add(("unselected-lazy-call", Input(true, true, true, true, false, true), Output(FerruleValue.FromInt64(99))));
+    cases.Add(("first-expression-before-second-adaptation", Input(true, false, false, true, false, false), Raised(21, "first-expression")));
+} else { throw new InvalidOperationException("Unknown explicit mode."); }
+// Capture the entire cohort, including unexpected exceptions, before comparing any expected outcome.
+var actual = cases.Select(item => (item.label, result: Capture(item.source))).ToArray();
+// Retain original exception text even if subsequent structured formatting itself refuses.
+File.WriteAllText(Path.Combine(args[1], "COMPLETE-EXCEPTION-ORIGINALS.txt"), string.Join("\n", actual.Select(item =>
+    item.label + ": " + (item.result is Exception error ? error.ToString() : "successful typed instance"))));
+var originals = actual.Select(item => new {
+    item.label, outcome = Raw(item.result), completeException = (item.result as Exception)?.ToString(),
+}).ToArray();
+var originalText = JsonSerializer.Serialize(originals);
+File.WriteAllText(Path.Combine(args[1], "COMPLETE-ORIGINAL-OUTCOMES.json"), originalText);
+Console.WriteLine(originalText);
+var mismatches = new List<object>();
+for (var index = 0; index < cases.Count; index++) {
+    var wanted = JsonSerializer.Serialize(Raw(cases[index].expected));
+    var observed = JsonSerializer.Serialize(Raw(actual[index].result));
+    if (wanted != observed) mismatches.Add(new { label = cases[index].label, completeActual = observed, completeExpected = wanted });
+}
+File.WriteAllText(Path.Combine(args[1], "COMPLETE-COMPARISONS.json"), JsonSerializer.Serialize(new { calls = cases.Count, mismatches }));
+if (mismatches.Count != 0) throw new InvalidOperationException($"{mismatches.Count} complete typed mismatches.");
