@@ -43,10 +43,10 @@ impl Fixture {
             </children><graph/></structure></component>"#
         );
         let design = format!(
-            r#"<mapping>{definition}<component name="map"><structure><children>
+            r#"<mapping><component name="map"><structure><children>
               <component name="Source" library="xml" kind="14"><data><root><entry name="Document"><entry name="Value" outkey="10"/></entry></root><document schema="main.xsd" instanceroot="{{}}Document"/></data></component>
               <component name="Target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Document"><entry name="Value" inpkey="20"/></entry></root><document schema="main.xsd" instanceroot="{{}}Document"/></data></component>
-            </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#
+            </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component>{definition}</mapping>"#
         );
         std::fs::write(self.package().join("mapping.mfd"), design)?;
         std::fs::write(
