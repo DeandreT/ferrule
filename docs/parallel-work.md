@@ -20,6 +20,29 @@ choose a lane and avoid conflicting changes.
    and next step. Release ownership when pausing or handing off so another
    contributor can take it.
 
+## Next acceptance gates
+
+- [ ] Execute #198's frozen 90 native/Rust/C# typed-selection calls after #205's
+  shared C# test-source release and fresh source binding; preserve its complete
+  artifact/error evidence when rebasing `crates/codegen-csharp/src/json5_output_tests.rs`.
+  Check full static input admission, global rules once, lazy selected loaders and
+  counters. Its accepted 15-role source changes no ordinary all-output API.
+- [ ] Agree #201's atomic private-owner remapping contract before same-project
+  duplication; shared GUI adoption follows #194's release. Keep general copying out.
+- [ ] Review #203's faithful saved-design representation and complete synthetic
+  observations before creating narrow importer/exporter implementation issues.
+- [ ] Execute #205's three test-only roles and failing-comparison retention controls,
+  then compare identical focused log and retained-file sizes. Source is accepted;
+  no measured log reduction, memory saving or semantic change is claimed.
+- [ ] Freeze #207's complete matched native/Rust/C# fixtures before large-capture
+  memory trials. Retain all repeats/outputs and distinguish process RSS from allocation
+  attribution; propose optimizations separately only after concrete evidence.
+- [ ] After #194 releases its frame helper, qualify #211's test-only diagnostic
+  summary against the same controls and complete outcomes; log bytes are not RAM use.
+- [ ] On the released #194 GUI baseline, qualify #213's desktop Fit on complete
+  rectangles at 900 × 700 / 1200 × 900, including load/resize/canvas changes and
+  finite empty/single views; preserve Project/wires/positions/sidecars.
+
 ## Dependencies and shared areas
 
 Shared-file changes need explicit coordination even when the issues are otherwise
