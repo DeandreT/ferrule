@@ -59,6 +59,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     let type_position = output
         .find("public static class GeneratedMapping")
         .expect("generated mapping header");
+    output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
     output.insert_str(type_position, xml_api::render_types(program)?);
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
@@ -962,6 +963,48 @@ fn render_user_function_call(
     Ok(())
 }
 
+const SELECTED_TARGET_OUTPUT_TYPES: &str = r#"public abstract class SelectedTargetOutput
+{
+    private protected SelectedTargetOutput() { }
+
+    public sealed class Primary : SelectedTargetOutput
+    {
+        internal Primary(global::Ferrule.Runtime.FerruleInstance instance) { Instance = instance; }
+        public global::Ferrule.Runtime.FerruleInstance Instance { get; }
+    }
+
+    public sealed class Named : SelectedTargetOutput
+    {
+        internal Named(NamedOutput output) { Output = output; }
+        public NamedOutput Output { get; }
+    }
+}
+
+"#;
+
+fn render_selected_target_entry_points(
+    program: &Program,
+    primary_scope: usize,
+    extra_scopes: &[(&str, usize)],
+    output: &mut String,
+) {
+    output.push_str(
+        "\n    public static SelectedTargetOutput ExecuteSelectedTarget(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection)\n    {\n        return ExecuteSelectedTargetWithHost(source, selection, global::System.Array.Empty<NamedInput>());\n    }\n\n    public static SelectedTargetOutput ExecuteSelectedTargetWithHost(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? dynamicSourceLoader = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(selection);\n        var selected = ResolveTarget(selection);\n        var context = CreateContext(source, extraSources, executionContext, dynamicSourceLoader);\n",
+    );
+    if !program.failure_rules.is_empty() {
+        output.push_str("        EvaluateFailureRules(context);\n");
+    }
+    output.push_str(&format!("        switch (selected)\n        {{\n            case 0: return new SelectedTargetOutput.Primary(Scope_{primary_scope}(context));\n"));
+    for (index, (name, scope)) in extra_scopes.iter().enumerate() {
+        output.push_str(&format!("            case {}: return new SelectedTargetOutput.Named(new NamedOutput({}, Scope_{scope}(context)));\n", index + 1, literal::string(name)));
+    }
+    output.push_str("            default: throw new global::System.InvalidOperationException(\"Resolved target is invalid.\");\n        }\n    }\n\n    private static int ResolveTarget(global::Ferrule.Runtime.FerruleTargetSelection selection)\n    {\n        if (selection.IsPrimary) return 0;\n        var name = selection.Name!;\n");
+    for (index, (name, _)) in extra_scopes.iter().enumerate() {
+        output.push_str(&format!("        if (global::System.String.Equals(name, {}, global::System.StringComparison.Ordinal)) return {};\n", literal::string(name), index + 1));
+    }
+    output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
+}
+
 fn render_entry_points(
     program: &Program,
     primary_scope: usize,
@@ -1002,6 +1045,7 @@ fn render_entry_points(
          \n    public static ExecutionOutputs ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, null, loader));\n    }\n\
          \n    public static ExecutionOutputs ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, executionContext, loader));\n    }\n",
     );
+    render_selected_target_entry_points(program, primary_scope, extra_scopes, output);
     render_source_context(program, output);
     output.push_str(
         "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",

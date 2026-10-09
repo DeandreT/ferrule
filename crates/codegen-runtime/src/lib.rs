@@ -105,6 +105,13 @@ pub use xml_mixed_content::{
     xml_mixed_content,
 };
 
+/// Selects the primary target or one exact declared target name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetSelection<'a> {
+    Primary,
+    Named(&'a str),
+}
+
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
@@ -236,6 +243,9 @@ pub enum RuntimeError {
         name: String,
         expected: ScalarType,
         found: &'static str,
+    },
+    UnknownTarget {
+        name: String,
     },
     MissingNamedSource {
         name: &'static str,
@@ -480,6 +490,9 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "node {node}: runtime parameter `{name}` expected {expected:?}, got {found}"
             ),
+            Self::UnknownTarget { name } => {
+                write!(formatter, "project has no named target `{name}`")
+            }
             Self::MissingNamedSource { name } => {
                 write!(formatter, "required named source {name:?} was not supplied")
             }
@@ -633,6 +646,7 @@ impl std::error::Error for RuntimeError {
             | Self::MissingRuntimeValue { .. }
             | Self::MissingRuntimeParameter { .. }
             | Self::RuntimeParameterType { .. }
+            | Self::UnknownTarget { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
             | Self::UnexpectedNamedSource { .. }
