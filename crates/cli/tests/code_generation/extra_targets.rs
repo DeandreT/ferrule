@@ -217,11 +217,11 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
         rust_output.join("src/main.rs"),
         include_str!("fixtures/extra_targets_rust_harness.rs.txt"),
     )?;
-    let rust = Command::new("cargo")
+    let mut rust_command = Command::new("cargo");
+    rust_command
         .args(["run", "--quiet"])
-        .current_dir(&rust_output)
-        .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .isolated_output()?;
+        .current_dir(&rust_output);
+    let rust = host_policy::recorded_output(&mut rust_command, &directory.0, "rust-host")?;
     assert!(
         rust.status.success(),
         "generated Rust extra targets failed:\nstdout:\n{}\nstderr:\n{}",
@@ -254,7 +254,8 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
         harness.join("Program.cs"),
         include_str!("fixtures/extra_targets_csharp_harness.cs.txt"),
     )?;
-    let csharp = dotnet_command(&csharp_output)
+    let mut csharp_command = dotnet_command(&csharp_output);
+    csharp_command
         .args([
             "run",
             "--project",
@@ -262,8 +263,8 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
             "--configuration",
             "Release",
         ])
-        .current_dir(&csharp_output)
-        .isolated_output()?;
+        .current_dir(&csharp_output);
+    let csharp = host_policy::recorded_output(&mut csharp_command, &directory.0, "csharp-host")?;
     assert!(
         csharp.status.success(),
         "generated C# extra targets failed:\nstdout:\n{}\nstderr:\n{}",
