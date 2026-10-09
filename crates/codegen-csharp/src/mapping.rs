@@ -12,6 +12,7 @@ use ir::ScalarType;
 use crate::{EmitError, literal};
 
 mod failures;
+mod filter_map;
 mod xml_api;
 
 struct ScopePlan<'a> {
@@ -33,6 +34,7 @@ struct BindingPlan<'a> {
 }
 
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
+    let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
     for node in &program.expressions {
         expressions.insert(node.id, &node.expression);
@@ -63,7 +65,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     xml_api::render(program, &mut output)?;
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
-        render_user_function(function, &functions, &mut output)?;
+        render_user_function(function, &functions, has_filter_map, &mut output)?;
     }
 
     for (node, expression) in expressions {
@@ -263,6 +265,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     args,
                     &functions,
                     |argument| format!("Node_{argument}(context)"),
+                    has_filter_map,
                     &mut output,
                 )?;
                 output.push_str("    }\n");
@@ -702,6 +705,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         }
         output.push_str("    }\n");
     }
+    filter_map::add_scoped_node_wrappers(program, &mut output);
     output.push_str("}\n");
     Ok(output)
 }
@@ -709,6 +713,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
 fn render_user_function(
     function: &UserFunctionProgram,
     functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    has_filter_map: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     let parameters = function
@@ -724,6 +729,7 @@ fn render_user_function(
             &expression.expression,
             &parameters,
             functions,
+            has_filter_map,
             output,
         )?;
     }
@@ -735,6 +741,9 @@ fn render_user_function(
         scalar_type_name(function.output_type),
         function.id.get(),
     ));
+    if has_filter_map {
+        filter_map::render_stage_entry(function, output);
+    }
     Ok(())
 }
 
@@ -744,6 +753,7 @@ fn render_user_function_expression(
     expression: &Expression,
     parameters: &BTreeMap<FunctionParameterId, usize>,
     functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    has_filter_map: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     let call = |dependency: NodeId| {
@@ -820,7 +830,15 @@ fn render_user_function_expression(
             args,
         } => {
             output.push_str("\n    {\n");
-            render_user_function_call(node, *called, args, functions, call, output)?;
+            render_user_function_call(
+                node,
+                *called,
+                args,
+                functions,
+                call,
+                has_filter_map,
+                output,
+            )?;
             output.push_str("    }\n");
         }
         Expression::If {
@@ -893,6 +911,7 @@ fn render_user_function_call(
     args: &[NodeId],
     functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
     call: impl Fn(NodeId) -> String,
+    has_filter_map: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     let Some(definition) = functions.get(&function) else {
@@ -910,6 +929,12 @@ fn render_user_function_call(
             call(*argument),
         ));
     }
+    if has_filter_map {
+        output.push_str(&format!(
+            "        var call_context_{node} = context.EnterFilterMapCall({}UL);\n",
+            function.get(),
+        ));
+    }
     for (index, parameter) in definition.parameters.iter().enumerate() {
         output.push_str(&format!(
             "        var argument_{node}_{index} = global::Ferrule.Runtime.FerruleUserFunctions.Adapt(\n            raw_argument_{node}_{index},\n            global::Ferrule.Runtime.FerruleScalarType.{},\n            {}UL,\n            {}UL);\n",
@@ -919,8 +944,13 @@ fn render_user_function_call(
         ));
     }
     output.push_str(&format!(
-        "        return UserFunction_{}(context, new global::Ferrule.Runtime.FerruleValue[] {{ ",
-        function.get()
+        "        return UserFunction_{}({}, new global::Ferrule.Runtime.FerruleValue[] {{ ",
+        function.get(),
+        if has_filter_map {
+            format!("call_context_{node}")
+        } else {
+            "context".to_string()
+        }
     ));
     for index in 0..args.len() {
         if index != 0 {
@@ -1834,9 +1864,7 @@ fn render_generated_values(
         "        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> sequence_values_{identifier} = global::System.Array.Empty<global::Ferrule.Runtime.FerruleValue>();\n"
     ));
     match sequence {
-        GeneratedSequence::FilterMapV1(composition) => {
-            return Err(EmitError::UnsupportedFilterMapV1 { item: composition.item });
-        }
+        GeneratedSequence::FilterMapV1(composition) => filter_map::render_values(identifier, composition, output),
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(

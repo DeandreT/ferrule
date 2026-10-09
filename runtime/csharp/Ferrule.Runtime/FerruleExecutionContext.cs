@@ -114,7 +114,22 @@ public sealed class FerruleExecutionContext
         string mainMappingFilePath,
         string? currentDateTime = null,
         FerruleRuntimeParameters? runtimeParameters = null)
+        : this(mappingFilePath, mainMappingFilePath, currentDateTime, runtimeParameters,
+            FerruleFilterMapLimits.Default, null)
     {
+    }
+
+    public FerruleExecutionContext(
+        string mappingFilePath,
+        string mainMappingFilePath,
+        string? currentDateTime,
+        FerruleRuntimeParameters? runtimeParameters,
+        FerruleFilterMapLimits filterMapLimits,
+        IFerruleFilterMapCancellation? filterMapCancellation)
+    {
+        ArgumentNullException.ThrowIfNull(filterMapLimits);
+        FilterMapLimits = filterMapLimits;
+        FilterMapCancellation = filterMapCancellation;
         MappingFilePath = mappingFilePath ??
             throw new ArgumentNullException(nameof(mappingFilePath));
         MainMappingFilePath = mainMappingFilePath ??
@@ -134,6 +149,21 @@ public sealed class FerruleExecutionContext
     public string? CurrentDateTime { get; }
 
     public FerruleRuntimeParameters RuntimeParameters { get; }
+
+    public FerruleFilterMapLimits FilterMapLimits { get; }
+
+    public IFerruleFilterMapCancellation? FilterMapCancellation { get; }
+
+    public FerruleExecutionContext WithFilterMapLimits(FerruleFilterMapLimits limits) =>
+        new(MappingFilePath, MainMappingFilePath, CurrentDateTime, RuntimeParameters,
+            limits, FilterMapCancellation);
+
+    public FerruleExecutionContext WithFilterMapCancellation(IFerruleFilterMapCancellation checker)
+    {
+        ArgumentNullException.ThrowIfNull(checker);
+        return new(MappingFilePath, MainMappingFilePath, CurrentDateTime, RuntimeParameters,
+            FilterMapLimits, checker);
+    }
 
     public static FerruleExecutionContext WithParameters(
         string mappingFilePath,

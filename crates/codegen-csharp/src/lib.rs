@@ -41,11 +41,6 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// functions.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
-    if let Some(composition) = program.filter_map_v1_sequences().first() {
-        return Err(EmitError::UnsupportedFilterMapV1 {
-            item: composition.item,
-        });
-    }
     let generated_mapping = mapping::render(program)?;
     let dynamic_input_document_outputs = program.xml_output_mode()?
         == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments);
