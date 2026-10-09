@@ -24,7 +24,14 @@ pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> 
 
 pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId) {
     match sequence {
-        SequenceExpr::FilterMapV1(_) => {}
+        SequenceExpr::FilterMapV1(value) => {
+            let source_count = value.source.inputs().len();
+            if index < source_count {
+                set_input(&mut value.source, index, node);
+            } else if let Some(capture) = value.captures.get_mut(index - source_count) {
+                capture.node = node;
+            }
+        }
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => match index {
@@ -74,7 +81,7 @@ pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId)
 
 pub(super) fn label(sequence: &SequenceExpr) -> &'static str {
     match sequence {
-        SequenceExpr::FilterMapV1(_) => "filter/map (unavailable)",
+        SequenceExpr::FilterMapV1(_) => "filter/map",
         SequenceExpr::Tokenize { .. } => "tokenize",
         SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
@@ -88,7 +95,14 @@ pub(super) fn pin_label(sequence: &SequenceExpr, index: usize) -> &'static str {
         return "predicate";
     }
     match sequence {
-        SequenceExpr::FilterMapV1(_) => "read-only input",
+        SequenceExpr::FilterMapV1(value) => {
+            let source_count = value.source.inputs().len();
+            if index < source_count {
+                pin_label(&value.source, index)
+            } else {
+                "capture"
+            }
+        }
         SequenceExpr::Tokenize { .. } => ["input", "delimiter"]
             .get(index)
             .copied()

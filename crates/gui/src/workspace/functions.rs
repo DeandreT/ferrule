@@ -428,7 +428,8 @@ impl FerruleApp {
                 project_references: crate::graph_viewer::ProjectGraphReferences::new(
                     &self.project.failure_rules,
                     &self.project.extra_sources,
-                ),
+                )
+                .with_user_functions(&self.project.user_functions),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,

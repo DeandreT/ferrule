@@ -36,7 +36,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
-        mapping::SequenceExpr::FilterMapV1(_) => "filter/map (unavailable)",
+        mapping::SequenceExpr::FilterMapV1(_) => "filter/map",
         mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }

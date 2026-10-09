@@ -265,7 +265,9 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         Node::Raise { .. } => (Icon::CircleX, "error".into()),
         Node::Position { .. } | Node::JoinPosition { .. } => (Icon::ListOrdered, String::new()),
         Node::SourceField { path, .. } => {
-            if let Some(item) = title.strip_prefix("Generated item #") {
+            if matches!(title, "Stage input" | "Mapped output") {
+                (Icon::ListOrdered, title.into())
+            } else if let Some(item) = title.strip_prefix("Generated item #") {
                 (
                     Icon::ListOrdered,
                     compact(&format!("item #{item}"), SUMMARY_CHAR_LIMIT),
@@ -440,6 +442,9 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::RuntimeParameterDefault { .. }
             | Node::Aggregate { .. }
             | Node::CollectionFind { .. }
+            | Node::SequenceExists { .. }
+            | Node::SequenceItemAt { .. }
+            | Node::SequenceAggregate { .. }
             | Node::XmlMixedContent { .. }
             | Node::XmlSerialize { .. }
     )

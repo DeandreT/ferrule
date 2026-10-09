@@ -11,7 +11,7 @@ fn source_document_path_keyboard_creation_follows_the_primary_file_set_capabilit
                     events,
                     ..Default::default()
                 },
-                |ui| selected = show_available(ui, true, true, true, allowed, true),
+                |ui| selected = show_available(ui, true, true, true, allowed, true, false),
             );
             eprintln!(
                 "Document-path palette capability={allowed}, original selection={selected:?}, shapes={}",
@@ -205,7 +205,10 @@ fn keyboard_root_creation_choices_follow_the_active_canvas_policy() {
                         events,
                         ..Default::default()
                     },
-                    |ui| selected = show_available(ui, allowed, allowed, allowed, allowed, allowed),
+                    |ui| {
+                        selected =
+                            show_available(ui, allowed, allowed, allowed, allowed, allowed, false)
+                    },
                 );
             };
             run(Vec::new());
@@ -233,7 +236,7 @@ fn palette_frame(context: &egui::Context, events: Vec<egui::Event>) -> Option<No
             events,
             ..Default::default()
         },
-        |ui| selected = show_available(ui, true, true, true, true, true),
+        |ui| selected = show_available(ui, true, true, true, true, true, false),
     );
     selected
 }
@@ -415,7 +418,7 @@ fn overflow_palette_frame(
         |ui| {
             let canvas = ui.allocate_rect(ui.max_rect(), egui::Sense::click());
             canvas.context_menu(|ui| {
-                chosen = show_available(ui, true, true, true, true, true);
+                chosen = show_available(ui, true, true, true, true, true, false);
                 if chosen.is_some() {
                     ui.close();
                 }
@@ -710,4 +713,41 @@ fn manual_wheel_and_pointer_selection_remain_free_after_keyboard_reveal() {
         clicked.chosen
     );
     assert_eq!(clicked.chosen, Some(expected));
+}
+
+#[test]
+fn filter_map_keyboard_creation_requires_project_stage_capability() {
+    for (label, expected) in [
+        ("Filter/map item at", NodeTemplate::FilterMapItemAt),
+        ("Filter/map any", NodeTemplate::FilterMapExists),
+        ("Filter/map sum", NodeTemplate::FilterMapSum),
+    ] {
+        for allowed in [false, true] {
+            let context = egui::Context::default();
+            let mut selected = None;
+            let mut run = |events| {
+                let output = context.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| selected = show_available(ui, false, false, false, false, false, allowed),
+                );
+                eprintln!(
+                    "filter/map keyboard capability={allowed} original selected={selected:?} full shapes={:#?}",
+                    output.shapes
+                );
+            };
+            run(Vec::new());
+            run(vec![egui::Event::Text(label.into())]);
+            run(vec![egui::Event::Key {
+                key: Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }]);
+            assert_eq!(selected, allowed.then_some(expected));
+        }
+    }
 }

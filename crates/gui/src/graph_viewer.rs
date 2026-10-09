@@ -12,7 +12,7 @@
 
 use egui::Ui;
 use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
-use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
+use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, Value};
 use mapping::{
     AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
@@ -47,6 +47,19 @@ pub(crate) use graph_references::{
     references_outside_failure_rule, references_outside_scope, sequence_item_ids,
 };
 use node_palette::NodeTemplate;
+
+pub(crate) fn filter_map_private_inputs(
+    project: &mapping::Project,
+) -> std::collections::BTreeSet<NodeId> {
+    graph_references::filter_map_item_ids(
+        &project.graph,
+        &project.root,
+        &project.extra_targets,
+        &[],
+        ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
+    )
+    .0
+}
 
 pub(crate) fn reserve_project_node_ids(
     project: &mapping::Project,
@@ -543,6 +556,92 @@ impl GraphViewer<'_> {
         template: NodeTemplate,
     ) -> Result<(NodeId, SnarlNodeId), String> {
         match template {
+            NodeTemplate::FilterMapItemAt
+            | NodeTemplate::FilterMapExists
+            | NodeTemplate::FilterMapSum => {
+                if self.function_output.is_some() {
+                    return Err("Filter/map authoring is unavailable in isolated functions.".into());
+                }
+                let functions = self
+                    .project_references
+                    .user_functions()
+                    .ok_or_else(|| "Filter/map needs a project function library.".to_owned())?;
+                let ids = self.reserve_node_ids(if template == NodeTemplate::FilterMapSum {
+                    5
+                } else {
+                    6
+                })?;
+                let (sequence, nodes) = crate::filter_map_editor::create(&ids[..4], functions)?;
+                let node = match template {
+                    NodeTemplate::FilterMapExists => Node::SequenceExists {
+                        sequence,
+                        predicate: ids[4],
+                    },
+                    NodeTemplate::FilterMapSum => {
+                        if !matches!(&sequence, mapping::SequenceExpr::FilterMapV1(value)
+                            if matches!(value.output_type, ScalarType::Int | ScalarType::Float))
+                        {
+                            return Err(
+                                "Filter/map sum needs an integer or number map function.".into()
+                            );
+                        }
+                        Node::SequenceAggregate {
+                            sequence,
+                            function: AggregateOp::Sum,
+                            predicate: None,
+                            expression: Some(ids[3]),
+                            arg: None,
+                        }
+                    }
+                    _ => Node::SequenceItemAt {
+                        sequence,
+                        index: ids[4],
+                    },
+                };
+                self.graph.nodes.extend(nodes);
+                if template != NodeTemplate::FilterMapSum {
+                    self.graph.nodes.insert(
+                        ids[4],
+                        Node::Const {
+                            value: if template == NodeTemplate::FilterMapExists {
+                                Value::Bool(true)
+                            } else {
+                                Value::Int(1)
+                            },
+                        },
+                    );
+                }
+                let id = *ids
+                    .last()
+                    .ok_or_else(|| "mapping node IDs are exhausted".to_owned())?;
+                let inputs = node_inputs(&node);
+                self.graph.nodes.insert(id, node);
+                let mut visible = std::collections::BTreeMap::new();
+                for (index, &node) in ids.iter().enumerate() {
+                    let offset = if node == id {
+                        egui::Vec2::ZERO
+                    } else {
+                        egui::vec2(-220.0, index as f32 * 60.0)
+                    };
+                    visible.insert(
+                        node,
+                        snarl.insert_node(pos + offset, CanvasNode::Graph(node)),
+                    );
+                }
+                for (input, source) in inputs.into_iter().enumerate() {
+                    snarl.connect(
+                        OutPinId {
+                            node: visible[&source],
+                            output: 0,
+                        },
+                        InPinId {
+                            node: visible[&id],
+                            input,
+                        },
+                    );
+                }
+                Ok((id, visible[&id]))
+            }
             NodeTemplate::Constant => self.insert(snarl, pos, Node::Const { value: Value::Null }),
             NodeTemplate::SourceField => self.insert(
                 snarl,
@@ -777,16 +876,71 @@ impl GraphViewer<'_> {
         Ok(id)
     }
 
+    fn filter_map_inputs_writable(&self, node: &Node) -> bool {
+        self.function_output.is_none()
+            && self.project_references.user_functions().is_some()
+            && crate::filter_map_editor::sequence(node)
+                .is_some_and(crate::filter_map_editor::editable)
+    }
+
+    fn read_only_inputs(&self, node: &Node) -> bool {
+        graph_sequence::inputs_are_read_only(node) && !self.filter_map_inputs_writable(node)
+    }
+
+    fn check_filter_map_connection(
+        &self,
+        from: NodeId,
+        to: Option<(NodeId, usize)>,
+    ) -> Result<(), String> {
+        let (inputs, _) = graph_references::filter_map_item_ids(
+            self.graph,
+            self.root_scope,
+            self.extra_targets,
+            self.inactive_target_scopes,
+            self.project_references,
+        );
+        let mut pending = vec![from];
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if inputs.contains(&id) {
+                return Err("Stage input values are private. Connect the mapped output in its owning context instead.".into());
+            }
+            if seen.insert(id)
+                && let Some(node) = self.graph.nodes.get(&id)
+            {
+                pending.extend(node.dependencies());
+            }
+        }
+        if let Some((id, index)) = to
+            && let Some(node) = self.graph.nodes.get(&id)
+            && let Some(error) = crate::filter_map_editor::input_error(
+                node,
+                id,
+                index,
+                from,
+                self.graph,
+                &self.owned_item_ids(),
+            )
+        {
+            return Err(error);
+        }
+        Ok(())
+    }
+
     fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) -> bool {
+        let Some(node) = self.graph.nodes.get(&node_id) else {
+            return false;
+        };
+        if idx >= Self::input_count(node) || self.read_only_inputs(node) {
+            return false;
+        }
+        if let Err(error) = self.check_filter_map_connection(from_id, Some((node_id, idx))) {
+            self.error = Some(error);
+            return false;
+        }
         let Some(node) = self.graph.nodes.get_mut(&node_id) else {
             return false;
         };
-        if idx >= Self::input_count(node) {
-            return false;
-        }
-        if graph_sequence::inputs_are_read_only(node) {
-            return false;
-        }
         match node {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
                 args[idx] = from_id;
@@ -1289,7 +1443,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             )
                             .is_empty() =>
                     {
-                        format!("Generated item #{id}")
+                        let (inputs, outputs) = graph_references::filter_map_item_ids(
+                            self.graph,
+                            self.root_scope,
+                            self.extra_targets,
+                            self.inactive_target_scopes,
+                            self.project_references,
+                        );
+                        if inputs.contains(id) {
+                            "Stage input".into()
+                        } else if outputs.contains(id) {
+                            "Mapped output".into()
+                        } else {
+                            format!("Generated item #{id}")
+                        }
                     }
                     Some(Node::SourceField { path, frame }) => {
                         let owner = frame
@@ -2015,6 +2182,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             Node::ValueMap { .. }
                                 | Node::DynamicSourceField { .. }
                                 | Node::Aggregate { .. }
+                                | Node::SequenceExists { .. }
+                                | Node::SequenceItemAt { .. }
+                                | Node::SequenceAggregate { .. }
                         )
                     ) {
                         ui.add_enabled_ui(edit.enabled(), |ui| {
@@ -2051,7 +2221,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .graph
                 .nodes
                 .get(&to_id)
-                .is_some_and(graph_sequence::inputs_are_read_only)
+                .is_some_and(|node| self.read_only_inputs(node))
         {
             self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
             return;
@@ -2135,6 +2305,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         from_id,
                         self.primary_root_authoring && target_leaf.chain.is_empty(),
                     )?;
+                    self.check_filter_map_connection(from_id, None)?;
                     let displaced = self.binding_node(&target_leaf);
                     self.set_binding(&target_leaf, from_id);
                     Ok(displaced)
@@ -2166,6 +2337,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         ));
                     }
                     self.check_primary_root_input(from_id, to_id)?;
+                    self.check_filter_map_connection(from_id, Some((to_id, to.id.input)))?;
                     let displaced = self.input_at(to_id, to.id.input);
                     if !self.set_input(to_id, to.id.input, from_id) {
                         return Err(format!(
@@ -2201,7 +2373,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .graph
                 .nodes
                 .get(&to_id)
-                .is_some_and(graph_sequence::inputs_are_read_only)
+                .is_some_and(|node| self.read_only_inputs(node))
         {
             self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
             return;
@@ -2244,8 +2416,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         return;
                     }
                 };
+                if !self.set_input(to_id, to.id.input, unconnected) {
+                    self.remove_orphaned_input(unconnected, snarl);
+                    return;
+                }
                 snarl.disconnect(from.id, to.id);
-                self.set_input(to_id, to.id.input, unconnected);
                 if let Some(disconnected) = disconnected {
                     self.remove_orphaned_input(disconnected, snarl);
                 }
@@ -2273,6 +2448,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             self.function_output.is_none()
                 && self.source_paths.primary_source_document_path_available(),
             self.function_output.is_none() && self.source_paths.xml_source_elements_available(),
+            self.function_output.is_none()
+                && self
+                    .project_references
+                    .user_functions()
+                    .and_then(crate::filter_map_editor::default_stages)
+                    .is_some(),
         ) {
             self.error = self.insert_palette_node(snarl, pos, template).err();
             ui.close();
