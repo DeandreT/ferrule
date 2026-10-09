@@ -2,6 +2,10 @@ use std::error::Error;
 
 use super::*;
 
+#[path = "../../../codegen/tests/fixtures/generated_artifact_evidence.rs"]
+mod generated_artifact_evidence;
+use generated_artifact_evidence::Evidence;
+
 fn required(mut schema: SchemaNode, names: &[&str]) -> SchemaNode {
     let SchemaKind::Group { required, .. } = &mut schema.kind else {
         panic!("test group expected");
@@ -214,13 +218,15 @@ fn options(package: &str) -> Options {
 fn explicit_json5_selection_preserves_complete_ordinary_artifacts_manifest_and_source_prefix() {
     let program = prototype();
     let before_program = program.clone();
+    let evidence = Evidence::new("rust-json5-selection");
+    evidence.debug("PROGRAM.original.txt", &program);
     let options = options("json5-map");
     let before = emit(&program, &options);
-    eprintln!("original ordinary before={before:#?}");
+    evidence.artifacts("ordinary-before", &before);
     let selected = emit_with_json5(&program, &options);
-    eprintln!("original selected={selected:#?}");
+    evidence.artifacts("selected", &selected);
     let after = emit(&program, &options);
-    eprintln!("original ordinary after={after:#?}");
+    evidence.artifacts("ordinary-after", &after);
     let before = before.unwrap();
     let selected = selected.unwrap();
     assert_eq!(after.unwrap(), before);
@@ -256,6 +262,7 @@ fn explicit_json5_selection_preserves_complete_ordinary_artifacts_manifest_and_s
 
 #[test]
 fn opt_in_policy_refuses_before_publication_and_keeps_ordinary_emitter_causes() {
+    let evidence = Evidence::new("rust-json5-admission");
     for source_side in [true, false] {
         let mut program = prototype();
         if source_side {
@@ -263,8 +270,14 @@ fn opt_in_policy_refuses_before_publication_and_keeps_ordinary_emitter_causes() 
         } else {
             program.target.nullable = true;
         }
+        let label = if source_side {
+            "source-schema"
+        } else {
+            "target-schema"
+        };
+        evidence.debug(&format!("{label}-PROGRAM.original.txt"), &program);
         let result = emit_with_json5(&program, &options("json5-map"));
-        eprintln!("original refused schema={result:#?}");
+        evidence.artifacts(label, &result);
         let error = result.unwrap_err();
         assert!(error.source().is_some());
         assert!(
@@ -277,8 +290,9 @@ fn opt_in_policy_refuses_before_publication_and_keeps_ordinary_emitter_causes() 
         source: extra.source.clone(),
         dynamic: None,
     });
+    evidence.debug("named-source-PROGRAM.original.txt", &extra);
     let result = emit_with_json5(&extra, &options("json5-map"));
-    eprintln!("original named-source refusal={result:#?}");
+    evidence.artifacts("named-source", &result);
     assert!(matches!(
         result,
         Err(Json5EmitError::Policy(
@@ -287,8 +301,10 @@ fn opt_in_policy_refuses_before_publication_and_keeps_ordinary_emitter_causes() 
             }
         ))
     ));
-    let result = emit_with_json5(&prototype(), &options("9-invalid"));
-    eprintln!("original ordinary cause={result:#?}");
+    let invalid_package = prototype();
+    evidence.debug("invalid-package-PROGRAM.original.txt", &invalid_package);
+    let result = emit_with_json5(&invalid_package, &options("9-invalid"));
+    evidence.artifacts("invalid-package", &result);
     let error = result.unwrap_err();
     assert!(
         error
@@ -305,11 +321,13 @@ fn opt_in_policy_refuses_before_publication_and_keeps_ordinary_emitter_causes() 
 #[test]
 fn compiled_selected_prototype_exercises_four_public_methods_typed_causes_lazy_messages_and_context()
  {
-    let output = TempDir::new("rust_json5_companions");
-    let directory = output.path().to_path_buf();
-    std::mem::forget(output);
-    let result = emit_with_json5(&prototype(), &options("json5-map"));
-    eprintln!("original compile artifacts={result:#?}");
+    let evidence = Evidence::new("rust-json5-compiled");
+    let directory = evidence.path().join("generated-host");
+    fs::create_dir(&directory).unwrap();
+    let program = prototype();
+    evidence.debug("PROGRAM.original.txt", &program);
+    let result = emit_with_json5(&program, &options("json5-map"));
+    evidence.artifacts("compile-artifacts", &result);
     let artifacts = result.unwrap();
     write_artifacts(&directory, &artifacts);
     fs::write(directory.join("src/main.rs"), HOST).unwrap();
@@ -318,15 +336,28 @@ fn compiled_selected_prototype_exercises_four_public_methods_typed_causes_lazy_m
             .args(["run", "--quiet", "--offline"])
             .current_dir(&directory)
             .generated_host_output(&directory);
-        fs::write(
-            directory.join("HOST_FULL_RESULT.debug.txt"),
-            format!("{launched:#?}\n"),
-        )
-        .unwrap();
-        eprintln!("original generated JSON5 host={launched:#?}");
+        match &launched {
+            Ok(original) => {
+                evidence.debug("HOST_STATUS.original.txt", &original.status);
+                evidence.bytes(
+                    "generated-host/HOST_STDOUT.bin",
+                    &Ok::<_, std::io::Error>(original.stdout.as_slice()),
+                );
+                evidence.bytes(
+                    "generated-host/HOST_STDERR.bin",
+                    &Ok::<_, std::io::Error>(original.stderr.as_slice()),
+                );
+                eprintln!(
+                    "generated JSON5 host status={} stdout={} stderr={} originals={}",
+                    original.status,
+                    original.stdout.len(),
+                    original.stderr.len(),
+                    directory.display()
+                );
+            }
+            Err(error) => evidence.debug("HOST_LAUNCH_ERROR.original.txt", error),
+        }
         let original = launched.unwrap();
-        fs::write(directory.join("HOST_STDOUT.bin"), &original.stdout).unwrap();
-        fs::write(directory.join("HOST_STDERR.bin"), &original.stderr).unwrap();
         assert!(
             original.status.success(),
             "selected prototype failed; full originals at {}",
@@ -345,11 +376,12 @@ fn compiled_selected_prototype_exercises_four_public_methods_typed_causes_lazy_m
         })
         .collect::<Vec<_>>();
     let host_after = fs::read(directory.join("src/main.rs"));
-    fs::write(
-        directory.join("WHOLE_SOURCE_AND_HOST_AFTER.debug.txt"),
-        format!("artifacts={observed:#?}\nhost={host_after:#?}\n"),
-    )
-    .unwrap();
+    let observed_paths = observed.iter().map(|(path, _)| *path).collect::<Vec<_>>();
+    evidence.debug("SOURCE_AFTER_PATH_ORDER.original.txt", &observed_paths);
+    for (index, (_, original)) in observed.iter().enumerate() {
+        evidence.bytes(&format!("source-after/{index}.original.bin"), original);
+    }
+    evidence.bytes("HOST_AFTER.original.bin", &host_after);
     if let Err(payload) = &outcome {
         fs::write(
             directory.join("ORIGINAL_ASSERTION_UNWIND.txt"),
@@ -370,6 +402,49 @@ fn compiled_selected_prototype_exercises_four_public_methods_typed_causes_lazy_m
     if let Err(payload) = outcome {
         std::panic::resume_unwind(payload);
     }
+}
+
+#[test]
+fn json5_failed_comparison_retains_actual_artifacts_and_typed_originals() {
+    let evidence = Evidence::new("rust-json5-failed-comparison");
+    let program = prototype();
+    evidence.debug("PROGRAM.original.txt", &program);
+    let actual = emit(&program, &options("json5-map"));
+    evidence.artifacts("actual", &actual);
+    let refused = emit_with_json5(&program, &options("9-invalid"));
+    evidence.artifacts("typed-error", &refused);
+    let artifacts = actual.unwrap();
+    let error = refused.unwrap_err();
+    let first = artifacts
+        .files()
+        .first()
+        .expect("actual emitted artifact required for the failing comparison");
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert!(
+            first.contents.as_slice() == b"deliberately wrong generated artifact comparison",
+            "deliberately failing comparison; originals at {}",
+            evidence.path().display()
+        );
+    }));
+    assert!(
+        outcome.is_err(),
+        "the deliberate comparison must actually fail"
+    );
+    evidence.assert_retained("actual", &artifacts);
+    let original: serde_json::Value = serde_json::from_slice(
+        &fs::read(evidence.path().join("typed-error/ERROR.original.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(original["debug"], format!("{error:#?}"));
+    assert_eq!(original["display"], error.to_string());
+    let mut sources = Vec::new();
+    let mut current = error.source();
+    while let Some(source) = current {
+        sources.push(serde_json::json!({"debug": format!("{source:#?}"),
+            "display": source.to_string()}));
+        current = source.source();
+    }
+    assert_eq!(original["source_chain"], serde_json::Value::Array(sources));
 }
 
 const HOST: &str = include_str!("json5/host.rs");

@@ -1,6 +1,12 @@
+use std::error::Error;
+
 use crate::{Json5EmitError, emit, emit_with_json5, runtime};
 use codegen::{Binding, Expression, ExpressionNode, Program, TargetScope};
 use ir::{ScalarType, SchemaNode};
+
+#[path = "../../codegen/tests/fixtures/generated_artifact_evidence.rs"]
+mod generated_artifact_evidence;
+use generated_artifact_evidence::Evidence;
 
 fn program() -> Program {
     Program {
@@ -37,13 +43,16 @@ fn program() -> Program {
 #[test]
 fn json5_opt_in_preserves_ordinary_artifacts_and_all73_sources() {
     let candidate = program();
+    let evidence = Evidence::new("csharp-json5-selection");
+    evidence.debug("PROGRAM.original.txt", &candidate);
     let before = emit(&candidate);
     let optional = emit_with_json5(&candidate);
     let repeated = emit_with_json5(&candidate);
     let after = emit(&candidate);
-    eprintln!(
-        "complete original candidate={candidate:#?} before={before:#?} optional={optional:#?} repeated={repeated:#?} after={after:#?}"
-    );
+    evidence.artifacts("ordinary-before", &before);
+    evidence.artifacts("optional", &optional);
+    evidence.artifacts("repeated", &repeated);
+    evidence.artifacts("ordinary-after", &after);
     let before = before.unwrap();
     let optional = optional.unwrap();
     let repeated = repeated.unwrap();
@@ -115,19 +124,69 @@ fn json5_opt_in_preserves_ordinary_artifacts_and_all73_sources() {
 
 #[test]
 fn json5_admission_refuses_expanded_schema_before_artifacts() {
+    let evidence = Evidence::new("csharp-json5-admission");
     let mut candidate = program();
     candidate.source.repeating = true;
+    evidence.debug("repeated-source-PROGRAM.original.txt", &candidate);
     let repeated = emit_with_json5(&candidate);
-    eprintln!("repeated source original result: {repeated:?}");
+    evidence.artifacts("repeated-source", &repeated);
     assert!(matches!(repeated, Err(Json5EmitError::Policy(_))));
     let mut candidate = program();
     candidate.target.nullable = true;
+    evidence.debug("nullable-target-PROGRAM.original.txt", &candidate);
     let nullable_group = emit_with_json5(&candidate);
-    eprintln!("nullable target original result: {nullable_group:?}");
+    evidence.artifacts("nullable-target", &nullable_group);
     assert!(matches!(nullable_group, Err(Json5EmitError::Policy(_))));
     let mut candidate = program();
     candidate.source.json_any = true;
+    evidence.debug("arbitrary-source-PROGRAM.original.txt", &candidate);
     let arbitrary = emit_with_json5(&candidate);
-    eprintln!("arbitrary source original result: {arbitrary:?}");
+    evidence.artifacts("arbitrary-source", &arbitrary);
     assert!(matches!(arbitrary, Err(Json5EmitError::Policy(_))));
+}
+
+#[test]
+fn json5_failed_comparison_retains_actual_artifacts_and_typed_originals() {
+    let evidence = Evidence::new("csharp-json5-failed-comparison");
+    let candidate = program();
+    evidence.debug("PROGRAM.original.txt", &candidate);
+    let actual = emit(&candidate);
+    evidence.artifacts("actual", &actual);
+    let mut invalid = candidate;
+    invalid.source.repeating = true;
+    evidence.debug("INVALID_PROGRAM.original.txt", &invalid);
+    let refused = emit_with_json5(&invalid);
+    evidence.artifacts("typed-error", &refused);
+    let artifacts = actual.unwrap();
+    let error = refused.unwrap_err();
+    let first = artifacts
+        .files()
+        .first()
+        .expect("actual emitted artifact required for the failing comparison");
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert!(
+            first.contents.as_slice() == b"deliberately wrong generated artifact comparison",
+            "deliberately failing comparison; originals at {}",
+            evidence.path().display()
+        );
+    }));
+    assert!(
+        outcome.is_err(),
+        "the deliberate comparison must actually fail"
+    );
+    evidence.assert_retained("actual", &artifacts);
+    let original: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(evidence.path().join("typed-error/ERROR.original.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(original["debug"], format!("{error:#?}"));
+    assert_eq!(original["display"], error.to_string());
+    let mut sources = Vec::new();
+    let mut current = error.source();
+    while let Some(source) = current {
+        sources.push(serde_json::json!({"debug": format!("{source:#?}"),
+            "display": source.to_string()}));
+        current = source.source();
+    }
+    assert_eq!(original["source_chain"], serde_json::Value::Array(sources));
 }
