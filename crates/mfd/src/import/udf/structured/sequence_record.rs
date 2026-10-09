@@ -18,12 +18,14 @@ use crate::import::schema::{
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 use crate::import::udf::{Call, Definition, OutputExpr};
+use crate::resource::ResourceResolver;
 
 pub(super) fn try_read(
     component: &roxmltree::Node<'_, '_>,
     structure: &roxmltree::Node<'_, '_>,
     children: &[roxmltree::Node<'_, '_>],
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
 ) -> Result<Option<ImportedDefinition>, String> {
     let declarations = children
         .iter()
@@ -45,10 +47,20 @@ pub(super) fn try_read(
     };
 
     let mut schema_warnings = Vec::new();
-    let source = read_definition_parameter_component(&source_node, mfd_path, &mut schema_warnings)
-        .ok_or_else(|| schema_read_error("input", &schema_warnings))?;
-    let output = read_definition_parameter_component(&output_node, mfd_path, &mut schema_warnings)
-        .ok_or_else(|| schema_read_error("output", &schema_warnings))?;
+    let source = read_definition_parameter_component(
+        &source_node,
+        mfd_path,
+        resources,
+        &mut schema_warnings,
+    )
+    .ok_or_else(|| schema_read_error("input", &schema_warnings))?;
+    let output = read_definition_parameter_component(
+        &output_node,
+        mfd_path,
+        resources,
+        &mut schema_warnings,
+    )
+    .ok_or_else(|| schema_read_error("output", &schema_warnings))?;
     let edge_from = crate::import::graph::read_edges(structure, Some(component));
     let source_groups = source_collection_ports(&source);
     let output_groups = repeating_group_ports(&output, &output.input_keys);
