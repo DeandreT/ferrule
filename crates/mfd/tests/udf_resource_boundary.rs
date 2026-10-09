@@ -37,8 +37,8 @@ impl Fixture {
         };
         let definition = format!(
             r#"<component name="Probe" library="neutral" kind="19"><structure><children>
-              <component name="Input" library="xml" kind="14" uid="1"><properties UsageKind="input"/><data><root><entry name="Parameter"><entry name="Value" outkey="101"/></entry></root><document schema="{declared_schema}" instanceroot="{{}}Parameter"/></data></component>
-              <component name="Output" library="xml" kind="14" uid="2"><properties UsageKind="output"/><data><root><entry name="Parameter"><entry name="Value" inpkey="102"/></entry></root><document schema="{declared_schema}" instanceroot="{{}}Parameter"/></data></component>
+              <component name="Input" library="xml" kind="14" uid="1"><properties UsageKind="input"/><data><parameter usageKind="input" name="Input"/><root><entry name="Parameter"><entry name="Value" outkey="101"/></entry></root><document schema="{declared_schema}" instanceroot="{{}}Parameter"/></data></component>
+              <component name="Output" library="xml" kind="14" uid="2"><properties UsageKind="output"/><data><parameter usageKind="output" name="Output"/><root><entry name="Parameter"><entry name="Value" inpkey="102"/></entry></root><document schema="{declared_schema}" instanceroot="{{}}Parameter"/></data></component>
               {self_call}
             </children><graph/></structure></component>"#
         );
