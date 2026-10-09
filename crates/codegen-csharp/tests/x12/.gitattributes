@@ -1,0 +1,2 @@
+# Preserve authored interchange bytes, including framing and ISA padding.
+*.x12 -text
