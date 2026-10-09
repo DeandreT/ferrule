@@ -39,11 +39,14 @@ pub(super) fn eval_sequence_in_progress(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Vec<Value>, EngineError> {
     match sequence {
-        SequenceExpr::FilterMapV1(composition) => {
-            Err(EngineError::UnsupportedSequenceComposition {
-                item: composition.item,
-            })
-        }
+        SequenceExpr::FilterMapV1(composition) => crate::filter_map::evaluate(
+            program,
+            composition,
+            consumer,
+            context,
+            positions,
+            in_progress,
+        ),
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => {
@@ -575,7 +578,7 @@ pub(super) fn eval_sequence_aggregate(
     super::aggregate::aggregate(function, values.len(), &values, arg)
 }
 
-fn eval_sequence_arg(
+pub(super) fn eval_sequence_arg(
     program: EvalProgram<'_>,
     consumer: Option<NodeId>,
     node: NodeId,
@@ -617,7 +620,7 @@ pub(super) fn generate_sequence(from: Option<Value>, to: Value) -> Result<Vec<Va
     Ok(values)
 }
 
-fn sequence_integer(value: Value, function: &'static str) -> Result<i64, EngineError> {
+pub(super) fn sequence_integer(value: Value, function: &'static str) -> Result<i64, EngineError> {
     let coerced = match &value {
         Value::Int(value) => Some(*value),
         Value::Float(value) => exact_float_integer(*value),

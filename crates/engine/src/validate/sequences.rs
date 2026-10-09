@@ -224,6 +224,65 @@ pub(super) fn validate_project(
     }
 }
 
+/// New ItemAt inputs keep the existing empty-context restriction, including
+/// foreign legacy items. Other legacy consumers are not admitted at runtime.
+pub(super) fn validate_filter_map_item_at(
+    project: &Project,
+    new_items: &BTreeSet<NodeId>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if new_items.is_empty() {
+        return;
+    }
+    let mut items = BTreeSet::new();
+    let mut scopes = vec![&project.root];
+    scopes.extend(project.extra_targets.iter().map(|target| &target.root));
+    while let Some(scope) = scopes.pop() {
+        if let Some(sequence) = scope.sequence() {
+            items.extend(sequence.owned_items());
+        }
+        scopes.extend(scope.children.iter());
+        scopes.extend(scope.dynamic_children.iter().map(|child| &child.scope));
+        if let Some(segments) = scope.concatenated() {
+            scopes.extend(segments.iter());
+        }
+    }
+    for node in project.graph.nodes.values() {
+        if let Node::SequenceExists { sequence, .. }
+        | Node::SequenceItemAt { sequence, .. }
+        | Node::SequenceAggregate { sequence, .. } = node
+        {
+            items.extend(sequence.owned_items());
+        }
+    }
+    for rule in &project.failure_rules {
+        if let FailureIteration::Sequence { sequence } = &rule.iteration {
+            items.extend(sequence.owned_items());
+        }
+    }
+    // The main lexical pass already checks every new identity in context.
+    // This pass adds only foreign legacy identities at the new ItemAt inputs.
+    items.retain(|item| !new_items.contains(item));
+    for (&node, expression) in &project.graph.nodes {
+        let Node::SequenceItemAt { sequence, index } = expression else {
+            continue;
+        };
+        if !matches!(sequence, mapping::SequenceExpr::FilterMapV1(_)) {
+            continue;
+        }
+        for input in sequence.inputs().into_iter().chain([*index]) {
+            validate_root(
+                &project.graph,
+                &items,
+                input,
+                ItemContext::Empty,
+                Origin::Reducer(node),
+                issues,
+            );
+        }
+    }
+}
+
 fn validate_scope<'a>(
     project: &Project,
     items: &BTreeSet<NodeId>,

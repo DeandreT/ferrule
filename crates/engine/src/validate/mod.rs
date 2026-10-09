@@ -130,6 +130,21 @@ pub(super) fn validate_runtime_parameter_name(
     }
 }
 
+/// Check only lexical references to the new filter/map owner identities.
+/// Structural descriptor admission runs first at the public execution boundary.
+/// This does not enable unrelated legacy graph/schema/UDF validation at runtime.
+pub(crate) fn validate_filter_map_contexts(project: &Project) -> Vec<ValidationIssue> {
+    let items = project
+        .filter_map_v1_descriptors()
+        .into_iter()
+        .flat_map(|descriptor| [descriptor.source.item(), descriptor.item])
+        .collect();
+    let mut issues = Vec::new();
+    sequences::validate_project(project, &items, &mut issues);
+    sequences::validate_filter_map_item_at(project, &items, &mut issues);
+    issues
+}
+
 /// Checks graph integrity, source/target paths, scope references, builtin
 /// names and arities, and cycles without reading input data or evaluating
 /// expressions.

@@ -94,21 +94,36 @@ fn record(project: &Project) -> Result<Instance, EngineError> {
 }
 
 #[test]
-fn structurally_admitted_composition_has_a_typed_execution_guard() {
+fn structurally_admitted_composition_executes_and_preserves_original_source_errors() {
     let mut project = project();
     let issues = validate(&project);
     eprintln!("validation={issues:#?}");
     assert!(issues.is_empty());
-    assert!(matches!(
-        record(&project),
-        Err(EngineError::UnsupportedSequenceComposition { item: 11 })
-    ));
+    let actual = record(&project);
+    let rows = [1, 2, 3]
+        .into_iter()
+        .map(|value| {
+            Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(value)))].into())
+        })
+        .collect();
+    assert_eq!(
+        actual.unwrap(),
+        Instance::Group(vec![("Rows".into(), Instance::Repeated(rows))].into())
+    );
     project.graph.nodes.insert(1, Node::Raise { message: None });
-    // The unavailable capability is refused before even a valid bound is read.
-    assert!(matches!(
-        record(&project),
-        Err(EngineError::UnsupportedSequenceComposition { item: 11 })
-    ));
+    let actual = record(&project);
+    let Err(EngineError::FilterMapRuntime { boundary, source }) = actual else {
+        panic!("expected original source failure");
+    };
+    assert_eq!(boundary.phase, FilterMapPhase::Source);
+    assert_eq!(boundary.node, Some(1));
+    assert_eq!(
+        *source,
+        EngineError::MappingException {
+            node: 1,
+            message: None
+        }
+    );
 }
 
 #[test]

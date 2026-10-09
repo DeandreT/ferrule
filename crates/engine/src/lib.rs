@@ -19,6 +19,7 @@ mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
 mod failure;
+mod filter_map;
 mod grouping;
 mod iteration_output;
 mod join;
@@ -44,6 +45,11 @@ pub use debug::{
     DebugSourceFieldProbe, DebugSourceFrame, PendingFunctionNodeFailure, PendingFunctionNodeInput,
     PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
     PendingTargetWrite,
+};
+pub use filter_map::{
+    FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
+    FilterMapLimitError, FilterMapLimits, FilterMapPhase, MAX_FILTER_MAP_SOURCE_ITEMS,
+    MAX_FILTER_MAP_WORK,
 };
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
@@ -342,8 +348,29 @@ pub enum EngineError {
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error(transparent)]
     FilterMapAdmission(#[from] Box<mapping::FilterMapAdmissionError>),
+    #[error("filter/map private item context admission failed: {issues:?}")]
+    FilterMapContext { issues: Vec<ValidationIssue> },
     #[error("filter/map sequence item {item} is not supported by native execution")]
     UnsupportedSequenceComposition { item: u32 },
+    #[error("filter/map {boundary:?}: {source}")]
+    FilterMapRuntime {
+        boundary: FilterMapBoundary,
+        #[source]
+        source: Box<EngineError>,
+    },
+    #[error("filter/map expected {expected:?}, got {found:?}")]
+    FilterMapValueType { expected: ScalarType, found: Value },
+    #[error("filter/map output is non-finite (binary64 bits {bits:016x})")]
+    FilterMapNonFinite { bits: u64 },
+    #[error("filter/map {kind:?} budget used {used}, requested {requested}, maximum {max}")]
+    FilterMapBudget {
+        kind: FilterMapBudgetKind,
+        used: u128,
+        requested: u128,
+        max: u128,
+    },
+    #[error("filter/map cancelled before work")]
+    FilterMapCancelled,
     #[error("recursive sequence exceeds the {limit}-group depth limit")]
     RecursiveSequenceDepth { limit: usize },
     #[error("recursive sequence produced more than {max} items")]
@@ -471,6 +498,8 @@ pub struct ExecutionContext<'a> {
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn DebugHook>,
+    filter_map_limits: FilterMapLimits,
+    filter_map_cancellation: Option<&'a dyn FilterMapCancellation>,
 }
 
 /// Host boundary for typed secondary sources whose path is computed during
@@ -490,6 +519,8 @@ impl<'a> ExecutionContext<'a> {
             dynamic_source_loader: None,
             trace_sink: None,
             debug_hook: None,
+            filter_map_limits: FilterMapLimits::default(),
+            filter_map_cancellation: None,
         }
     }
 
@@ -507,6 +538,8 @@ impl<'a> ExecutionContext<'a> {
             dynamic_source_loader: None,
             trace_sink: None,
             debug_hook: None,
+            filter_map_limits: FilterMapLimits::default(),
+            filter_map_cancellation: None,
         }
     }
 
@@ -549,6 +582,20 @@ impl<'a> ExecutionContext<'a> {
     /// insertions. A host may pause in the callback and cancel the run.
     pub fn with_debug_hook(mut self, hook: &'a dyn DebugHook) -> Self {
         self.debug_hook = Some(hook);
+        self
+    }
+
+    /// Lowers filter/map's run-wide item/work ceilings. This does not affect
+    /// ordinary generator paths or add a project-serialized setting.
+    pub fn with_filter_map_limits(mut self, limits: FilterMapLimits) -> Self {
+        self.filter_map_limits = limits;
+        self
+    }
+
+    /// Checks cancellation before filter/map work only, including reached UDF
+    /// calls. A checker does not forcibly interrupt an in-progress builtin.
+    pub fn with_filter_map_cancellation(mut self, checker: &'a dyn FilterMapCancellation) -> Self {
+        self.filter_map_cancellation = Some(checker);
         self
     }
 
@@ -712,6 +759,10 @@ fn evaluate_run<R>(
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
     project.validate_filter_map_v1()?;
+    let issues = validate::validate_filter_map_contexts(project);
+    if !issues.is_empty() {
+        return Err(EngineError::FilterMapContext { issues });
+    }
     let runtime_frame = Instance::Group(
         (execution
             .into_iter()
@@ -746,12 +797,19 @@ fn evaluate_run<R>(
     let extras_frame = Instance::Group((extras).into());
     let context = [&runtime_frame, &extras_frame, source];
     let first_failure_reported = Cell::new(false);
+    let filter_map_run_state = filter_map::FilterMapRunState::new(
+        execution.map_or_else(FilterMapLimits::default, |execution| {
+            execution.filter_map_limits
+        }),
+        execution.and_then(|execution| execution.filter_map_cancellation),
+    );
     let program = eval_expr::EvalProgram::new(
         &project.graph,
         &project.user_functions,
         execution.and_then(|execution| execution.trace_sink),
         &first_failure_reported,
     )
+    .with_filter_map_run_state(&filter_map_run_state)
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
@@ -789,6 +847,9 @@ mod failure_tests;
 #[cfg(test)]
 #[path = "tests/filter_map_model.rs"]
 mod filter_map_model_tests;
+#[cfg(test)]
+#[path = "tests/filter_map.rs"]
+mod filter_map_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
