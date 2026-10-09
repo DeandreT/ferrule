@@ -11,6 +11,7 @@
 //! A root array of objects can reuse a non-repeating object schema as flat
 //! rows; nested arrays still require a repeating child schema.
 
+mod borrowed_writer;
 pub mod json5_boundary;
 mod json5_finite;
 mod json5_unique;
@@ -856,6 +857,10 @@ pub fn write_lines(
 /// The returned document ends with a newline, matching [`write`]. This is
 /// the in-memory counterpart used by hosts without filesystem access.
 pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    borrowed_writer::to_string(schema, instance)
+}
+
+fn owned_to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     let value = to_value(schema, instance)?;
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
@@ -902,7 +907,7 @@ pub fn to_json5_string(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<String, JsonFormatError> {
-    let strict = to_string(schema, instance)?;
+    let strict = owned_to_string(schema, instance)?;
     let value: serde_json::Value = serde_json::from_str(&strict)?;
     let mut text = json5::to_string(&value)?;
     text.push('\n');
