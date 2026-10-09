@@ -6,7 +6,9 @@ use crate::canvas_search::CanvasSearchState;
 use crate::graph_viewer::GraphViewer;
 
 const CANVAS_ID: &str = "mapping_canvas";
-const TARGET_FIT_EXTENT: f32 = 150.0;
+#[path = "fit.rs"]
+mod fit;
+pub(crate) use fit::record_node_rect;
 const EDGE_PAN_ZONE: f32 = 72.0;
 const EDGE_PAN_SPEED: f32 = 900.0;
 
@@ -47,7 +49,7 @@ pub fn show(
     ui: &mut egui::Ui,
 ) -> CanvasInteraction {
     let canvas_id = egui::Id::new((CANVAS_ID, options.id_salt, options.view_generation));
-    let style = options.style;
+    let mut style = options.style;
     let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     let focused = ui.ctx().input(|input| {
         input.pointer.any_pressed()
@@ -74,7 +76,6 @@ pub fn show(
         ui.ctx().request_repaint();
     }
     viewer.pin_interaction_ids.clear();
-    let fit_marker = canvas_id.with("initial_fit_complete");
     let hover_marker = canvas_id.with("hovered_node");
     let focus_marker = canvas_id.with("minimap_focus");
     let transform_marker = canvas_id.with("transform");
@@ -88,9 +89,6 @@ pub fn show(
             minimap_focus.map(|focus| (focus.graph_position, viewport.center(), focus.zoom))
         });
     viewer.canvas_transform = None;
-    let initialize_fit = ui
-        .ctx()
-        .data(|data| !data.get_temp::<bool>(fit_marker).unwrap_or(false));
     let hovered_node = ui
         .ctx()
         .data(|data| data.get_temp::<Option<SnarlNodeId>>(hover_marker).flatten());
@@ -136,9 +134,41 @@ pub fn show(
     if delete {
         viewer.remove_snarl_nodes(&selected, snarl);
     }
-    let shifted_target = initialize_fit
-        .then(|| extend_target_fit_bounds(snarl, TARGET_FIT_EXTENT))
-        .flatten();
+    let frame = style
+        .bg_frame
+        .unwrap_or_else(|| egui::Frame::canvas(ui.style()));
+    let fit_viewport =
+        (ui.available_rect_before_wrap() - frame.total_margin()).intersect(ui.clip_rect());
+    let magnification = if style.crisp_magnified_text.unwrap_or(false) {
+        style.max_scale.unwrap_or(2.0)
+    } else {
+        1.0
+    };
+    let maximum_zoom = style.max_scale.unwrap_or(2.0) / magnification;
+    let pointer_navigation = pointer.is_some_and(|pointer| viewport.contains(pointer))
+        && (primary_down
+            || ui
+                .ctx()
+                .input(|input| input.smooth_scroll_delta() != egui::Vec2::ZERO));
+    let (fitted, minimum_zoom) = fit::begin_frame(
+        ui.ctx(),
+        canvas_id,
+        fit_viewport,
+        snarl,
+        maximum_zoom,
+        viewer.camera_focus.is_some() || wire_dragging || pointer_navigation,
+    );
+    if let Some(fitted) = fitted {
+        viewer.camera_focus = Some((fitted.graph_center, fitted.screen_center, Some(fitted.zoom)));
+    }
+    if let Some(minimum_zoom) = minimum_zoom {
+        style.min_scale = Some(
+            style
+                .min_scale
+                .unwrap_or(0.2)
+                .min(minimum_zoom * magnification),
+        );
+    }
     SnarlWidget::new()
         .id(canvas_id)
         .style(style)
@@ -195,18 +225,31 @@ pub fn show(
         // node rectangles, so a changed hover needs one immediate repaint.
         ui.ctx().request_repaint();
     }
-    if let Some((node, position)) = shifted_target
-        && let Some(info) = snarl.get_node_info_mut(node)
-    {
-        info.pos = position;
-    }
-    if initialize_fit {
-        ui.ctx().data_mut(|data| data.insert_temp(fit_marker, true));
-    }
+    fit::end_frame(ui.ctx(), canvas_id, snarl);
     CanvasInteraction {
         viewport_width: viewport.width(),
         focused,
     }
+}
+
+#[cfg(test)]
+pub(crate) fn current_fit_rects(
+    context: &egui::Context,
+    id_salt: egui::Id,
+    view_generation: u64,
+    snarl: &Snarl<CanvasNode>,
+) -> Option<(egui::Rect, Vec<(SnarlNodeId, egui::Rect)>)> {
+    let canvas_id = egui::Id::new((CANVAS_ID, id_salt, view_generation));
+    let transform =
+        context.data(|data| data.get_temp::<CanvasTransform>(canvas_id.with("transform")))?;
+    let (viewport, rects) = fit::measured_rects(context, canvas_id, snarl)?;
+    Some((
+        viewport,
+        rects
+            .into_iter()
+            .map(|(id, rect)| (id, transform.0 * rect))
+            .collect(),
+    ))
 }
 
 #[cfg(test)]
@@ -255,57 +298,9 @@ fn edge_pan_delta(
     ) * (EDGE_PAN_SPEED * frame_seconds)
 }
 
-fn extend_target_fit_bounds(
-    snarl: &mut Snarl<CanvasNode>,
-    extent: f32,
-) -> Option<(SnarlNodeId, egui::Pos2)> {
-    let (target, position) = snarl
-        .nodes_pos_ids()
-        .filter_map(|(node, position, value)| {
-            matches!(value, CanvasNode::TargetBlock(_)).then_some((node, position))
-        })
-        .max_by(|(left_node, left), (right_node, right)| {
-            left.x
-                .total_cmp(&right.x)
-                .then_with(|| left_node.cmp(right_node))
-        })?;
-    let info = snarl.get_node_info_mut(target)?;
-    info.pos.x += extent;
-    Some((target, position))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn target_fit_extent_is_temporary_and_deterministic() {
-        let mut snarl = Snarl::new();
-        snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0));
-        let first = snarl.insert_node(egui::pos2(400.0, 0.0), CanvasNode::TargetBlock(0));
-        let rightmost = snarl.insert_node(egui::pos2(400.0, 120.0), CanvasNode::TargetBlock(1));
-
-        let shifted = extend_target_fit_bounds(&mut snarl, 180.0);
-
-        assert_eq!(shifted, Some((rightmost, egui::pos2(400.0, 120.0))));
-        assert_eq!(
-            snarl.get_node_info(rightmost).map(|info| info.pos),
-            Some(egui::pos2(580.0, 120.0))
-        );
-        assert_eq!(
-            snarl.get_node_info(first).map(|info| info.pos),
-            Some(egui::pos2(400.0, 0.0))
-        );
-        if let Some((node, position)) = shifted
-            && let Some(info) = snarl.get_node_info_mut(node)
-        {
-            info.pos = position;
-        }
-        assert_eq!(
-            snarl.get_node_info(rightmost).map(|info| info.pos),
-            Some(egui::pos2(400.0, 120.0))
-        );
-    }
 
     #[test]
     fn edge_pan_uses_distance_pressure_only_during_active_drags() {
