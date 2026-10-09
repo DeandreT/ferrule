@@ -576,6 +576,9 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 ### C. Connectors and Format Breadth
 
+- [x] Inspect existing SQLite table and foreign-key metadata through read-only
+  connections, with MFD fallback behavior and refusal of write-required recovery
+  documented in the [metadata contract](docs/formats.md#sqlite-metadata-inspection).
 - [ ] Add a typed query/write model before general database mutation modes.
 - [ ] Extend adapters and transport only with confinement, cancellation,
   original-error, resource, and publication contracts.

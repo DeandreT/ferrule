@@ -15,7 +15,7 @@ use ir::{
     DatabaseForeignKeySide, Instance, ScalarType, SchemaKind, SchemaNode, Value, ValueGeneration,
 };
 use rusqlite::types::ValueRef;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use thiserror::Error;
 
 mod relational;
@@ -162,10 +162,24 @@ fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+/// Opens an existing literal filename for metadata inspection. SQLite must
+/// refuse recovery that would require writing the main database; WAL readers
+/// may still require shared-memory sidecars under SQLite's locking protocol.
+fn open_metadata_connection(db_path: &Path) -> Result<Connection, DbFormatError> {
+    // URI recognition can be enabled globally by SQLite's build. An explicit
+    // relative filesystem prefix keeps file: and :memory: filenames literal;
+    // joining an absolute path preserves it without resolving symlinks.
+    let literal_path = Path::new(".").join(db_path);
+    Ok(Connection::open_with_flags(
+        literal_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?)
+}
+
 /// Reads a table's declared columns as a repeating [`SchemaNode`] group
 /// named after the table.
 pub fn introspect(db_path: &Path, table: &str) -> Result<SchemaNode, DbFormatError> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_metadata_connection(db_path)?;
     let canonical: Option<String> = conn
         .query_row(
             "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?1 COLLATE NOCASE",
