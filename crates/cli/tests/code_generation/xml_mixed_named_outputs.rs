@@ -833,7 +833,7 @@ fn exercise(language: &str, multiple_lists: bool) -> TestResult<()> {
             String::from_utf8_lossy(&output.stderr)
         );
         let unchanged = artifact_files(&generated)?;
-        assert_eq!(unchanged.len(), if language == "rust" { 2 } else { 75 });
+        assert_emitted_artifact_paths(&unchanged, language, false);
         let output = run_host(language, &variant, &generated, &runtime, &ir)?;
         assert_eq!(
             artifact_files(&generated)?,
