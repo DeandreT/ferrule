@@ -34,7 +34,25 @@ settings window and diagnostics, including their full error details. Build the
 generated source with the Rust or .NET toolchain to obtain a compiled library.
 
 While generation runs, project actions are locked. A request to close the editor
-waits for generation to finish, then follows the editor’s usual close guards.
+waits for generation to finish, then follows the editor's usual close guards.
+
+## Output Filesystem
+
+The source writer stages a complete library beside its destination, then
+publishes it with an atomic directory rename that refuses an existing
+destination. This protects folders that appear during generation, including
+empty folders. The destination filesystem and the CLI's operating-system
+runtime must support that operation. On Linux, this requires the filesystem's
+[`RENAME_NOREPLACE` support](https://man7.org/linux/man-pages/man2/rename.2.html).
+
+The writer retains the original OS cause and attempts to remove its staging
+tree on failure. An unavailable-operation diagnostic suggests choosing a supporting
+filesystem or a CLI built for the destination's native operating system.
+For a Linux CLI running under WSL, choose a new folder on the WSL Linux
+filesystem, such as `/tmp/generated-csharp` or a folder under the Linux home
+directory. To generate directly onto a Windows filesystem, use a Windows build
+of the CLI. The same publication requirement applies to ordinary generation
+and explicitly selected companions.
 
 ## C#
 
@@ -94,6 +112,18 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 `execute_with_sources_and_dynamic_source_loader`, or their output/context
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
+
+## Explicit C# X12 Companions
+
+Add `--x12-adapters` to the C# CLI generation command for singular raw 004010
+X12 input/output methods around the ordinary typed mapping. The flag defaults
+to false and conflicts with `--csv-output` and `--json5-adapters`. The public
+writer is `generate_project_with_x12_adapters`; ordinary generation retains its
+existing typed/JSON APIs and artifact tree. The optional, package-free .NET 10
+boundary embeds its admitted schema and metadata and returns complete text or
+strict UTF-8 bytes. It validates envelope controls and counts supplied by the
+host. See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
+for direction selection, rejected metadata and typed boundary failures.
 
 ## Explicit JSON5 Companions
 

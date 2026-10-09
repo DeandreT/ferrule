@@ -154,6 +154,9 @@ enum Command {
         /// Include singular JSON5 text and UTF-8 byte companion methods.
         #[arg(long, conflicts_with = "csv_output")]
         json5_adapters: bool,
+        /// Include singular raw X12 004010 text and strict UTF-8 C# methods.
+        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
+        x12_adapters: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -613,7 +616,11 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             rust_runtime_path,
             csv_output,
             json5_adapters,
+            x12_adapters,
         } => {
+            if x12_adapters && matches!(language, CodegenLanguage::Rust) {
+                bail!("--x12-adapters currently requires --language csharp");
+            }
             let target = match language {
                 CodegenLanguage::Rust => cli::GenerateTarget::Rust {
                     runtime_path: rust_runtime_path.context(
@@ -627,7 +634,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if json5_adapters {
+            let outcome = if x12_adapters {
+                cli::generate_project_with_x12_adapters(&project, &out, target)?
+            } else if json5_adapters {
                 cli::generate_project_with_json5_adapters(&project, &out, target)?
             } else if csv_output {
                 cli::generate_project_with_csv_output(&project, &out, target)?
