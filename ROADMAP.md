@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-08
+Updated: 2026-10-09
 
 ## Goal
 
@@ -23,25 +23,38 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
 ## Current Baseline
 
-Status snapshot: 2026-10-08 23:03:59 UTC, against merged main
-[`3028230`](https://github.com/DeandreT/ferrule/commit/30282307f3c5ef2eee15e4fdf6873c7ca4485614).
+Status snapshot: 2026-10-09 13:13:15 UTC, against merged main
+[`0a645d3`](https://github.com/DeandreT/ferrule/commit/0a645d3e2d98207c87f3ad59229ebfc49580e11a).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#182](https://github.com/DeandreT/ferrule/issues/182), separate from implementation
-and its execution gates. The earlier #173 snapshot merged in
-[#175](https://github.com/DeandreT/ferrule/pull/175). Documentation rendering
-remains unverified.
+[#212](https://github.com/DeandreT/ferrule/issues/212); its final two revised
+parallel-diagram renders are complete. Publication status is tracked in #212.
+Earlier #173/#175 and
+#182/#187 snapshots remain historical records. Compact GUI #194 and guidance #210
+are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). Fresh strict
+warnings, formatting, one affected unit check and the production build pass;
+earlier focused/full GUI and web-demo crate suites are retained separately.
+Finite desktop inspection and editor-driven identity Rust/C# generation pass.
+The two generated public String JSON calls each match the complete 172-byte
+independent golden with normal owned host closure; earlier GUI parts needed owned
+helper cleanup. Three earlier diagram fences rendered as three SVGs and six PNGs
+with owned helper cleanup. The final two parallel diagrams rendered as two SVGs
+and four PNGs with owned helper cleanup; the unchanged roadmap fence reuses its
+earlier rendered evidence. The current map needs horizontal scrolling or zoom at
+1200 pixels, and the complete map's labels need zoom. All three hosted #214 jobs
+ran zero validation steps because
+of the account billing/spending restriction; those failures are not passes.
 
 | Area | Available now | Boundary to keep visible |
 | --- | --- | --- |
-| Mapping | Typed graphs and scopes; nested iteration, filters, grouping, sorting, windows, aggregates, generated sequences, multi-source inner joins, UDFs, dynamic properties, and ordered targets | Each context and format has an explicit validation subset |
+| Mapping | Typed graphs and scopes; nested iteration, filters, grouping, sorting, windows, aggregates, bounded ordered scalar filter/map sequences, multi-source inner joins, UDFs, dynamic properties, and ordered targets | Scalar sequence native/Rust/C# execution and the compact GUI increment are qualified in #190/#192/#193/#194; saved-design interchange, broader desktop workflows and general higher-order shapes remain separate |
 | Error order | Global pre-target failure rules plus lazy, expression-owned Raise; bounded item-ordered XML exception import is explicit opt-in | Global and item-ordered failures are different; strict native export refuses unproved ordering |
 | Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
 | Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
 | Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
 | JSON Schema | Per-resource reference policies, qualified required-only object-reference siblings, and exact integer intervals in String-or-Int fields | Native and compiled Rust/C# subsets are qualified in [#174](https://github.com/DeandreT/ferrule/pull/174)/[#183](https://github.com/DeandreT/ferrule/pull/183); broader compositions and scalar unions remain separate |
 | Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and explicit optional JSON5 or bounded flat CSV companions | Supported emission, compiled calls, physical resource checks, and external execution are separate gates |
-| Large files | Per-boundary byte/item/work budgets and CSV temporary-row release | Input/target trees and serialized buffers remain materialized; [#107](https://github.com/DeandreT/ferrule/issues/107)/[#185](https://github.com/DeandreT/ferrule/pull/185) measures 120.3–194.6 MiB peaks for two finite JSON workloads; [the report](docs/performance/json-output-set-memory.md) establishes no total-RAM cap |
+| Large files | Per-boundary byte/item/work budgets, CSV temporary-row release and borrowed ordinary JSON output text | Input/target trees and output Strings remain materialized; the [historical output-set study](docs/performance/json-output-set-memory.md) and [matched writer comparison](docs/performance/borrowed-json-output-memory.md) establish no total-RAM cap or streaming |
 | `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
 
 See [Architecture](docs/architecture.md), [Code generation](docs/code-generation.md),
@@ -152,7 +165,45 @@ an unrestricted publication-parity promise.
   broader profiles remain separate. Hosted jobs executed no validation steps
   because of the account billing/spending-limit restriction.
 
-These four authored Rust/C# public-host cohorts include small prerequisites and
+- [x] Qualify generated Rust scalar filter/map execution in
+  [#192](https://github.com/DeandreT/ferrule/issues/192), merged in
+  [#206](https://github.com/DeandreT/ferrule/pull/206): 188 public calls and 30
+  separately reported direct runtime controls pass across 40 compiled profiles
+  and seven static/decode controls. All 365 library tests, three legacy compiled
+  regressions and seven local gates pass; original compiler/lint failures remain
+  retained.
+- [x] Qualify generated C# scalar filter/map execution in
+  [#193](https://github.com/DeandreT/ferrule/issues/193), merged in
+  [#208](https://github.com/DeandreT/ferrule/pull/208): 172 public calls across 43
+  profiles, 35 separate direct controls, 432 library tests and 179 C# smoke groups
+  pass through eight local steps. Eager stage order, captures, positions, limits,
+  cancellation and complete typed causes are bounded to the admitted contract.
+- [x] Fix filtered legacy Rust sequence aggregate generation in
+  [#199](https://github.com/DeandreT/ferrule/issues/199), merged in
+  [#209](https://github.com/DeandreT/ferrule/pull/209): the original argument-type
+  compiler failure is retained; 15 independent native observations, 45 compiled
+  typed/text/byte calls, 114 Rust tests and six local steps pass. Native values
+  are independently compared, not used to manufacture generated expectations.
+- [ ] Qualify additive generated typed target selection in
+  [#198](https://github.com/DeandreT/ferrule/issues/198). Its 15-role source and
+  latest merged-main binding are accepted; all 90 planned native/Rust/C# calls
+  remain unrun. Adopt its shared C# test changes after #205 releases
+  `crates/codegen-csharp/src/json5_output_tests.rs`; this source handoff does not
+  replace backend qualification.
+  Preserve ordinary all-output APIs, static input admission, failure-rule order,
+  lazy selected-target loaders and shared counters. JSON/JSON5 selection overloads
+  and GUI integration are excluded.
+- [ ] Execute the three test-only artifact-retention roles in
+  [#205](https://github.com/DeandreT/ferrule/issues/205), including intentional
+  failing-comparison retention controls. Source is accepted; actual checks and
+  matched log/file-size comparisons remain unrun. No memory saving is inferred.
+
+These new sequence cohorts retain their own finite profiles and complete original
+failures. They do not close broader desktop workflows, external saved-design
+execution or whole-product compatibility gates. Hosted jobs for the merged increments ran
+zero validation steps because of the account billing/spending restriction.
+
+The four XML public-host cohorts above include small prerequisites and
 separate opt-in boundary runs. The [XML qualification index](docs/generated-xml-qualification-index.md)
 and [memory observations](docs/memory-and-limits.md#compiled-xml-host-observations)
 were refreshed in [#133](https://github.com/DeandreT/ferrule/issues/133), merged in
@@ -275,12 +326,17 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   two repetitions establish neither statistical significance nor a RAM cap.
   All three hosted jobs executed zero validation steps because of the account
   billing/spending restriction; local qualification remains separate.
-- [ ] Investigate removing the ordinary JSON writer's intermediate owned
-  `serde_json::Value` tree in the available
-  [#184](https://github.com/DeandreT/ferrule/issues/184) lane. Preserve the returned
-  pretty String, APIs, exact bytes, validation/errors and publication; compare
-  against #107's retained baseline. Engine target ownership, input parsing,
-  JSON5, generated runtimes, allocator changes and streaming APIs are excluded.
+- [x] Remove the ordinary JSON writer's intermediate owned `serde_json::Value`
+  tree in [#184](https://github.com/DeandreT/ferrule/issues/184), merged in
+  [#200](https://github.com/DeandreT/ferrule/pull/200), while preserving the returned
+  pretty String, APIs, exact bytes, validation/errors and publication. All 398
+  scoped regression tests and 126 complete writer-comparison calls pass.
+  The [matched report](docs/performance/borrowed-json-output-memory.md) retains
+  eight fresh original/candidate comparisons and separate verifiers: process
+  peaks are 8.7–40.4 MiB lower only for these fixtures. Container metadata and
+  validation snapshots can still allocate; this is neither allocation-exclusive
+  attribution, a RAM ceiling nor streaming. Engine targets, input parsing,
+  JSON5, generated runtimes and allocator policy remain unchanged.
 - [x] Qualify local Value map **Input conversion** editing on main, named-target,
   and function canvases: preserve typed imported tables/defaults and compact
   geometry; check all five choices, locks, history, save/reopen, and Preview.
@@ -355,11 +411,53 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   WebAssembly pass; 24 actual native browser commands and two complete typed
   and byte-checked downloads qualify applied titles in wide/compact views.
   Owned descendant cleanup was needed; final closure was proven.
-- [ ] Qualify Fit against measured whole-node bounds in the current browser
-  canvas in [#180](https://github.com/DeandreT/ferrule/issues/180), following #176.
-  Its corrected v2 source is independently accepted; local, runtime and browser
-  checks remain unrun at this snapshot. This active lane owns the view transform;
-  model/node-layout changes and broader authoring features are separate.
+- [x] Qualify Fit against measured whole-node bounds in
+  [#180](https://github.com/DeandreT/ferrule/issues/180), merged in
+  [#195](https://github.com/DeandreT/ferrule/pull/195): 54 unique web tests, fresh
+  WebAssembly, 12 wide/compact Fit checkpoints, 66 browser commands and two
+  complete checked downloads pass. Only the view transform changes; Project,
+  bindings, wires and saved positions stay intact. Owned cleanup was needed
+  before final closure; normal closure was false. Earlier failures are retained.
+- [x] Independently review the 21-role compact scalar sequence editor source in
+  [#194](https://github.com/DeandreT/ferrule/issues/194), including the one-sentence
+  generation guidance correction [#210](https://github.com/DeandreT/ferrule/issues/210).
+  Both are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). The narrow
+  correction for two absent test-fixture wires preserves every strict snapshot
+  assertion; the exact properties test passes all three consumers.
+- [x] Complete #194's earlier 20 focused checks, 742 GUI tests and 31 web-demo
+  crate tests. Final source passes fresh workspace strict warnings after 454
+  required source timestamp refreshes, formatting, one affected unit check already
+  in the 742-test suite, and the fresh production build. Repeated checks do not
+  increase unique test totals; crate tests are distinct from actual browser UI.
+- [x] Observe current-item properties at 1200 × 900 and responsive scope selection
+  from 900 × 700 to 1200 × 900 on the identity mapping. Those finite desktop parts
+  exit 0 with owned helper cleanup; they do not establish correct compact Fit.
+- [x] Generate identity Rust and C# libraries through the ordinary editor dialog.
+  Both finite generation parts exit 0 with owned helper cleanup.
+- [x] Qualify one public String JSON call per generated identity library against
+  the complete independently authored 172-byte golden. All five host commands
+  exit 0 with normal owned closure and no cleanup. This is an identity fixture
+  check, separate from the GUI parts' cleanup observations.
+  Local native/Preview recipe checks and these finite desktop/host parts do not
+  qualify all 13 physical workflows or all 39 design cases. Broader pointer,
+  save/reload and history coverage remains separate. Constant-7 controls do not
+  prove real parent-frame positions. Independent document copies are in scope;
+  same-project duplication is #201.
+- [ ] Agree and implement atomic sequence-consumer duplication in the available
+  [#201](https://github.com/DeandreT/ferrule/issues/201) lane after coordinating the
+  shared GUI files. Reserve/remap private owners without changing the original;
+  general clipboard and arbitrary graph copying are excluded.
+- [ ] Qualify the available test-only GUI frame diagnostic change in
+  [#211](https://github.com/DeandreT/ferrule/issues/211) after #194 releases its
+  helper. Preserve full mapping outcomes and control evidence; compare complete
+  log sizes separately from process memory. Production behavior is excluded.
+- [ ] Fit complete desktop node bounds in the claimed
+  [#213](https://github.com/DeandreT/ferrule/issues/213) lane on the released #194
+  GUI baseline. The observed 900 × 700 mapping has five graph nodes and
+  source/target blocks; resizing exposes the clipped graph. Own only the desktop
+  fit action and required view transform, preserving Project data, wires, saved
+  positions and layout sidecars. Browser Fit, factories/icons and authoring are
+  separate scopes.
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
@@ -427,18 +525,46 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 - [ ] Extend catalog-backed functions and reusable contexts with matching
   validation, interpreter, Rust, C#, and authoring contracts.
-- [ ] Agree the bounded scalar-sequence composition contract in the claimed
-  design/literal-fixture lane
-  [#102](https://github.com/DeandreT/ferrule/issues/102). Existing reducers and
-  scalar UDFs remain the baseline; implementation needs separately scoped
-  follow-on issues after design review. General higher-order/nested collections
-  are excluded from this initial design.
-- [ ] Validate the source-derived scalar-UDF argument-error witness in the
-  available [#186](https://github.com/DeandreT/ferrule/issues/186) lane before
-  aligning the two emitters with interpreter evaluation/adaptation order.
-  An early Bool-to-Int argument and later Raise predict different first errors;
-  validation and runtime qualification are unrun. Interpreter, coercion, frame,
-  sequence and GUI policy changes are excluded.
+- [x] Publish the reviewed bounded scalar-sequence contract and all 39 complete
+  proposed literals in [#102](https://github.com/DeandreT/ferrule/issues/102),
+  merged in [#188](https://github.com/DeandreT/ferrule/pull/188). The
+  [design](docs/design/scalar-sequence-composition.md) and
+  [literal corpus](docs/design/fixtures/scalar-filter-map-v1.json) contain 37
+  feature cases and two legacy controls. Design approval alone is not execution
+  evidence; general higher-order/nested collections are excluded.
+- [x] Merge guarded model/codec/ownership admission in
+  [#189](https://github.com/DeandreT/ferrule/issues/189)/
+  [#197](https://github.com/DeandreT/ferrule/pull/197): 1,759 distinct scoped
+  regressions pass. Both private owners, ordered captures, stage signatures,
+  legacy serialization and typed unsupported guards remain explicit.
+- [x] Execute the admitted scalar sequence natively in
+  [#190](https://github.com/DeandreT/ferrule/issues/190)/
+  [#202](https://github.com/DeandreT/ferrule/pull/202): all 37 frozen feature cases,
+  two legacy controls and 1,011 distinct scoped regressions pass. Captures run
+  once in order, selected mappers remain lazy within eager construction, and
+  output positions are dense. Feature-specific shared item/work counters and
+  cancellation do not impose a RAM or wall-time bound on legacy execution.
+- [x] Retain stage UDF roots and private contexts in common lowering in
+  [#191](https://github.com/DeandreT/ferrule/issues/191)/
+  [#204](https://github.com/DeandreT/ferrule/pull/204): 62 complete comparisons and
+  497 distinct library tests pass. This common qualification remains separate
+  from the compiled Rust/C# cohorts recorded above.
+- [x] Align ordinary and nested generated scalar-UDF argument error order in
+  [#186](https://github.com/DeandreT/ferrule/issues/186)/
+  [#196](https://github.com/DeandreT/ferrule/pull/196): all 18 compiled calls per
+  language match frozen expectations after the original four mismatches per
+  language were retained. Evaluate all arguments left to right before adaptation;
+  interpreter/coercion/frame policy is unchanged.
+- [ ] Define faithful saved-design interchange for the admitted sequence in
+  [#203](https://github.com/DeandreT/ferrule/issues/203). This available design and
+  synthetic-fixture lane must establish exact stage/capture/position/error
+  preservation before any importer/exporter implementation. Existing typed
+  refusal remains; XML annotations and JSON5 metadata are separate contracts.
+- [ ] Measure large captures and eager mapped outputs in
+  [#207](https://github.com/DeandreT/ferrule/issues/207). This available fixture/report
+  lane varies capture/value length and kept item count across native/Rust/C#
+  routes with complete independent outputs. It excludes production optimization,
+  new resource policy, streaming and universal memory claims.
 
 ### B. Visual Authoring and Debugging
 
