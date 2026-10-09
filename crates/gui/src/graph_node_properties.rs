@@ -28,6 +28,23 @@ impl GraphViewer<'_> {
         } else {
             Vec::new()
         };
+        let filter_map_owned = self.owned_item_ids();
+        let filter_map_inputs = graph_references::filter_map_item_ids(
+            self.graph,
+            self.root_scope,
+            self.extra_targets,
+            self.inactive_target_scopes,
+            self.project_references,
+        )
+        .0;
+        let filter_map_functions = self.project_references.user_functions();
+        let filter_map_graph = self
+            .graph
+            .nodes
+            .get(&node_id)
+            .and_then(crate::filter_map_editor::sequence)
+            .filter(|sequence| matches!(sequence, mapping::SequenceExpr::FilterMapV1(_)))
+            .map(|_| self.graph.clone());
         let mut new_call_arg_needed = false;
         let mut call_function_changed = false;
         let mut remove_call_wire = None;
@@ -44,7 +61,16 @@ impl GraphViewer<'_> {
             .graph
             .nodes
             .get(&node_id)
-            .filter(|node| matches!(node, Node::Call { .. } | Node::Aggregate { .. }))
+            .filter(|node| {
+                matches!(
+                    node,
+                    Node::Call { .. }
+                        | Node::Aggregate { .. }
+                        | Node::SequenceExists { .. }
+                        | Node::SequenceItemAt { .. }
+                        | Node::SequenceAggregate { .. }
+                )
+            })
             .cloned();
         let node = if let Some(node) = staged_node.as_mut() {
             Some(node)
@@ -424,12 +450,44 @@ impl GraphViewer<'_> {
                     });
                 }
                 Node::SequenceExists { sequence, .. } => {
+                    if let (Some(functions), Some(graph)) =
+                        (filter_map_functions, filter_map_graph.as_ref())
+                    {
+                        crate::filter_map_editor::show(
+                            ui,
+                            sequence,
+                            graph,
+                            functions,
+                            crate::filter_map_editor::Items {
+                                all: &filter_map_owned,
+                                inputs: &filter_map_inputs,
+                            },
+                            Some(node_id),
+                            false,
+                        );
+                    }
                     ui.label(format!(
                         "any {} item matches",
                         graph_sequence::label(sequence)
                     ));
                 }
                 Node::SequenceItemAt { sequence, .. } => {
+                    if let (Some(functions), Some(graph)) =
+                        (filter_map_functions, filter_map_graph.as_ref())
+                    {
+                        crate::filter_map_editor::show(
+                            ui,
+                            sequence,
+                            graph,
+                            functions,
+                            crate::filter_map_editor::Items {
+                                all: &filter_map_owned,
+                                inputs: &filter_map_inputs,
+                            },
+                            Some(node_id),
+                            true,
+                        );
+                    }
                     ui.label(format!(
                         "select one {} item",
                         graph_sequence::label(sequence)
@@ -442,6 +500,22 @@ impl GraphViewer<'_> {
                     expression,
                     ..
                 } => {
+                    if let (Some(functions), Some(graph)) =
+                        (filter_map_functions, filter_map_graph.as_ref())
+                    {
+                        crate::filter_map_editor::show(
+                            ui,
+                            sequence,
+                            graph,
+                            functions,
+                            crate::filter_map_editor::Items {
+                                all: &filter_map_owned,
+                                inputs: &filter_map_inputs,
+                            },
+                            Some(node_id),
+                            false,
+                        );
+                    }
                     let op = format!("{function:?}").to_lowercase();
                     ui.label(format!(
                         "{op} {} {}",
@@ -561,6 +635,24 @@ impl GraphViewer<'_> {
         } else {
             true
         };
+        if edit_committed
+            && self
+                .graph
+                .nodes
+                .get(&node_id)
+                .and_then(crate::filter_map_editor::sequence)
+                .is_some_and(|sequence| matches!(sequence, mapping::SequenceExpr::FilterMapV1(_)))
+        {
+            crate::app::sync_endpoint_wires_with_owned_items(
+                self.graph,
+                self.root_scope,
+                self.source_blocks,
+                self.target_blocks,
+                self.endpoint_scroll,
+                snarl,
+                &filter_map_owned,
+            );
+        }
         if edit_committed && let Some((expression, argument)) = aggregate_before {
             self.migrate_aggregate_mode_wires(pin.id.node, expression, argument, snarl);
         }

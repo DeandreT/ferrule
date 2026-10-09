@@ -464,7 +464,15 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
     let aggregate_inputs = graph_nodes
         .iter()
         .filter_map(|(&id, &node)| {
-            matches!(graph.nodes.get(&id), Some(Node::Aggregate { .. })).then_some(node)
+            (matches!(graph.nodes.get(&id), Some(Node::Aggregate { .. }))
+                || graph
+                    .nodes
+                    .get(&id)
+                    .and_then(crate::filter_map_editor::sequence)
+                    .is_some_and(|sequence| {
+                        matches!(sequence, mapping::SequenceExpr::FilterMapV1(_))
+                    }))
+            .then_some(node)
         })
         .collect::<std::collections::BTreeSet<_>>();
     let endpoint_nodes = source_nodes
