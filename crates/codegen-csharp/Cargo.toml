@@ -16,3 +16,5 @@ serde_json = { workspace = true }
 codegen-rust = { workspace = true }
 codegen-runtime = { workspace = true }
 engine = { workspace = true }
+format-edi = { workspace = true }
+format-json = { workspace = true }

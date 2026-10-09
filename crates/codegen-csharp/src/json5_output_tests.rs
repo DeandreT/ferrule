@@ -4,9 +4,7 @@ use crate::{Json5EmitError, emit, emit_with_json5, runtime};
 use codegen::{Binding, Expression, ExpressionNode, Program, TargetScope};
 use ir::{ScalarType, SchemaNode};
 
-#[path = "../../codegen/tests/fixtures/generated_artifact_evidence.rs"]
-mod generated_artifact_evidence;
-use generated_artifact_evidence::Evidence;
+use crate::generated_artifact_evidence::Evidence;
 
 fn program() -> Program {
     Program {
