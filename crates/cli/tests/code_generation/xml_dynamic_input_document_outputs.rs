@@ -352,7 +352,7 @@ fn run_variant(
         String::from_utf8_lossy(&result.stderr)
     );
     let original_tree = artifact_files(&generated)?;
-    assert_eq!(original_tree.len(), if language == "rust" { 2 } else { 76 });
+    assert_emitted_artifact_paths(&original_tree, language, true);
     if language == "csharp" {
         assert!(
             generated
