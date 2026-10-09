@@ -67,16 +67,12 @@ fn resolve_resource_reference(
     declared: &str,
     description: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let result = match resources {
-        Some(resources) => resources.resolve_file(declared, description),
+    match resources {
+        Some(resources) => {
+            resources.resolve_file_retaining_boundary_refusals(declared, description)
+        }
         None => resolve_xml_schema_reference(mfd_path, declared),
-    };
-    if let Some(resources) = resources
-        && let Err(error) = &result
-    {
-        resources.record_refusal(error.clone());
     }
-    result
 }
 
 pub(super) fn restore_connected_structural_ports(

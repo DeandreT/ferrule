@@ -102,6 +102,86 @@ fn http_source() -> &'static str {
 const TYPES: &str = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:simpleType name="SelectedType"><xs:restriction base="xs:int"/></xs:simpleType></xs:schema>"#;
 
 #[test]
+fn typed_database_fallback_distinguishes_missing_metadata_from_boundary_denial()
+-> Result<(), Box<dyn Error>> {
+    for missing in [true, false] {
+        let fixture = Fixture::new()?;
+        let outside = fixture.0.join("outside/metadata.sqlite");
+        let outside_bytes = b"Wholly authored resource; never opened as database metadata.";
+        write(&outside, std::str::from_utf8(outside_bytes)?)?;
+        let declared = if missing {
+            "missing.sqlite".to_owned()
+        } else {
+            outside.display().to_string()
+        };
+        let design = format!(
+            r#"<mapping><resources><datasources><datasource name="fixture"><database_connection name="fixture" ConnectionString="{declared}" database_kind="SQLite" import_kind="SQLite"/></datasource></datasources></resources>
+              <component name="map"><structure><children>{}
+              <component name="target" library="db" kind="15"><properties XSLTDefaultOutput="1"/><data><root><entry name="Records" type="table"><entry name="Value" datatype="integer" inpkey="20"/></entry></root><database ref="fixture"/></data></component>
+              </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+            xml_source()
+        );
+        write(&fixture.package().join("mapping.mfd"), &design)?;
+        write(
+            &fixture.package().join("source.xsd"),
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        )?;
+        let imported = fixture.import()?;
+        let input =
+            Instance::Group(vec![("Value".to_owned(), Instance::Scalar(Value::Int(17)))].into());
+        let expected =
+            Instance::Group(vec![("Value".to_owned(), Instance::Scalar(Value::Int(17)))].into());
+        let output = engine::run(&imported.project, &input);
+        fixture.observe("execution", (&input, &output, &expected))?;
+        let outside_after = std::fs::read(&outside)?;
+        fixture.observe("outside-bytes", (&outside_bytes, &outside_after))?;
+        let missing_path_exists = fixture.package().join("missing.sqlite").exists();
+        fixture.observe("missing-path-exists", missing_path_exists)?;
+        let refusal = if missing {
+            None
+        } else {
+            let refusal = mfd::import_with_profile(
+                &fixture.package().join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(fixture.package()),
+                mfd::ImportProfile::Executable,
+            );
+            fixture.observe_profile("executable-refusal", &refusal)?;
+            Some(refusal)
+        };
+        assert_eq!(output?, expected);
+        assert_eq!(outside_after.as_slice(), outside_bytes.as_slice());
+        assert!(!missing_path_exists);
+        assert_eq!(
+            imported
+                .project
+                .target
+                .child("Value")
+                .map(|node| &node.kind),
+            Some(&SchemaKind::Scalar {
+                ty: ScalarType::Int
+            })
+        );
+        if missing {
+            assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        } else {
+            assert!(
+                imported.warnings.iter().any(|warning| {
+                    warning.contains("resolves outside package root")
+                        || warning.contains("uses a Windows drive or UNC path")
+                }),
+                "{:?}",
+                imported.warnings
+            );
+            assert!(matches!(
+                refusal,
+                Some(Err(mfd::MfdError::IncompatibleImport(_)))
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn ordinary_and_http_schema_dependencies_cannot_escape_with_successful_types()
 -> Result<(), Box<dyn Error>> {
     for source in [xml_source(), http_source()] {
