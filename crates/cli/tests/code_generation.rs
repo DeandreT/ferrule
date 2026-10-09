@@ -715,6 +715,113 @@ fn artifact_files(root: &Path) -> TestResult<ArtifactFiles> {
     Ok(files)
 }
 
+fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'static str> {
+    let mut paths = vec![
+        "Ferrule.Generated.csproj",
+        "GeneratedMapping.cs",
+        "GeneratedTargetBuilder.cs",
+        "Runtime/FerruleAdjacencyTree.cs",
+        "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleDelimitedText.cs",
+        "Runtime/FerruleDynamicDocuments.cs",
+        "Runtime/FerruleDynamicSources.cs",
+        "Runtime/FerruleDynamicTargets.cs",
+        "Runtime/FerruleEmbeddedSchema.cs",
+        "Runtime/FerruleExecutionContext.cs",
+        "Runtime/FerruleFailures.cs",
+        "Runtime/FerruleFilterMap.cs",
+        "Runtime/FerruleFunctions.DateTime.cs",
+        "Runtime/FerruleFunctions.DateTimeAdd.cs",
+        "Runtime/FerruleFunctions.DateTimeFormatting.cs",
+        "Runtime/FerruleFunctions.DateTimePictures.cs",
+        "Runtime/FerruleFunctions.EdifactDateTime.cs",
+        "Runtime/FerruleFunctions.FormatNumber.cs",
+        "Runtime/FerruleFunctions.Json.cs",
+        "Runtime/FerruleFunctions.Numeric.cs",
+        "Runtime/FerruleFunctions.Regex.cs",
+        "Runtime/FerruleFunctions.Strings.cs",
+        "Runtime/FerruleFunctions.cs",
+        "Runtime/FerruleGrouping.cs",
+        "Runtime/FerruleInstance.cs",
+        "Runtime/FerruleJoins.cs",
+        "Runtime/FerrulePathHierarchy.cs",
+        "Runtime/FerrulePrimaryRoot.cs",
+        "Runtime/FerruleRecursiveFilter.cs",
+        "Runtime/FerruleRuntimeException.cs",
+        "Runtime/FerruleScalarRegex.BinaryTables.cs",
+        "Runtime/FerruleScalarRegex.BoundaryCompiler.cs",
+        "Runtime/FerruleScalarRegex.BoundaryParser.cs",
+        "Runtime/FerruleScalarRegex.GraphemeTables.cs",
+        "Runtime/FerruleScalarRegex.Program.cs",
+        "Runtime/FerruleScalarRegex.Properties.cs",
+        "Runtime/FerruleScalarRegex.ScriptTables.cs",
+        "Runtime/FerruleScalarRegex.cs",
+        "Runtime/FerruleSequences.cs",
+        "Runtime/FerruleTargetSelection.cs",
+        "Runtime/FerruleUserFunctions.cs",
+        "Runtime/FerruleValue.cs",
+        "Runtime/FerruleValueMaps.cs",
+        "Runtime/FerruleXml.Boundary.cs",
+        "Runtime/FerruleXml.DocumentOutputs.cs",
+        "Runtime/FerruleXml.DocumentSet.cs",
+        "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
+        "Runtime/FerruleXml.DynamicSources.cs",
+        "Runtime/FerruleXml.Input.Structured.cs",
+        "Runtime/FerruleXml.Input.StructuredProjection.cs",
+        "Runtime/FerruleXml.Input.StructuredSchema.cs",
+        "Runtime/FerruleXml.Input.cs",
+        "Runtime/FerruleXml.InputDocumentOutputs.cs",
+        "Runtime/FerruleXml.InputDocumentSet.cs",
+        "Runtime/FerruleXml.InputSet.cs",
+        "Runtime/FerruleXml.Output.cs",
+        "Runtime/FerruleXml.OutputSet.cs",
+        "Runtime/FerruleXml.cs",
+        "Runtime/FerruleXmlMixedContent.cs",
+        "Runtime/FerruleXmlTypeOrigin.cs",
+        "Runtime/Json/FerruleJson.AllowedValues.cs",
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json/FerruleJson.Contains.cs",
+        "Runtime/Json/FerruleJson.DependentSchemas.cs",
+        "Runtime/Json/FerruleJson.MultipleOf.cs",
+        "Runtime/Json/FerruleJson.ObjectOpenness.cs",
+        "Runtime/Json/FerruleJson.PatternProperties.cs",
+        "Runtime/Json/FerruleJson.Patterns.cs",
+        "Runtime/Json/FerruleJson.PropertyCounts.cs",
+        "Runtime/Json/FerruleJson.PropertyDependencies.cs",
+        "Runtime/Json/FerruleJson.PropertyNames.cs",
+        "Runtime/Json/FerruleJson.UniqueItems.cs",
+        "Runtime/Json/FerruleJson.cs",
+        "Runtime/ScalarPathResolver.cs",
+        "Runtime/ScopeContext.CollectionFind.cs",
+        "Runtime/ScopeContext.cs",
+    ];
+    if dynamic_document_companion {
+        paths.push("Runtime/FerruleXml.DynamicInputDocumentOutputs.cs");
+        paths.sort_unstable();
+    }
+    paths
+}
+
+fn assert_emitted_artifact_paths(
+    files: &ArtifactFiles,
+    language: &str,
+    dynamic_document_companion: bool,
+) {
+    let actual = files
+        .iter()
+        .map(|(path, _)| path.as_str())
+        .collect::<Vec<_>>();
+    let expected = match language {
+        "rust" => vec!["Cargo.toml", "src/lib.rs"],
+        "csharp" => expected_csharp_artifact_paths(dynamic_document_companion),
+        other => panic!("unsupported generated artifact language: {other}"),
+    };
+    assert_eq!(
+        actual, expected,
+        "complete generated source artifact inventory"
+    );
+}
+
 #[test]
 fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
     let directory = TempDir::new("csharp_manifest")?;
@@ -735,92 +842,11 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 77,
+            files_written: expected_csharp_artifact_paths(false).len(),
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
-    assert_eq!(
-        manifest,
-        vec![
-            "Ferrule.Generated.csproj",
-            "GeneratedMapping.cs",
-            "GeneratedTargetBuilder.cs",
-            "Runtime/FerruleAdjacencyTree.cs",
-            "Runtime/FerruleAggregates.cs",
-            "Runtime/FerruleDelimitedText.cs",
-            "Runtime/FerruleDynamicDocuments.cs",
-            "Runtime/FerruleDynamicSources.cs",
-            "Runtime/FerruleDynamicTargets.cs",
-            "Runtime/FerruleEmbeddedSchema.cs",
-            "Runtime/FerruleExecutionContext.cs",
-            "Runtime/FerruleFailures.cs",
-            "Runtime/FerruleFilterMap.cs",
-            "Runtime/FerruleFunctions.DateTime.cs",
-            "Runtime/FerruleFunctions.DateTimeAdd.cs",
-            "Runtime/FerruleFunctions.DateTimeFormatting.cs",
-            "Runtime/FerruleFunctions.DateTimePictures.cs",
-            "Runtime/FerruleFunctions.EdifactDateTime.cs",
-            "Runtime/FerruleFunctions.FormatNumber.cs",
-            "Runtime/FerruleFunctions.Json.cs",
-            "Runtime/FerruleFunctions.Numeric.cs",
-            "Runtime/FerruleFunctions.Regex.cs",
-            "Runtime/FerruleFunctions.Strings.cs",
-            "Runtime/FerruleFunctions.cs",
-            "Runtime/FerruleGrouping.cs",
-            "Runtime/FerruleInstance.cs",
-            "Runtime/FerruleJoins.cs",
-            "Runtime/FerrulePathHierarchy.cs",
-            "Runtime/FerrulePrimaryRoot.cs",
-            "Runtime/FerruleRecursiveFilter.cs",
-            "Runtime/FerruleRuntimeException.cs",
-            "Runtime/FerruleScalarRegex.BinaryTables.cs",
-            "Runtime/FerruleScalarRegex.BoundaryCompiler.cs",
-            "Runtime/FerruleScalarRegex.BoundaryParser.cs",
-            "Runtime/FerruleScalarRegex.GraphemeTables.cs",
-            "Runtime/FerruleScalarRegex.Program.cs",
-            "Runtime/FerruleScalarRegex.Properties.cs",
-            "Runtime/FerruleScalarRegex.ScriptTables.cs",
-            "Runtime/FerruleScalarRegex.cs",
-            "Runtime/FerruleSequences.cs",
-            "Runtime/FerruleTargetSelection.cs",
-            "Runtime/FerruleUserFunctions.cs",
-            "Runtime/FerruleValue.cs",
-            "Runtime/FerruleValueMaps.cs",
-            "Runtime/FerruleXml.Boundary.cs",
-            "Runtime/FerruleXml.DocumentOutputs.cs",
-            "Runtime/FerruleXml.DocumentSet.cs",
-            "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
-            "Runtime/FerruleXml.DynamicSources.cs",
-            "Runtime/FerruleXml.Input.Structured.cs",
-            "Runtime/FerruleXml.Input.StructuredProjection.cs",
-            "Runtime/FerruleXml.Input.StructuredSchema.cs",
-            "Runtime/FerruleXml.Input.cs",
-            "Runtime/FerruleXml.InputDocumentOutputs.cs",
-            "Runtime/FerruleXml.InputDocumentSet.cs",
-            "Runtime/FerruleXml.InputSet.cs",
-            "Runtime/FerruleXml.Output.cs",
-            "Runtime/FerruleXml.OutputSet.cs",
-            "Runtime/FerruleXml.cs",
-            "Runtime/FerruleXmlMixedContent.cs",
-            "Runtime/FerruleXmlTypeOrigin.cs",
-            "Runtime/Json/FerruleJson.AllowedValues.cs",
-            "Runtime/Json/FerruleJson.Canonical.cs",
-            "Runtime/Json/FerruleJson.Contains.cs",
-            "Runtime/Json/FerruleJson.DependentSchemas.cs",
-            "Runtime/Json/FerruleJson.MultipleOf.cs",
-            "Runtime/Json/FerruleJson.ObjectOpenness.cs",
-            "Runtime/Json/FerruleJson.PatternProperties.cs",
-            "Runtime/Json/FerruleJson.Patterns.cs",
-            "Runtime/Json/FerruleJson.PropertyCounts.cs",
-            "Runtime/Json/FerruleJson.PropertyDependencies.cs",
-            "Runtime/Json/FerruleJson.PropertyNames.cs",
-            "Runtime/Json/FerruleJson.UniqueItems.cs",
-            "Runtime/Json/FerruleJson.cs",
-            "Runtime/ScalarPathResolver.cs",
-            "Runtime/ScopeContext.CollectionFind.cs",
-            "Runtime/ScopeContext.cs",
-        ]
-    );
+    assert_eq!(manifest, expected_csharp_artifact_paths(false));
     assert_eq!(first_files, second_files);
     Ok(())
 }
