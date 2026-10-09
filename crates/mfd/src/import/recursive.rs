@@ -273,7 +273,6 @@ fn validate_pin_shape(
 ) -> Result<(), String> {
     if function
         .output_pins
-        .as_slice()
         .iter()
         .filter(|pin| pin.is_some())
         .count()
