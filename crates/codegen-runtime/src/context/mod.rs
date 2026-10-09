@@ -57,6 +57,7 @@ pub struct ScopeContext<'a> {
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<ExecutionContext<'a>>,
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
+    pub(crate) filter_map: Option<crate::filter_map::FilterMapContext<'a>>,
 }
 
 #[derive(Clone)]
@@ -122,6 +123,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: &[],
             execution: None,
             dynamic_source_loader: None,
+            filter_map: None,
         }
     }
 
@@ -140,6 +142,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: inputs,
             execution: None,
             dynamic_source_loader: None,
+            filter_map: None,
         }
     }
 
@@ -159,6 +162,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: &[],
             execution: Some(*execution),
             dynamic_source_loader: None,
+            filter_map: None,
         }
     }
 
@@ -180,6 +184,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: inputs,
             execution: Some(*execution),
             dynamic_source_loader: None,
+            filter_map: None,
         }
     }
 
@@ -441,6 +446,7 @@ impl<'a> ScopeContext<'a> {
                 named_inputs: self.named_inputs,
                 execution: self.execution,
                 dynamic_source_loader: self.dynamic_source_loader,
+                filter_map: self.filter_map.clone(),
             }
         })
     }
@@ -494,6 +500,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: self.named_inputs,
             execution: self.execution,
             dynamic_source_loader: self.dynamic_source_loader,
+            filter_map: self.filter_map.clone(),
         }
     }
 
@@ -530,6 +537,7 @@ impl<'a> ScopeContext<'a> {
             named_inputs: self.named_inputs,
             execution: self.execution,
             dynamic_source_loader: self.dynamic_source_loader,
+            filter_map: self.filter_map.clone(),
         }
     }
 

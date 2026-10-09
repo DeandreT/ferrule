@@ -208,7 +208,7 @@ fn sequence_string(value: Value, function: &'static str) -> Result<String, Runti
     }
 }
 
-fn sequence_integer(value: Value) -> Result<i64, RuntimeError> {
+pub(crate) fn sequence_integer(value: Value) -> Result<i64, RuntimeError> {
     let coerced = match &value {
         Value::Int(value) => Some(*value),
         Value::Float(value) => exact_float_integer(*value),
