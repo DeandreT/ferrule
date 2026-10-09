@@ -94,12 +94,28 @@ impl Fixture {
 }
 
 fn import(fixture: &Fixture, profile: mfd::ImportProfile) -> Result<mfd::Imported, mfd::MfdError> {
-    mfd::import_with_profile(
+    let outcome = mfd::import_with_profile(
         &fixture.package().join("mapping.mfd"),
         &mfd::ImportOptions::default().with_package_root(fixture.package()),
         profile,
-    )
-    .map(|outcome| outcome.imported)
+    );
+    let snapshot = match &outcome {
+        Ok(outcome) => format!(
+            "Ok({:#?})",
+            (
+                &outcome.imported.project,
+                &outcome.imported.warnings,
+                &outcome.imported.mapping_path,
+                &outcome.report,
+            )
+        ),
+        Err(error) => format!("Err({error:#?})"),
+    };
+    std::fs::write(
+        fixture.0.join(format!("complete-{profile:?}-outcome.txt")),
+        snapshot,
+    )?;
+    outcome.map(|outcome| outcome.imported)
 }
 
 fn is_boundary(warning: &str) -> bool {

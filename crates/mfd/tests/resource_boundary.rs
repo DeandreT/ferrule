@@ -43,6 +43,26 @@ impl Fixture {
     fn observe(&self, label: &str, outcome: impl std::fmt::Debug) -> Result<(), std::io::Error> {
         std::fs::write(self.0.join(format!("{label}.txt")), format!("{outcome:#?}"))
     }
+
+    fn observe_profile(
+        &self,
+        label: &str,
+        outcome: &Result<mfd::ImportOutcome, mfd::MfdError>,
+    ) -> Result<(), std::io::Error> {
+        let snapshot = match outcome {
+            Ok(outcome) => format!(
+                "Ok({:#?})",
+                (
+                    &outcome.imported.project,
+                    &outcome.imported.warnings,
+                    &outcome.imported.mapping_path,
+                    &outcome.report,
+                )
+            ),
+            Err(error) => format!("Err({error:#?})"),
+        };
+        std::fs::write(self.0.join(format!("{label}.txt")), snapshot)
+    }
 }
 
 fn write(path: &Path, text: &str) -> Result<(), std::io::Error> {
@@ -142,7 +162,7 @@ fn ordinary_and_http_schema_dependencies_cannot_escape_with_successful_types()
                     &mfd::ImportOptions::default().with_package_root(fixture.package()),
                     mfd::ImportProfile::Executable,
                 );
-                fixture.observe("executable-refusal", &refusal)?;
+                fixture.observe_profile("executable-refusal", &refusal)?;
                 assert!(matches!(refusal, Err(mfd::MfdError::IncompatibleImport(_))));
             }
         }
@@ -359,7 +379,7 @@ fn all_adjacent_module_languages_check_canonical_file_targets_before_reading()
                     &mfd::ImportOptions::default().with_package_root(fixture.package()),
                     mfd::ImportProfile::Executable,
                 );
-                fixture.observe("executable-refusal", &refusal)?;
+                fixture.observe_profile("executable-refusal", &refusal)?;
                 assert!(matches!(refusal, Err(mfd::MfdError::IncompatibleImport(_))));
             }
         }
