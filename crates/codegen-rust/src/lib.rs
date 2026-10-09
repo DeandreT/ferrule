@@ -1676,15 +1676,9 @@ fn render_expression(
                 "        for item_context in context.generated_item_contexts(&generated_items) {\n",
             );
             if let Some(predicate) = predicate {
-                if matches!(sequence, GeneratedSequence::FilterMapV1(_)) {
-                    body.push_str(&format!(
-                        "            let selected = expression_{predicate}(&item_context)?;\n            if !require_bool({predicate}, selected)? {{\n                continue;\n            }}\n"
-                    ));
-                } else {
-                    body.push_str(&format!(
-                        "            let selected = expression_{predicate}(&item_context)?;\n            if !require_bool(selected, {predicate})? {{\n                continue;\n            }}\n"
-                    ));
-                }
+                body.push_str(&format!(
+                    "            let selected = expression_{predicate}(&item_context)?;\n            if !require_bool({predicate}, selected)? {{\n                continue;\n            }}\n"
+                ));
             }
             body.push_str(&format!(
                 "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",

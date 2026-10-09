@@ -29,6 +29,7 @@ mod extra_targets;
 mod failure_rules;
 mod grouping;
 mod host_target;
+mod legacy_sequence_aggregate;
 mod raise;
 
 use host_target::GeneratedHostCommand;
