@@ -129,8 +129,10 @@ fn typed_database_fallback_distinguishes_missing_metadata_from_boundary_denial()
         let imported = fixture.import()?;
         let input =
             Instance::Group(vec![("Value".to_owned(), Instance::Scalar(Value::Int(17)))].into());
-        let expected =
-            Instance::Group(vec![("Value".to_owned(), Instance::Scalar(Value::Int(17)))].into());
+        let expected = Instance::Repeated(vec![Instance::Group(
+            vec![("Value".to_owned(), Instance::Scalar(Value::Int(17)))].into(),
+        )]);
+        fixture.observe("expected-before-run", &expected)?;
         let output = engine::run(&imported.project, &input);
         fixture.observe("execution", (&input, &output, &expected))?;
         let outside_after = std::fs::read(&outside)?;
@@ -151,6 +153,7 @@ fn typed_database_fallback_distinguishes_missing_metadata_from_boundary_denial()
         assert_eq!(output?, expected);
         assert_eq!(outside_after.as_slice(), outside_bytes.as_slice());
         assert!(!missing_path_exists);
+        assert!(imported.project.target.repeating);
         assert_eq!(
             imported
                 .project
