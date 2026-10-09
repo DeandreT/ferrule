@@ -339,6 +339,26 @@ layout and dialect details that an extension cannot express.
 The [workflow-parity roadmap](../ROADMAP.md) tracks the remaining format and
 connector work.
 
+### Native X12 ISA encoding
+
+Native X12 output encodes a complete 16-position ISA as fixed-width ASCII.
+ISA02 and ISA04 are right-padded with spaces to 10 bytes; ISA06 and ISA08 are
+right-padded to 15 bytes. Already padded values retain their text. The remaining
+fields require their exact byte widths, including the caller's nine-byte ISA13
+control number. Every field requires printable ASCII and excludes reserved
+delimiter and release characters, except the designated ISA11 and ISA16 syntax
+positions. The complete header occupies 106 bytes through its terminator.
+
+Encoding applies after configured autocomplete has performed its existing
+lexical normalization and completion. Without autocomplete, date, time and
+control values retain their supplied spelling. Incomplete ISA schemas retain
+positional serialization. Invalid complete ISA data returns its typed boundary
+error before the public file writer replaces its destination.
+
+Native input can discover LF segment terminators from ISA. Explicit native
+output separators require visible, non-whitespace characters, so selecting LF
+for output returns an invalid-separator error.
+
 ### CSV empty text
 
 `FormatOptions.csv_preserve_empty_strings` defaults to false. When true,
