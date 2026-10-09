@@ -1,0 +1,51 @@
+use std::{fs, path::PathBuf};
+use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+
+fn instance(value: &serde_json::Value) -> Instance {
+    match value {
+        serde_json::Value::Object(fields) => group(fields.iter().map(|(name, value)| field(name.clone(), instance(value)))),
+        serde_json::Value::Array(items) => repeated(items.iter().map(instance)),
+        serde_json::Value::String(value) => scalar(Value::String(value.clone())),
+        serde_json::Value::Null => scalar(Value::Null),
+        _ => panic!("authored cases contain only objects, arrays, strings and null"),
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len() != 2 { return Err("need exact design and retained output directory".into()); }
+    let directory = PathBuf::from(&args[1]);
+    let cases: serde_json::Value = serde_json::from_slice(&fs::read(directory.join("cases.json"))?)?;
+    let requested = format!("{}.mfd", args[0]);
+    let mut outcomes = Vec::new();
+    for case in cases.as_array().ok_or("case list")? {
+        if case["design"].as_str() != Some(requested.as_str()) { continue; }
+        let source = instance(&case["input_json"]);
+        let expected = instance(&case["expected_json"]);
+        let actual = ferrule_generated_mapping::execute(&source);
+        outcomes.push((case["name"].as_str().ok_or("case name")?.to_owned(), source, actual, expected));
+    }
+    // Complete typed values are preserved before comparison, including ordered fields.
+    fs::write(directory.join("host-complete-outcomes.original.txt"), format!("{outcomes:#?}\n"))?;
+    fn origins(value: &Instance, path: &str, output: &mut String) {
+        match value {
+            Instance::Group(fields) => {
+                output.push_str(&format!("{path}: {:?}\n", fields.xml_type_origin()));
+                for (index, (name, value)) in fields.iter().enumerate() { origins(value, &format!("{path}/field[{index}]={name}"), output); }
+            }
+            Instance::Repeated(items) | Instance::MappedSequence(items) => {
+                for (index, value) in items.iter().enumerate() { origins(value, &format!("{path}/item[{index}]"), output); }
+            }
+            Instance::Scalar(_) | Instance::DocumentSet(_) => {}
+        }
+    }
+    let mut retained = String::new();
+    for (name, _, actual, _) in &outcomes { if let Ok(value) = actual { origins(value, name, &mut retained); } }
+    fs::write(directory.join("host-complete-origins.original.txt"), retained)?;
+    println!("{outcomes:#?}");
+    let expected_cases = if args[0] == "unequal" { 3 } else { 1 };
+    if outcomes.len() != expected_cases || outcomes.iter().any(|(_, _, actual, expected)| !matches!(actual, Ok(actual) if actual == expected)) {
+        return Err("complete typed generated values differ from frozen literals".into());
+    }
+    Ok(())
+}

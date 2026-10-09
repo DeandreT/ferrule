@@ -1,0 +1,46 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Instance(JsonElement value) => value.ValueKind switch {
+    JsonValueKind.Object => new FerruleGroup(value.EnumerateObject().Select(field => new FerruleField(field.Name, Instance(field.Value)))),
+    JsonValueKind.Array => new FerruleRepeated(value.EnumerateArray().Select(Instance)),
+    JsonValueKind.String => new FerruleScalar(FerruleValue.FromString(value.GetString()!)),
+    JsonValueKind.Null => new FerruleScalar(FerruleValue.Null),
+    _ => throw new InvalidOperationException("authored cases contain only objects, arrays, strings and null"),
+};
+static object Raw(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", scalarKind = scalar.Value.Kind.ToString(), text = scalar.Value.Kind == FerruleValueKind.String ? scalar.Value.StringValue : null },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = Raw(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Raw).ToArray() },
+    _ => throw new InvalidOperationException("unexpected instance class " + value.GetType().FullName),
+};
+static object Error(Exception error) => error is FerruleRuntimeException runtime ? new {
+    type = runtime.GetType().FullName, runtime.Message, runtime.HResult, complete = runtime.ToString(),
+    runtime.Error, runtime.Node, runtime.Function, runtime.ExpectedArity, runtime.ActualArity,
+    runtime.FoundKind, runtime.AggregateOperation, runtime.Detail, runtime.RequestedItems, runtime.MaximumItems, runtime.MaximumDepth,
+    runtime.RuntimeValue, runtime.FailureRule, runtime.MappingFailureMessage, runtime.MappingExceptionMessage, runtime.Join,
+    runtime.UserFunction, runtime.FunctionParameter, runtime.ExpectedScalarType, runtime.RuntimeParameter, runtime.SourceField,
+    runtime.FoundInstance, runtime.PrimaryRoot,
+} : (object)new { type = error.GetType().FullName, error.Message, error.HResult, complete = error.ToString(), inner = error.InnerException?.ToString() };
+if (args.Length != 2) throw new ArgumentException("need exact design and retained output directory");
+using var cases = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(args[1], "cases.json")));
+var outcomes = new List<object>();
+var good = true;
+foreach (var item in cases.RootElement.EnumerateArray()) {
+    if (item.GetProperty("design").GetString() != args[0] + ".mfd") continue;
+    var source = Instance(item.GetProperty("input_json"));
+    var expected = Instance(item.GetProperty("expected_json"));
+    object actual;
+    try { actual = Raw(GeneratedMapping.Execute(source)); }
+    catch (Exception error) { actual = Error(error); good = false; }
+    var wanted = Raw(expected);
+    outcomes.Add(new { name = item.GetProperty("name").GetString(), source = Raw(source), actual, expected = wanted });
+    good &= JsonSerializer.Serialize(actual) == JsonSerializer.Serialize(wanted);
+}
+// Preserve full values and errors before raising any comparison failure.
+var original = JsonSerializer.Serialize(outcomes, new JsonSerializerOptions { WriteIndented = true });
+File.WriteAllText(Path.Combine(args[1], "host-complete-outcomes.original.json"), original);
+Console.WriteLine(original);
+var expectedCases = args[0] == "unequal" ? 3 : 1;
+if (outcomes.Count != expectedCases || !good) throw new InvalidOperationException("complete typed generated values differ from frozen literals");

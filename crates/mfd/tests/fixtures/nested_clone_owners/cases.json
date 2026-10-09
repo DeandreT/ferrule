@@ -1,0 +1,551 @@
+[
+  {
+    "name": "equal",
+    "design": "equal.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "unequal",
+    "design": "unequal.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty_children",
+    "design": "unequal.mfd",
+    "input_xml": "<Source><Left/><Right/></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": []
+        }
+      ],
+      "Right": [
+        {
+          "Item": []
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty_parents",
+    "design": "unequal.mfd",
+    "input_xml": "<Source/>",
+    "input_json": {
+      "Left": [],
+      "Right": []
+    },
+    "expected_json": {
+      "Group": []
+    }
+  },
+  {
+    "name": "parent_condition",
+    "design": "parent_condition.mfd",
+    "input_xml": "<Source><Left><Allow>yes</Allow><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Allow>no</Allow><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Allow": "yes",
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Allow": "no",
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "child_condition",
+    "design": "child_condition.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "reversed_keys_and_edges",
+    "design": "reversed_keys_and_edges.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "three_level",
+    "design": "three_level.mfd",
+    "input_xml": "<Source><Left><Item><Detail><Value>a</Value></Detail><Detail><Value>b</Value></Detail><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Right><Item><Detail><Value>c</Value></Detail><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Detail": [
+                {
+                  "Value": "a"
+                },
+                {
+                  "Value": "b"
+                }
+              ],
+              "Value": "11"
+            },
+            {
+              "Detail": [],
+              "Value": "12"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Detail": [
+                {
+                  "Value": "c"
+                }
+              ],
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Label": "11",
+              "Cell": [
+                {
+                  "Value": "a"
+                },
+                {
+                  "Value": "b"
+                },
+                {
+                  "Value": "left-tail"
+                }
+              ]
+            },
+            {
+              "Label": "12",
+              "Cell": [
+                {
+                  "Value": "left-tail"
+                }
+              ]
+            },
+            {
+              "Label": "left-fixed-one",
+              "Cell": [
+                {
+                  "Value": "left-one-cell"
+                },
+                {
+                  "Value": "left-one-cell-two"
+                }
+              ]
+            },
+            {
+              "Label": "left-fixed-two",
+              "Cell": [
+                {
+                  "Value": "left-two-cell"
+                },
+                {
+                  "Value": "left-two-cell-two"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Label": "21",
+              "Cell": [
+                {
+                  "Value": "c"
+                },
+                {
+                  "Value": "right-tail"
+                }
+              ]
+            },
+            {
+              "Label": "right-fixed",
+              "Cell": [
+                {
+                  "Value": "right-fixed-cell"
+                },
+                {
+                  "Value": "right-fixed-cell-two"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

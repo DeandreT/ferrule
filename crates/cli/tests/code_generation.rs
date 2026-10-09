@@ -46,6 +46,8 @@ mod json5_companions;
 mod json_text_boundaries;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
+#[path = "code_generation/nested_clone_owners.rs"]
+mod nested_clone_owners;
 #[path = "code_generation/optional_runtime_defaults.rs"]
 mod optional_runtime_defaults;
 #[path = "code_generation/path_hierarchy.rs"]
