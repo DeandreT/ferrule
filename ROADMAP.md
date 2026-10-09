@@ -177,6 +177,7 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 ### A. Mapping Semantics and Interoperability
 
+
 #### A1. Executable `.mfd` Common Profile
 
 - [ ] Extend one concrete supported-path mismatch at a time, with a self-authored

@@ -10,6 +10,23 @@ references, but ferrule's implementation and committed fixtures are original.
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
 ```
 
+For a single project that must pass static execution admission, add
+`--require-executable`:
+
+```sh
+cargo +nightly run -p cli -- import-mfd \
+  --mfd design.mfd --out project.json --require-executable
+```
+
+This selects `ImportProfile::Executable`: import warnings, unresolved runtime
+dependencies, and engine validation findings reject before the destination
+project is created or replaced. Ordinary import retains a partial design for
+repair. The flag preserves legacy global failure-rule ordering; row-error-order
+semantics require the separate `--item-ordered-exceptions` option. The two flags
+may be combined. `--require-executable` applies to single-project imports and
+cannot be combined with `--pipeline`. Static admission does not execute the
+mapping or establish behavioral equivalence with another application.
+
 For a mapping package whose resources sit above or beside the design directory,
 declare the trusted package root:
 
