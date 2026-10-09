@@ -8,6 +8,7 @@ use crate::context::{parameter_value, runtime_field};
 use crate::debug::{
     DebugHook, after_function_node_failure, after_function_node_input, after_function_node_value,
 };
+use crate::filter_map::FilterMapWork;
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 use crate::{EngineError, ExecutionPurpose};
@@ -21,6 +22,7 @@ struct FunctionTrace<'a> {
     first_failure_reported: &'a Cell<bool>,
     positions: &'a [PositionFrame],
     purpose: ExecutionPurpose,
+    work: Option<FilterMapWork<'a>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -34,6 +36,7 @@ pub(super) fn evaluate(
     first_failure_reported: &Cell<bool>,
     positions: &[PositionFrame],
     purpose: ExecutionPurpose,
+    work: Option<FilterMapWork<'_>>,
 ) -> Result<Value, EngineError> {
     evaluate_nested(
         functions,
@@ -46,6 +49,7 @@ pub(super) fn evaluate(
             first_failure_reported,
             positions,
             purpose,
+            work,
         },
         &mut Vec::new(),
     )
@@ -59,6 +63,9 @@ fn evaluate_nested(
     trace: FunctionTrace<'_>,
     call_stack: &mut Vec<FunctionId>,
 ) -> Result<Value, EngineError> {
+    if let Some(work) = trace.work {
+        work.call(function_id)?;
+    }
     if call_stack.contains(&function_id) {
         return Err(EngineError::UserFunctionCycle {
             function: function_id,
@@ -129,17 +136,28 @@ fn evaluate_body_node(
     call_stack: &mut Vec<FunctionId>,
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let result = evaluate_body_node_inner(
-        functions,
-        function_id,
-        function,
-        node_id,
-        parameters,
-        runtime,
-        trace,
-        call_stack,
-        in_progress,
-    );
+    let work = trace
+        .work
+        .map(|work| work.at_node(Some(function_id), node_id));
+    let result = work
+        .map_or(Ok(()), FilterMapWork::charge)
+        .and_then(|()| {
+            evaluate_body_node_inner(
+                functions,
+                function_id,
+                function,
+                node_id,
+                parameters,
+                runtime,
+                trace,
+                call_stack,
+                in_progress,
+            )
+        })
+        .map_err(|error| match work {
+            Some(work) => work.wrap(error),
+            None => error,
+        });
     if let Err(error) = &result {
         after_function_node_failure(
             trace.debug_hook,

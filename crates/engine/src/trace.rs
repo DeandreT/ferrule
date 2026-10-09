@@ -127,7 +127,7 @@ fn sequence_kind(sequence: &SequenceExpr) -> &'static str {
         SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         SequenceExpr::TokenizeRegex { .. } => "tokenize-regex",
         SequenceExpr::Generate { .. } => "integer-range",
-        SequenceExpr::FilterMapV1(_) => "filter-map-unavailable",
+        SequenceExpr::FilterMapV1(_) => "filter-map-v1",
         SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }

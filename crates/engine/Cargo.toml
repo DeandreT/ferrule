@@ -15,4 +15,5 @@ thiserror = { workspace = true }
 regex = { workspace = true }
 
 [dev-dependencies]
+format-json = { workspace = true }
 serde_json = { workspace = true }
