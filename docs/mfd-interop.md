@@ -76,6 +76,10 @@ missing candidate permits ordinary discovery to continue; an existing escaping
 or dangling symlink produces an explicit diagnostic. Contained file and
 directory symlinks remain valid. Resource refusals remain visible in best-effort
 import warnings and cause the executable import profile to refuse publication.
+Unavailable resources retain the component's established diagnostics and fallback
+rules. A missing optional database file with complete embedded column types does
+not become a boundary denial; an existing canonical target outside the package
+does.
 Canonical checks do not isolate the host filesystem or prevent a concurrent
 filesystem change between resolution and opening. Hosts performing offline
 qualification use operating-system confinement with read-only input mounts and
