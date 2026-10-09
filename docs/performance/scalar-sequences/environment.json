@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "measurement_date": "2026-10-09",
+  "baseline_main": "c45893255954bd725c87450410a3c4ce752fd8f1",
+  "platform": "Linux x86_64; kernel 7.2.7-zen1-1-zen",
+  "cpu": "AMD Ryzen 7 5800X3D 8-Core Processor",
+  "physical_memtotal_kib": 32773216,
+  "rustc": "1.100.0-nightly (5a2be9f5f 2026-09-06)",
+  "cargo": "1.100.0-nightly (3c0b53475 2026-09-04)",
+  "dotnet_sdk": "10.0.112",
+  "dotnet_runtime": "10.0.12",
+  "gnu_time": "1.10",
+  "profiles": {
+    "native": "ordinary dev, opt-level=0",
+    "rust": "ordinary dev, opt-level=0",
+    "csharp": "Debug, InvariantGlobalization=true"
+  },
+  "build_policy": "jobs1; incremental disabled; target host warnings denied; no optimization override/global Rustflags; package-free C#",
+  "source_hashes": {
+    "crates/cli/examples/scalar_sequence_memory.rs": "d08f1c16797e3fe6a2ec288166f72b35e61585635696c1e7327f8686d42628f3",
+    "examples/performance/scalar-sequences/rust_host.rs": "30be939a069818b5994012647879ed4b1a290754ed1e0da0d65f5bfcd5fdb6b3",
+    "examples/performance/scalar-sequences/rust_support.rs": "f3b059cc6557e68ade3de1fe8089ed3c3fbe623a76e675bf0254d588defbc6fb",
+    "examples/performance/scalar-sequences/CSharpHost.cs": "b107313b2ed162df3a161d763727ef2511191e59ab85e8618c52c964f3fa6518",
+    "examples/performance/scalar-sequences/fixtures.json": "4163db566e52710ce61678e3c38040e1d285767fca4e12d928972fdee59abcf8",
+    "examples/performance/scalar-sequences/project-numeric.json": "92002c3846c0763def702cc6289413d943b8dc2395cf66ad4ff14cf210797002",
+    "examples/performance/scalar-sequences/project-capture.json": "146522b25b625602285c2dc9c4f4d156d40f779bff48dc66e3a6dec84ee7ac38",
+    "examples/performance/scalar-sequences/prepare.py": "5c41563e2574cd255542c590caf1ce04486faf69d8185634491dadb8676031cc",
+    "examples/performance/scalar-sequences/bind_campaign.py": "c2571e6df13348522bb1c256475150f2908354b1545043c3a42c3aa10bff899d"
+  },
+  "binary_hashes": {
+    "native": "4600cdfda5ac96867703003b1f76203a6d8b10732a6a8a69ace9d772d6ff99d3",
+    "rust": "5819914118331c2cfeeda4a18e8c8ca6223f8c9b3bad8c90e9d8e21cc2056e22",
+    "csharp_dll": "19431e927048359bf99042f21748184d62d3fe19e872712f74e5d1722bed0679"
+  },
+  "measured_processes": 72,
+  "separate_verifiers": 72,
+  "matched_pairs": 36,
+  "repetitions": 2,
+  "status": "ALL72_ACTUAL_MEASUREMENTS_AND72_SEPARATE_VERIFIERS_ROOT_INDEPENDENT_COHORT_DATA_PROSE_PLOT_REVIEWS_ACCEPTED_PUBLICATION_PENDING",
+  "storage": "Mounted network storage; normal output file I/O included in elapsed time",
+  "no_forced_gc_or_cache_flush": true,
+  "metrics": {
+    "peak_rss_kib": "GNU time -v whole measured-child maximum; startup/input/public call/JSON/writing included",
+    "boundary_vmrss_vmhwm_kib": "Sparse current RSS/cumulative HWM at before-call/after-call/after-write; no phase peak attribution",
+    "time": "Original GNUtime decimal seconds/wall spelling; coarse resolution"
+  },
+  "raw_originals": "Complete files, typed outcomes, causes, proc/time originals, commands, exits and lifecycle retained separately by coordinator; public CSV is a portable transcription.",
+  "counter_caveat": "GNU time wait4 child maximum and sparse self-proc VmRSS/VmHWM are distinct counters; 15 native rows have a boundary VmHWM above GNU time maximum; neither is normalized.",
+  "limits": "Finite ASCII eager scalar workload, two repeats, ordinary dev/Debug, no phase/allocation attribution, no RAM ceiling, no release-build/streaming/massive-file generalization."
+}

@@ -1,0 +1,197 @@
+{
+  "source": {
+    "name": "Input",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Count",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Capture",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Output",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Rows",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Value",
+                "repeating": false,
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_path": null,
+  "target_path": null,
+  "source_options": {
+    "json_document": true
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {
+    "100": {
+      "library": "scalar-memory",
+      "name": "keep",
+      "parameters": [
+        {
+          "id": 1,
+          "name": "item",
+          "ty": "int"
+        },
+        {
+          "id": 2,
+          "name": "source_position",
+          "ty": "int"
+        },
+        {
+          "id": 3,
+          "name": "capture",
+          "ty": "string"
+        }
+      ],
+      "output_name": "value",
+      "output_type": "bool",
+      "body": {
+        "nodes": {
+          "1": {
+            "kind": "const",
+            "value": true
+          }
+        }
+      },
+      "output": 1
+    },
+    "101": {
+      "library": "scalar-memory",
+      "name": "map-item",
+      "parameters": [
+        {
+          "id": 1,
+          "name": "item",
+          "ty": "int"
+        },
+        {
+          "id": 2,
+          "name": "source_position",
+          "ty": "int"
+        },
+        {
+          "id": 3,
+          "name": "capture",
+          "ty": "string"
+        }
+      ],
+      "output_name": "value",
+      "output_type": "int",
+      "body": {
+        "nodes": {
+          "1": {
+            "kind": "function_parameter",
+            "parameter": 1
+          }
+        }
+      },
+      "output": 1
+    }
+  },
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "const",
+        "value": 1
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "Count"
+        ]
+      },
+      "10": {
+        "kind": "source_field",
+        "path": []
+      },
+      "11": {
+        "kind": "source_field",
+        "path": []
+      },
+      "20": {
+        "kind": "source_field",
+        "path": [
+          "Capture"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "Rows",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 11
+          }
+        ],
+        "children": [],
+        "sequence": {
+          "kind": "filter_map_v1",
+          "source": {
+            "kind": "generate",
+            "from": 1,
+            "to": 2,
+            "item": 10
+          },
+          "item": 11,
+          "predicate": 100,
+          "mapper": 101,
+          "output_type": "int",
+          "captures": [
+            {
+              "node": 20,
+              "ty": "string"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
