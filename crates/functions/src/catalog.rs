@@ -657,12 +657,12 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         "And",
         Boolean,
         &[parameter("left", Boolean), parameter("right", Boolean)],
-        BuiltinArity::fixed(2),
+        BuiltinArity::variadic(2, 1),
         Boolean,
         true,
         true,
         Authoring,
-        "Computes boolean conjunction."
+        "Computes conjunction of two or more Boolean values."
     ),
     builtin!(
         Or,
@@ -670,12 +670,12 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         "Or",
         Boolean,
         &[parameter("left", Boolean), parameter("right", Boolean)],
-        BuiltinArity::fixed(2),
+        BuiltinArity::variadic(2, 1),
         Boolean,
         true,
         true,
         Authoring,
-        "Computes boolean disjunction."
+        "Computes disjunction of two or more Boolean values."
     ),
     builtin!(
         Not,

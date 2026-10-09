@@ -640,6 +640,10 @@ later correction does not erase the earlier result. See
 - Strict admission is useful only when it preserves the accepted semantics.
   Unsupported or unproved shapes must retain a typed refusal before publication.
 - Ferrule-native capabilities stay available outside the strict native profile.
+- Standard Boolean `and` and `or` calls accept two or more strict Bool operands
+  with eager left-to-right evaluation and ordered type checking. The
+  [variadic Boolean contract](docs/design/variadic-boolean-calls.md) keeps broader
+  nullable logical compatibility separately qualified.
 - A local round trip, a green test total, or a nearby qualified feature does not
   close an unknown capability or establish full-product compatibility.
 

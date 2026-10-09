@@ -1,0 +1,77 @@
+use std::{fs, path::Path};
+use codegen_runtime::{Instance, Value, RuntimeError, FunctionError, field, group, scalar};
+
+fn value(token: &str) -> Value {
+    match token {
+        "T" => Value::Bool(true), "F" => Value::Bool(false), "N" => Value::Null,
+        "S" => Value::String("authored-string".into()), "I" => Value::Int(7),
+        _ => panic!("unknown frozen scalar token"),
+    }
+}
+fn source(row: &[&str]) -> Instance {
+    let mut fields = Vec::new();
+    for index in 0..5 {
+        fields.push(field(format!("Arg{}", index + 1), scalar(value(row[3 + index]))));
+        fields.push(field(format!("Raise{}", index + 1), scalar(Value::Bool(row[8].as_bytes()[index] == b'1'))));
+    }
+    fields.push(field("Arity", scalar(Value::Int(row[1].parse().expect("frozen integer")))));
+    fields.push(field("Or", scalar(Value::Bool(row[2] == "or"))));
+    group(fields)
+}
+fn expected(row: &[&str]) -> Result<Instance, RuntimeError> {
+    let function = if row[2] == "and" { "and" } else { "or" };
+    match row[9] {
+        "T" => Ok(group([field("Result", scalar(Value::Bool(true)))])),
+        "F" => Ok(group([field("Result", scalar(Value::Bool(false)))])),
+        "type:null" | "type:string" | "type:int" => Err(RuntimeError::Function(FunctionError::TypeMismatch {
+            function, got: match row[9] { "type:null" => "null", "type:string" => "string", _ => "int" },
+        })),
+        text => Err(RuntimeError::MappingException { node: text.strip_prefix("raise:").expect("frozen expected category").parse().expect("frozen node"), message: None }),
+    }
+}
+fn origins(value: &Instance) -> Vec<(String, String)> {
+    fn visit(value: &Instance, path: String, output: &mut Vec<(String, String)>) {
+        match value {
+            Instance::Group(fields) => {
+                output.push((path.clone(), format!("{:?}", fields.xml_type_origin())));
+                for (index, (name, child)) in fields.iter().enumerate() { visit(child, format!("{path}/{index}:{name}"), output); }
+            }
+            Instance::Repeated(items) | Instance::MappedSequence(items) => {
+                for (index, child) in items.iter().enumerate() { visit(child, format!("{path}/{index}"), output); }
+            }
+            Instance::DocumentSet(documents) => {
+                for (index, document) in documents.iter().enumerate() { visit(document.value(), format!("{path}/document{index}"), output); }
+            }
+            Instance::Scalar(_) => {}
+        }
+    }
+    let mut output = Vec::new(); visit(value, "root".into(), &mut output); output
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::args_os().nth(1).ok_or("need retained output directory")?;
+    let directory = Path::new(&directory);
+    let text = fs::read_to_string(directory.join("cases.tsv"))?;
+    let rows = text.lines().map(|line| line.split('\t').collect::<Vec<_>>()).collect::<Vec<_>>();
+    let inputs = rows.iter().map(|row| source(row)).collect::<Vec<_>>();
+    let actual = inputs.iter().map(ferrule_generated_mapping::execute).collect::<Vec<_>>();
+    let wanted = rows.iter().map(|row| expected(row)).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-INPUTS-OUTCOMES-EXPECTED.txt"), format!("{inputs:#?}\n{actual:#?}\n{wanted:#?}\n"))?;
+    let all_origins = inputs.iter().zip(actual.iter().zip(&wanted)).map(|(source, (actual, wanted))|
+        (origins(source), actual.as_ref().ok().map(origins), wanted.as_ref().ok().map(origins))).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-GROUP-ORIGINS.txt"), format!("{all_origins:#?}\n"))?;
+    let mut direct = Vec::new();
+    for function in ["and", "or"] {
+        for count in [0, 1] {
+            let args = vec![Value::Bool(true); count];
+            direct.push((function, count, codegen_runtime::call(function, &args), Err(RuntimeError::Function(FunctionError::ArityMismatch { function, expected: 2, got: count }))));
+        }
+    }
+    fs::write(directory.join("COMPLETE-DIRECT-ARITY-CONTROLS.txt"), format!("{direct:#?}\n"))?;
+    let mismatches = rows.iter().zip(actual.iter().zip(&wanted)).filter(|(_, (actual, wanted))| actual != wanted).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-COMPARISONS.txt"), format!("calls={}\n{mismatches:#?}\n", rows.len()))?;
+    if rows.len() != 378 || !mismatches.is_empty() || direct.iter().any(|(_, _, actual, wanted)| actual != wanted) {
+        return Err("complete variadic Boolean cohort differs".into());
+    }
+    println!("378 generated mapping calls and 4 direct arity controls passed");
+    Ok(())
+}
