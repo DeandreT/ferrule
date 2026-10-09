@@ -492,8 +492,9 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   and exact binding provenance in [#239](https://github.com/DeandreT/ferrule/issues/239),
   following the [import contract](docs/mfd-interop.md). Unequal child partitions
   retain declaration order and relative anchors; every replaced placeholder
-  binding survives exactly once in its assigned descendant subtree. Unknown
-  ownership, unclaimed or controlled placeholders retain refusal. Singular
+  binding survives exactly once in its assigned descendant subtree, with one
+  original binding index per retained binding. Unknown ownership, ambiguous
+  provenance, unclaimed or controlled placeholders retain refusal. Singular
   targets with multiple distinct feeds require the separate semantic contract
   in [#241](https://github.com/DeandreT/ferrule/issues/241).
 - [ ] Extend one concrete supported-path mismatch at a time, with a self-authored
