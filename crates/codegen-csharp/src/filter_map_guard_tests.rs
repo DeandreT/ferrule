@@ -152,7 +152,7 @@ fn expected_identity() -> Program {
 }
 
 #[test]
-fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer() {
+fn filter_map_emits_complete_artifacts_for_every_retained_consumer() {
     let mut cases = Vec::new();
     cases.push(("scope", expected_identity()));
     for kind in ["exists", "item-at", "aggregate", "unselected-expression"] {
@@ -196,9 +196,9 @@ fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer(
     for (kind, program) in cases {
         let actual = crate::emit(&program);
         let body = format!(
-            "program={program:#?}\nexpected=UnsupportedFilterMapV1 {{ item: 11 }}\nactual={actual:#?}\n"
+            "program={program:#?}\nexpected=complete ordinary artifacts with executable feature and embedded runtime\nactual={actual:#?}\n"
         );
-        if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP191_EVIDENCE") {
+        if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP193_EVIDENCE") {
             let directory = PathBuf::from(directory);
             assert!(directory.is_absolute());
             std::fs::create_dir_all(&directory).unwrap();
@@ -214,15 +214,47 @@ fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer(
         }
         checks.push((
             kind,
-            matches!(
-                actual,
-                Err(crate::EmitError::UnsupportedFilterMapV1 { item: 11 })
-            ),
+            actual.as_ref().is_ok_and(|artifacts| {
+                let files = artifacts.files();
+                files
+                    .iter()
+                    .any(|file| file.path.as_str() == "Runtime/FerruleFilterMap.cs")
+                    && files.iter().any(|file| {
+                        file.path.as_str() == "GeneratedMapping.cs"
+                            && String::from_utf8_lossy(&file.contents)
+                                .contains("FerruleFilterMap.Evaluate(")
+                    })
+                    && files.windows(2).all(|pair| pair[0].path < pair[1].path)
+            }),
         ));
     }
     let mismatches: Vec<_> = checks.into_iter().filter(|(_, matched)| !matched).collect();
     assert!(
         mismatches.is_empty(),
-        "capability guard mismatches: {mismatches:#?}"
+        "complete emission mismatches: {mismatches:#?}"
     );
+}
+
+#[test]
+fn filter_map_failure_iteration_stays_typed_refused_before_artifacts() {
+    let mut program = expected_identity();
+    program.root.children.clear();
+    program.failure_rules.push(codegen::FailureRule {
+        iteration: codegen::FailureIteration::Generated(composition(Vec::new())),
+        selection: codegen::FailureSelection::All,
+        message: None,
+    });
+    let actual = crate::emit(&program);
+    let expected = Err(crate::EmitError::ProgramValidation(
+        codegen::ProgramValidationError::FilterMapAdmission {
+            item: 11,
+            kind: mapping::FilterMapAdmissionKind::UnsupportedConsumer {
+                site: "failure rule",
+            },
+        },
+    ));
+    eprintln!(
+        "complete failure-iteration program={program:#?}\nactual={actual:#?}\nexpected={expected:#?}"
+    );
+    assert_eq!(actual, expected);
 }

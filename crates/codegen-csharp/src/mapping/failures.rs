@@ -1,5 +1,5 @@
 use crate::EmitError;
-use codegen::{FailureIteration, FailureRule, FailureSelection};
+use codegen::{FailureIteration, FailureRule, FailureSelection, GeneratedSequence};
 
 pub(super) fn render(rules: &[FailureRule], output: &mut String) -> Result<(), EmitError> {
     if rules.is_empty() {
@@ -33,6 +33,11 @@ fn render_rule(index: usize, rule: &FailureRule, output: &mut String) -> Result<
             output.push_str(");\n");
         }
         FailureIteration::Generated(sequence) => {
+            if let GeneratedSequence::FilterMapV1(composition) = sequence {
+                return Err(EmitError::UnsupportedFilterMapV1 {
+                    item: composition.item,
+                });
+            }
             let identifier = format!("failure_{index}");
             super::render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(

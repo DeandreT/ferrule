@@ -26,13 +26,19 @@ public sealed partial class ScopeContext
         IReadOnlyList<FerruleInstance> frames,
         IReadOnlyList<CollectionIdentity> collections,
         FerruleExecutionContext? executionContext,
-        IFerruleDynamicSourceLoader? dynamicSourceLoader = null)
+        IFerruleDynamicSourceLoader? dynamicSourceLoader = null,
+        FerruleFilterMapRunState? filterMapRunState = null,
+        FerruleFilterMapBoundary? filterMapBoundary = null,
+        int filterMapCallDepth = 0)
     {
         _primarySource = primarySource;
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
         _dynamicSourceLoader = dynamicSourceLoader;
+        _filterMapRunState = filterMapRunState ?? new FerruleFilterMapRunState(executionContext);
+        _filterMapBoundary = filterMapBoundary;
+        _filterMapCallDepth = filterMapCallDepth;
     }
 
     public IReadOnlyList<FerruleInstance> Frames => _frames;
@@ -43,7 +49,8 @@ public sealed partial class ScopeContext
     public ScopeContext WithDynamicSourceLoader(IFerruleDynamicSourceLoader loader)
     {
         ArgumentNullException.ThrowIfNull(loader);
-        return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader);
+        return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader,
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
     }
 
     public static ScopeContext FromSource(
@@ -685,7 +692,7 @@ public sealed partial class ScopeContext
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
     }
 
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
@@ -760,7 +767,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -932,7 +939,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,
-            _dynamicSourceLoader));
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth));
     }
 
     private static void PushCollection(

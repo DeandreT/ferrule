@@ -66,6 +66,7 @@ public enum FerruleRuntimeError
     JsonBoundary,
     PrimaryRoot,
     MappingException,
+    UserFunctionDepth,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

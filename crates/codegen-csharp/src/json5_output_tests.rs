@@ -35,7 +35,7 @@ fn program() -> Program {
 }
 
 #[test]
-fn json5_opt_in_preserves_ordinary_artifacts_and_all72_sources() {
+fn json5_opt_in_preserves_ordinary_artifacts_and_all73_sources() {
     let candidate = program();
     let before = emit(&candidate);
     let optional = emit_with_json5(&candidate);
@@ -50,7 +50,7 @@ fn json5_opt_in_preserves_ordinary_artifacts_and_all72_sources() {
     let after = after.unwrap();
     assert_eq!(before, after);
     assert_eq!(optional, repeated);
-    assert_eq!(runtime::SOURCES.len(), 72);
+    assert_eq!(runtime::SOURCES.len(), 73);
     assert_eq!(
         optional.files().len(),
         before.files().len() + runtime::JSON5_SOURCES.len() + 1

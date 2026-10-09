@@ -837,7 +837,7 @@ public static class FerruleSequences
             FerruleRuntimeError.ZeroWidthTokenizeRegex,
             "tokenize-regexp pattern matches a zero-width string");
 
-    private static long SequenceInteger(FerruleValue value)
+    internal static long SequenceInteger(FerruleValue value)
     {
         long? integer = value.Kind switch
         {
