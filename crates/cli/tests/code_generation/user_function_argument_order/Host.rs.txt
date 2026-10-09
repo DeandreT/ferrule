@@ -1,0 +1,78 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use codegen_runtime::{Instance, RuntimeError, ScalarType, Value, field, group, scalar};
+
+fn input(flags: [bool; 6]) -> Instance {
+    group(["FirstRaise", "SecondRaise", "FirstBad", "SecondBad", "FirstNull", "Skip"]
+        .into_iter().zip(flags).map(|(name, value)| field(name, scalar(Value::Bool(value)))))
+}
+fn output(value: Value) -> Instance { group([field("Result", scalar(value))]) }
+fn parameter(id: u64) -> RuntimeError {
+    RuntimeError::UserFunctionType { function: 7, parameter: Some(id), expected: ScalarType::Int, found: "bool" }
+}
+// InstanceGroup Debug omits origin; retain every tag/payload in immutable ordered traversal.
+fn retain_origins(path: &Path, value: &Instance) -> io::Result<()> {
+    fn visit(file: &mut impl Write, value: &Instance, path: &str) -> io::Result<()> {
+        match value {
+            Instance::Group(fields) => {
+                writeln!(file, "path={path:?};origin={:?}", fields.xml_type_origin())?;
+                for (index, (name, child)) in fields.iter().enumerate() {
+                    visit(file, child, &format!("{path}/field[{index}]={name:?}"))?;
+                }
+            }
+            Instance::Repeated(items) | Instance::MappedSequence(items) => {
+                let kind = if matches!(value, Instance::Repeated(_)) { "repeated" } else { "mapped" };
+                for (index, item) in items.iter().enumerate() {
+                    visit(file, item, &format!("{path}/{kind}[{index}]"))?;
+                }
+            }
+            Instance::DocumentSet(documents) => {
+                for (index, document) in documents.iter().enumerate() {
+                    visit(file, document.value(), &format!("{path}/document[{index}]={:?}", document.path()))?;
+                }
+            }
+            Instance::Scalar(_) => {}
+        }
+        Ok(())
+    }
+    let mut file = io::BufWriter::new(fs::OpenOptions::new().write(true).create_new(true).open(path)?);
+    visit(&mut file, value, "root")?;
+    file.flush()
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if args.len() != 2 { return Err("need exact mode and retained output directory".into()); }
+    let directory = PathBuf::from(&args[1]);
+    let cases = if args[0] == "literal" {
+        vec![("literal", group([field("Unused", scalar(Value::String("unused".into())))]), Err(RuntimeError::MappingException { node: 2, message: None }))]
+    } else if args[0] == "controls" {
+        vec![
+            ("later-expression-before-adaptation", input([false, true, true, false, false, false]), Err(RuntimeError::MappingException { node: 22, message: None })),
+            ("two-expression-failures", input([true, true, false, false, false, false]), Err(RuntimeError::MappingException { node: 21, message: Some("first-expression".into()) })),
+            ("two-adaptation-failures", input([false, false, true, true, false, false]), Err(parameter(11))),
+            ("second-adaptation-failure", input([false, false, false, true, false, false]), Err(parameter(12))),
+            ("successful-coercion", input([false; 6]), Ok(output(Value::Int(42)))),
+            ("null-preserved", input([false, false, false, false, true, false]), Ok(output(Value::Null))),
+            ("unselected-lazy-call", input([true, true, true, true, false, true]), Ok(output(Value::Int(99)))),
+            ("first-expression-before-second-adaptation", input([true, false, false, true, false, false]), Err(RuntimeError::MappingException { node: 21, message: Some("first-expression".into()) })),
+        ]
+    } else { return Err("unknown explicit mode".into()); };
+    // Preserve every complete typed result before any oracle comparison.
+    let actual = cases.iter().map(|(label, source, _)| (*label, ferrule_generated_mapping::execute(source))).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-ORIGINAL-OUTCOMES.txt"), format!("{actual:#?}\n"))?;
+    println!("{actual:#?}");
+    for (label, outcome) in &actual {
+        if let Ok(value) = outcome {
+            retain_origins(&directory.join(format!("{label}-COMPLETE-GROUP-ORIGINS.txt")), value)?;
+        }
+    }
+    let mut mismatches = Vec::new();
+    for ((label, _, expected), (_, actual)) in cases.iter().zip(&actual) {
+        if actual != expected { mismatches.push((*label, actual, expected)); }
+    }
+    fs::write(directory.join("COMPLETE-COMPARISONS.txt"), format!("calls={}\n{mismatches:#?}\n", cases.len()))?;
+    if !mismatches.is_empty() { return Err(format!("{} complete typed mismatches", mismatches.len()).into()); }
+    Ok(())
+}
