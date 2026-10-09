@@ -784,6 +784,9 @@ impl GraphViewer<'_> {
         if idx >= Self::input_count(node) {
             return false;
         }
+        if graph_sequence::inputs_are_read_only(node) {
+            return false;
+        }
         match node {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
                 args[idx] = from_id;
@@ -2043,6 +2046,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         self.error = None;
         let from_node = snarl[from.id.node];
         let to_node = snarl[to.id.node];
+        if let CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) = to_node
+            && self
+                .graph
+                .nodes
+                .get(&to_id)
+                .is_some_and(graph_sequence::inputs_are_read_only)
+        {
+            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
+            return;
+        }
         let mutation = (|| -> Result<Option<NodeId>, String> {
             match (from_node, to_node) {
                 (
@@ -2183,6 +2196,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        if let CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) = snarl[to.id.node]
+            && self
+                .graph
+                .nodes
+                .get(&to_id)
+                .is_some_and(graph_sequence::inputs_are_read_only)
+        {
+            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
+            return;
+        }
         let disconnected = match snarl[to.id.node] {
             CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
                 self.input_at(to_id, to.id.input)

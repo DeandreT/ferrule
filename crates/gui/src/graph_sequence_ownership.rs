@@ -99,7 +99,7 @@ pub(super) fn collect_scope_owners<'a>(
     while let Some((scope, path)) = pending.pop() {
         if scope
             .sequence()
-            .is_some_and(|sequence| sequence.item() == item)
+            .is_some_and(|sequence| sequence.owned_items().contains(&item))
         {
             owners.push(SequenceItemOwner::Scope {
                 target,
@@ -139,7 +139,7 @@ pub(super) fn collect_scope_item_ids(root: &Scope, items: &mut std::collections:
     let mut pending = vec![root];
     while let Some(scope) = pending.pop() {
         if let Some(sequence) = scope.sequence() {
-            items.insert(sequence.item());
+            items.extend(sequence.owned_items());
         }
         if let Some(segments) = scope.concatenated() {
             pending.extend(segments.iter());

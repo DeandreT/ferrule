@@ -594,6 +594,18 @@ pub(super) fn validate_scope(
             .into_iter()
             .flatten()
             .collect(),
+            mapping::SequenceExpr::FilterMapV1(composition) => composition
+                .source
+                .inputs()
+                .into_iter()
+                .map(|node| ("filter/map source", node))
+                .chain(
+                    composition
+                        .captures
+                        .iter()
+                        .map(|capture| ("filter/map capture", capture.node)),
+                )
+                .collect(),
             mapping::SequenceExpr::Generate { from, to, .. } => from
                 .iter()
                 .map(|&node| ("sequence lower boundary", node))
@@ -606,7 +618,12 @@ pub(super) fn validate_scope(
                 ("recursive sequence separator", *separator),
             ],
         };
-        references.push(("sequence item", sequence.item()));
+        references.extend(
+            sequence
+                .owned_items()
+                .into_iter()
+                .map(|item| ("sequence item", item)),
+        );
         for (label, node) in references {
             if !project.graph.nodes.contains_key(&node) {
                 issues.push(ValidationIssue::new(

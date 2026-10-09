@@ -340,6 +340,10 @@ pub enum EngineError {
     InvalidConcatenatedScopeItem { found: &'static str },
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
+    #[error(transparent)]
+    FilterMapAdmission(#[from] Box<mapping::FilterMapAdmissionError>),
+    #[error("filter/map sequence item {item} is not supported by native execution")]
+    UnsupportedSequenceComposition { item: u32 },
     #[error("recursive sequence exceeds the {limit}-group depth limit")]
     RecursiveSequenceDepth { limit: usize },
     #[error("recursive sequence produced more than {max} items")]
@@ -418,6 +422,12 @@ pub enum EngineError {
     AggregateNonFinite { function: mapping::AggregateOp },
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
+}
+
+impl From<mapping::FilterMapAdmissionError> for EngineError {
+    fn from(error: mapping::FilterMapAdmissionError) -> Self {
+        Self::FilterMapAdmission(Box::new(error))
+    }
 }
 
 /// Runs `project`'s scope tree against `source`, producing one target
@@ -701,6 +711,7 @@ fn evaluate_run<R>(
     execution: Option<&ExecutionContext<'_>>,
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
+    project.validate_filter_map_v1()?;
     let runtime_frame = Instance::Group(
         (execution
             .into_iter()
@@ -775,6 +786,9 @@ mod dynamic_target_tests;
 #[cfg(test)]
 #[path = "tests/failure.rs"]
 mod failure_tests;
+#[cfg(test)]
+#[path = "tests/filter_map_model.rs"]
+mod filter_map_model_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;

@@ -286,7 +286,7 @@ fn references_to_inner(
             if sequence.inputs().contains(&needle) {
                 found.add(format!("{label} sequence input"), true);
             }
-            if sequence.item() == needle {
+            if sequence.owned_items().contains(&needle) {
                 found.add(format!("{label} sequence item"), true);
             }
         }
@@ -351,7 +351,10 @@ fn references_to_inner(
     let mut found = ReferenceCollector::default();
     for (&owner, node) in &graph.nodes {
         if owner != needle && node_inputs(node).contains(&needle) {
-            found.add(format!("graph node {owner}"), false);
+            found.add(
+                format!("graph node {owner}"),
+                super::graph_sequence::inputs_are_read_only(node),
+            );
         }
         if owner != needle
             && matches!(
@@ -359,7 +362,7 @@ fn references_to_inner(
                 Node::SequenceExists { sequence, .. }
                     | Node::SequenceItemAt { sequence, .. }
                     | Node::SequenceAggregate { sequence, .. }
-                    if sequence.item() == needle
+                    if sequence.owned_items().contains(&needle)
             )
         {
             found.add(format!("graph node {owner} sequence item"), true);
@@ -406,7 +409,7 @@ fn references_to_inner(
             if sequence.inputs().contains(&needle) {
                 found.add(format!("{label} sequence input"), true);
             }
-            if sequence.item() == needle {
+            if sequence.owned_items().contains(&needle) {
                 found.add(format!("{label} sequence item"), true);
             }
         }
@@ -474,13 +477,13 @@ pub(super) fn sequence_item_owners<'a>(
             Node::SequenceAggregate { sequence, .. } => (sequence, ReducerKind::Aggregate),
             _ => continue,
         };
-        if sequence.item() == item {
+        if sequence.owned_items().contains(&item) {
             owners.push(SequenceItemOwner::Graph { node, kind });
         }
     }
     for (index, rule) in project.failure_rules.iter().enumerate() {
         if let FailureIteration::Sequence { sequence } = &rule.iteration
-            && sequence.item() == item
+            && sequence.owned_items().contains(&item)
         {
             owners.push(SequenceItemOwner::FailureRule { index });
         }
@@ -510,12 +513,12 @@ pub(crate) fn sequence_item_ids(
         | Node::SequenceItemAt { sequence, .. }
         | Node::SequenceAggregate { sequence, .. } = expression
         {
-            items.insert(sequence.item());
+            items.extend(sequence.owned_items());
         }
     }
     for rule in project.failure_rules {
         if let FailureIteration::Sequence { sequence } = &rule.iteration {
-            items.insert(sequence.item());
+            items.extend(sequence.owned_items());
         }
     }
     items

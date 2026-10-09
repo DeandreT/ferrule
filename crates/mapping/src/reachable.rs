@@ -23,7 +23,7 @@ impl Project {
             pending.extend(rule.selection.predicate());
             if let crate::FailureIteration::Sequence { sequence } = &rule.iteration {
                 pending.extend(sequence.inputs());
-                pending.push(sequence.item());
+                pending.extend(sequence.owned_items());
             }
         }
 
@@ -75,7 +75,7 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
     }
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());
-        roots.push(sequence.item());
+        roots.extend(sequence.owned_items());
     }
     if let Some(segments) = scope.concatenated() {
         for segment in segments.iter() {

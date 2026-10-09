@@ -15,6 +15,9 @@ use super::{
 
 pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
     super::primary_root::validate_primary_root_primitives(project, issues);
+    if let Err(error) = project.validate_filter_map_v1() {
+        issues.push(ValidationIssue::new(&error.location, error.to_string()));
+    }
     let mut sequence_item_scopes = BTreeMap::new();
     collect_sequence_items(
         &project.root,
@@ -41,12 +44,14 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         | Node::SequenceItemAt { sequence, .. }
         | Node::SequenceAggregate { sequence, .. } = node
         {
-            claim_sequence_item(
-                sequence.item(),
-                format!("graph node {id}"),
-                &mut sequence_item_scopes,
-                issues,
-            );
+            for item in sequence.owned_items() {
+                claim_sequence_item(
+                    item,
+                    format!("graph node {id}"),
+                    &mut sequence_item_scopes,
+                    issues,
+                );
+            }
         }
         own_issues(
             &mut issues[ownership_start..],
@@ -59,12 +64,14 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
     for (index, rule) in project.failure_rules.iter().enumerate() {
         let ownership_start = issues.len();
         if let FailureIteration::Sequence { sequence } = &rule.iteration {
-            claim_sequence_item(
-                sequence.item(),
-                format!("failure rule {}", index + 1),
-                &mut sequence_item_scopes,
-                issues,
-            );
+            for item in sequence.owned_items() {
+                claim_sequence_item(
+                    item,
+                    format!("failure rule {}", index + 1),
+                    &mut sequence_item_scopes,
+                    issues,
+                );
+            }
         }
         own_issues(
             &mut issues[ownership_start..],
@@ -672,7 +679,8 @@ fn sequence_dynamic_source<'a>(
         mapping::SequenceExpr::Tokenize { .. }
         | mapping::SequenceExpr::TokenizeByLength { .. }
         | mapping::SequenceExpr::TokenizeRegex { .. }
-        | mapping::SequenceExpr::Generate { .. } => None,
+        | mapping::SequenceExpr::Generate { .. }
+        | mapping::SequenceExpr::FilterMapV1(_) => None,
     }
 }
 
@@ -699,7 +707,9 @@ fn collect_sequence_items(
         } else {
             format!("scope `{}`", path.join("/"))
         };
-        claim_sequence_item(sequence.item(), location, items, issues);
+        for item in sequence.owned_items() {
+            claim_sequence_item(item, location.clone(), items, issues);
+        }
         own_issues(&mut issues[start..], ValidationOwner::Scope(owner.clone()));
     }
     if let Some(segments) = scope.concatenated() {
