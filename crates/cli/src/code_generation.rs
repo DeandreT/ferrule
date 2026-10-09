@@ -227,12 +227,8 @@ fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::
         fs::write(&path, &file.contents)
             .with_context(|| format!("writing generated artifact {}", path.display()))?;
     }
-    publish_directory(staging, output_directory).with_context(|| {
-        format!(
-            "publishing generated output directory {}",
-            output_directory.display()
-        )
-    })?;
+    publish_directory(staging, output_directory)
+        .map_err(|error| publication_error(staging, output_directory, error))?;
     pending.commit();
     Ok(())
 }
@@ -278,6 +274,118 @@ fn publish_directory(staging: &Path, output_directory: &Path) -> std::io::Result
     fs::rename(staging, output_directory)
 }
 
+fn publication_error(
+    staging: &Path,
+    output_directory: &Path,
+    error: std::io::Error,
+) -> anyhow::Error {
+    let mut context = format!(
+        "publishing generated output directory {}",
+        output_directory.display()
+    );
+    if let Some(hint) = atomic_publication_hint(staging, output_directory, &error) {
+        context.push_str(": ");
+        context.push_str(hint);
+        context.push_str(
+            "; choose an output filesystem supporting atomic no-replace directory rename, or use a CLI built for the destination's native operating system",
+        );
+    }
+    anyhow::Error::new(error).context(context)
+}
+
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "visionos",
+    target_os = "watchos",
+    target_os = "redox",
+))]
+fn atomic_publication_hint(
+    staging: &Path,
+    output_directory: &Path,
+    error: &std::io::Error,
+) -> Option<&'static str> {
+    let errno = rustix::io::Errno::from_io_error(error);
+    if error.kind() == std::io::ErrorKind::Unsupported
+        || errno == Some(rustix::io::Errno::NOSYS)
+        || errno == Some(rustix::io::Errno::OPNOTSUPP)
+    {
+        return Some(
+            "atomic no-replace directory publication is unavailable in this runtime or filesystem",
+        );
+    }
+    // EINVAL also covers invalid paths and self-descendant renames. Narrow
+    // the hint to a real directory and an absent sibling destination. Keep
+    // it conditional: filesystem name rules can also reject a valid-looking
+    // destination. Failed metadata reads preserve the ordinary OS diagnostic.
+    if errno == Some(rustix::io::Errno::INVAL)
+        && valid_publication_siblings(staging, output_directory)
+    {
+        return Some(
+            "atomic no-replace directory publication was refused; this runtime or filesystem may not support the required operation",
+        );
+    }
+    None
+}
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "visionos",
+    target_os = "watchos",
+    target_os = "redox",
+)))]
+fn atomic_publication_hint(
+    _staging: &Path,
+    _output_directory: &Path,
+    error: &std::io::Error,
+) -> Option<&'static str> {
+    (error.kind() == std::io::ErrorKind::Unsupported).then_some(
+        "atomic no-replace directory publication is unavailable in this runtime or filesystem",
+    )
+}
+
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "visionos",
+    target_os = "watchos",
+    target_os = "redox",
+))]
+fn valid_publication_siblings(staging: &Path, output_directory: &Path) -> bool {
+    let (Some(staging_name), Some(output_name)) =
+        (staging.file_name(), output_directory.file_name())
+    else {
+        return false;
+    };
+    if staging_name == output_name {
+        return false;
+    }
+    let parent = |path: &Path| {
+        fs::canonicalize(
+            path.parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new(".")),
+        )
+    };
+    let (Ok(staging_parent), Ok(output_parent)) = (parent(staging), parent(output_directory))
+    else {
+        return false;
+    };
+    staging_parent == output_parent
+        && fs::symlink_metadata(staging).is_ok_and(|metadata| metadata.is_dir())
+        && matches!(fs::symlink_metadata(output_directory), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+}
+
 struct PendingDirectory(Option<PathBuf>);
 
 impl PendingDirectory {
@@ -303,6 +411,190 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    fn publication_fixture() -> std::io::Result<PathBuf> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "ferrule_codegen_diagnostic_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root)?;
+        fs::create_dir(root.join("staging"))?;
+        fs::write(root.join("staging/generated.txt"), "complete source")?;
+        Ok(root)
+    }
+
+    #[test]
+    fn unavailable_publication_retains_original_io_cause_and_staging_cleanup() -> anyhow::Result<()>
+    {
+        let root = publication_fixture()?;
+        let staging = root.join("staging");
+        let destination = root.join("destination");
+        let pending = PendingDirectory(Some(staging.clone()));
+        let error = publication_error(
+            &staging,
+            &destination,
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "original OS cause"),
+        );
+        assert!(error.to_string().contains("atomic no-replace"));
+        assert!(
+            error
+                .to_string()
+                .contains("destination's native operating system")
+        );
+        let cause = error.downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(cause.kind(), std::io::ErrorKind::Unsupported);
+        assert_eq!(cause.to_string(), "original OS cause");
+        assert_eq!(error.chain().count(), 2);
+        assert!(staging.join("generated.txt").is_file());
+        drop(pending);
+        assert!(!staging.exists());
+        assert!(!destination.exists());
+        fs::remove_dir(root)?;
+        Ok(())
+    }
+
+    #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "visionos",
+        target_os = "watchos",
+        target_os = "redox",
+    ))]
+    #[test]
+    fn unavailable_atomic_syscall_errors_preserve_errno_and_conditional_inval_hint()
+    -> anyhow::Result<()> {
+        let root = publication_fixture()?;
+        for errno in [
+            rustix::io::Errno::NOSYS,
+            rustix::io::Errno::OPNOTSUPP,
+            rustix::io::Errno::INVAL,
+        ] {
+            let error = publication_error(
+                &root.join("staging"),
+                &root.join("destination"),
+                std::io::Error::from_raw_os_error(errno.raw_os_error()),
+            );
+            assert!(error.to_string().contains("atomic no-replace"));
+            assert!(error.to_string().contains("choose an output filesystem"));
+            assert_eq!(
+                error
+                    .downcast_ref::<std::io::Error>()
+                    .unwrap()
+                    .raw_os_error(),
+                Some(errno.raw_os_error())
+            );
+            assert_eq!(error.chain().count(), 2);
+            if errno == rustix::io::Errno::INVAL {
+                assert!(error.to_string().contains("may not support"));
+            }
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "visionos",
+        target_os = "watchos",
+        target_os = "redox",
+    ))]
+    #[test]
+    fn invalid_publication_paths_and_existing_entries_do_not_get_filesystem_hint()
+    -> anyhow::Result<()> {
+        let root = publication_fixture()?;
+        let staging = root.join("staging");
+        let existing = root.join("existing");
+        let regular_file = root.join("regular-file");
+        fs::create_dir(&existing)?;
+        fs::write(&regular_file, "existing")?;
+        let mut cases = vec![
+            (staging.clone(), staging.clone()),
+            (staging.clone(), staging.join("descendant")),
+            (staging.clone(), existing.clone()),
+            (staging.clone(), regular_file.clone()),
+            (regular_file.clone(), root.join("destination")),
+            (root.join("missing-staging"), root.join("destination")),
+            (staging.clone(), root.join("missing-parent/destination")),
+            (staging.clone(), root.join("regular-file/destination")),
+            (staging.clone(), root.join("invalid\0name")),
+        ];
+        #[cfg(unix)]
+        {
+            let dangling = root.join("dangling");
+            std::os::unix::fs::symlink(root.join("missing"), &dangling)?;
+            cases.push((staging.clone(), dangling.clone()));
+            cases.push((dangling, root.join("destination")));
+        }
+        for (source, destination) in cases {
+            let error = publication_error(
+                &source,
+                &destination,
+                std::io::Error::from_raw_os_error(rustix::io::Errno::INVAL.raw_os_error()),
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "publishing generated output directory {}",
+                    destination.display()
+                )
+            );
+            assert_eq!(
+                error
+                    .downcast_ref::<std::io::Error>()
+                    .unwrap()
+                    .raw_os_error(),
+                Some(rustix::io::Errno::INVAL.raw_os_error())
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(staging.join("generated.txt"))?,
+            "complete source"
+        );
+        assert_eq!(fs::read_to_string(regular_file)?, "existing");
+        assert!(fs::read_dir(existing)?.next().is_none());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn ordinary_publication_io_errors_keep_their_original_context_and_kind() -> anyhow::Result<()> {
+        let root = publication_fixture()?;
+        let destination = root.join("destination");
+        for kind in [
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::AlreadyExists,
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::InvalidInput,
+            std::io::ErrorKind::Other,
+        ] {
+            let error = publication_error(
+                &root.join("staging"),
+                &destination,
+                std::io::Error::new(kind, "original ordinary IO cause"),
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "publishing generated output directory {}",
+                    destination.display()
+                )
+            );
+            let cause = error.downcast_ref::<std::io::Error>().unwrap();
+            assert_eq!(cause.kind(), kind);
+            assert_eq!(cause.to_string(), "original ordinary IO cause");
+        }
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
 
     #[test]
     fn publish_never_replaces_an_existing_directory() -> anyhow::Result<()> {

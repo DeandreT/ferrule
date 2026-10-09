@@ -34,7 +34,25 @@ settings window and diagnostics, including their full error details. Build the
 generated source with the Rust or .NET toolchain to obtain a compiled library.
 
 While generation runs, project actions are locked. A request to close the editor
-waits for generation to finish, then follows the editor’s usual close guards.
+waits for generation to finish, then follows the editor's usual close guards.
+
+## Output Filesystem
+
+The source writer stages a complete library beside its destination, then
+publishes it with an atomic directory rename that refuses an existing
+destination. This protects folders that appear during generation, including
+empty folders. The destination filesystem and the CLI's operating-system
+runtime must support that operation. On Linux, this requires the filesystem's
+[`RENAME_NOREPLACE` support](https://man7.org/linux/man-pages/man2/rename.2.html).
+
+The writer retains the original OS cause and attempts to remove its staging
+tree on failure. An unavailable-operation diagnostic suggests choosing a supporting
+filesystem or a CLI built for the destination's native operating system.
+For a Linux CLI running under WSL, choose a new folder on the WSL Linux
+filesystem, such as `/tmp/generated-csharp` or a folder under the Linux home
+directory. To generate directly onto a Windows filesystem, use a Windows build
+of the CLI. The same publication requirement applies to ordinary generation
+and explicitly selected companions.
 
 ## C#
 
