@@ -2001,3 +2001,6 @@ mod compact_xml_pin_identity_tests;
 
 #[path = "graph_viewer_tests/computed_aggregates.rs"]
 mod computed_aggregates;
+
+#[path = "graph_viewer_tests/filter_map_guards.rs"]
+mod filter_map_guard_tests;

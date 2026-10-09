@@ -36,6 +36,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+        mapping::SequenceExpr::FilterMapV1(_) => "filter/map (unavailable)",
         mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }
@@ -66,6 +67,7 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
             ["from", "to"].get(index).copied().unwrap_or("input")
         }
         mapping::SequenceExpr::Generate { from: None, .. } => "to",
+        mapping::SequenceExpr::FilterMapV1(_) => "read-only input",
         mapping::SequenceExpr::RecursiveCollect { .. } => ["prefix", "separator"]
             .get(index)
             .copied()

@@ -20,6 +20,7 @@ mod dynamic_targets;
 mod embedded_projection_reachability;
 mod extra_sources;
 mod failures;
+mod filter_map_model;
 mod grouping;
 mod joins;
 mod path_hierarchy;

@@ -60,6 +60,9 @@ mod source;
 mod temperature_native;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod filter_map_model_tests;
 mod udf;
 mod wsdl;
 mod xbrl;
@@ -305,6 +308,11 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    if let Some(composition) = project.filter_map_v1_descriptors().first() {
+        return Err(MfdError::UnsupportedSequenceComposition {
+            item: composition.item,
+        });
+    }
     let mut scoped_exception_branches = scoped_exception::Branches::build(project)?;
     if let Some(prepared) = qualified_root_view::prepare_export(project, path)? {
         return Ok(prepared);

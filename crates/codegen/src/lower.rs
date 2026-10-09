@@ -27,6 +27,12 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
+    if let Some(composition) = project.filter_map_v1_descriptors().first() {
+        return Err(LowerError::new(vec![Diagnostic::UnsupportedSequence {
+            item: composition.item,
+        }]));
+    }
+
     let primary_xml = project.source_options.xml_root_view_read_policy;
     // Ordinary XML format identity does not make adapter support mandatory.
     // Existing core-only generation survives an unproved ordinary schema.
@@ -261,7 +267,13 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     let failure_rules = project
         .failure_rules
         .iter()
-        .map(|rule| lower_failure_rule(rule, &mut roots))
+        .filter_map(|rule| match lower_failure_rule(rule, &mut roots) {
+            Ok(rule) => Some(rule),
+            Err(error) => {
+                diagnostics.push(error);
+                None
+            }
+        })
         .collect();
     let mut target_path = Vec::new();
     let root = lower_scope(
@@ -389,7 +401,10 @@ fn portable_context_error(error: &ProgramValidationError) -> Option<Diagnostic> 
     }
 }
 
-fn lower_failure_rule(rule: &mapping::FailureRule, roots: &mut Vec<NodeId>) -> FailureRule {
+fn lower_failure_rule(
+    rule: &mapping::FailureRule,
+    roots: &mut Vec<NodeId>,
+) -> Result<FailureRule, Diagnostic> {
     roots.extend(rule.selection.predicate());
     roots.extend(rule.message);
     let iteration = match &rule.iteration {
@@ -399,7 +414,7 @@ fn lower_failure_rule(rule: &mapping::FailureRule, roots: &mut Vec<NodeId>) -> F
         mapping::FailureIteration::Sequence { sequence } => {
             roots.extend(sequence.inputs());
             roots.push(sequence.item());
-            FailureIteration::Generated(lower_generated_sequence(sequence))
+            FailureIteration::Generated(lower_generated_sequence(sequence)?)
         }
     };
     let selection = match rule.selection {
@@ -409,11 +424,11 @@ fn lower_failure_rule(rule: &mapping::FailureRule, roots: &mut Vec<NodeId>) -> F
             FailureSelection::WhenFalse(predicate)
         }
     };
-    FailureRule {
+    Ok(FailureRule {
         iteration,
         selection,
         message: rule.message,
-    }
+    })
 }
 
 fn lower_scope(
@@ -453,7 +468,13 @@ fn lower_scope(
             ))
         }
     } else {
-        lower_iteration(scope)
+        match lower_iteration(scope) {
+            Ok(iteration) => iteration,
+            Err(error) => {
+                diagnostics.push(error);
+                None
+            }
+        }
     };
     roots.extend(scope.filter);
     roots.extend(scope.post_group_filter);
@@ -695,18 +716,18 @@ fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
     }
 }
 
-fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
+fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
         ScopeIteration::DynamicDocuments {
             source,
             output_path,
         } => DynamicDocumentIteration::new(source.clone(), *output_path).into(),
-        ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence).into(),
+        ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence)?.into(),
         ScopeIteration::InnerJoin { id, plan } => {
             InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
         }
-        ScopeIteration::None | ScopeIteration::Concatenate(_) => return None,
+        ScopeIteration::None | ScopeIteration::Concatenate(_) => return Ok(None),
     };
     let grouping = if let Some(key) = scope.group_by {
         Some(GroupingPlan::By { key })
@@ -747,18 +768,25 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
             .collect(),
         scope.iteration_output.into(),
     );
-    Some(match (grouping, scope.post_group_filter) {
+    Ok(Some(match (grouping, scope.post_group_filter) {
         (Some(grouping), Some(predicate)) => iteration.with_filtered_grouping(grouping, predicate),
         (Some(grouping), None) => iteration.with_grouping(grouping),
         (None, None) => iteration,
         (None, Some(_)) => {
             unreachable!("validated post-group filters always own a grouping operation")
         }
-    })
+    }))
 }
 
-fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequence {
-    match sequence {
+fn lower_generated_sequence(
+    sequence: &mapping::SequenceExpr,
+) -> Result<GeneratedSequence, Diagnostic> {
+    Ok(match sequence {
+        mapping::SequenceExpr::FilterMapV1(composition) => {
+            return Err(Diagnostic::UnsupportedSequence {
+                item: composition.item,
+            });
+        }
         mapping::SequenceExpr::Tokenize {
             input,
             delimiter,
@@ -812,7 +840,7 @@ fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequen
             to: *to,
             item: *item,
         },
-    }
+    })
 }
 
 fn display_target_scope(path: &[String]) -> String {
@@ -1140,11 +1168,11 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             sequence,
             predicate,
         } => Expression::SequenceExists {
-            sequence: lower_generated_sequence(sequence),
+            sequence: lower_generated_sequence(sequence)?,
             predicate: *predicate,
         },
         Node::SequenceItemAt { sequence, index } => Expression::SequenceItemAt {
-            sequence: lower_generated_sequence(sequence),
+            sequence: lower_generated_sequence(sequence)?,
             index: *index,
         },
         Node::SequenceAggregate {
@@ -1155,7 +1183,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             arg,
         } => Expression::SequenceAggregate {
             function: (*function).into(),
-            sequence: lower_generated_sequence(sequence),
+            sequence: lower_generated_sequence(sequence)?,
             predicate: *predicate,
             expression: *expression,
             arg: *arg,
