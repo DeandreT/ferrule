@@ -136,6 +136,11 @@ one another, decoded instance trees or process memory.
   debug/release, warm/cold, setup/publication, and measurement-phase limits.
 - [ ] Check disk space for inputs, artifacts, compilation, and retained results.
 
+The [scalar filter/map memory study](performance/scalar-sequence-memory.md)
+retains all 72 native/Rust/C# measurements and 72 separate verifiers for bounded
+capture/output workloads. Its whole-process peaks do not attribute individual
+allocations or bound RAM for arbitrary large files.
+
 This page describes source contracts and measurement practice. It supplies no
 universal improvement claim or total-RAM cap. The separate
 [filesystem input-lifetime measurement](performance/filesystem-input-lifetime-2026-10-07.md)
