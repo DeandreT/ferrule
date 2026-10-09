@@ -1,0 +1,927 @@
+{
+  "issue": 207,
+  "status": "SOURCE_ONLY_FROZEN_CONSTRUCTOR_AND_ORACLE_RECIPES_NOT_MATERIALIZED_ALL_EXECUTION_UNRUN",
+  "schema": 1,
+  "scope": "Two ordinary one-primary-output JSON Projects. Capture is always evaluated once and passed to both stages; only mapper output type/parameter differs. No new engine or backend policy.",
+  "modes": [
+    "numeric",
+    "capture"
+  ],
+  "dimensions": [
+    {
+      "id": "n1-l32",
+      "item_count": 1,
+      "capture_utf8_bytes": 32
+    },
+    {
+      "id": "n16-l32",
+      "item_count": 16,
+      "capture_utf8_bytes": 32
+    },
+    {
+      "id": "n128-l32",
+      "item_count": 128,
+      "capture_utf8_bytes": 32
+    },
+    {
+      "id": "n16-l4096",
+      "item_count": 16,
+      "capture_utf8_bytes": 4096
+    },
+    {
+      "id": "n16-l262144",
+      "item_count": 16,
+      "capture_utf8_bytes": 262144
+    },
+    {
+      "id": "n128-l262144",
+      "item_count": 128,
+      "capture_utf8_bytes": 262144
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "n1-l32-numeric",
+      "dimension": "n1-l32",
+      "project": "project-numeric.json",
+      "item_count": 1,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 1
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 57,
+      "expected_document_bytes": 49,
+      "expected_logical_scalar_payload_bytes": 1,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 1,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 1,
+      "manual_expected_feature_work": 8
+    },
+    {
+      "id": "n1-l32-capture",
+      "dimension": "n1-l32",
+      "project": "project-capture.json",
+      "item_count": 1,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 1
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 57,
+      "expected_document_bytes": 82,
+      "expected_logical_scalar_payload_bytes": 32,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 1,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 32
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 1,
+      "manual_expected_feature_work": 8
+    },
+    {
+      "id": "n16-l32-numeric",
+      "dimension": "n16-l32",
+      "project": "project-numeric.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 58,
+      "expected_document_bytes": 506,
+      "expected_logical_scalar_payload_bytes": 23,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n16-l32-capture",
+      "dimension": "n16-l32",
+      "project": "project-capture.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 58,
+      "expected_document_bytes": 1027,
+      "expected_logical_scalar_payload_bytes": 512,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 32
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n128-l32-numeric",
+      "dimension": "n128-l32",
+      "project": "project-numeric.json",
+      "item_count": 128,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 128
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 59,
+      "expected_document_bytes": 4007,
+      "expected_logical_scalar_payload_bytes": 276,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 128,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 128,
+      "manual_expected_feature_work": 643
+    },
+    {
+      "id": "n128-l32-capture",
+      "dimension": "n128-l32",
+      "project": "project-capture.json",
+      "item_count": 128,
+      "capture_utf8_bytes": 32,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 32
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 128
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 32
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 59,
+      "expected_document_bytes": 8083,
+      "expected_logical_scalar_payload_bytes": 4096,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 128,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 32
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 128,
+      "manual_expected_feature_work": 643
+    },
+    {
+      "id": "n16-l4096-numeric",
+      "dimension": "n16-l4096",
+      "project": "project-numeric.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 4096,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 4096
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 4096
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 4122,
+      "expected_document_bytes": 506,
+      "expected_logical_scalar_payload_bytes": 23,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n16-l4096-capture",
+      "dimension": "n16-l4096",
+      "project": "project-capture.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 4096,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 4096
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 4096
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 4122,
+      "expected_document_bytes": 66051,
+      "expected_logical_scalar_payload_bytes": 65536,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 4096
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n16-l262144-numeric",
+      "dimension": "n16-l262144",
+      "project": "project-numeric.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 262144,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 262144
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 262144
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 262170,
+      "expected_document_bytes": 506,
+      "expected_logical_scalar_payload_bytes": 23,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n16-l262144-capture",
+      "dimension": "n16-l262144",
+      "project": "project-capture.json",
+      "item_count": 16,
+      "capture_utf8_bytes": 262144,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 262144
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 16
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 262144
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 262170,
+      "expected_document_bytes": 4194819,
+      "expected_logical_scalar_payload_bytes": 4194304,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 16,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 262144
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 16,
+      "manual_expected_feature_work": 83
+    },
+    {
+      "id": "n128-l262144-numeric",
+      "dimension": "n128-l262144",
+      "project": "project-numeric.json",
+      "item_count": 128,
+      "capture_utf8_bytes": 262144,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 262144
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 128
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 262144
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 262171,
+      "expected_document_bytes": 4007,
+      "expected_logical_scalar_payload_bytes": 276,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 128,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "Int",
+                          "value": "current range integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 128,
+      "manual_expected_feature_work": 643
+    },
+    {
+      "id": "n128-l262144-capture",
+      "dimension": "n128-l262144",
+      "project": "project-capture.json",
+      "item_count": 128,
+      "capture_utf8_bytes": 262144,
+      "capture_literal_recipe": {
+        "ascii_byte_hex": "78",
+        "repeat_count": 262144
+      },
+      "complete_input_bytes_recipe": [
+        "{\"Count\":",
+        {
+          "base10_integer": 128
+        },
+        ",\"Capture\":\"",
+        {
+          "ascii_byte_hex": "78",
+          "repeat_count": 262144
+        },
+        "\"}\n"
+      ],
+      "input_bytes": 262171,
+      "expected_document_bytes": 33558419,
+      "expected_logical_scalar_payload_bytes": 33554432,
+      "complete_typed_output_recipe": {
+        "kind": "Group",
+        "origin": {
+          "tag": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Rows",
+            "instance": {
+              "kind": "Repeated",
+              "items": {
+                "ordered_range_1_through": 128,
+                "per_item": {
+                  "kind": "Group",
+                  "origin": {
+                    "tag": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "instance": {
+                        "kind": "Scalar",
+                        "value": {
+                          "tag": "String",
+                          "value": {
+                            "ascii_byte_hex": "78",
+                            "repeat_count": 262144
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected_source_items": 128,
+      "manual_expected_feature_work": 643
+    }
+  ],
+  "fixture_count": 12,
+  "document_byte_ceiling_exclusive": 67108864,
+  "input_utf8": "ASCII Count/Capture in that order, compact JSON, LF, no BOM",
+  "expected_output_utf8": {
+    "header": "{\n  \"Rows\": [\n",
+    "row_prefix": "    {\n      \"Value\": ",
+    "row_value": "base10 integer index 1..N, or quoted x repeated L bytes",
+    "row_suffix": "\n    }",
+    "between_rows": ",\n",
+    "footer": "\n  ]\n}\n",
+    "no_bom": true,
+    "final_lf": true
+  },
+  "qualification_only_small_literals": [
+    {
+      "id": "ordered-numeric-3",
+      "project": "project-numeric.json",
+      "input": "{\"Count\":3,\"Capture\":\"xxxx\"}\n",
+      "expected": "{\n  \"Rows\": [\n    {\n      \"Value\": 1\n    },\n    {\n      \"Value\": 2\n    },\n    {\n      \"Value\": 3\n    }\n  ]\n}\n"
+    },
+    {
+      "id": "ordered-capture-3",
+      "project": "project-capture.json",
+      "input": "{\"Count\":3,\"Capture\":\"xxxx\"}\n",
+      "expected": "{\n  \"Rows\": [\n    {\n      \"Value\": \"xxxx\"\n    },\n    {\n      \"Value\": \"xxxx\"\n    },\n    {\n      \"Value\": \"xxxx\"\n    }\n  ]\n}\n"
+    }
+  ],
+  "measurement": {
+    "backends": [
+      "native",
+      "rust",
+      "csharp"
+    ],
+    "repetitions": 2,
+    "measured_trial_count": 72,
+    "separate_verifier_count": 72,
+    "repeat1_backend_order": [
+      "native",
+      "rust",
+      "csharp"
+    ],
+    "repeat2_backend_order": [
+      "csharp",
+      "rust",
+      "native"
+    ],
+    "repeat1_modes": [
+      "numeric",
+      "capture"
+    ],
+    "repeat2_modes": [
+      "capture",
+      "numeric"
+    ],
+    "dimension_order": "listed order, reversed in repetition2",
+    "each_trial": "one fresh process, one ordinary text JSON mapping call, complete actual returned string written once to a fresh output file; no oracle read or typed re-run in timed process",
+    "includes": [
+      "process and runtime startup",
+      "ordinary native Project reading/decoding or generated embedded-schema handling and input reading",
+      "input parsing",
+      "eager filter/map/stage/target work",
+      "ordinary JSON serialization",
+      "complete output/error retention to file",
+      "bounded boundary observations"
+    ],
+    "excludes": [
+      "fixture materialization",
+      "additional codec/static/emission preflight outside the measured invocation",
+      "compilation/lock/restore",
+      "oracle reconstruction",
+      "typed and byte validation",
+      "source hashing by owner",
+      "outer supervisor memory"
+    ],
+    "peak": "GNU time -v maximum RSS of genuine measured child, KiB; no summing concurrent processes or assigning peak to a particular allocation",
+    "cache_policy": "no cache flush, GC forcing or allocator override; reversed second repeat reduces one simple order effect, not statistically conclusive",
+    "serial_only": true,
+    "root_bounded_work_seconds": 900,
+    "root_bounded_closure_seconds": 60,
+    "invocation": "Invoke built native/Rust ELF directly and qualified dotnet with the already built C# DLL; never Cargo/dotnet run in a timed trial. GNU time waits the genuine host command; owned supervisor wraps time outside the measured host.",
+    "paired_analysis": "Within each backend/repeat/dimension compare capture against numeric; preserve all individual rows and repeat differences. Between-language differences also include route/runtime/profile costs.",
+    "native_host_lifetimes": "The small native adapter scopes source Instance and target Instance inside its parse/run/to_string call and returns only String. They live through native serialization and drop before the host file write. Project and input text remain in the outer host scope. Generated ordinary execute_json/ExecuteJson keeps its own existing implementation lifetimes; C# GC timing is not prescribed.",
+    "boundary_observations": [
+      "after input read and before ordinary public call",
+      "after returned string/error and before full output retention",
+      "after full output retention"
+    ]
+  },
+  "required_before_measurement": [
+    "Review this manifest, both complete Projects and materializer source.",
+    "Root materializes every full input and independent expected output before compilation/measurement, seals complete bodies/bytes/SHA256 and all small literal controls; all files <64MiB.",
+    "Public mapping codec/static admission and both generated emitters admit exact two Projects; no implementation fallback.",
+    "Compile owned native/Rust/C# hosts once, with normal dev/Debug settings fully recorded; warnings denied, package-free C#, jobs1/incremental0/shared compatible target/offline. No opt-level override in this study.",
+    "Separate host source, generated complete artifacts, compiler/runtime/binary identities and actual exact command arrays are reviewed/bound before each measured child.",
+    "Fresh final main/source authority required: current captured context includes an unmerged #198 overlay; dependency qualification is not invented."
+  ],
+  "required_verification": [
+    "Retain actual whole output bytes, complete public error/debug/message/cause payloads and child stdout/stderr/exit before comparing.",
+    "In separate untimed processes parse the same strict input through public schemas, call public native engine::run or generated Execute/execute, retain full ordered typed output and recursive Group origins/exact Float bits for unexpected values before checks.",
+    "Compare every Value tag/value and ordered row/field against the independent recipe; compare complete measured output to full oracle through EOF. Do not use another backend as expected output.",
+    "Retain every failure/trial row, including missing output or unavailable RSS; no average-only or success-only report.",
+    "No native public writer byte limit assumed. Host study bounds documents explicitly below portable generated limits."
+  ],
+  "limits": [
+    "Item/work budgets constrain charged traversal, not captured/mapped byte allocations or total RAM.",
+    "The capture source expression runs once; native/Rust stage argument/value adaptations may clone owned strings, while C# strings are immutable references. Logical N*L output content is not physical duplication or guaranteed unique bytes.",
+    "Whole-process peaks include parser/writer/runtime/startup/retention. Sparse /proc boundary RSS/HWM cannot attribute exact phases.",
+    "No streaming, cross-language allocation equivalence, total-RAM ceiling or production optimization conclusion before actual data."
+  ]
+}

@@ -34,9 +34,6 @@ choose a lane and avoid conflicting changes.
 - [ ] Execute #205's three test-only roles and failing-comparison retention controls,
   then compare identical focused log and retained-file sizes. Source is accepted;
   no measured log reduction, memory saving or semantic change is claimed.
-- [ ] Freeze #207's complete matched native/Rust/C# fixtures before large-capture
-  memory trials. Retain all repeats/outputs and distinguish process RSS from allocation
-  attribution; propose optimizations separately only after concrete evidence.
 - [ ] After #194 releases its frame helper, qualify #211's test-only diagnostic
   summary against the same controls and complete outcomes; log bytes are not RAM use.
 - [ ] On the released #194 GUI baseline, qualify #213's desktop Fit on complete
