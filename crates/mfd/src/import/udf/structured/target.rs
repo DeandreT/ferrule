@@ -152,7 +152,7 @@ pub(in crate::import) fn prepare_target_frames(
         let input = call
             .structured_inputs
             .get(component_id)
-            .and_then(|inputs| inputs.as_slice().first())
+            .and_then(|inputs| inputs.first())
             .map(|(_, input)| *input);
         let source = input
             .and_then(|input| builder.edge_from.get(&input).copied())
