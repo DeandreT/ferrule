@@ -339,6 +339,22 @@ layout and dialect details that an extension cannot express.
 The [workflow-parity roadmap](../ROADMAP.md) tracks the remaining format and
 connector work.
 
+### SQLite metadata inspection
+
+Schema introspection, relational-schema validation, and foreign-key metadata
+resolution open existing SQLite files with explicit read-only connection flags.
+They do not create a missing main database or retry with a writable connection.
+A hot rollback journal therefore causes the metadata operation to fail instead
+of repairing database pages or deleting that journal. MFD import retains its
+existing embedded-type and untyped fallback rules when inspection fails.
+
+The metadata connection treats its path as a filesystem filename, without
+enabling SQLite URI options or immutable mode. This connection policy does not
+provide complete filesystem isolation: [SQLite WAL readers](https://www.sqlite.org/wal.html#read_only_databases)
+can require or create shared-memory and WAL sidecars. Hosts that require an
+offline filesystem boundary must also confine readable resources and enforce
+read-only access to their input filesystem.
+
 ### Native X12 ISA encoding
 
 Native X12 output encodes a complete 16-position ISA as fixed-width ASCII.
