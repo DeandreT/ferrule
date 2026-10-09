@@ -123,6 +123,24 @@ fn context() -> egui::Context {
     context
 }
 
+fn frame_text_diagnostics<'a>(
+    shape: &'a egui::epaint::Shape,
+    clip: egui::Rect,
+    texts: &mut Vec<(&'a str, egui::Rect, egui::Rect)>,
+) {
+    match shape {
+        egui::epaint::Shape::Text(text) => {
+            texts.push((text.galley.text(), text.visual_bounding_rect(), clip));
+        }
+        egui::epaint::Shape::Vec(shapes) => {
+            for shape in shapes {
+                frame_text_diagnostics(shape, clip, texts);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn frame(
     app: &mut FerruleApp,
     context: &egui::Context,
@@ -130,6 +148,7 @@ fn frame(
     enabled: bool,
     size: egui::Vec2,
 ) -> (egui::FullOutput, Vec<Control>) {
+    eprintln!("frame input original size={size:?} enabled={enabled} events={events:#?}");
     observations::begin();
     let output = context.run_ui(
         egui::RawInput {
@@ -140,10 +159,19 @@ fn frame(
         |ui| app.show_filter_map_scope_editor(ui, enabled),
     );
     let controls = observations::take();
+    let mut texts = Vec::new();
+    let shape_bounds = output
+        .shapes
+        .iter()
+        .fold(egui::Rect::NOTHING, |bounds, shape| {
+            frame_text_diagnostics(&shape.shape, shape.clip_rect, &mut texts);
+            bounds.union(shape.shape.visual_bounding_rect())
+        });
     eprintln!(
-        "frame original project={}\ncontrols={controls:#?}\nfull_shapes={:#?}",
+        "frame original project={}\ncontrols={controls:#?}\nrenderer summary: top_level_shapes={}, bounds={shape_bounds:?}, pixels_per_point={}\ntext originals (label, visual_rect, clip)={texts:#?}",
         encoded(app),
-        output.shapes
+        output.shapes.len(),
+        output.pixels_per_point
     );
     app.observe_editor_history(std::time::Instant::now(), false);
     (output, controls)
