@@ -1763,6 +1763,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         ui: &mut Ui,
         snarl: &mut Snarl<CanvasNode>,
     ) {
+        crate::canvas_keyboard::record_node_rect(ui, node, rect, snarl);
         // egui-snarl's node frame already participates in transformed, clipped
         // widget hit-testing. Area-only rectangle checks miss its child layer.
         // Reuse its response without adding a click/drag target or an auto ID.
