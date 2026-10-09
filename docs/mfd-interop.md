@@ -181,10 +181,13 @@ unequal branch counts; source anchors and branch conditions remain relative to
 the owning parent. Redistribution requires unique explicit ancestor lineages,
 a nonempty child partition for every parent, plain concatenation wrappers, and
 exact provenance for every binding in a replaced placeholder. Each original
-binding must survive once in its assigned descendant subtree. An unclaimed,
-missing, broadcast, or controlled placeholder remains intact with a refusal
-diagnostic. A unique child entry may reuse its parent's marker lineage when its
-deeper declared target path establishes containment; retained provenance is
+binding must survive once in its assigned descendant subtree, and each retained
+binding must identify one original binding index. Identical cached expression
+nodes alone do not prove that separate original bindings survived. A placeholder
+with unclaimed, missing, broadcast, ambiguous, or controlled content remains
+intact with a refusal diagnostic. A unique child entry may reuse its parent's
+marker lineage when its deeper declared target path establishes containment;
+retained provenance is
 restricted to that descendant path. Numeric port order, equal branch counts,
 and similar source paths
 do not establish ownership. Direct IR without declared entry owners remains

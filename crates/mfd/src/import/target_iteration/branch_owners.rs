@@ -187,13 +187,15 @@ impl DeclaredBranches {
                 }
                 let mut retained = BTreeMap::new();
                 for index in group {
-                    self.collect_retained(
+                    if !self.collect_retained(
                         &children[*index],
                         child_segments.iter().nth(*index).expect("partition index"),
                         child_path,
                         &mut child_path.to_vec(),
                         &mut retained,
-                    );
+                    ) {
+                        return false;
+                    }
                 }
                 placeholder_bindings_preserved(
                     placeholder,
@@ -211,7 +213,7 @@ impl DeclaredBranches {
         owner_path: &[String],
         path: &mut Vec<String>,
         retained: &mut BTreeMap<(Vec<String>, usize), usize>,
-    ) {
+    ) -> bool {
         for binding in &scope.bindings {
             let mut field = path.clone();
             field.push(binding.target_field.clone());
@@ -232,20 +234,32 @@ impl DeclaredBranches {
                 .flatten()
                 .copied()
                 .collect::<BTreeSet<_>>();
-            for origin in origins {
-                *retained.entry((field.clone(), origin)).or_default() += 1;
+            // ScopeBuilder canonicalizes identical (target, node) bindings.
+            // One retained binding cannot prove that multiple original edges
+            // survived separately, even when their cached node is identical.
+            if origins.len() > 1 {
+                return false;
+            }
+            if let Some(origin) = origins.first() {
+                *retained.entry((field.clone(), *origin)).or_default() += 1;
             }
         }
         for child in &scope.children {
             path.push(child.target_field.clone());
-            self.collect_retained(owner, child, owner_path, path, retained);
+            let preserved = self.collect_retained(owner, child, owner_path, path, retained);
             path.pop();
+            if !preserved {
+                return false;
+            }
         }
         if let Some(segments) = scope.concatenated() {
             for segment in segments.iter() {
-                self.collect_retained(owner, segment, owner_path, path, retained);
+                if !self.collect_retained(owner, segment, owner_path, path, retained) {
+                    return false;
+                }
             }
         }
+        true
     }
 }
 
@@ -550,6 +564,141 @@ mod tests {
     }
 
     #[test]
+    fn one_retained_binding_cannot_stand_for_two_original_bindings() {
+        let field = vec!["Child".into(), "Value".into()];
+        let segment = |node| Scope {
+            bindings: vec![bound("Value", node)],
+            ..Scope::default()
+        };
+        let parent = |node| Scope {
+            children: vec![Scope {
+                target_field: "Child".into(),
+                ..segment(node)
+            }],
+            ..Scope::default()
+        };
+        let branch = |lineage, node, indices| DeclaredBranch {
+            lineage,
+            anchors: Anchors::new(),
+            bindings: BindingOrigins::from([((field.clone(), node), indices)]),
+        };
+        for ambiguous in [true, false] {
+            let evidence = evidence(if ambiguous {
+                "aliased-origin"
+            } else {
+                "separate-origins"
+            });
+            let mut owners = DeclaredBranches::default();
+            owners.record(
+                &[],
+                vec![
+                    branch(vec![1], 10, BTreeSet::from([0, 1])),
+                    branch(vec![2], 11, BTreeSet::from([2])),
+                ],
+            );
+            let (child_segments, child_owners) = if ambiguous {
+                (
+                    ScopeSequence::new(segment(20), vec![segment(21)]),
+                    vec![
+                        branch(vec![1, 3], 20, BTreeSet::from([0, 1])),
+                        branch(vec![2, 5], 21, BTreeSet::from([2])),
+                    ],
+                )
+            } else {
+                (
+                    ScopeSequence::new(segment(20), vec![segment(22), segment(21)]),
+                    vec![
+                        branch(vec![1, 3], 20, BTreeSet::from([0])),
+                        branch(vec![1, 4], 22, BTreeSet::from([1])),
+                        branch(vec![2, 5], 21, BTreeSet::from([2])),
+                    ],
+                )
+            };
+            owners.record(&["Child".into()], child_owners);
+            let mut root = Scope {
+                iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                    parent(10),
+                    vec![parent(11)],
+                )),
+                children: vec![Scope {
+                    target_field: "Child".into(),
+                    iteration: ScopeIteration::Concatenate(child_segments),
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            };
+            // These complete expected scopes are authored before distribution:
+            // an ambiguous single binding keeps the original scope unchanged;
+            // two explicitly owned bindings retain both children in order.
+            let expected = if ambiguous {
+                root.clone()
+            } else {
+                Scope {
+                    iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                        Scope {
+                            children: vec![Scope {
+                                target_field: "Child".into(),
+                                iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                                    segment(20),
+                                    vec![segment(22)],
+                                )),
+                                ..Scope::default()
+                            }],
+                            ..Scope::default()
+                        },
+                        vec![Scope {
+                            children: vec![Scope {
+                                target_field: "Child".into(),
+                                ..segment(21)
+                            }],
+                            ..Scope::default()
+                        }],
+                    )),
+                    ..Scope::default()
+                }
+            };
+            let expected_warnings = if ambiguous {
+                vec!["nested cloned target `Child` cannot prove complete placeholder binding preservation; its scope remains unsupported".to_string()]
+            } else {
+                Vec::new()
+            };
+            std::fs::write(
+                evidence.join("input-before-run.json"),
+                serde_json::to_vec_pretty(&root).expect("input JSON"),
+            )
+            .expect("retain scope");
+            std::fs::write(
+                evidence.join("ownership-before-run.txt"),
+                format!("{owners:#?}"),
+            )
+            .expect("retain ownership");
+            std::fs::write(
+                evidence.join("expected-before-run.json"),
+                serde_json::to_vec_pretty(
+                    &serde_json::json!({"scope": expected, "warnings": expected_warnings}),
+                )
+                .expect("expected JSON"),
+            )
+            .expect("retain expected");
+            let mut warnings = Vec::new();
+            owners.distribute(&mut root, &mut warnings);
+            std::fs::write(
+                evidence.join("outcome.original.json"),
+                serde_json::to_vec_pretty(
+                    &serde_json::json!({"scope": root, "warnings": warnings}),
+                )
+                .expect("outcome JSON"),
+            )
+            .expect("retain outcome");
+            assert_eq!(
+                serde_json::to_value(&root).expect("actual scope"),
+                serde_json::to_value(&expected).expect("expected scope"),
+            );
+            assert_eq!(warnings, expected_warnings);
+        }
+    }
+
+    #[test]
     fn equal_lineage_is_declared_ownership_but_sibling_provenance_is_excluded() {
         let branch = |lineage| DeclaredBranch {
             lineage,
@@ -585,7 +734,7 @@ mod tests {
         );
         std::fs::write(evidence.join("retained-input-and-expected-before-run.txt"), format!("scope={scope:#?}\nowner={:#?}\nlayouts={layouts:#?}\nexpected sibling count=0, proper descendant count=1", children[0])).expect("retain origins");
         let mut sibling = BTreeMap::new();
-        layouts.collect_retained(
+        let sibling_unambiguous = layouts.collect_retained(
             &children[0],
             &scope,
             &["Child".into()],
@@ -600,7 +749,7 @@ mod tests {
             }],
         );
         let mut descendant = BTreeMap::new();
-        layouts.collect_retained(
+        let descendant_unambiguous = layouts.collect_retained(
             &children[0],
             &scope,
             &["Child".into()],
@@ -609,11 +758,13 @@ mod tests {
         );
         std::fs::write(
             evidence.join("outcomes.original.txt"),
-            format!("partition={partitioned:#?}\nsibling={sibling:#?}\ndescendant={descendant:#?}"),
+            format!("partition={partitioned:#?}\nsibling={sibling:#?}, unambiguous={sibling_unambiguous}\ndescendant={descendant:#?}, unambiguous={descendant_unambiguous}"),
         )
         .expect("retain outcomes");
         assert_eq!(partitioned, Some(vec![vec![0], vec![1]]));
+        assert!(sibling_unambiguous);
         assert!(sibling.is_empty());
+        assert!(descendant_unambiguous);
         assert_eq!(descendant, BTreeMap::from([((field, 7), 1)]));
     }
 }
