@@ -68,6 +68,7 @@ pub(in crate::import) fn resolve_xml_schema_reference(
 pub(in crate::import) fn read_xml_schema_file(
     schema_path: &Path,
     root: Option<&str>,
+    resources: Option<&ResourceResolver>,
 ) -> Result<SchemaNode, XmlSchemaReadError> {
     let extension = schema_path
         .extension()
@@ -77,7 +78,28 @@ pub(in crate::import) fn read_xml_schema_file(
         format_xml::dtd::import_root(schema_path, root)
             .map_err(|error| XmlSchemaReadError::Other(error.to_string()))
     } else {
-        format_xml::xsd::import_root(schema_path, root).map_err(XmlSchemaReadError::Xsd)
+        let result = match resources {
+            Some(resources) => format_xml::xsd::import_root_with_resource_root(
+                schema_path,
+                root,
+                resources.package_root(),
+            ),
+            None => format_xml::xsd::import_root(schema_path, root),
+        };
+        retain_xsd_resource_refusal(resources, &result);
+        result.map_err(XmlSchemaReadError::Xsd)
+    }
+}
+
+pub(in crate::import) fn retain_xsd_resource_refusal<T>(
+    resources: Option<&ResourceResolver>,
+    result: &Result<T, format_xml::XmlFormatError>,
+) {
+    if let Some(resources) = resources
+        && let Err(error @ format_xml::XmlFormatError::Io(cause)) = result
+        && cause.kind() == std::io::ErrorKind::PermissionDenied
+    {
+        resources.record_refusal(error.to_string());
     }
 }
 

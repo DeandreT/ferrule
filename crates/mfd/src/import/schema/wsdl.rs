@@ -7,9 +7,7 @@ use mapping::{WsdlMessageOptions, WsdlMessageRole};
 use crate::import::function::{FnComponent, is_filter};
 use crate::resource::ResourceResolver;
 
-use super::{
-    SchemaComponent, read_schema_component, read_schema_component_in_package, schema_node_at,
-};
+use super::{SchemaComponent, read_schema_component_with_resources, schema_node_at};
 
 /// Imports a WSDL operation message as an XML boundary. The service invocation
 /// itself remains outside ferrule: request messages are executable XML sources,
@@ -52,11 +50,8 @@ fn read_resolved(
         ));
     }
 
-    let mut result = match resources {
-        Some(resources) => read_schema_component_in_package(component, resources, warnings),
-        None => read_schema_component(component, mfd_path, warnings),
-    }
-    .ok_or_else(|| "WSDL message has no entry tree".to_string())?;
+    let mut result = read_schema_component_with_resources(component, mfd_path, resources, warnings)
+        .ok_or_else(|| "WSDL message has no entry tree".to_string())?;
     let declared_source = role.is_none();
     if declared_source && !result.input_keys.is_empty() {
         return Err("WSDL request message contains target input ports".to_string());
