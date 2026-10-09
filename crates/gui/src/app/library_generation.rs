@@ -74,6 +74,12 @@ impl LibraryGenerationDraft {
         self.settings().request(project_path)
     }
 
+    fn generation_language_after_save(&self) -> LibraryLanguage {
+        self.pending_settings
+            .as_ref()
+            .map_or(self.language, |settings| settings.language)
+    }
+
     fn request_after_save(&self, project_path: &Path) -> anyhow::Result<LibraryGenerationRequest> {
         match &self.pending_settings {
             Some(settings) => settings.request(project_path),
@@ -187,6 +193,13 @@ fn pick_folder(current: &Path) -> Receiver<Option<String>> {
     receiver
 }
 
+fn filter_map_generation_reason(
+    _project: &mapping::Project,
+    _language: LibraryLanguage,
+) -> Option<&'static str> {
+    None
+}
+
 impl FerruleApp {
     pub(super) fn begin_library_generation(&mut self) {
         if self.rest_run_busy() {
@@ -200,6 +213,14 @@ impl FerruleApp {
     }
 
     fn request_library_generation(&mut self, context: &egui::Context) {
+        if let Some(reason) = self
+            .library_generation_draft
+            .as_ref()
+            .and_then(|draft| filter_map_generation_reason(&self.project, draft.language))
+        {
+            self.library_generation_failed(reason.into());
+            return;
+        }
         if self.rest_run_busy() {
             return;
         }
@@ -237,6 +258,12 @@ impl FerruleApp {
     }
 
     pub(super) fn generate_saved_library(&mut self) {
+        if let Some(reason) = self.library_generation_draft.as_ref().and_then(|draft| {
+            filter_map_generation_reason(&self.project, draft.generation_language_after_save())
+        }) {
+            self.library_generation_failed(reason.into());
+            return;
+        }
         if self.pending_library_generation.is_some() {
             return;
         }
@@ -442,6 +469,8 @@ impl FerruleApp {
                         ui.colored_label(self.palette.error, error);
                     });
             }
+            let unsupported = filter_map_generation_reason(&self.project, draft.language);
+            if let Some(reason) = unsupported { ui.weak(reason); }
             ui.separator();
             if running {
                 ui.horizontal(|ui| {
@@ -451,7 +480,7 @@ impl FerruleApp {
             } else {
                 ui.horizontal(|ui| {
                     generate = ui
-                        .add_enabled(interactive, egui::Button::new("Save and generate"))
+                        .add_enabled(interactive && unsupported.is_none(), egui::Button::new("Save and generate"))
                         .clicked();
                     cancel = ui
                         .add_enabled(interactive, egui::Button::new("Cancel"))
@@ -470,3 +499,7 @@ impl FerruleApp {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "library_generation/filter_map_tests.rs"]
+mod filter_map_tests;
