@@ -43,6 +43,7 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod auto_connect_ui;
 #[path = "canvas.rs"]
 mod canvas_build;
+pub(crate) use canvas_build::sync_endpoint_wires_with_owned_items;
 #[path = "csv_dialect.rs"]
 mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
@@ -52,6 +53,7 @@ mod extra_source_ui;
 #[path = "extra_targets.rs"]
 mod extra_target_ui;
 mod failure_rules;
+mod filter_map_authoring;
 #[path = "../workspace/functions.rs"]
 mod function_workspace;
 #[path = "host_parameters.rs"]
@@ -82,9 +84,7 @@ mod scope_ui;
 mod workspace_ui;
 
 use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
-pub(crate) use canvas_build::{
-    endpoint_block_size, sync_endpoint_wires, sync_endpoint_wires_with_owned_items,
-};
+pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 3;

@@ -53,13 +53,27 @@ pub(crate) fn inactive_target_scopes<'a>(
 pub(crate) struct ProjectGraphReferences<'a> {
     failure_rules: &'a [FailureRule],
     extra_sources: &'a [NamedSource],
+    user_functions: Option<&'a crate::filter_map_editor::Functions>,
 }
 
 impl<'a> ProjectGraphReferences<'a> {
+    pub(crate) fn with_user_functions(
+        mut self,
+        functions: &'a crate::filter_map_editor::Functions,
+    ) -> Self {
+        self.user_functions = Some(functions);
+        self
+    }
+
+    pub(crate) fn user_functions(self) -> Option<&'a crate::filter_map_editor::Functions> {
+        self.user_functions
+    }
+
     pub(crate) fn new(failure_rules: &'a [FailureRule], extra_sources: &'a [NamedSource]) -> Self {
         Self {
             failure_rules,
             extra_sources,
+            user_functions: None,
         }
     }
 }
@@ -532,4 +546,53 @@ pub(crate) fn project_sequence_item_ids(project: &Project) -> std::collections::
         &[],
         ProjectGraphReferences::new(&project.failure_rules, &project.extra_sources),
     )
+}
+
+/// Both identities stay distinguishable in presentation without exposing numeric IDs.
+pub(super) fn filter_map_item_ids(
+    graph: &Graph,
+    root: &Scope,
+    extra_targets: &[NamedTarget],
+    inactive_targets: &[InactiveTargetScope<'_>],
+    project: ProjectGraphReferences<'_>,
+) -> (
+    std::collections::BTreeSet<NodeId>,
+    std::collections::BTreeSet<NodeId>,
+) {
+    let mut input = std::collections::BTreeSet::new();
+    let mut output = std::collections::BTreeSet::new();
+    let mut add = |sequence: &mapping::SequenceExpr| {
+        let mut nested = vec![sequence];
+        while let Some(mapping::SequenceExpr::FilterMapV1(value)) = nested.pop() {
+            input.insert(value.source.item());
+            output.insert(value.item);
+            // Unsupported imported nesting is retained, and every enclosed
+            // raw input remains private while the descriptor is repaired.
+            nested.push(value.source.as_ref());
+        }
+    };
+    let mut pending = vec![root];
+    pending.extend(extra_targets.iter().map(|target| &target.root));
+    pending.extend(inactive_targets.iter().map(|target| target.root));
+    while let Some(scope) = pending.pop() {
+        if let Some(sequence) = scope.sequence() {
+            add(sequence);
+        }
+        if let Some(segments) = scope.concatenated() {
+            pending.extend(segments.iter());
+        }
+        pending.extend(scope.children.iter());
+        pending.extend(scope.dynamic_children.iter().map(|child| &child.scope));
+    }
+    for node in graph.nodes.values() {
+        if let Some(sequence) = crate::filter_map_editor::sequence(node) {
+            add(sequence);
+        }
+    }
+    for rule in project.failure_rules {
+        if let FailureIteration::Sequence { sequence } = &rule.iteration {
+            add(sequence);
+        }
+    }
+    (input, output)
 }
