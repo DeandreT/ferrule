@@ -84,6 +84,23 @@ The CLI generated integration target is explicitly enabled with
 `cargo +nightly test -p cli --features codegen-tests --test code_generation`;
 read that suite's backend prerequisites before running it.
 
+### Reuse generated CLI host builds
+
+The `extra_targets`, `failure_rules` and `static_sources` regressions honor
+`FERRULE_CODEGEN_HOST_TARGET_DIR` as a dedicated host cache. Use a compatible
+cache outside the outer Cargo target and temporary test directories, one build
+job, and `--test-threads=1`; coordinate other processes using the same cache.
+An empty explicit path, overlap with `CARGO_TARGET_DIR`, or active-test-executable
+ancestor is refused before temporary test files or a host build are created.
+Without the setting, these regressions keep their isolated `cargo-target` path.
+
+Set `FERRULE_CODEGEN_KEEP_ARTIFACTS=1` to retain generated CLI test directories
+after success or failure. These three regressions record complete source and
+command originals, followed by status/output or startup-error originals before
+assertions; source copies exclude build caches. Other values keep ordinary
+temporary cleanup. Retention can use substantial space, so bind a suitable
+temporary directory and inspect space before the run.
+
 ### Build space and desktop isolation
 
 - [ ] Check free disk space and relevant Cargo target sizes before a large
