@@ -1509,7 +1509,7 @@ fn import_resolved(
     let mut json_parsers = Vec::new();
     let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
-    let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
+    let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
     let mut udf_calls = Vec::new();
     let mut external_udf_candidates = Vec::new();
     let mut external_scalar_recipes = Vec::new();
@@ -1533,10 +1533,12 @@ fn import_resolved(
             name: project.source.name.clone(),
             key,
         }];
+        let mut resource_warnings = Vec::new();
+        resources.append_refusals(&mut resource_warnings);
         return Ok(LoweredStage {
             imported: Imported {
                 project,
-                warnings: Vec::new(),
+                warnings: resource_warnings,
                 mapping_path: path.to_path_buf(),
             },
             source_components,
@@ -1911,7 +1913,8 @@ fn import_resolved(
                             }
                         }
                     } else {
-                        match external_scalar::read(&component, path, &selected_language) {
+                        match external_scalar::read(&component, path, &selected_language, resources)
+                        {
                             Ok(Some(recipe)) => external_scalar_recipes.push(recipe),
                             Err(reason) => {
                                 note_skipped_library(&mut skipped_libraries, other);
@@ -1919,7 +1922,7 @@ fn import_resolved(
                                     "external {selected_language} function `{name}` is unsupported: {reason}"
                                 ));
                             }
-                            Ok(None) => match external_xslt::read(&component, path) {
+                            Ok(None) => match external_xslt::read(&component, path, resources) {
                                 Ok(Some(recipe)) => external_xslt_aggregates.push(recipe),
                                 Err(reason) => {
                                     note_skipped_library(&mut skipped_libraries, other);
@@ -2512,6 +2515,7 @@ fn import_resolved(
             &mut warnings,
         );
     }
+    resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
         imported: Imported {
             project,

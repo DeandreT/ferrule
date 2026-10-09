@@ -2,6 +2,8 @@
 
 mod manifest;
 
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::MfdError;
@@ -17,6 +19,7 @@ pub(crate) struct ResourceResolver {
     explicit_package_root: bool,
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
+    resource_refusals: RefCell<BTreeSet<String>>,
 }
 
 impl ResourceResolver {
@@ -59,6 +62,7 @@ impl ResourceResolver {
             explicit_package_root,
             edi_catalog_roots: Vec::new(),
             json_schema_catalog_roots: Vec::new(),
+            resource_refusals: RefCell::default(),
         })
     }
 
@@ -102,6 +106,42 @@ impl ResourceResolver {
 
     pub(crate) fn package_root(&self) -> &Path {
         &self.package_root
+    }
+
+    /// Keeps authoritative resource failures visible across recognizers that
+    /// discard their local warnings when a specialized recipe does not match.
+    pub(crate) fn record_refusal(&self, message: impl Into<String>) {
+        self.resource_refusals.borrow_mut().insert(message.into());
+    }
+
+    pub(crate) fn append_refusals(&self, warnings: &mut Vec<String>) {
+        for message in self.resource_refusals.borrow().iter() {
+            if !warnings.iter().any(|warning| warning.contains(message)) {
+                warnings.push(format!("mapping resource refused: {message}"));
+            }
+        }
+    }
+
+    /// Resolves an adjacent extension module before its contents are opened.
+    /// Missing candidates permit ordinary module discovery to continue; an
+    /// existing symlink that escapes or cannot resolve is an explicit refusal.
+    pub(crate) fn resolve_discovered_file(
+        &self,
+        candidate: &Path,
+    ) -> Result<Option<PathBuf>, String> {
+        match std::fs::symlink_metadata(candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("could not inspect module resource ({error})")),
+        }
+        let canonical = std::fs::canonicalize(candidate)
+            .map_err(|error| format!("could not resolve module resource ({error})"))?;
+        if !canonical.starts_with(&self.package_root) {
+            return Err(
+                "module resource resolves outside the authorizing package root".to_string(),
+            );
+        }
+        Ok(canonical.is_file().then_some(canonical))
     }
 
     pub(crate) fn edi_catalog_roots(&self) -> &[PathBuf] {
@@ -224,12 +264,31 @@ impl ResourceResolver {
         declared: &str,
         description: &str,
     ) -> Result<PathBuf, String> {
+        self.package_relative_path_with_retention(declared, description, false)
+    }
+
+    fn file_boundary_refusal(&self, message: String, retain: bool) -> String {
+        if retain {
+            self.record_refusal(message.clone());
+        }
+        message
+    }
+
+    fn package_relative_path_with_retention(
+        &self,
+        declared: &str,
+        description: &str,
+        retain: bool,
+    ) -> Result<PathBuf, String> {
         if declared.is_empty() || declared.contains('\0') {
             return Err(format!("{description} path is empty or contains NUL"));
         }
         let portable = declared.replace('\\', "/");
         if looks_like_windows_absolute(&portable) || Path::new(&portable).is_absolute() {
-            return Err(format!("{description} `{declared}` uses an absolute path"));
+            return Err(self.file_boundary_refusal(
+                format!("{description} `{declared}` uses an absolute path"),
+                retain,
+            ));
         }
         let mut normalized = self
             .mapping_directory
@@ -250,13 +309,19 @@ impl ResourceResolver {
                          `ImportOptions::with_package_root(...)`)"
                             .to_string()
                     };
-                    return Err(format!(
-                        "{description} `{declared}` traverses above package root `{}`{guidance}",
-                        self.package_root.display(),
+                    return Err(self.file_boundary_refusal(
+                        format!(
+                            "{description} `{declared}` traverses above package root `{}`{guidance}",
+                            self.package_root.display(),
+                        ),
+                        retain,
                     ));
                 }
                 Component::Prefix(_) | Component::RootDir => {
-                    return Err(format!("{description} `{declared}` uses an absolute path"));
+                    return Err(self.file_boundary_refusal(
+                        format!("{description} `{declared}` uses an absolute path"),
+                        retain,
+                    ));
                 }
             }
         }
@@ -274,13 +339,33 @@ impl ResourceResolver {
         declared: &str,
         description: &str,
     ) -> Result<PathBuf, String> {
+        self.resolve_file_with_retention(declared, description, false)
+    }
+
+    /// Retains containment denials while preserving unavailable-resource
+    /// fallback. Optional metadata lookup failures do not grant a new warning.
+    pub(crate) fn resolve_file_retaining_boundary_refusals(
+        &self,
+        declared: &str,
+        description: &str,
+    ) -> Result<PathBuf, String> {
+        self.resolve_file_with_retention(declared, description, true)
+    }
+
+    fn resolve_file_with_retention(
+        &self,
+        declared: &str,
+        description: &str,
+        retain: bool,
+    ) -> Result<PathBuf, String> {
         if declared.is_empty() || declared.contains('\0') {
             return Err(format!("{description} path is empty or contains NUL"));
         }
         let portable = declared.replace('\\', "/");
         if looks_like_windows_absolute(&portable) {
-            return Err(format!(
-                "{description} `{declared}` uses a Windows drive or UNC path"
+            return Err(self.file_boundary_refusal(
+                format!("{description} `{declared}` uses a Windows drive or UNC path"),
+                retain,
             ));
         }
         let declared_path = Path::new(&portable);
@@ -288,7 +373,7 @@ impl ResourceResolver {
             declared_path.to_path_buf()
         } else {
             self.package_root
-                .join(self.package_relative_path(declared, description)?)
+                .join(self.package_relative_path_with_retention(declared, description, retain)?)
         };
         let resolved = std::fs::canonicalize(&candidate)
             .or_else(|_| resolve_case_insensitive(&candidate))
@@ -299,9 +384,12 @@ impl ResourceResolver {
                 )
             })?;
         if !resolved.starts_with(&self.package_root) {
-            return Err(format!(
-                "{description} `{declared}` resolves outside package root `{}`",
-                self.package_root.display()
+            return Err(self.file_boundary_refusal(
+                format!(
+                    "{description} `{declared}` resolves outside package root `{}`",
+                    self.package_root.display()
+                ),
+                retain,
             ));
         }
         if !resolved.is_file() {

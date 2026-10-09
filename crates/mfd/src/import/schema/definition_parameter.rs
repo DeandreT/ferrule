@@ -4,21 +4,26 @@ use std::path::Path;
 use ir::SchemaNode;
 use mapping::FormatOptions;
 
+use crate::resource::ResourceResolver;
+
 use super::{ComponentFormat, SchemaComponent};
 
 pub(super) fn read(
     component: &roxmltree::Node,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     match component.attribute("library") {
-        Some("xml") => super::read_schema_component(component, mfd_path, warnings),
+        Some("xml") => {
+            super::read_schema_component_with_resources(component, mfd_path, resources, warnings)
+        }
         Some("text")
             if component
                 .descendants()
                 .any(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi")) =>
         {
-            super::edi::read(component, mfd_path, None, warnings, false)
+            super::edi::read(component, mfd_path, resources, warnings, false)
         }
         Some("db") => read_db(component, warnings),
         _ => None,
@@ -136,9 +141,20 @@ mod tests {
         )
         .unwrap();
         let mut warnings = Vec::new();
-        let edi =
-            super::read(&edi.root_element(), Path::new("mapping.mfd"), &mut warnings).unwrap();
-        let db = super::read(&db.root_element(), Path::new("mapping.mfd"), &mut warnings).unwrap();
+        let edi = super::read(
+            &edi.root_element(),
+            Path::new("mapping.mfd"),
+            None,
+            &mut warnings,
+        )
+        .unwrap();
+        let db = super::read(
+            &db.root_element(),
+            Path::new("mapping.mfd"),
+            None,
+            &mut warnings,
+        )
+        .unwrap();
 
         assert!(warnings.is_empty(), "{warnings:?}");
         assert!(edi.format == ComponentFormat::Edi);
