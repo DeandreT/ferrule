@@ -811,15 +811,36 @@ pub fn import_mfd(
     edi_catalog_roots: &[PathBuf],
     json_schema_catalog_roots: &[PathBuf],
 ) -> anyhow::Result<Vec<String>> {
-    import_mfd_with_exception_order(
+    import_mfd_with_profile(
         mfd_path,
         out_path,
         package_root,
         package_manifest,
         edi_catalog_roots,
         json_schema_catalog_roots,
-        false,
+        mfd::ImportProfile::BestEffort,
     )
+}
+
+/// Imports a project under an explicit static admission profile. Executable
+/// import refuses incomplete designs before the destination is written and
+/// does not change legacy global failure-rule ordering.
+pub fn import_mfd_with_profile(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+    profile: mfd::ImportProfile,
+) -> anyhow::Result<Vec<String>> {
+    let options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    publish_mfd_import(mfd_path, out_path, &options, profile)
 }
 
 /// Imports a project with an explicit row-error-order choice. Opting in
@@ -839,15 +860,28 @@ pub fn import_mfd_with_exception_order(
         edi_catalog_roots,
         json_schema_catalog_roots,
     )?;
-    let imported = if item_ordered_exceptions {
-        mfd::import_with_profile(
-            mfd_path,
-            &options.with_item_ordered_exceptions(),
+    let (options, profile) = if item_ordered_exceptions {
+        (
+            options.with_item_ordered_exceptions(),
             mfd::ImportProfile::Executable,
         )
-        .map(|outcome| outcome.imported)
     } else {
-        mfd::import_with_options(mfd_path, &options)
+        (options, mfd::ImportProfile::BestEffort)
+    };
+    publish_mfd_import(mfd_path, out_path, &options, profile)
+}
+
+fn publish_mfd_import(
+    mfd_path: &Path,
+    out_path: &Path,
+    options: &mfd::ImportOptions,
+    profile: mfd::ImportProfile,
+) -> anyhow::Result<Vec<String>> {
+    let imported = match profile {
+        mfd::ImportProfile::BestEffort => mfd::import_with_options(mfd_path, options),
+        mfd::ImportProfile::Executable => {
+            mfd::import_with_profile(mfd_path, options, profile).map(|outcome| outcome.imported)
+        }
     };
     let mut imported = imported.with_context(|| format!("importing {}", mfd_path.display()))?;
     rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
