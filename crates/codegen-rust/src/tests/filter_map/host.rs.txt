@@ -1,0 +1,457 @@
+use codegen_runtime::{FilterMapBoundary, FilterMapBoundaryKind, FilterMapCancellation,
+    FilterMapCounters, FilterMapLimits, FilterMapPhase, FilterMapBudgetKind, Instance,
+    JsonBoundaryError, RuntimeError, ScalarType, Value, field, group, repeated, scalar};
+use serde_json::Value as Json;
+use std::cell::RefCell;
+use std::io::Write;
+use std::path::PathBuf;
+
+#[derive(Default)]
+struct Checker { cancel: bool, boundaries: RefCell<Vec<FilterMapBoundary>> }
+impl FilterMapCancellation for Checker {
+    fn is_cancelled(&self, at: &FilterMapBoundary) -> bool {
+        self.boundaries.borrow_mut().push(*at);
+        self.cancel && at.phase == FilterMapPhase::Mapper && at.source_position == Some(2)
+            && at.function == Some(101) && at.kind == FilterMapBoundaryKind::CallEntry
+    }
+}
+
+fn retain(label: &str, bytes: &[u8]) {
+    if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP192_HOST_EVIDENCE") {
+        let directory = PathBuf::from(directory);
+        assert!(directory.is_absolute());
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(directory.join(label)).unwrap();
+        file.write_all(bytes).unwrap(); file.flush().unwrap();
+    } else { eprintln!("{label}: {}", String::from_utf8_lossy(bytes)); }
+}
+fn original(label: &str, value: &impl std::fmt::Debug) {
+    retain(label, format!("{value:#?}\n").as_bytes());
+}
+
+// Nonasserting typed originals supplement full Debug with exact scalar payloads.
+fn value_original192(value: &Value, path: &str, text: &mut String) {
+    use std::fmt::Write as _;
+    match value {
+        Value::Null => writeln!(text, "path={path:?};tag=Null").unwrap(),
+        Value::JsonNull(_) => writeln!(text, "path={path:?};tag=JsonNull").unwrap(),
+        Value::XmlNil(_) => writeln!(text, "path={path:?};tag=XmlNil").unwrap(),
+        Value::Int(value) => writeln!(text, "path={path:?};tag=Int;value={value}").unwrap(),
+        Value::Float(value) => writeln!(text, "path={path:?};tag=Float;value={value:?};ieee754_binary64_hex={:016x}", value.to_bits()).unwrap(),
+        Value::Bool(value) => writeln!(text, "path={path:?};tag=Bool;value={value}").unwrap(),
+        Value::String(value) => writeln!(text, "path={path:?};tag=String;value={value:?}").unwrap(),
+    }
+}
+fn error_values_original192(error: &RuntimeError, path: &str, text: &mut String) {
+    use std::fmt::Write as _;
+    match error {
+        RuntimeError::FilterMapRuntime { boundary, source } => {
+            writeln!(text, "path={path:?};FilterMapRuntime.boundary={boundary:#?}").unwrap();
+            error_values_original192(source, &format!("{path}/FilterMapRuntime.source"), text);
+        }
+        RuntimeError::FilterMapValueType { expected, found } => {
+            writeln!(text, "path={path:?};FilterMapValueType.expected={expected:?}").unwrap();
+            value_original192(found, &format!("{path}/FilterMapValueType.found"), text);
+        }
+        RuntimeError::FilterMapNonFinite { bits } => {
+            writeln!(text, "path={path:?};FilterMapNonFinite.ieee754_binary64_hex={bits:016x}").unwrap();
+        }
+        // Other current variants contain no owned Value or nested RuntimeError;
+        // their complete fields remain in the preceding full Debug original.
+        _ => {}
+    }
+}
+fn error_original192(error: &RuntimeError) -> String {
+    let mut text = format!("complete-error={error:#?}\n");
+    error_values_original192(error, "error", &mut text); text
+}
+fn json_error_original192(error: &JsonBoundaryError) -> String {
+    let mut text = format!("complete-json-error={error:#?}\n");
+    if let JsonBoundaryError::Execution(error) = error {
+        error_values_original192(error, "json-error/Execution", &mut text);
+    }
+    text
+}
+pub fn callback_result_original192(label: &str, result: &Result<Value, RuntimeError>) -> String {
+    let mut text = format!("callback={label:?};complete-result={result:#?}\n");
+    match result {
+        Ok(value) => value_original192(value, "result/Ok", &mut text),
+        Err(error) => error_values_original192(error, "result/Err", &mut text),
+    }
+    text
+}
+pub fn callback_arguments_original192(label: &str, values: &[Value]) -> String {
+    let mut text = format!("callback={label:?};complete-arguments={values:#?}\n");
+    for (index, value) in values.iter().enumerate() {
+        value_original192(value, &format!("arguments[{index}]"), &mut text);
+    }
+    text
+}
+
+fn origins(value: &Instance) -> String {
+    fn visit(value: &Instance, path: &str, text: &mut String) {
+        use std::fmt::Write as _;
+        match value {
+            Instance::Scalar(value) => {
+                writeln!(text, "path={path:?};scalar={value:?}").unwrap();
+                if let Value::Float(value) = value { writeln!(text, "bits={:016x}", value.to_bits()).unwrap(); }
+            }
+            Instance::Group(fields) => {
+                writeln!(text, "path={path:?};origin={:?}", fields.xml_type_origin()).unwrap();
+                for (index, (name, child)) in fields.iter().enumerate() {
+                    visit(child, &format!("{path}/field[{index}]={name:?}"), text);
+                }
+            }
+            Instance::Repeated(items) | Instance::MappedSequence(items) => {
+                let kind = if matches!(value, Instance::Repeated(_)) { "repeated" } else { "mapped" };
+                for (index, child) in items.iter().enumerate() { visit(child, &format!("{path}/{kind}[{index}]"), text); }
+            }
+            Instance::DocumentSet(documents) => {
+                for (index, document) in documents.iter().enumerate() {
+                    visit(document.value(), &format!("{path}/document[{index}]={:?}", document.path()), text);
+                }
+            }
+        }
+    }
+    let mut text = String::new(); visit(value, "root", &mut text); text
+}
+
+fn instance(value: &Json) -> Instance {
+    match value {
+        Json::Object(fields) => group(fields.iter().map(|(name, value)| field(name, instance(value)))),
+        Json::Array(items) => repeated(items.iter().map(instance)),
+        Json::Bool(value) => scalar(Value::Bool(*value)),
+        Json::String(value) => scalar(Value::String(value.clone())),
+        Json::Number(value) => scalar(value.as_i64().map_or_else(|| Value::Float(value.as_f64().unwrap()), Value::Int)),
+        Json::Null => scalar(Value::Null),
+    }
+}
+fn scalar_type(value: &str) -> ScalarType {
+    match value { "int" => ScalarType::Int, "float" => ScalarType::Float,
+        "bool" => ScalarType::Bool, "string" => ScalarType::String, _ => panic!("unknown literal scalar type") }
+}
+fn typed_value(value: &Json) -> Value {
+    match value["tag"].as_str().unwrap() {
+        "int" => Value::Int(value["value"].as_i64().unwrap()),
+        "string" => Value::String(value["value"].as_str().unwrap().into()),
+        "bool" => Value::Bool(value["value"].as_bool().unwrap()),
+        "float" => Value::Float(f64::from_bits(u64::from_str_radix(value["ieee754_binary64_hex"].as_str().unwrap(), 16).unwrap())),
+        "null" => Value::Null,
+        "json null" => serde_json::from_str(r#"{"$json_null":true}"#).unwrap(),
+        "xml nil" => serde_json::from_str(r#"{"$xml_nil":true}"#).unwrap(),
+        _ => panic!("unknown literal scalar tag"),
+    }
+}
+
+// Every error field is built from the frozen independent logical literal.
+// No actual result, Display text, or native outcome supplies an expectation.
+fn expected_error(control: &Json) -> RuntimeError {
+    let d = &control["expected"]["diagnostic"];
+    let category = d["category"].as_str().unwrap();
+    let (kind, cause) = match category {
+        "OriginalEvaluationError" => {
+            let cause = &d["original_cause"];
+            match cause["category"].as_str().unwrap() {
+                "MappingException" => (FilterMapBoundaryKind::NodeEvaluation, RuntimeError::MappingException {
+                    node: cause["node"].as_u64().unwrap() as u32,
+                    message: cause["message"].as_str().map(str::to_owned),
+                }),
+                "GeneratedSequenceTooLarge" => (FilterMapBoundaryKind::SourceReservation,
+                    RuntimeError::GeneratedSequenceTooLarge { requested: cause["requested"].as_u64().unwrap() as u128,
+                        max: cause["max"].as_u64().unwrap() as u128 }),
+                "UserFunctionParameterType" => (FilterMapBoundaryKind::NodeEvaluation, RuntimeError::UserFunctionType {
+                    function: cause["function"].as_u64().unwrap(), parameter: cause["parameter"].as_u64(),
+                    expected: scalar_type(cause["expected"].as_str().unwrap()), found: match cause["found"].as_str().unwrap() {
+                        "string" => "string", "bool" => "bool", "int" => "int", "float" => "float", _ => panic!("unknown literal found tag"),
+                    },
+                }),
+                _ => panic!("unhandled complete literal cause"),
+            }
+        }
+        "OutputTag" | "PredicateTag" | "CaptureTag" => (FilterMapBoundaryKind::Result,
+            RuntimeError::FilterMapValueType { expected: scalar_type(d["expected_tag"].as_str().unwrap()),
+                found: typed_value(&d["found_value"]) }),
+        "OutputNonFinite" => (FilterMapBoundaryKind::Result,
+            RuntimeError::FilterMapNonFinite { bits: u64::from_str_radix(d["found_ieee754_binary64_hex"].as_str().unwrap(), 16).unwrap() }),
+        "ItemLimit" | "WorkLimit" => (if d["node"].is_null() { FilterMapBoundaryKind::SourceReservation }
+            else { FilterMapBoundaryKind::NodeEvaluation }, RuntimeError::FilterMapBudget {
+                kind: if category == "ItemLimit" { FilterMapBudgetKind::SourceItems } else { FilterMapBudgetKind::Work },
+                used: d["used"].as_u64().unwrap() as u128, requested: d["requested"].as_u64().unwrap() as u128,
+                max: d["limit"].as_u64().unwrap() as u128,
+            }),
+        "Cancelled" => (FilterMapBoundaryKind::CallEntry, RuntimeError::FilterMapCancelled),
+        _ => panic!("unhandled complete runtime error literal"),
+    };
+    RuntimeError::FilterMapRuntime { boundary: FilterMapBoundary {
+        item: d["output_owner"].as_u64().unwrap() as u32,
+        phase: match d["phase"].as_str().unwrap() {
+            "source" => FilterMapPhase::Source, "capture" => FilterMapPhase::Capture,
+            "predicate" => FilterMapPhase::Predicate, "mapper" => FilterMapPhase::Mapper, _ => panic!("invalid literal phase"),
+        },
+        capture_index: d["capture_index"].as_u64().map(|value| value as usize),
+        source_position: d["source_position"].as_u64().map(|value| value as usize),
+        function: d["function"].as_u64(), node: d["node"].as_u64().map(|value| value as u32), kind,
+    }, source: Box::new(cause) }
+}
+
+#[derive(Debug, PartialEq)]
+struct TypedOutputs { primary: Instance, extras: Vec<(String, Instance)> }
+#[derive(Debug, PartialEq)]
+struct TextOutputs { primary: String, extras: Vec<(String, String)> }
+#[derive(Debug, PartialEq)]
+struct ByteOutputs { primary: Vec<u8>, extras: Vec<(String, Vec<u8>)> }
+
+#[derive(Debug)]
+pub struct Direct192 {
+    pub outcome: Result<Vec<Value>, RuntimeError>,
+    pub captures: Vec<Value>,
+    pub kept_source_positions: Vec<usize>,
+    pub completed_sequences: Vec<Vec<Value>>,
+    pub completed_prefix: Vec<Value>,
+    pub events: Vec<String>,
+    pub counters: FilterMapCounters,
+}
+fn float_bits(values: &[Value]) -> Vec<(usize, u64)> {
+    values.iter().enumerate().filter_map(|(index, value)| match value {
+        Value::Float(value) => Some((index, value.to_bits())), _ => None,
+    }).collect()
+}
+fn values_equal(actual: &[Value], expected: &[Value]) -> bool {
+    actual == expected && float_bits(actual) == float_bits(expected)
+}
+
+struct Original {
+    control: Json,
+    typed: Result<TypedOutputs, RuntimeError>,
+    text: Result<TextOutputs, JsonBoundaryError>,
+    bytes: Result<ByteOutputs, JsonBoundaryError>,
+    counters: [Option<FilterMapCounters>; 3],
+    boundaries: Vec<FilterMapBoundary>,
+    standard: Option<(Result<TextOutputs, JsonBoundaryError>, Result<ByteOutputs, JsonBoundaryError>)>,
+    input_identity: bool,
+    direct: Option<Direct192>,
+}
+
+macro_rules! qualify_module {
+    ($module:ident, $control:expr, $originals:expr) => {{
+        let control = $control;
+        let id = control["id"].as_str().unwrap();
+        original(&format!("{id}.CONTROL.ORIGINAL.json"), control);
+        let source_json = control["source_json"].as_str().unwrap();
+        retain(&format!("{id}.INPUT_UTF8.ORIGINAL.json"), source_json.as_bytes());
+        let source = instance(&serde_json::from_str::<Json>(source_json).unwrap());
+        let before = source.clone(); let before_origins = origins(&source);
+        original(&format!("{id}.INPUT_INSTANCE.ORIGINAL.txt"), &source);
+        retain(&format!("{id}.INPUT_ORIGINS.ORIGINAL.txt"), before_origins.as_bytes());
+        let limits = FilterMapLimits::new(control["limits"]["source_items"].as_u64().unwrap() as u128,
+            control["limits"]["work"].as_u64().unwrap() as u128).unwrap();
+        let cancel = control["cancellation"]["kind"] == "cancel_at_boundary";
+        let checker = Checker { cancel, ..Checker::default() };
+        let typed_raw = $module::execute_outputs_with_filter_map_controls(&source, &[], None, None, limits, Some(&checker));
+        original(&format!("{id}.TYPED_WHOLE_PUBLIC_RESULT.ORIGINAL.txt"), &typed_raw);
+        match &typed_raw {
+            Ok(actual) => if let Err(error) = &actual.outcome {
+                retain(&format!("{id}.TYPED_INNER_ERROR_TYPED_VALUES.ORIGINAL.txt"), error_original192(error).as_bytes());
+            },
+            Err(error) => retain(&format!("{id}.TYPED_OUTER_ERROR_TYPED_VALUES.ORIGINAL.txt"), error_original192(error).as_bytes()),
+        };
+        let mut counters = [None, None, None];
+        let typed = match typed_raw {
+            Ok(actual) => {
+                counters[0] = Some(actual.counters);
+                if let Ok(outputs) = &actual.outcome {
+                    retain(&format!("{id}.PRIMARY_ORIGINS.ORIGINAL.txt"), origins(&outputs.primary).as_bytes());
+                    for (index, output) in outputs.extras.iter().enumerate() {
+                        retain(&format!("{id}.NAMED_{index}_ORIGINS.ORIGINAL.txt"), origins(&output.instance).as_bytes());
+                    }
+                }
+                actual.outcome.map(|out| TypedOutputs { primary: out.primary,
+                    extras: out.extras.into_iter().map(|out| (out.name.to_owned(), out.instance)).collect() })
+            }
+            Err(error) => Err(error),
+        };
+        original(&format!("{id}.INPUT_AFTER.ORIGINAL.txt"), &source);
+        let after_origins = origins(&source);
+        retain(&format!("{id}.INPUT_AFTER_ORIGINS.ORIGINAL.txt"), after_origins.as_bytes());
+        let text_checker = Checker { cancel, ..Checker::default() };
+        let text_raw = $module::execute_json_outputs_with_filter_map_controls(source_json, &[], None, limits, Some(&text_checker));
+        original(&format!("{id}.TEXT_WHOLE_PUBLIC_RESULT.ORIGINAL.txt"), &text_raw);
+        match &text_raw {
+            Ok(actual) => if let Err(error) = &actual.outcome {
+                retain(&format!("{id}.TEXT_INNER_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes());
+            },
+            Err(error) => retain(&format!("{id}.TEXT_OUTER_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes()),
+        };
+        let text = match text_raw {
+            Ok(actual) => {
+                counters[1] = Some(actual.counters);
+                if let Ok(outputs) = &actual.outcome {
+                    retain(&format!("{id}.PRIMARY_TEXT_BYTES.ORIGINAL.json"), outputs.primary.as_bytes());
+                    for (index, output) in outputs.extras.iter().enumerate() {
+                        retain(&format!("{id}.NAMED_{index}_TEXT_BYTES.ORIGINAL.json"), output.document.as_bytes());
+                    }
+                }
+                actual.outcome.map(|out| TextOutputs { primary: out.primary,
+                    extras: out.extras.into_iter().map(|out| (out.name.to_owned(), out.document)).collect() })
+            }
+            Err(error) => Err(error),
+        };
+        let byte_checker = Checker { cancel, ..Checker::default() };
+        let bytes_raw = $module::execute_json_bytes_outputs_with_filter_map_controls(source_json.as_bytes(), &[], None, limits, Some(&byte_checker));
+        original(&format!("{id}.BYTE_WHOLE_PUBLIC_RESULT.ORIGINAL.txt"), &bytes_raw);
+        match &bytes_raw {
+            Ok(actual) => if let Err(error) = &actual.outcome {
+                retain(&format!("{id}.BYTE_INNER_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes());
+            },
+            Err(error) => retain(&format!("{id}.BYTE_OUTER_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes()),
+        };
+        let bytes = match bytes_raw {
+            Ok(actual) => {
+                counters[2] = Some(actual.counters);
+                if let Ok(outputs) = &actual.outcome {
+                    retain(&format!("{id}.PRIMARY_BYTE_BYTES.ORIGINAL.json"), &outputs.primary);
+                    for (index, output) in outputs.extras.iter().enumerate() {
+                        retain(&format!("{id}.NAMED_{index}_BYTE_BYTES.ORIGINAL.json"), &output.document);
+                    }
+                }
+                actual.outcome.map(|out| ByteOutputs { primary: out.primary,
+                    extras: out.extras.into_iter().map(|out| (out.name.to_owned(), out.document)).collect() })
+            }
+            Err(error) => Err(error),
+        };
+        original(&format!("{id}.COUNTERS.ORIGINAL.txt"), &counters);
+        let boundaries = checker.boundaries.into_inner();
+        original(&format!("{id}.TYPED_CHECKER_BOUNDARIES.ORIGINAL.txt"), &boundaries);
+        original(&format!("{id}.TEXT_CHECKER_BOUNDARIES.ORIGINAL.txt"), &text_checker.boundaries.into_inner());
+        original(&format!("{id}.BYTE_CHECKER_BOUNDARIES.ORIGINAL.txt"), &byte_checker.boundaries.into_inner());
+        let standard = if control["standard_default_calls"] == true {
+            let text = $module::execute_json_outputs(source_json);
+            let bytes = $module::execute_json_bytes_outputs(source_json.as_bytes());
+            original(&format!("{id}.STANDARD_TEXT_WHOLE_RESULT.ORIGINAL.txt"), &text);
+            if let Err(error) = &text {
+                retain(&format!("{id}.STANDARD_TEXT_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes());
+            }
+            original(&format!("{id}.STANDARD_BYTE_WHOLE_RESULT.ORIGINAL.txt"), &bytes);
+            if let Err(error) = &bytes {
+                retain(&format!("{id}.STANDARD_BYTE_ERROR_TYPED_VALUES.ORIGINAL.txt"), json_error_original192(error).as_bytes());
+            }
+            if let Ok(outputs) = &text {
+                retain(&format!("{id}.STANDARD_PRIMARY_TEXT_BYTES.ORIGINAL.json"), outputs.primary.as_bytes());
+                for (index, output) in outputs.extras.iter().enumerate() { retain(&format!("{id}.STANDARD_NAMED_{index}_TEXT_BYTES.ORIGINAL.json"), output.document.as_bytes()); }
+            }
+            if let Ok(outputs) = &bytes {
+                retain(&format!("{id}.STANDARD_PRIMARY_BYTE_BYTES.ORIGINAL.json"), &outputs.primary);
+                for (index, output) in outputs.extras.iter().enumerate() { retain(&format!("{id}.STANDARD_NAMED_{index}_BYTE_BYTES.ORIGINAL.json"), &output.document); }
+            }
+            Some((text.map(|out| TextOutputs { primary: out.primary, extras: out.extras.into_iter().map(|out| (out.name.to_owned(), out.document)).collect() }),
+                bytes.map(|out| ByteOutputs { primary: out.primary, extras: out.extras.into_iter().map(|out| (out.name.to_owned(), out.document)).collect() })))
+        } else { None };
+        let direct_checker = Checker { cancel, ..Checker::default() };
+        let direct = $module::direct_filter_map192(&source, limits, Some(&direct_checker));
+        original(&format!("{id}.SEPARATE_DIRECT_RUNTIME_DELEGATE.ORIGINAL.txt"), &direct);
+        original(&format!("{id}.DIRECT_CHECKER_BOUNDARIES.ORIGINAL.txt"), &direct_checker.boundaries.into_inner());
+        if let Some(direct) = &direct {
+            original(&format!("{id}.DIRECT_CAPTURE_FLOAT_BITS.ORIGINAL.txt"), &float_bits(&direct.captures));
+            original(&format!("{id}.DIRECT_PREFIX_FLOAT_BITS.ORIGINAL.txt"), &float_bits(&direct.completed_prefix));
+            for (index, values) in direct.completed_sequences.iter().enumerate() {
+                original(&format!("{id}.DIRECT_COMPLETED_SEQUENCE_{index}_FLOAT_BITS.ORIGINAL.txt"), &float_bits(values));
+            }
+            match &direct.outcome {
+                Ok(values) => original(&format!("{id}.DIRECT_RESULT_FLOAT_BITS.ORIGINAL.txt"), &float_bits(values)),
+                Err(error) => retain(&format!("{id}.DIRECT_ERROR_TYPED_VALUES.ORIGINAL.txt"), error_original192(error).as_bytes()),
+            }
+        }
+        original(&format!("{id}.INPUT_AFTER_ALL_PUBLIC_AND_DELEGATE_CALLS.ORIGINAL.txt"), &source);
+        let final_origins = origins(&source);
+        retain(&format!("{id}.INPUT_AFTER_ALL_ORIGINS.ORIGINAL.txt"), final_origins.as_bytes());
+        $originals.push(Original { control: control.clone(), typed, text, bytes, counters, boundaries, standard, direct,
+            input_identity: source == before && before_origins == after_origins && before_origins == final_origins });
+    }};
+}
+
+fn finish(originals: Vec<Original>) {
+    let mut checks = Vec::new();
+    let mut calls = 0usize;
+    let mut direct_calls = 0usize;
+    for actual in originals {
+        let control = &actual.control;
+        let id = control["id"].as_str().unwrap();
+        let success = control["expected"]["status"] == "ok";
+        let typed = if success {
+            let document = control["complete_expected_utf8"].as_str().unwrap();
+            Ok(TypedOutputs { primary: instance(&serde_json::from_str(document).unwrap()),
+                extras: control["expected_extras"].as_array().unwrap().iter().map(|extra| (extra["name"].as_str().unwrap().into(),
+                    instance(&serde_json::from_str(extra["bytes"].as_str().unwrap()).unwrap()))).collect() })
+        } else { Err(expected_error(control)) };
+        let expected_text = || if success { Ok(TextOutputs { primary: control["complete_expected_utf8"].as_str().unwrap().into(),
+            extras: control["expected_extras"].as_array().unwrap().iter().map(|extra| (extra["name"].as_str().unwrap().into(), extra["bytes"].as_str().unwrap().into())).collect() }) }
+            else { Err(JsonBoundaryError::Execution(expected_error(control))) };
+        let expected_bytes = || if success { Ok(ByteOutputs { primary: control["complete_expected_utf8"].as_str().unwrap().as_bytes().to_vec(),
+            extras: control["expected_extras"].as_array().unwrap().iter().map(|extra| (extra["name"].as_str().unwrap().into(), extra["bytes"].as_str().unwrap().as_bytes().to_vec())).collect() }) }
+            else { Err(JsonBoundaryError::Execution(expected_error(control))) };
+        original(&format!("{id}.EXPECTED_TYPED.ORIGINAL.txt"), &typed);
+        original(&format!("{id}.EXPECTED_TEXT.ORIGINAL.txt"), &expected_text());
+        original(&format!("{id}.EXPECTED_BYTE.ORIGINAL.txt"), &expected_bytes());
+        let origins_equal = match (&actual.typed, &typed) {
+            (Ok(actual), Ok(expected)) => origins(&actual.primary) == origins(&expected.primary)
+                && actual.extras.iter().zip(&expected.extras).all(|((_, a), (_, e))| origins(a) == origins(e)),
+            (Err(_), Err(_)) => true, _ => false,
+        };
+        checks.push((id.to_owned(), actual.typed == typed && actual.text == expected_text()
+            && actual.bytes == expected_bytes() && actual.input_identity && origins_equal));
+        calls += 3;
+        if let Some((text, bytes)) = actual.standard {
+            checks.push((format!("{id}-standard"), text == expected_text() && bytes == expected_bytes())); calls += 2;
+        }
+        if let Some(counters) = control.get("expected_counters") {
+            let expected = FilterMapCounters { source_items: counters["source_items"].as_u64().unwrap() as u128,
+                work: counters["work"].as_u64().unwrap() as u128 };
+            checks.push((format!("{id}-counters"), actual.counters == [Some(expected); 3]));
+        }
+        if let Some(direct) = actual.direct {
+            direct_calls += 1;
+            let expected = if success { Ok(control["expected"]["ordered_typed_sequence"].as_array().unwrap()
+                .iter().map(typed_value).collect::<Vec<_>>()) } else { Err(expected_error(control)) };
+            original(&format!("{id}.EXPECTED_DIRECT_OUTCOME.ORIGINAL.txt"), &expected);
+            let equal = match (&direct.outcome, &expected) {
+                (Ok(actual), Ok(expected)) => values_equal(actual, expected),
+                (Err(actual), Err(expected)) => actual == expected, _ => false,
+            };
+            checks.push((format!("{id}-direct-outcome-and-shared-counter"), equal && actual.counters[0] == Some(direct.counters)));
+            if let Some(values) = control["expected"]["retained_parent_captures"].as_array() {
+                let expected: Vec<_> = values.iter().map(typed_value).collect();
+                original(&format!("{id}.EXPECTED_DIRECT_CAPTURES.ORIGINAL.txt"), &expected);
+                checks.push((format!("{id}-direct-captures"), values_equal(&direct.captures, &expected)));
+            }
+            if let Some(values) = control["expected"]["diagnostic"]["completed_prefix_evidence_only"].as_array() {
+                let expected: Vec<_> = values.iter().map(typed_value).collect();
+                original(&format!("{id}.EXPECTED_DIRECT_PREFIX.ORIGINAL.txt"), &expected);
+                checks.push((format!("{id}-direct-prefix-evidence-only"), values_equal(&direct.completed_prefix, &expected)));
+            }
+            if let Some(values) = control["expected"]["diagnostic"]["first_completed_sequence"].as_array() {
+                let expected: Vec<_> = values.iter().map(typed_value).collect();
+                original(&format!("{id}.EXPECTED_DIRECT_FIRST_COMPLETED_SEQUENCE.ORIGINAL.txt"), &expected);
+                checks.push((format!("{id}-direct-first-completed-sequence"), direct.completed_sequences.len() == 1
+                    && values_equal(&direct.completed_sequences[0], &expected)));
+            }
+            if success && !control["expected"]["kept_source_positions"].is_null() {
+                checks.push((format!("{id}-direct-kept-positions"), serde_json::json!(direct.kept_source_positions)
+                    == control["expected"]["kept_source_positions"]));
+            }
+        }
+        if success && !control["expected"]["kept_source_positions"].is_null() {
+            let kept: Vec<_> = actual.boundaries.iter().filter(|at| at.phase == FilterMapPhase::Mapper
+                && at.kind == FilterMapBoundaryKind::CallEntry && at.function == Some(101))
+                .filter_map(|at| at.source_position).collect();
+            checks.push((format!("{id}-kept-source-positions"), serde_json::json!(kept) == control["expected"]["kept_source_positions"]));
+        }
+    }
+    original("COMPLETE_PUBLIC_CALL_COUNT.ORIGINAL.txt", &calls);
+    original("SEPARATE_DIRECT_RUNTIME_DELEGATE_CALL_COUNT.ORIGINAL.txt", &direct_calls);
+    checks.push(("complete-public-count-188".into(), calls == 188));
+    checks.push(("separate-direct-runtime-count-30".into(), direct_calls == 30));
+    original("COMPLETE_COMPARISONS.ORIGINAL.txt", &checks);
+    let failures: Vec<_> = checks.into_iter().filter(|(_, equal)| !equal).collect();
+    assert!(failures.is_empty(), "compiled Rust literal controls disagree: {failures:#?}");
+}

@@ -16,6 +16,7 @@ struct OwnedGroup<'a> {
     named_inputs: &'a [NamedInput<'a>],
     execution: Option<crate::ExecutionContext<'a>>,
     dynamic_source_loader: Option<&'a dyn crate::DynamicSourceLoader>,
+    filter_map: Option<crate::filter_map::FilterMapContext<'a>>,
     wrapper: Option<Instance>,
     members: Instance,
     collection: Vec<String>,
@@ -343,6 +344,7 @@ impl<'a> GroupedItems<'a> {
                     named_inputs: group.named_inputs,
                     execution: group.execution,
                     dynamic_source_loader: group.dynamic_source_loader,
+                    filter_map: group.filter_map.clone(),
                 }
             })
             .collect()
@@ -371,6 +373,7 @@ impl<'a> GroupedItems<'a> {
                         named_inputs: group.first.named_inputs,
                         execution: group.first.execution,
                         dynamic_source_loader: group.first.dynamic_source_loader,
+                        filter_map: group.first.filter_map.clone(),
                         wrapper,
                         members,
                         collection,

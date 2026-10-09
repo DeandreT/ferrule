@@ -14,6 +14,9 @@ mod dynamic_document;
 mod dynamic_source;
 mod dynamic_target;
 mod failure;
+mod filter_map;
+#[cfg(test)]
+mod filter_map_tests;
 mod generated_sequence;
 mod iteration;
 mod json;
@@ -43,6 +46,13 @@ pub use dynamic_source::{
 };
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::{mapping_exception, mapping_failure};
+pub use filter_map::{
+    FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCallGuard,
+    FilterMapCancellation, FilterMapCapture, FilterMapCounters, FilterMapDescriptor,
+    FilterMapExecution, FilterMapFunction, FilterMapInput, FilterMapLimitError, FilterMapLimits,
+    FilterMapPhase, FilterMapRun, MAX_FILTER_MAP_FUNCTION_DEPTH, MAX_FILTER_MAP_SOURCE_ITEMS,
+    MAX_FILTER_MAP_WORK, filter_map_sequence,
+};
 pub use format_csv::{CsvFormatError, CsvWriteOptions};
 pub use functions::FunctionError;
 pub use generated_sequence::{
@@ -98,6 +108,35 @@ pub use xml_mixed_content::{
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
+    FilterMapRuntime {
+        boundary: FilterMapBoundary,
+        source: Box<RuntimeError>,
+    },
+    FilterMapBudget {
+        kind: FilterMapBudgetKind,
+        used: u128,
+        requested: u128,
+        max: u128,
+    },
+    FilterMapValueType {
+        expected: ScalarType,
+        found: Value,
+    },
+    FilterMapNonFinite {
+        bits: u64,
+    },
+    FilterMapCancelled,
+    UserFunctionCycle {
+        function: u64,
+    },
+    UserFunctionDepth {
+        limit: usize,
+    },
+    UserFunctionArity {
+        function: u64,
+        expected: usize,
+        found: usize,
+    },
     SourcePath(SourcePathError),
     PrimaryRoot {
         node: u32,
@@ -278,6 +317,40 @@ pub enum RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FilterMapRuntime { boundary, source } => {
+                write!(formatter, "filter/map {boundary:?}: {source}")
+            }
+            Self::FilterMapBudget {
+                kind,
+                used,
+                requested,
+                max,
+            } => write!(
+                formatter,
+                "filter/map {kind:?} used {used}, requested {requested}; maximum {max}"
+            ),
+            Self::FilterMapValueType { expected, found } => write!(
+                formatter,
+                "filter/map expected {expected:?}, found {found:?}"
+            ),
+            Self::FilterMapNonFinite { bits } => {
+                write!(formatter, "filter/map non-finite float bits {bits:016x}")
+            }
+            Self::FilterMapCancelled => formatter.write_str("filter/map cancelled before work"),
+            Self::UserFunctionCycle { function } => {
+                write!(formatter, "user function {function} call cycle")
+            }
+            Self::UserFunctionDepth { limit } => {
+                write!(formatter, "user function depth exceeds {limit}")
+            }
+            Self::UserFunctionArity {
+                function,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "user function {function} expected {expected} arguments, found {found}"
+            ),
             Self::SourcePath(error) => error.fmt(formatter),
             Self::PrimaryRoot { node, source } => write!(formatter, "node {node}: {source}"),
             Self::Function(error) => error.fmt(formatter),
@@ -520,10 +593,18 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::FilterMapRuntime { source, .. } => Some(source.as_ref()),
             Self::SourcePath(error) => Some(error),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
-            Self::AggregateIntegerOverflow { .. }
+            Self::FilterMapBudget { .. }
+            | Self::FilterMapValueType { .. }
+            | Self::FilterMapNonFinite { .. }
+            | Self::FilterMapCancelled
+            | Self::UserFunctionCycle { .. }
+            | Self::UserFunctionDepth { .. }
+            | Self::UserFunctionArity { .. }
+            | Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
             | Self::CopyCurrentSourceRequiresGroup { .. }
             | Self::RecursiveFilterDepth { .. }

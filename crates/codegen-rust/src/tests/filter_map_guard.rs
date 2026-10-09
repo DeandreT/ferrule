@@ -152,7 +152,7 @@ fn expected_identity() -> Program {
 }
 
 #[test]
-fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer() {
+fn filter_map_capability_emits_complete_artifacts_for_every_retained_consumer() {
     let mut cases = Vec::new();
     cases.push(("scope", expected_identity()));
     for kind in ["exists", "item-at", "aggregate", "unselected-expression"] {
@@ -202,9 +202,9 @@ fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer(
             },
         );
         let body = format!(
-            "program={program:#?}\nexpected=UnsupportedFilterMapV1 {{ item: 11 }}\nactual={actual:#?}\n"
+            "program={program:#?}\nexpected=two complete artifacts Cargo.toml and src/lib.rs\nactual={actual:#?}\n"
         );
-        if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP191_EVIDENCE") {
+        if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP192_GUARD_EVIDENCE") {
             let directory = PathBuf::from(directory);
             assert!(directory.is_absolute());
             std::fs::create_dir_all(&directory).unwrap();
@@ -220,10 +220,18 @@ fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer(
         }
         checks.push((
             kind,
-            matches!(
-                actual,
-                Err(crate::EmitError::UnsupportedFilterMapV1 { item: 11 })
-            ),
+            actual.as_ref().is_ok_and(|artifacts| {
+                let paths: Vec<_> = artifacts
+                    .files()
+                    .iter()
+                    .map(|file| file.path.as_str())
+                    .collect();
+                paths == ["Cargo.toml", "src/lib.rs"]
+                    && artifacts
+                        .files()
+                        .iter()
+                        .all(|file| !file.contents.is_empty())
+            }),
         ));
     }
     let mismatches: Vec<_> = checks.into_iter().filter(|(_, matched)| !matched).collect();
@@ -231,4 +239,44 @@ fn filter_map_capability_refuses_complete_artifacts_for_every_retained_consumer(
         mismatches.is_empty(),
         "capability guard mismatches: {mismatches:#?}"
     );
+}
+
+#[test]
+fn filter_map_failure_rule_still_typed_refuses_before_artifacts() {
+    let mut program = expected_identity();
+    program.root.children.clear();
+    program.failure_rules.push(codegen::FailureRule {
+        iteration: codegen::FailureIteration::Generated(composition(Vec::new())),
+        selection: codegen::FailureSelection::All,
+        message: None,
+    });
+    let actual = crate::emit(
+        &program,
+        &crate::Options {
+            package_name: "filter_map_guard".into(),
+            runtime_dependency: crate::RuntimeDependency::Version("0.1.0".into()),
+        },
+    );
+    let expected = codegen::ProgramValidationError::FilterMapAdmission {
+        item: 11,
+        kind: mapping::FilterMapAdmissionKind::UnsupportedConsumer {
+            site: "failure rule",
+        },
+    };
+    let body = format!("program={program:#?}\nexpected={expected:#?}\nactual={actual:#?}\n");
+    if let Some(directory) = std::env::var_os("FERRULE_FILTER_MAP192_GUARD_EVIDENCE") {
+        let directory = PathBuf::from(directory);
+        assert!(directory.is_absolute());
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(directory.join("rust-failure-rule.ORIGINAL.txt"))
+            .unwrap();
+        file.write_all(body.as_bytes()).unwrap();
+        file.flush().unwrap();
+    } else {
+        eprintln!("rust-failure-rule\n{body}");
+    }
+    assert!(matches!(actual, Err(crate::EmitError::InvalidProgram(error)) if error == expected));
 }

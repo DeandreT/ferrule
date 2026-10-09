@@ -1,0 +1,1845 @@
+{
+  "status": "MANUAL_FULL_BYTE_ERROR_AND_SCOPE_SUPPLEMENT_CONTROLS_ALL_EXECUTION_UNRUN",
+  "controls": [
+    {
+      "id": "positions-parent-source-dense",
+      "source_json": "{\"Parents\":[7,7,7,7,7,7,7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 40
+          },
+          {
+            "tag": "int",
+            "value": 51
+          },
+          {
+            "tag": "int",
+            "value": 62
+          }
+        ],
+        "kept_source_positions": [
+          3,
+          4,
+          5
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [
+          {
+            "tag": "int",
+            "value": 7
+          }
+        ],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 40,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 51,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 62,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "identity-all",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "filter-all-false",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": []\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "reverse-empty-captures-still-eager",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [
+          {
+            "tag": "string",
+            "value": "kept"
+          }
+        ],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": []\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "absent-from-skips-upper",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": []\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "json-null-from-skips-upper",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "kept_source_positions": [],
+        "dense_output_positions": [],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": []\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "omitted-from-default-one",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "empty-source-capture-raise",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "capture",
+          "capture_index": 0,
+          "source_position": null,
+          "function": null,
+          "node": 20,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 20,
+            "message": null
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "source-error-before-capture-error",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": "source first"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "false-predicate-skips-mapper-error",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 4
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          4
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 4,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "selected-mapper-raise-absent-message",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": null
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "selected-mapper-raise-empty-message",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": ""
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "mapper-unselected-if-raise",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "outer-unselected-composition",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": [],
+        "consumer_result": {
+          "tag": "int",
+          "value": 7
+        },
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Value\": 7\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 0,
+        "work": 0
+      }
+    },
+    {
+      "id": "eager-before-exists",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 3,
+          "function": 101,
+          "node": 4,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 4,
+            "message": null
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "float-output",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          },
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          },
+          {
+            "tag": "float",
+            "value": 1.5,
+            "ieee754_binary64_hex": "3ff8000000000000"
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1.5,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 1.5,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 1.5,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "bool-output",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "bool",
+            "value": false
+          },
+          {
+            "tag": "bool",
+            "value": true
+          },
+          {
+            "tag": "bool",
+            "value": true
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": false,\n          \"Position\": 1\n        },\n        {\n          \"Value\": true,\n          \"Position\": 2\n        },\n        {\n          \"Value\": true,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "string-output",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "string",
+            "value": "vλ1"
+          },
+          {
+            "tag": "string",
+            "value": "vλ2"
+          },
+          {
+            "tag": "string",
+            "value": "vλ3"
+          }
+        ],
+        "kept_source_positions": [
+          1,
+          2,
+          3
+        ],
+        "dense_output_positions": [
+          1,
+          2,
+          3
+        ],
+        "retained_parent_captures": [],
+        "consumer_result": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": \"vλ1\",\n          \"Position\": 1\n        },\n        {\n          \"Value\": \"vλ2\",\n          \"Position\": 2\n        },\n        {\n          \"Value\": \"vλ3\",\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "mapper-absence-rejected",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "null",
+          "found_value": {
+            "tag": "null"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "mapper-json-null-rejected",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "json null",
+          "found_value": {
+            "tag": "json null"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "mapper-xml-nil-rejected",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputTag",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "xml nil",
+          "found_value": {
+            "tag": "xml nil"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "predicate-absence-rejected",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "PredicateTag",
+          "output_owner": 11,
+          "phase": "predicate",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 100,
+          "node": 1,
+          "original_cause": null,
+          "expected_tag": "bool",
+          "found_tag": "null",
+          "found_value": {
+            "tag": "null"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "nonfinite-mapper-output",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OutputNonFinite",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 3,
+          "original_cause": null,
+          "expected_tag": "finite float",
+          "found_tag": "float",
+          "found_ieee754_binary64_hex": "7ff0000000000000"
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "capture-tag-before-next-capture-error",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "CaptureTag",
+          "output_owner": 11,
+          "phase": "capture",
+          "capture_index": 0,
+          "source_position": null,
+          "function": null,
+          "node": 20,
+          "original_cause": null,
+          "expected_tag": "int",
+          "found_tag": "string",
+          "found_value": {
+            "tag": "string",
+            "value": "7"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "nested-arguments-all-evaluate-before-adapt",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": "later argument"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "nested-adaptation-original-cause",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 3,
+          "original_cause": {
+            "category": "UserFunctionParameterType",
+            "function": 102,
+            "parameter": 1,
+            "expected": "int",
+            "found": "string"
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "cumulative-items-two-invocations",
+      "source_json": "{\"Parents\":[7,7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "ItemLimit",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "limit": 5,
+          "used": 3,
+          "requested": 3,
+          "invocation": 2,
+          "first_completed_sequence": [
+            {
+              "tag": "int",
+              "value": 1
+            },
+            {
+              "tag": "int",
+              "value": 2
+            },
+            {
+              "tag": "int",
+              "value": 3
+            }
+          ],
+          "reservation_consumed": false
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 5,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 19
+      }
+    },
+    {
+      "id": "work-boundary-first-mapper-parameter",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "WorkLimit",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 1,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "limit": 8,
+          "used": 8,
+          "requested": 1,
+          "refused_charge_consumed": false,
+          "source_items_used": 3
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 8,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 8
+      }
+    },
+    {
+      "id": "cancellation-before-second-mapper",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "Cancelled",
+          "output_owner": 11,
+          "phase": "mapper",
+          "capture_index": null,
+          "source_position": 2,
+          "function": 101,
+          "node": null,
+          "original_cause": null,
+          "boundary": "call_entry",
+          "completed_prefix_evidence_only": [
+            {
+              "tag": "int",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "cancel_at_boundary",
+        "phase": "mapper",
+        "source_position": 2,
+        "function": 101,
+        "boundary": "call_entry"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 11
+      }
+    },
+    {
+      "id": "unsupported-tokenizer-source",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnsupportedSource",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "field": "source.kind",
+          "found": "tokenize",
+          "allowed": [
+            "generate"
+          ]
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "duplicate-private-owner",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "DuplicatePrivateOwner",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 11,
+          "original_cause": null,
+          "field": "source.item"
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "predicate-signature-static-before-unselected-runtime",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "StageSignature",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 100,
+          "node": null,
+          "original_cause": null,
+          "field": "predicate.output_type",
+          "expected_type": "bool",
+          "found_type": "int"
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "stage-context-node-static-refusal",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnsupportedStageNode",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 101,
+          "node": 1,
+          "original_cause": null,
+          "found_kind": "position"
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "unknown-new-field-no-silent-fallback",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "UnknownField",
+          "output_owner": 11,
+          "phase": "decode",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "field": "stream"
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "primitive-range-cap-before-new-budget",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": {
+            "category": "GeneratedSequenceTooLarge",
+            "requested": 1000001,
+            "max": 1000000
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 3,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 0,
+        "work": 2
+      }
+    },
+    {
+      "id": "invalid-lower-value-later-upper-raise",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "OriginalEvaluationError",
+          "output_owner": 11,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 2,
+          "original_cause": {
+            "category": "MappingException",
+            "node": 2,
+            "message": null
+          }
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "stage-cycle-static-refusal",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "kept_source_positions": null,
+        "dense_output_positions": null,
+        "retained_parent_captures": null,
+        "consumer_result": null,
+        "diagnostic": {
+          "category": "StageCycle",
+          "output_owner": 11,
+          "phase": "admission",
+          "capture_index": null,
+          "source_position": null,
+          "function": 101,
+          "node": 3,
+          "original_cause": null,
+          "call_path": [
+            101,
+            101
+          ]
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "udf_depth": 64,
+        "composition_depth": 1
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true
+    },
+    {
+      "id": "legacy-generate-omitted-from",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 0,
+        "work": 0
+      }
+    },
+    {
+      "id": "legacy-generate-absent-lower",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": []\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 0,
+        "work": 0
+      }
+    },
+    {
+      "id": "named-default-complete-output-set",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": null,
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [
+        {
+          "name": "Second",
+          "bytes": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        },\n        {\n          \"Value\": 2,\n          \"Position\": 2\n        },\n        {\n          \"Value\": 3,\n          \"Position\": 3\n        }\n      ]\n    }\n  ]\n}\n"
+        }
+      ],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 6,
+        "work": 34
+      }
+    },
+    {
+      "id": "named-cumulative-source-budget",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "diagnostic": {
+          "category": "ItemLimit",
+          "output_owner": 13,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "limit": 5,
+          "used": 3,
+          "requested": 3
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 5,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 19
+      }
+    },
+    {
+      "id": "named-cumulative-work-reservation",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "ordered_typed_sequence": null,
+        "diagnostic": {
+          "category": "WorkLimit",
+          "output_owner": 13,
+          "phase": "source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "original_cause": null,
+          "limit": 20,
+          "used": 19,
+          "requested": 3
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 20
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": false,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 19
+      }
+    },
+    {
+      "id": "compiled-stage-depth64-complete-result",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          }
+        ],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Rows\": [\n        {\n          \"Value\": 1,\n          \"Position\": 1\n        }\n      ]\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 1,
+        "work": 259
+      }
+    },
+    {
+      "id": "stage-depth65-static-before-any-artifact",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "error",
+        "diagnostic": {
+          "category": "FunctionDepth",
+          "path": [
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            108,
+            109,
+            110,
+            111,
+            112,
+            113,
+            114,
+            115,
+            116,
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128,
+            129,
+            130,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            138,
+            139,
+            140,
+            141,
+            142,
+            143,
+            144,
+            145,
+            146,
+            147,
+            148,
+            149,
+            150,
+            151,
+            152,
+            153,
+            154,
+            155,
+            156,
+            157,
+            158,
+            159,
+            160,
+            161,
+            162,
+            163,
+            164,
+            165
+          ],
+          "limit": 64
+        }
+      },
+      "complete_expected_utf8": null,
+      "expected_extras": [],
+      "standard_default_calls": false
+    },
+    {
+      "id": "compiled-item-at-output-owner-index",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Value\": 2\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 17
+      }
+    },
+    {
+      "id": "compiled-aggregate-output-owner-predicate",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Value\": 5\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 17
+      }
+    },
+    {
+      "id": "compiled-exists-output-owner-predicate",
+      "source_json": "{\"Parents\":[7]}",
+      "expected": {
+        "status": "ok",
+        "ordered_typed_sequence": [
+          {
+            "tag": "int",
+            "value": 1
+          },
+          {
+            "tag": "int",
+            "value": 2
+          },
+          {
+            "tag": "int",
+            "value": 3
+          }
+        ],
+        "diagnostic": null
+      },
+      "complete_expected_utf8": "{\n  \"Parent\": [\n    {\n      \"Value\": true\n    }\n  ]\n}\n",
+      "expected_extras": [],
+      "limits": {
+        "source_items": 1000000,
+        "work": 10000000
+      },
+      "cancellation": {
+        "kind": "never"
+      },
+      "standard_default_calls": true,
+      "expected_counters": {
+        "source_items": 3,
+        "work": 17
+      }
+    }
+  ],
+  "notes": [
+    "The first39 controls use unchanged published proposal expectations. The five named/depth supplemental controls are independent source literals, frozen before any executable comparison; they were authored after the initial runtime primitive draft and are not claimed predraft.",
+    "Named default success retains both full documents and names. Source/work reservation refusals retain counters3/19 and owner13. Depth64 uses63 two-argument forwarding calls followed by parameter identity:259 charged work. Depth65 is statically refused before any artifact."
+  ]
+}

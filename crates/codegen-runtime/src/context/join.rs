@@ -61,6 +61,7 @@ impl<'a> ScopeContext<'a> {
                     named_inputs: self.named_inputs,
                     execution: self.execution,
                     dynamic_source_loader: self.dynamic_source_loader,
+                    filter_map: self.filter_map.clone(),
                 }
             })
             .collect())
