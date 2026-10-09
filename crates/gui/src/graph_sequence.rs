@@ -1,4 +1,22 @@
-use mapping::{NodeId, SequenceExpr};
+use mapping::{Node, NodeId, SequenceExpr};
+
+pub(super) const READ_ONLY_INPUTS_MESSAGE: &str = "Filter/map inputs cannot be edited yet.";
+
+pub(super) fn inputs_are_read_only(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::SequenceExists {
+            sequence: SequenceExpr::FilterMapV1(_),
+            ..
+        } | Node::SequenceItemAt {
+            sequence: SequenceExpr::FilterMapV1(_),
+            ..
+        } | Node::SequenceAggregate {
+            sequence: SequenceExpr::FilterMapV1(_),
+            ..
+        }
+    )
+}
 
 pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> {
     sequence.inputs().get(index).copied()
@@ -6,6 +24,7 @@ pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> 
 
 pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId) {
     match sequence {
+        SequenceExpr::FilterMapV1(_) => {}
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => match index {
@@ -55,6 +74,7 @@ pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId)
 
 pub(super) fn label(sequence: &SequenceExpr) -> &'static str {
     match sequence {
+        SequenceExpr::FilterMapV1(_) => "filter/map (unavailable)",
         SequenceExpr::Tokenize { .. } => "tokenize",
         SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
@@ -68,6 +88,7 @@ pub(super) fn pin_label(sequence: &SequenceExpr, index: usize) -> &'static str {
         return "predicate";
     }
     match sequence {
+        SequenceExpr::FilterMapV1(_) => "read-only input",
         SequenceExpr::Tokenize { .. } => ["input", "delimiter"]
             .get(index)
             .copied()

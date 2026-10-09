@@ -106,6 +106,8 @@ pub enum MfdError {
     Resource(String),
     #[error("cannot export: {0}")]
     Unsupported(String),
+    #[error("cannot export filter/map sequence item {item}: capability is unsupported")]
+    UnsupportedSequenceComposition { item: u32 },
     #[error("native .mfd export rejected: {0}")]
     IncompatibleExport(Box<ExportReport>),
     #[error("executable import rejected: {0}")]

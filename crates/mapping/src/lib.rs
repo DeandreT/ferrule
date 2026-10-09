@@ -8,6 +8,7 @@ mod csv_repair;
 mod edi;
 mod external_source;
 mod file_codec;
+mod filter_map;
 mod fixed_width;
 mod flextext;
 mod http;
@@ -45,6 +46,10 @@ pub use external_source::{
     ExternalSourceOptionsError, ExternalSourceOrigin,
 };
 pub use file_codec::FileCodecError;
+pub use filter_map::{
+    FilterMapAdmissionError, FilterMapAdmissionKind, FilterMapCapture, FilterMapStage, FilterMapV1,
+    MAX_FILTER_MAP_CAPTURES, MAX_FILTER_MAP_FUNCTION_DEPTH, MAX_FILTER_MAP_FUNCTION_PARAMETERS,
+};
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use flextext::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
@@ -118,3 +123,7 @@ pub(crate) fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 #[path = "tests/model.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/filter_map.rs"]
+mod filter_map_tests;

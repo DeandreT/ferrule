@@ -303,6 +303,10 @@ impl GraphViewer<'_> {
         }
         let error = planner.error.take();
         drop(planner);
+        if removed == 0 {
+            self.error = error;
+            return 0;
+        }
         *self.graph = graph;
         *self.root_scope = scope;
         *snarl = staged_snarl;

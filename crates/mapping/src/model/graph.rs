@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
+use crate::{FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
 
 pub type NodeId = u32;
 
@@ -454,12 +454,14 @@ impl Node {
             } => sequence
                 .inputs()
                 .into_iter()
-                .chain([sequence.item(), *predicate])
+                .chain(sequence.owned_items())
+                .chain([*predicate])
                 .collect(),
             Self::SequenceItemAt { sequence, index } => sequence
                 .inputs()
                 .into_iter()
-                .chain([sequence.item(), *index])
+                .chain(sequence.owned_items())
+                .chain([*index])
                 .collect(),
             Self::SequenceAggregate {
                 sequence,
@@ -470,11 +472,8 @@ impl Node {
             } => sequence
                 .inputs()
                 .into_iter()
-                .chain(
-                    [Some(sequence.item()), *predicate, *expression, *arg]
-                        .into_iter()
-                        .flatten(),
-                )
+                .chain(sequence.owned_items())
+                .chain([*predicate, *expression, *arg].into_iter().flatten())
                 .collect(),
             Self::Aggregate {
                 expression, arg, ..
@@ -576,6 +575,9 @@ pub enum SequenceExpr {
         to: NodeId,
         item: NodeId,
     },
+    /// Additive ordered filter/map shape; execution is a separately gated capability.
+    #[serde(rename = "filter_map_v1")]
+    FilterMapV1(FilterMapV1),
     /// Walks a recursive group depth-first and collects scalar leaves while
     /// carrying an accumulated prefix between parent and child groups.
     RecursiveCollect {
@@ -607,6 +609,12 @@ impl SequenceExpr {
                 .flatten()
                 .collect(),
             Self::Generate { from, to, .. } => from.iter().copied().chain([*to]).collect(),
+            Self::FilterMapV1(composition) => composition
+                .source
+                .inputs()
+                .into_iter()
+                .chain(composition.captures.iter().map(|capture| capture.node))
+                .collect(),
             Self::RecursiveCollect {
                 prefix, separator, ..
             } => vec![*prefix, *separator],
@@ -620,6 +628,26 @@ impl SequenceExpr {
             | Self::TokenizeRegex { item, .. }
             | Self::Generate { item, .. }
             | Self::RecursiveCollect { item, .. } => *item,
+            Self::FilterMapV1(composition) => composition.item,
+        }
+    }
+
+    /// Private owner identities, including the reserved source of a filter/map.
+    pub fn owned_items(&self) -> Vec<NodeId> {
+        match self {
+            Self::FilterMapV1(composition) => vec![composition.source.item(), composition.item],
+            _ => vec![self.item()],
+        }
+    }
+
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Tokenize { .. } => "tokenize",
+            Self::TokenizeByLength { .. } => "tokenize_by_length",
+            Self::TokenizeRegex { .. } => "tokenize_regex",
+            Self::Generate { .. } => "generate",
+            Self::RecursiveCollect { .. } => "recursive_collect",
+            Self::FilterMapV1(_) => "filter_map_v1",
         }
     }
 }

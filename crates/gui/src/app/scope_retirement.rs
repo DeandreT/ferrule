@@ -2,7 +2,7 @@ use super::*;
 
 fn owned_items(scope: &Scope, items: &mut std::collections::BTreeSet<NodeId>) {
     if let Some(sequence) = scope.sequence() {
-        items.insert(sequence.item());
+        items.extend(sequence.owned_items());
     }
     if let Some(segments) = scope.concatenated() {
         for segment in segments.iter() {

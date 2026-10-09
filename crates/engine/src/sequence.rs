@@ -39,6 +39,11 @@ pub(super) fn eval_sequence_in_progress(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Vec<Value>, EngineError> {
     match sequence {
+        SequenceExpr::FilterMapV1(composition) => {
+            Err(EngineError::UnsupportedSequenceComposition {
+                item: composition.item,
+            })
+        }
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => {

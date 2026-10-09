@@ -18,6 +18,9 @@ pub enum Diagnostic {
         node: NodeId,
         kind: UnsupportedNodeKind,
     },
+    UnsupportedSequence {
+        item: NodeId,
+    },
     UnsupportedFunction {
         node: NodeId,
         function: String,
@@ -91,6 +94,10 @@ impl fmt::Display for Diagnostic {
             Self::UnsupportedNode { node, kind } => write!(
                 formatter,
                 "graph node {node}: code generation does not support {kind}"
+            ),
+            Self::UnsupportedSequence { item } => write!(
+                formatter,
+                "filter/map sequence item {item}: code generation is unsupported"
             ),
             Self::UnsupportedFunction { node, function } => write!(
                 formatter,

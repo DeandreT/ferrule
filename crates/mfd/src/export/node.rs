@@ -83,6 +83,11 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             continue;
         }
         match sequence {
+            SequenceExpr::FilterMapV1(composition) => {
+                return Err(MfdError::UnsupportedSequenceComposition {
+                    item: composition.item,
+                });
+            }
             SequenceExpr::Tokenize {
                 input, delimiter, ..
             } => {
