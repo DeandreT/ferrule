@@ -119,7 +119,10 @@ A ferrule project is plain JSON built from four main concepts:
    values, or raise a typed error when their expression is reached.
 3. **Scopes** construct target groups. A scope can iterate source collections,
    generated scalar sequences, document sets, or validated joins, then filter,
-   group, sort, window, bind fields, and construct child scopes.
+   group, sort, window, bind fields, and construct child scopes. The default
+   `Constructed` constructor requires a group target schema; scalar targets use
+   explicit `Scalar` construction. Project validation checks this shape for
+   primary and named targets before lowering or executable design admission.
 4. **Endpoints** identify the primary input and output plus optional named
    sources and targets. Stored paths can be overridden by the host or CLI.
 
