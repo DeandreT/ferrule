@@ -20,6 +20,7 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 mod csv_api;
 mod failure;
 mod json5_api;
+mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
 mod xml_api;
@@ -360,6 +361,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     );
     source.push_str(&render_selected_target_api(program, filter_map));
     source.push_str(&render_json_api(program)?);
+    source.push_str(&selected_json_api::render(program));
     source.push_str(&xml_api::render(program)?);
 
     let input_names = program
