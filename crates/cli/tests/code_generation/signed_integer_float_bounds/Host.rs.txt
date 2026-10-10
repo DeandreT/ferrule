@@ -1,0 +1,124 @@
+use codegen_runtime::{Instance, JsonBoundaryError, Value, field, group, scalar};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_bytes};
+use serde_json::Value as Json;
+use std::{fs, path::Path};
+
+fn expected(case: &Json) -> Instance {
+    group(
+        case["bits"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| {
+                let bits = u64::from_str_radix(value.as_str().unwrap(), 16).unwrap();
+                field(name, scalar(Value::Float(f64::from_bits(bits))))
+            }),
+    )
+}
+fn wanted_error(case: &Json, input_bounded: bool) -> JsonBoundaryError {
+    let field = case["failed_field"].as_str().unwrap();
+    let message = if case["input_only"] == true && !input_bounded {
+        format!("`{field}`: expected number, got integer outside the exact f64 range")
+    } else {
+        let got = if input_bounded {
+            serde_json::from_str::<Json>(case["input"].as_str().unwrap()).unwrap()[field]
+                .to_string()
+        } else {
+            let bits = u64::from_str_radix(case["bits"][field].as_str().unwrap(), 16).unwrap();
+            serde_json::Number::from_f64(f64::from_bits(bits))
+                .unwrap()
+                .to_string()
+        };
+        format!(
+            "`{field}` requires numeric range {}, got {got}",
+            case["range_text"].as_str().unwrap()
+        )
+    };
+    if input_bounded || case["input_only"] == true {
+        JsonBoundaryError::InvalidInput { message }
+    } else {
+        JsonBoundaryError::InvalidOutput { message }
+    }
+}
+fn complete_document(text: &str, case: &Json) -> bool {
+    let Ok(Json::Object(actual)) = serde_json::from_str::<Json>(text) else {
+        return false;
+    };
+    let wanted = case["bits"].as_object().unwrap();
+    text.ends_with('\n')
+        && actual.len() == wanted.len()
+        && actual.keys().eq(wanted.keys())
+        && actual.iter().all(|(name, value)| {
+            let bits = u64::from_str_radix(wanted[name].as_str().unwrap(), 16).unwrap();
+            value.as_f64().is_some_and(|value| value.to_bits() == bits)
+        })
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if arguments.len() != 2 {
+        return Err("need evidence directory and boundary side".into());
+    }
+    let directory = Path::new(&arguments[0]);
+    let input_bounded = arguments[1] == "input";
+    let corpus: Json = serde_json::from_str(&fs::read_to_string(directory.join("cases.json"))?)?;
+    let rows = corpus["compiled"]["cases"]
+        .as_array()
+        .ok_or("cases required")?;
+    let originals = rows
+        .iter()
+        .map(|case| {
+            let text = case["input"].as_str().unwrap();
+            let typed = if case["input_only"] == true {
+                None
+            } else {
+                Some(expected(case))
+            };
+            let actual_typed = typed.as_ref().map(execute);
+            (
+                case,
+                typed,
+                actual_typed,
+                execute_json(text),
+                execute_json_bytes(text.as_bytes()),
+            )
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        directory.join("COMPLETE-INPUTS-TYPED-TEXT-BYTES-ORIGINALS.txt"),
+        format!("{originals:#?}\n"),
+    )?;
+    let mut mismatches = Vec::new();
+    for (case, typed, actual_typed, text, bytes) in &originals {
+        let id = case["id"].as_str().unwrap();
+        if let Some(wanted) = typed {
+            if !matches!(actual_typed, Some(Ok(actual)) if actual == wanted) {
+                mismatches.push(format!("{id}: complete typed instance differs"));
+            }
+        }
+        if case["accepted"] == true {
+            if !matches!(text, Ok(text) if complete_document(text, case))
+                || !matches!(bytes, Ok(bytes) if std::str::from_utf8(bytes).is_ok_and(|text| complete_document(text, case)))
+            {
+                mismatches.push(format!("{id}: complete serialized document differs"));
+            }
+        } else {
+            let wanted = wanted_error(case, input_bounded);
+            if !matches!(text, Err(actual) if actual == &wanted)
+                || !matches!(bytes, Err(actual) if actual == &wanted)
+            {
+                mismatches.push(format!(
+                    "{id}: complete boundary error differs: expected {wanted:#?}"
+                ));
+            }
+        }
+    }
+    fs::write(
+        directory.join("COMPLETE-COMPARISONS.txt"),
+        format!("cases={}\n{mismatches:#?}\n", rows.len()),
+    )?;
+    if rows.len() != 31 || !mismatches.is_empty() {
+        return Err("complete authored numeric boundary cohort differs".into());
+    }
+    println!("31 complete numeric boundary cases: typed, text and byte APIs");
+    Ok(())
+}
