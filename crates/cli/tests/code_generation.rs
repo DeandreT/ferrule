@@ -52,6 +52,8 @@ mod joins;
 mod json5_companions;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/lexical_numeric_bounds.rs"]
+mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
 #[path = "code_generation/nested_clone_owners.rs"]
