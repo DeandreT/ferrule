@@ -3247,17 +3247,41 @@
       "text",
       "bytes"
     ],
-    "expected_error": {
-      "type": "FerruleRuntimeException",
-      "error": "RuntimeParameterType",
-      "message": "node 40: runtime parameter 'Tag' expected String, got Bool",
-      "fields": {
-        "Node": 40,
-        "RuntimeParameter": "Tag",
-        "FoundKind": "Bool",
-        "ExpectedScalarType": "String"
-      }
-    }
+    "expected_file": "expected-audit-bool-string.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "tag",
+          "value": {
+            "kind": "String",
+            "value": "false"
+          }
+        },
+        {
+          "name": "tagAgain",
+          "value": {
+            "kind": "String",
+            "value": "false"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Audit",
+    "format": "Json"
   },
   {
     "id": "global-failure-before-selected-context",

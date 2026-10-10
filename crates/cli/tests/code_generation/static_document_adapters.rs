@@ -81,6 +81,10 @@ const FIXTURES: &[(&str, &[u8])] = &[
         include_bytes!("static_document_adapters/fixtures/expected-audit.json"),
     ),
     (
+        "expected-audit-bool-string.json",
+        include_bytes!("static_document_adapters/fixtures/expected-audit-bool-string.json"),
+    ),
+    (
         "expected-no-sources.json",
         include_bytes!("static_document_adapters/fixtures/expected-no-sources.json"),
     ),
@@ -383,7 +387,7 @@ fn static_document_adapters_native_complete_oracles() -> TestResult<()> {
         results.push((row["id"].clone(), result));
     }
     evidence.record("ALL-COMPLETE-NATIVE-RESULTS", &results)?;
-    if results.len() != 13
+    if results.len() != 14
         || results
             .iter()
             .any(|(_, result)| !matches!(result, Ok(true)))
