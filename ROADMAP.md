@@ -23,23 +23,50 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
 ## Current Baseline
 
-Status snapshot: 2026-10-10 00:26:04 UTC, against merged main
-[`732d7ab`](https://github.com/DeandreT/ferrule/commit/732d7abf623c8b2d6ff49c672cf8be02efc88686).
+Status snapshot: 2026-10-10 04:20:16 UTC, against merged main
+[`fef16c3`](https://github.com/DeandreT/ferrule/commit/fef16c329591708d8437ac9d97e27bb7259cb438).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#252](https://github.com/DeandreT/ferrule/issues/252). The earlier
-[#212](https://github.com/DeandreT/ferrule/issues/212) refresh is merged in
-[#215](https://github.com/DeandreT/ferrule/pull/215); its finite rendered diagrams remain historical evidence.
-Publication status for this snapshot is tracked in #252. Memory-study publication
-[#249](https://github.com/DeandreT/ferrule/pull/249) merged on 2026-10-10 at 00:07:26 UTC;
-the dependent host-policy [#251](https://github.com/DeandreT/ferrule/pull/251) merged
-at 00:16:28 UTC. Both PRs have three successful hosted jobs, and fresh combined-main
-workspace strict warnings and formatting pass. These publication checks do not
-execute #218's pending JSON calls, #201's duplication workflows or #248's analysis.
-Earlier #173/#175 and
-#182/#187 snapshots remain historical records. The revised dependency maps in this
-refresh require their own bounded render review; earlier renders do not qualify
-changed fences. Compact GUI #194 and guidance #210
+[#271](https://github.com/DeandreT/ferrule/issues/271). The earlier
+[#252](https://github.com/DeandreT/ferrule/issues/252) snapshot merged in
+[#255](https://github.com/DeandreT/ferrule/pull/255); its dependency maps remain dated views.
+Memory-study [#249](https://github.com/DeandreT/ferrule/pull/249) and host-policy
+[#251](https://github.com/DeandreT/ferrule/pull/251) are merged with three successful
+hosted jobs each. Selected JSON APIs and their test-comparator correction are
+merged in [#262](https://github.com/DeandreT/ferrule/pull/262): all 229 independent
+native/Rust/C# calls pass. Bounded generated C# X12 options are merged in
+[#265](https://github.com/DeandreT/ferrule/pull/265). Both later PRs also have three
+successful hosted jobs. The #248 allocation campaign has eight measurements,
+eight independent verifiers and four trace decoders accepted. Its report source and
+one full rendered diagram are independently reviewed; report publication is pending.
+
+#203's fixtures are merged in [#266](https://github.com/DeandreT/ferrule/pull/266),
+with all three hosted jobs successful. The 24 public interpreter comparisons,
+51 typed export refusals and 237 interchange library tests pass; fresh combined-
+main 24+51 checks, workspace strict warnings and formatting pass. The test-only
+parent-envelope correction #264 is closed. No faithful saved form is admitted.
+The selected JSON guide [#270](https://github.com/DeandreT/ferrule/pull/270) is merged
+in this main, closing #261. All three hosted jobs and fresh combined-main strict
+warnings and formatting pass. Issue/PR observations were fetched individually;
+they are not a claim that all remote state was observed simultaneously.
+
+#263's 41 simulated controller-policy controls match their independent expectations;
+real native saved-file reopening remains unrun. #268's complete XML-oracle and
+driver source is reviewed; its new 68 helper, 17 policy and 41 compatibility
+controls remain unrun. These are separate from #263's earlier 41 simulated controls.
+#253's three tests / 11 internal controls, all 344 engine tests, ordinary engine
+build and corrected workspace strict/format checks pass locally. The test-only
+let-chain prerequisite [#277](https://github.com/DeandreT/ferrule/issues/277) preserves
+the original warning failure and all observations. [#278](https://github.com/DeandreT/ferrule/pull/278)
+is open with hosted jobs pending; #253/#277 publication is pending. The borrowed
+construction marker is not allocator telemetry or public/native parity.
+All 67 planned #201 native calls and desktop duplication checks remain unrun;
+the shared GUI lane still needs disk admission. No faithful new sequence saved
+form is admitted. Earlier #173/#175, #182/#187 and #212/#215
+snapshots remain historical records. This refresh preserves all three existing
+Mermaid fence bodies and their earlier rendering/zoom limits; the current table
+and prose dependencies do not establish a fresh render of those historical maps.
+Compact GUI #194 and guidance #210
 are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). Fresh strict
 warnings, formatting, one affected unit check and the production build pass;
 earlier focused/full GUI and web-demo crate suites are retained separately.
@@ -223,14 +250,20 @@ an unrestricted publication-parity promise.
   93,835,264 bytes; no duplicate cache is required. Merged in
   [#251](https://github.com/DeandreT/ferrule/pull/251) after #249; all three hosted
   jobs succeed. Existing default isolation and production behavior remain unchanged.
-- [ ] Execute selected-target JSON boundary APIs in
-  [#218](https://github.com/DeandreT/ferrule/issues/218). The reviewed 40-recipe contract
-  and Rust/C# source proposals preserve 229 planned calls: 76 native, 76 Rust and
-  77 C#. All remain unrun. Bind complete public JSON results before independently
-  decoded wire observations; preserve schema/name, UTF-8, static admission,
-  loader laziness and existing limits. #207/#217's publication prerequisites are
-  merged; fresh source binding precedes executable qualification.
+- [x] Qualify selected-target JSON boundary APIs in
+  [#218](https://github.com/DeandreT/ferrule/issues/218), merged in
+  [#262](https://github.com/DeandreT/ferrule/pull/262). All 229 independently checked
+  calls pass: 76 native, 76 Rust and 77 C#, across the frozen 40 recipes.
+  Public JSON results precede separately labeled decoded-wire observations;
+  schema/name, UTF-8, static admission, lazy loaders and existing limits remain
+  explicit. The original 15 C# comparator mismatches (11 small and four size
+  controls) remain failures; the test-only structured-error-detail correction
+  [#257](https://github.com/DeandreT/ferrule/issues/257) is qualified in the same merge.
   JSON5, filesystem/GUI selection and resource-policy expansion remain excluded.
+- [x] Publish the API guide in [#261](https://github.com/DeandreT/ferrule/issues/261)/
+  [#270](https://github.com/DeandreT/ferrule/pull/270). Independent source and diagram
+  visual review, all three hosted jobs and fresh combined-main strict/format checks pass.
+  The guide owns only [Code generation](docs/code-generation.md), not another API increment.
 
 These new sequence cohorts retain their own finite profiles and complete original
 failures. They do not close broader desktop workflows, external saved-design
@@ -484,7 +517,8 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
 - [ ] Qualify the accepted atomic sequence-consumer duplication proposal in
   [#201](https://github.com/DeandreT/ferrule/issues/201), assigned to DeandreT. The frozen
   contract has 28 controls, 87 snapshots and 56 complete canvas tables; all 67
-  planned native calls and desktop checks remain unrun. Final source adoption
+  planned native calls and desktop checks remain unrun; disk admission for the
+  shared GUI verification lane is pending. Final source adoption
   preserves #213's Fit hooks and privately remaps owners without changing the
   original. General clipboard and arbitrary graph copying are excluded.
 - [x] Qualify the test-only GUI frame diagnostic change in
@@ -620,17 +654,41 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   [#241](https://github.com/DeandreT/ferrule/issues/241) before admitting them. Preserve
   distinct expressions and the existing duplicate-binding refusal; #239's
   declared ancestor branches do not supply an inferred winner.
-- [ ] Define faithful saved-design interchange for the admitted sequence in
-  [#203](https://github.com/DeandreT/ferrule/issues/203). Its source-reviewed design
-  and 24 synthetic recipes admit no faithful new saved form; materialization,
-  native qualification and save/reopen remain unrun. Exact stage/capture/position/
-  error preservation is required before any importer/exporter implementation.
-  Existing typed refusal remains; XML annotations and JSON5 metadata are separate contracts.
-- [ ] Qualify internal capture/stage/counter observations from #203's frozen fixture
-  in [#253](https://github.com/DeandreT/ferrule/issues/253). Focused engine unit controls
-  and a narrow test-only borrowed sink remain separate from public saved-design
-  observations. Preserve budgets and public APIs; a construction marker establishes
-  code-path reach, without allocator telemetry. All executable checks remain unrun.
+- [x] Qualify #203's 24 independently authored public interpreter observations
+  and 51 separate typed export refusals. All 237 interchange library tests,
+  workspace strict warnings and formatting pass on the focused fixture candidate.
+  [#264](https://github.com/DeandreT/ferrule/issues/264) corrects only the physical
+  parent-position test envelope; the original failed run and frozen oracles remain.
+- [x] Publish those fixtures in [#266](https://github.com/DeandreT/ferrule/pull/266).
+  All three hosted jobs and fresh combined-main 24+51 / strict / format checks pass;
+  #264 is closed. Repeated fixture runs do not increase the distinct totals.
+- [ ] Define a faithful saved form in [#203](https://github.com/DeandreT/ferrule/issues/203).
+  Public Ferrule observations and typed refusal do not establish external saved-
+  design execution or save/reopen. Exact stage/capture/position/error preservation
+  is required before importer/exporter implementation. XML annotations and JSON5
+  metadata remain separate contracts.
+- [x] Qualify #263's 13 simulated controller-policy groups / 41 subcases with
+  independent expectations and complete failure retention. This is simulation,
+  separate from its external owner's normal closure and any native application.
+- [ ] Qualify one admitted native saved-file reopen/execute/save2 cycle in
+  [#263](https://github.com/DeandreT/ferrule/issues/263), after complete independent
+  XML oracles from [#268](https://github.com/DeandreT/ferrule/issues/268).
+  #268's source and drivers are reviewed; its new 68 helper, 17 policy and
+  41 compatibility controls, and the real native cycle, remain unrun.
+  A fresh individually admitted design, source/tool/display bindings and complete
+  saved connections/parameter/identity review are still required. No filter/map
+  seed or faithful new saved form is inferred from simulation or XML parsing.
+- [x] Qualify internal capture/stage/counter observations from #203's frozen fixture
+  in [#253](https://github.com/DeandreT/ferrule/issues/253): three tests / 11 controls,
+  all 344 engine tests, an ordinary engine build and corrected workspace strict/
+  format checks pass locally. Complete original and corrected observations are
+  independently accepted. The borrowed test-only sink preserves public APIs and
+  budgets; its construction marker establishes code-path reach, not allocator telemetry.
+- [ ] Publish #253 with its single test-helper let-chain prerequisite
+  [#277](https://github.com/DeandreT/ferrule/issues/277) in
+  [#278](https://github.com/DeandreT/ferrule/pull/278). The PR is open and hosted jobs
+  are pending. The original strict-warning failure remains retained; these internal
+  checks do not establish public/native or saved-file parity.
 - [x] Measure large captures and eager mapped outputs in
   [#207](https://github.com/DeandreT/ferrule/issues/207): all 72 measured native/Rust/C#
   runs and 72 separate complete verifiers pass. The
@@ -642,10 +700,17 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   observation guard [#242](https://github.com/DeandreT/ferrule/issues/242) and study-workspace
   packaging repair [#246](https://github.com/DeandreT/ferrule/issues/246) are qualified within
   that increment; other-platform execution is not claimed.
-- [ ] Attribute generated C# large-string costs in
-  [#248](https://github.com/DeandreT/ferrule/issues/248) using #207's merged fixtures. Retain an
-  allocation/GC trace and its perturbation separately from whole-process RSS;
-  any optimization or new budget requires another bounded issue.
+- [x] Complete #248's finite generated C# allocation campaign using #207's
+  merged fixtures: eight measurements, eight independent output verifiers and
+  four post-closure trace decoders are independently accepted. Both numeric and
+  large-capture repetitions retain complete outputs and sampled allocation stacks.
+- [ ] Publish [#248](https://github.com/DeandreT/ferrule/issues/248)'s bounded report.
+  Report source/data and one full rendered diagram are independently reviewed;
+  the 100% viewport requires scrolling. Owned browser-helper cleanup was needed:
+  closure is proven, but normal cleanup-free closure is not claimed. Allocation
+  samples are not an exact object ledger; trace perturbation and whole-process RSS
+  remain separate. No exact phase clock, peak/capture cause, production optimization
+  or new budget is inferred.
 
 ### B. Visual Authoring and Debugging
 
@@ -677,11 +742,13 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   [#224](https://github.com/DeandreT/ferrule/issues/224)/[#230](https://github.com/DeandreT/ferrule/pull/230).
   Synthetic 940/JSON/945 controls remain separate from trading-partner certification;
   ordinary typed/JSON APIs and caller-supplied controls are preserved.
-- [ ] Extend only native-defined 004010 format options in
-  [#250](https://github.com/DeandreT/ferrule/issues/250): settle directionality, implied
-  decimals, lenient traversal, lexical output and supplied-context completion before
-  runtime changes and compiled checks. Other versions, repeated-element syntax,
-  external I/O and durable control allocation remain excluded.
+- [x] Qualify bounded generated C# 004010 format options in
+  [#250](https://github.com/DeandreT/ferrule/issues/250), merged in
+  [#265](https://github.com/DeandreT/ferrule/pull/265), with three successful hosted jobs.
+  Directional parsing, inactive repetition metadata, Float implied decimals,
+  lexical output and supplied-context completion preserve strict defaults and
+  typed/JSON APIs. Other versions, repeated-element syntax, external I/O, durable
+  control allocation and trading-partner certification remain excluded.
 - [ ] Grow compile-and-call coverage for applicable mappings and public adapters.
 - [ ] Add other language/backend targets as independent implementations and
   gates; the current emitters are Rust and C#.
