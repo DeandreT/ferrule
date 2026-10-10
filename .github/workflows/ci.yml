@@ -73,6 +73,6 @@ jobs:
         run: |
           df -h
           free -h
-          if [ "$RUNNER_ENVIRONMENT" = self-hosted ]; then
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
             /opt/ferrule-runner-tools/sccache --show-stats
           fi

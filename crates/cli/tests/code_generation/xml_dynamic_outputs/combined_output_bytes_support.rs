@@ -105,7 +105,7 @@ pub(super) fn source_identities() -> TestResult<Json> {
         .collect::<Result<Vec<_>, _>>()?;
     values.push(identity(Path::new(env!("CARGO_BIN_EXE_ferrule")))?);
     values.push(identity(&std::env::current_exe()?)?);
-    values.push(identity(Path::new("/usr/bin/timeout"))?);
+    values.push(identity(&gnu_timeout()?)?);
     values.push(identity(&gnu_time()?)?);
     Ok(json!(values))
 }
@@ -188,6 +188,15 @@ pub(super) fn gnu_time() -> TestResult<PathBuf> {
     }
     Ok(path)
 }
+fn gnu_timeout() -> TestResult<PathBuf> {
+    let path = std::env::var_os("FERRULE_CODEGEN_GNU_TIMEOUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/bin/timeout"));
+    if !path.is_absolute() || !path.is_file() {
+        return Err(io::Error::other("an absolute GNU timeout executable is required").into());
+    }
+    Ok(path)
+}
 pub(super) fn recorded(
     command: &mut Command,
     directory: &Path,
@@ -203,7 +212,7 @@ pub(super) fn recorded(
     if seconds == 0 {
         return Err("overall combined XML output deadline exhausted".into());
     }
-    let mut bounded = Command::new("/usr/bin/timeout");
+    let mut bounded = Command::new(gnu_timeout()?);
     bounded
         .args(["--signal=TERM", "--kill-after=5s"])
         .arg(format!("{seconds}s"));
