@@ -169,6 +169,7 @@ pub(crate) enum BuiltinId {
     SqlLike,
     PadStringLeft,
     PadStringRight,
+    FormatGuidString,
     Add,
     Subtract,
     Multiply,
@@ -520,6 +521,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Right-pads text to a bounded length."
+    ),
+    builtin!(
+        FormatGuidString,
+        "format_guid_string",
+        "Format GUID",
+        String,
+        &[parameter("unformatted_guid", String)],
+        BuiltinArity::fixed(1),
+        String,
+        true,
+        true,
+        Authoring,
+        "Formats exactly 32 ASCII hexadecimal characters as a case-preserving GUID."
     ),
     builtin!(
         Add,

@@ -30,6 +30,8 @@ mod extra_targets;
 mod failure_rules;
 #[path = "code_generation/filter_map_csharp.rs"]
 mod filter_map_csharp;
+#[path = "code_generation/format_guid_string.rs"]
+mod format_guid_string;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/grouping.rs"]

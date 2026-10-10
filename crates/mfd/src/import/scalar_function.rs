@@ -161,7 +161,11 @@ impl GraphBuilder<'_> {
                             "function `{name}` has no ferrule equivalent; imported \
                              as-is and will fail at run time until replaced"
                         ));
-                        name.to_string()
+                        if name == "format_guid_string" {
+                            format!("unsupported:{}:{}:{name}", fc.library, fc.kind)
+                        } else {
+                            name.to_string()
+                        }
                     }
                 };
                 // The reference application declares the function's full optional pin set even

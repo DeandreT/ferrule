@@ -1,0 +1,76 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleValue Argument(string[] row) => row[1] switch {
+    "S" => FerruleValue.FromString(row[2]), "N" => FerruleValue.Null,
+    "J" => FerruleValue.JsonNull, "X" => FerruleValue.XmlNil,
+    "B" => FerruleValue.FromBoolean(true), "I" => FerruleValue.FromInt64(7),
+    "F" => FerruleValue.FromDouble(0.5), _ => throw new InvalidOperationException("Unknown authored kind"),
+};
+static object Expected(string text) {
+    if (text == "invalid") return new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
+        "`format_guid_string` requires exactly 32 ASCII hexadecimal characters.", function: "format_guid_string", detail: "requires exactly 32 ASCII hexadecimal characters");
+    if (text.StartsWith("type:", StringComparison.Ordinal)) {
+        var name = text[5..];
+        var kind = name switch { "null" => FerruleValueKind.Null, "json null" => FerruleValueKind.JsonNull, "xml nil" => FerruleValueKind.XmlNil, "bool" => FerruleValueKind.Bool, "int" => FerruleValueKind.Int64, "float" => FerruleValueKind.Double, _ => throw new InvalidOperationException("Unknown authored type") };
+        return new FerruleRuntimeException(FerruleRuntimeError.FunctionType,
+            $"`format_guid_string` cannot accept a {name} argument.", function: "format_guid_string", foundKind: kind);
+    }
+    return new FerruleGroup(new[] { new FerruleField("Formatted", new FerruleScalar(FerruleValue.FromString(text))) });
+}
+static object RawValue(FerruleValue value) {
+    object? payload = value.Kind switch {
+        FerruleValueKind.Bool => value.BooleanValue,
+        FerruleValueKind.String => value.StringValue,
+        FerruleValueKind.Int64 => value.Int64Value,
+        FerruleValueKind.Double => new { text = value.DoubleValue.ToString("R", System.Globalization.CultureInfo.InvariantCulture), bits = BitConverter.DoubleToInt64Bits(value.DoubleValue) },
+        _ => null,
+    };
+    return new { value.Kind, payload };
+}
+static object RawInstance(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", value = RawValue(scalar.Value) },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = RawInstance(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() },
+    FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document => new { document.Path, document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() },
+    _ => new { kind = "Unexpected", type = value.GetType().FullName, original = value.ToString() },
+};
+static object RawError(FerruleRuntimeException error) => new {
+    type = error.GetType().FullName, error.Message, error.HResult, inner = error.InnerException?.ToString(),
+    data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+    error.Error, error.Node, error.Function, error.ExpectedArity, error.ActualArity, error.FoundKind,
+    error.AggregateOperation, error.Detail, error.RequestedItems, error.MaximumItems, error.MaximumDepth,
+    error.RuntimeValue, error.FailureRule, error.MappingFailureMessage, error.MappingExceptionMessage,
+    error.Join, error.UserFunction, error.FunctionParameter, error.ExpectedScalarType,
+    error.RuntimeParameter, error.SourceField, error.FoundInstance, error.PrimaryRoot,
+};
+static object Raw(object outcome) => outcome switch {
+    FerruleInstance value => RawInstance(value), FerruleValue value => RawValue(value), FerruleRuntimeException error => RawError(error),
+    Exception error => new { unexpected = error.GetType().FullName, original = error.ToString() },
+    _ => throw new InvalidOperationException("Unknown complete outcome class"),
+};
+static object Capture(Func<object> action) { try { return action(); } catch (Exception error) { return error; } }
+if (args.Length != 1) throw new InvalidOperationException("Need retained output directory");
+var rows = File.ReadAllLines(Path.Combine(args[0], "cases.tsv")).Select(line => line.Split('\t')).ToArray();
+var inputs = rows.Select(row => new FerruleGroup(new[] { new FerruleField("Hex", new FerruleScalar(Argument(row))) })).ToArray();
+var actual = inputs.Select(source => Capture(() => GeneratedMapping.Execute(source))).ToArray();
+var wanted = rows.Select(row => Expected(row[3])).ToArray();
+File.WriteAllText(Path.Combine(args[0], "COMPLETE-INPUTS-OUTCOMES-EXPECTED.json"), JsonSerializer.Serialize(rows.Select((row, index) => new {
+    label = row[0], input = Raw(inputs[index]), actual = Raw(actual[index]), wanted = Raw(wanted[index]), originalException = (actual[index] as Exception)?.ToString(),
+}).ToArray()));
+var direct = new[] { 0, 2, 3 }.Select(count => {
+    var arguments = Enumerable.Repeat(FerruleValue.Null, count).ToArray();
+    return new { count, arguments, actual = Capture(() => FerruleFunctions.Call("format_guid_string", arguments)), wanted = (object)new FerruleRuntimeException(FerruleRuntimeError.FunctionArity,
+        $"`format_guid_string` expected 1 argument(s), got {count}.", function: "format_guid_string", expectedArity: 1, actualArity: count) };
+}).ToArray();
+File.WriteAllText(Path.Combine(args[0], "COMPLETE-DIRECT-ARITY-CONTROLS.json"), JsonSerializer.Serialize(direct.Select(item => new {
+    item.count, arguments = item.arguments.Select(RawValue).ToArray(), actual = Raw(item.actual), wanted = Raw(item.wanted), originalException = (item.actual as Exception)?.ToString(),
+})));
+var mismatches = rows.Select((row, index) => new { label = row[0], actual = JsonSerializer.Serialize(Raw(actual[index])), wanted = JsonSerializer.Serialize(Raw(wanted[index])) })
+    .Where(item => item.actual != item.wanted).ToArray();
+File.WriteAllText(Path.Combine(args[0], "COMPLETE-COMPARISONS.json"), JsonSerializer.Serialize(new { calls = rows.Length, mismatches }));
+if (rows.Length != 22 || mismatches.Length != 0 || direct.Any(item => JsonSerializer.Serialize(Raw(item.actual)) != JsonSerializer.Serialize(Raw(item.wanted))))
+    throw new InvalidOperationException("Complete GUID formatter cohort differs");
+Console.WriteLine("22 complete generated GUID calls and 3 direct arity controls passed");
