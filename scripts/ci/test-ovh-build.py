@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Exercise the resource guard without changing host paths or disk allocation."""
+import os
+import json
+import ast
+import signal
+from pathlib import Path
+import subprocess
+import tempfile
+import tarfile
+import unittest
+from unittest.mock import Mock
+
+
+SCRIPT = Path(__file__).with_name("prepare-ovh-build.sh")
+GUARD = Path(__file__).with_name("guard-ovh-job.sh")
+
+
+class ResourceGuardTests(unittest.TestCase):
+    def run_guard(self, *, free_kib="16777216", user="ferrule-runner",
+                  runner="self-hosted", home="/home/ferrule-runner",
+                  symlink="", env_file=True, suite="native", gnu_timeout=True):
+        with tempfile.TemporaryDirectory(prefix="ferrule-ci-guard-") as tmp:
+            root = Path(tmp)
+            tools = root / "bin"
+            tools.mkdir()
+            # Mock host-facing commands; mkdir cannot touch the simulated home.
+            commands = {
+                "id": 'printf "%s\\n" "$FIXTURE_USER"',
+                "mkdir": "exit 0",
+                "realpath": ('if [ "$1" = -m ]; then shift; fi; '
+                             'if [ "$1" = "$FIXTURE_SYMLINK" ]; then '
+                             'echo /elsewhere; else printf "%s\\n" "$1"; fi'),
+                "df": ('printf "Filesystem 1024-blocks Used Available Capacity Mounted\\n"; '
+                       'printf "fixture 99999999 1 %s 1%% /\\n" "$FIXTURE_FREE_KIB"'),
+                "free": "exit 0",
+                "xvfb-run": "exit 0",
+                "xauth": "exit 0",
+                "cc": "exit 0",
+                "pkg-config": "exit 0",
+                "sccache": "exit 0",
+                "gnutimeout": 'printf "%s\\n" "$FIXTURE_TIMEOUT_VERSION"',
+            }
+            for name, body in commands.items():
+                tool = tools / name
+                tool.write_text("#!/bin/sh\n" + body + "\n")
+                tool.chmod(0o755)
+            output = root / "environment"
+            if env_file:
+                output.touch()
+            environment = os.environ | {
+                "PATH": str(tools) + ":/usr/bin:/bin",
+                "RUNNER_ENVIRONMENT": runner,
+                "HOME": home,
+                "GITHUB_ENV": str(output),
+                "FIXTURE_USER": user,
+                "FIXTURE_FREE_KIB": free_kib,
+                "FIXTURE_SYMLINK": symlink,
+                "FERRULE_CI_SUITE": suite,
+                "FIXTURE_TIMEOUT_VERSION": ("timeout (GNU coreutils) 9.7"
+                                            if gnu_timeout else "timeout (uutils)"),
+            }
+            result = subprocess.run(["bash", str(SCRIPT)], env=environment,
+                                    text=True, capture_output=True, check=False)
+            return result, output.read_text() if output.exists() else ""
+
+    def assert_refused(self, **options):
+        result, output = self.run_guard(**options)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(output, "", "A refused build must not publish cache settings")
+
+    def test_unexpected_host_identity(self):
+        for options in ({"runner": "github-hosted"}, {"user": "ubuntu"},
+                        {"home": "/home/other"}, {"env_file": False}):
+            with self.subTest(options=options):
+                self.assert_refused(**options)
+
+    def test_disk_failure_before_build(self):
+        for capacity in ("16777215", "4194304", "0", "unknown", ""):
+            with self.subTest(free_kib=capacity):
+                self.assert_refused(free_kib=capacity)
+
+    def test_codegen_reserves_eight_gib_and_rejects_unknown_profiles(self):
+        self.assert_refused(suite="codegen", free_kib="8388607")
+        result, output = self.run_guard(suite="codegen", free_kib="8388608")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CARGO_BUILD_JOBS=1\n", output)
+        self.assert_refused(suite="unknown")
+
+    def test_non_gnu_timeout_is_refused(self):
+        self.assert_refused(gnu_timeout=False)
+
+    def test_symlinked_cache_paths(self):
+        for suffix in ("", "/workspace-target", "/generated-host-target", "/compiler"):
+            with self.subTest(suffix=suffix):
+                self.assert_refused(symlink="/home/ferrule-runner/ci-cache" + suffix)
+        self.assert_refused(symlink="/home/ferrule-runner/ci-tmp")
+
+    def test_minimum_capacity_publishes_isolated_bounded_caches(self):
+        result, output = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = dict(line.split("=", 1) for line in output.splitlines())
+        timeout = Path(settings.pop("FERRULE_CODEGEN_GNU_TIMEOUT"))
+        self.assertTrue(timeout.is_absolute())
+        self.assertEqual(timeout.name, "gnutimeout")
+        self.assertEqual(settings, {
+            "CARGO_TARGET_DIR": "/home/ferrule-runner/ci-cache/workspace-target",
+            "FERRULE_CODEGEN_HOST_TARGET_DIR": "/home/ferrule-runner/ci-cache/generated-host-target",
+            "DOTNET_INSTALL_DIR": "/home/ferrule-runner/.dotnet",
+            "TMPDIR": "/home/ferrule-runner/ci-tmp",
+            "CARGO_BUILD_JOBS": "1",
+            "RUST_TEST_THREADS": "2",
+            "MSBUILDDISABLENODEREUSE": "1",
+            "UseSharedCompilation": "false",
+            "SCCACHE_DIR": "/home/ferrule-runner/ci-cache/compiler",
+            "SCCACHE_CACHE_SIZE": "2G",
+        })
+
+
+class ProvisioningPathTests(unittest.TestCase):
+    def test_root_provisioning_checks_launcher_destination(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("check_runner_paths() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "check_runner_paths() {\n" + body + "\n}\n"
+        invocation = "check_runner_paths " + script.split("\ncheck_runner_paths ", 1)[1].split("\n\n", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="ferrule-launcher-path-") as tmp:
+            root = Path(tmp)
+            home = root / "runner"
+            runner = home / "actions-runner"
+            runner.mkdir(parents=True)
+            outside = root / "protected"
+            outside.mkdir()
+            (runner / "runsvc.sh").symlink_to(outside, target_is_directory=True)
+            result = subprocess.run(
+                ["bash", "-euc", function + invocation],
+                env=os.environ | {"runner_home": str(home), "runner_dir": str(runner)},
+                text=True, capture_output=True, check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Refusing a runner provisioning path", result.stderr)
+
+    def test_runner_archive_extraction_drops_root_permissions(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("extract_runner_archive() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "extract_runner_archive() {\n" + body + "\n}\n"
+        with tempfile.TemporaryDirectory(prefix="ferrule-extraction-") as tmp:
+            root = Path(tmp)
+            source = root / "marker"
+            source.write_text("Ferrule archive preflight\n")
+            archive = root / "runner.tar.gz"
+            with tarfile.open(archive, "w:gz") as output:
+                output.add(source, arcname="marker")
+            archive.chmod(0o600)
+            runner = root / "runner"
+            runner.mkdir()
+            tools = root / "bin"
+            tools.mkdir()
+            runuser = tools / "runuser"
+            runuser.write_text('#!/bin/sh\n'
+                               'printf "%s\\n" "$@" > "$FIXTURE_ARGUMENTS"\n'
+                               '[ "$1" = -u ] && [ "$2" = ferrule-runner ] && '
+                               '[ "$3" = -- ] || exit 1\n'
+                               'shift 3\nexec "$@"\n')
+            runuser.chmod(0o755)
+            arguments = root / "arguments"
+            environment = os.environ | {
+                "PATH": str(tools) + ":/usr/bin:/bin",
+                "FIXTURE_ARGUMENTS": str(arguments),
+                "runner_user": "ferrule-runner",
+                "runner_dir": str(runner),
+                "FIXTURE_ARCHIVE": str(archive),
+            }
+            result = subprocess.run(["bash", "-euc", function +
+                                     'extract_runner_archive "$FIXTURE_ARCHIVE"'],
+                                    env=environment, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((runner / "marker").read_text(), source.read_text())
+            self.assertEqual(archive.stat().st_mode & 0o777, 0o644)
+            self.assertEqual(arguments.read_text().splitlines(), [
+                "-u", "ferrule-runner", "--", "/usr/bin/tar", "-xzf",
+                str(archive), "-C", str(runner), "--no-same-owner",
+            ])
+
+    def test_root_provisioning_follows_only_runner_home_paths(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("check_runner_paths() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "check_runner_paths() {\n" + body + "\n}\n"
+        with tempfile.TemporaryDirectory(prefix="ferrule-provision-paths-") as tmp:
+            root = Path(tmp)
+            home = root / "runner"
+            home.mkdir()
+            versioned = home / "bin.2.337.0"
+            versioned.mkdir()
+            (home / "bin").symlink_to(versioned, target_is_directory=True)
+            outside = root / "runner-other"
+            outside.mkdir()
+            (home / "redirected").symlink_to(outside, target_is_directory=True)
+            (home / ".path").symlink_to(outside / "secret")
+            paths = {
+                home / "new-directory": True,
+                home / "bin" / "runsvc.sh": True,
+                home / "redirected" / "runsvc.sh": False,
+                home / ".path": False,
+                outside / "new-directory": False,
+            }
+            for path, allowed in paths.items():
+                with self.subTest(path=path):
+                    result = subprocess.run(
+                        ["bash", "-c", function + '\nrunner_home=$1\ncheck_runner_paths "$2"',
+                         "fixture", str(home), str(path)],
+                        text=True, capture_output=True, check=False,
+                    )
+                    self.assertEqual(result.returncode == 0, allowed, result.stderr)
+
+
+class JobAdmissionTests(unittest.TestCase):
+    def run_guard(self, kind, event, **environment):
+        with tempfile.TemporaryDirectory(prefix="ferrule-ci-event-") as tmp:
+            payload = Path(tmp) / "event.json"
+            payload.write_text(json.dumps(event))
+            variables = os.environ | {
+                "GITHUB_EVENT_PATH": str(payload),
+                "GITHUB_REPOSITORY": "DeandreT/ferrule",
+                "GITHUB_EVENT_NAME": kind,
+                "GITHUB_REF": "refs/heads/main",
+            } | environment
+            return subprocess.run(["bash", str(GUARD)], env=variables,
+                                  text=True, capture_output=True, check=False)
+
+    def test_trusted_repository_jobs(self):
+        repository = {"repository": {"full_name": "DeandreT/ferrule"}}
+        cases = {
+            "push": repository | {"ref": "refs/heads/main"},
+            "workflow_dispatch": repository,
+            "pull_request": repository | {"pull_request": {
+                "head": {"repo": {"full_name": "DeandreT/ferrule"}}}},
+        }
+        for kind, payload in cases.items():
+            with self.subTest(kind=kind):
+                result = self.run_guard(kind, payload)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_fork_cannot_override_workflow_routing(self):
+        for head in ({"full_name": "outsider/ferrule"}, None, {}):
+            with self.subTest(head=head):
+                result = self.run_guard("pull_request", {
+                    "repository": {"full_name": "DeandreT/ferrule"},
+                    "pull_request": {"head": {"repo": head}},
+                })
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_missing_or_inconsistent_identity(self):
+        for payload in ({}, [], {"repository": {"full_name": "outsider/ferrule"}}):
+            with self.subTest(payload=payload):
+                self.assertNotEqual(self.run_guard("push", payload).returncode, 0)
+        self.assertNotEqual(self.run_guard("push", {
+            "repository": {"full_name": "DeandreT/ferrule"},
+            "ref": "refs/heads/main",
+        }, GITHUB_REPOSITORY="outsider/ferrule").returncode, 0)
+
+    def test_unapproved_events_and_refs(self):
+        payload = {"repository": {"full_name": "DeandreT/ferrule"}}
+        for kind in ("pull_request_target", "workflow_run", "issue_comment", ""):
+            with self.subTest(kind=kind):
+                self.assertNotEqual(self.run_guard(kind, payload).returncode, 0)
+        self.assertNotEqual(self.run_guard("push", payload | {
+            "ref": "refs/heads/feature"}).returncode, 0)
+        self.assertNotEqual(self.run_guard("workflow_dispatch", payload,
+                                         GITHUB_REF="refs/tags/v1").returncode, 0)
+
+    def test_rejection_aborts_only_the_job_worker(self):
+        # Exercise the production signal boundary without signaling live PIDs.
+        code = GUARD.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        tree = ast.parse(code)
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == "abort_rejected_worker")
+        module = ast.Module(body=[function], type_ignores=[])
+        worker = "/home/ferrule-runner/actions-runner/bin/Runner.Worker"
+        for executable in (worker, "/usr/bin/python3", "/usr/bin/bash"):
+            with self.subTest(executable=executable):
+                process = Mock()
+                process.getppid.return_value = 12345
+                process.path.realpath.side_effect = [executable, worker]
+                namespace = {"os": process, "signal": signal}
+                exec(compile(module, str(GUARD), "exec"), namespace)
+                namespace["abort_rejected_worker"]()
+                if executable == worker:
+                    process.kill.assert_called_once_with(12345, signal.SIGKILL)
+                else:
+                    process.kill.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
