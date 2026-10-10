@@ -22,25 +22,24 @@ choose a lane and avoid conflicting changes.
 
 ## Next acceptance gates
 
-- [ ] Qualify #201's accepted atomic private-owner proposal: three focused tests plan
-  29 duplication attempts. Frozen 28 controls / 87 snapshots / 92 canvas tables retain
-  independent oracles. #298's accepted capture compiles; preserve the first focused
-  stale-wire failure after nine primary previews and two duplications, #300/#301's
-  distinct source-review gaps and the later invocation refusal. Their revised source
-  is reviewed, applied and formatted. A fresh root-owned selected test passes all ten
-  admitted cases and 67 local engine previews (61 primary / six named), with independent
-  result review pending in this snapshot. Refusal, keyboard, full GUI and two Main/Named
-  physical sessions / ten checkpoint pairs remain pending qualification here. Preserve
-  #213 Fit hooks and fresh #288 resource admission after #297's locked-cache restoration;
-  all frozen expectations remain unchanged.
+- [ ] Complete worker host #326, ongoing on `feat/pdf-worker-host`. Initial
+  worker/CLI and owned filesystem controls pass; #348 strict-lint correction,
+  affected reruns and remaining host failure controls are pending.
+- [ ] Add borrowed filesystem reader #344 after #326.
+- [ ] Complete GUI filesystem cancellation #327 after #326/#344.
+- [ ] Add explicit preview input acquisition #340 after #326/#344.
+- [ ] Complete GUI preview ownership #341 after #327/#340.
+- [ ] Execute resource qualification #328 after #326: 20 source-only recipes,
+  15 exact cases and 82 planned requests; all execution remains unrun.
+  This scope does not depend on #327.
 - [ ] Qualify #263's individually admitted native save/reopen/save2 cycle after exact
   owned-window proof. Native 180-second timeout, #285 diagnostics and #291 presentation refusal
   remain negatives; modeled 16 query checks and helper source do not prove live ownership.
 - [ ] Settle #241's explicit competing-feed contract before admission and execution.
 - [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
   successful site compilation alone is insufficient.
-- [ ] Independently review and publish #299's scoped main 0c7b2ca two-doc successor,
-  separately from #201; preserve unrelated lanes and the same historical fences.
+- [ ] Review and publish #336's scoped main 4d32a3a two-document refresh;
+  preserve unrelated lanes and the same historical fences.
 
 ## Dependencies and shared areas
 

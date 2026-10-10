@@ -1,0 +1,345 @@
+[
+  {
+    "name": "modern-80",
+    "design": "modern-80.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-81",
+    "design": "modern-81.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-808182",
+    "design": "modern-three-808182.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-808281",
+    "design": "modern-three-808281.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-818082",
+    "design": "modern-three-818082.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-818280",
+    "design": "modern-three-818280.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-828081",
+    "design": "modern-three-828081.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-three-828180",
+    "design": "modern-three-828180.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-reintroduce",
+    "design": "modern-reintroduce.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-80",
+    "design": "legacy-80.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-81",
+    "design": "legacy-81.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-808182",
+    "design": "legacy-three-808182.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-808281",
+    "design": "legacy-three-808281.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-818082",
+    "design": "legacy-three-818082.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-818280",
+    "design": "legacy-three-818280.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-828081",
+    "design": "legacy-three-828081.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-three-828180",
+    "design": "legacy-three-828180.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81, 82]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-reintroduce",
+    "design": "legacy-reintroduce.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "legacy-parent",
+    "design": "legacy-parent.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "mixed",
+    "design": "mixed.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "mixed-reintroduce",
+    "design": "mixed-reintroduce.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "modern-same-source",
+    "design": "modern-same-source.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": "amber",
+      "Safe": "kept"
+    },
+    "reference": "accepted-reference.mfd"
+  },
+  {
+    "name": "legacy-same-source",
+    "design": "legacy-same-source.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": "amber",
+      "Safe": "kept"
+    },
+    "reference": "accepted-reference.mfd"
+  },
+  {
+    "name": "mixed-same-source",
+    "design": "mixed-same-source.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": "amber",
+      "Safe": "kept"
+    },
+    "reference": "accepted-reference.mfd"
+  },
+  {
+    "name": "fan-out",
+    "design": "fan-out.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": "amber",
+      "Safe": "amber"
+    },
+    "reference": "fan-out.mfd"
+  },
+  {
+    "name": "declared-occurrences",
+    "design": "declared-occurrences.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": [
+        "amber",
+        "violet"
+      ],
+      "Safe": "kept"
+    },
+    "reference": "declared-occurrences.mfd"
+  },
+  {
+    "name": "dual-conflict",
+    "design": "dual-conflict.mfd",
+    "accepted": false,
+    "expected_warnings": [
+      "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped"
+    ],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  },
+  {
+    "name": "dual-same-source",
+    "design": "dual-same-source.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Value": "amber",
+      "Safe": "kept"
+    },
+    "reference": "accepted-reference.mfd"
+  },
+  {
+    "name": "dual-unselected",
+    "design": "dual-unselected.mfd",
+    "accepted": true,
+    "expected_warnings": [],
+    "expected_json": {
+      "Safe": "kept"
+    },
+    "reference": "reference.mfd"
+  }
+]
