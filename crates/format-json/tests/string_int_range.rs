@@ -1079,14 +1079,108 @@ fn native_integer_union_input_and_normalized_output_keep_tags() -> Result<(), Bo
 }
 
 #[test]
+fn string_float_single_endpoint_keeps_complete_schema_tags_and_range_errors()
+-> Result<(), Box<dyn Error>> {
+    const INPUT_SCHEMA: &str = r#"{"title":"Record","type":"object","properties":{"value":{"type":["string","number"],"minimum":2}},"required":["value"],"additionalProperties":false}"#;
+    const EXPECTED_MODEL: &str = r#"{"name":"Record","repeating":false,"kind":{"kind":"group","children":[{"name":"value","repeating":false,"numeric_range":{"kind":"number","bounds":{"minimum":{"value":2.0}}},"kind":{"kind":"scalar_union","types":["string","float"]}}],"required":["value"]}}"#;
+    let imported = json_schema::import_str(INPUT_SCHEMA);
+    let expected_model = serde_json::from_str::<SchemaNode>(EXPECTED_MODEL);
+    eprintln!(
+        "STRING_FLOAT_SINGLE_ENDPOINT_MODEL_ORIGINALS {}",
+        serde_json::json!({"schema_text":INPUT_SCHEMA,"expected_ir_text":EXPECTED_MODEL,
+            "import_original":original(&imported),"expected_model_original":format!("{expected_model:#?}")})
+    );
+    let expected_model = expected_model?;
+    let exported = json_schema::export(&expected_model);
+    let reimported = exported
+        .as_ref()
+        .ok()
+        .map(|text| json_schema::import_str(text));
+    let group = |value| Instance::Group(vec![("value".into(), Instance::Scalar(value))].into());
+    let cases = [
+        (
+            "boundary",
+            r#"{"value":2}"#,
+            group(Value::Float(2.0)),
+            "{\n  \"value\": 2.0\n}\n",
+        ),
+        (
+            "numeric-looking-string",
+            r#"{"value":"1"}"#,
+            group(Value::String("1".into())),
+            "{\n  \"value\": \"1\"\n}\n",
+        ),
+        (
+            "ordinary-string",
+            r#"{"value":"free"}"#,
+            group(Value::String("free".into())),
+            "{\n  \"value\": \"free\"\n}\n",
+        ),
+    ];
+    let actuals: Vec<_> = cases
+        .iter()
+        .map(|(_, input, value, _)| {
+            (
+                from_str(input, &expected_model),
+                to_string(&expected_model, value),
+            )
+        })
+        .collect();
+    let negative_input = from_str(r#"{"value":1}"#, &expected_model);
+    let negative_instance = group(Value::Float(1.0));
+    let negative_output = to_string(&expected_model, &negative_instance);
+    const INPUT_ERROR: &str = r#"{"variant":"RangeMismatch","name":"value","range":"[2, inf)","got":"1","display":"`value` requires numeric range [2, inf), got 1"}"#;
+    const OUTPUT_ERROR: &str = r#"{"variant":"RangeMismatch","name":"value","range":"[2, inf)","got":"1.0","display":"`value` requires numeric range [2, inf), got 1.0"}"#;
+    eprintln!(
+        "STRING_FLOAT_SINGLE_ENDPOINT_BOUNDARY_ORIGINALS {}",
+        serde_json::json!({"expected_schema":expected_model,"expected_export":INPUT_SCHEMA,
+            "export_original":original(&exported),"reimport_original":reimported.as_ref().map(original),
+            "positive_cases":cases.iter().zip(&actuals).map(|((name,input,expected,output),(read,write))|
+                serde_json::json!({"case":name,"input":input,"expected_instance":instance_original(expected),
+                    "expected_output":output,"read_original":original(read),"write_original":original(write)})).collect::<Vec<_>>(),
+            "negative_input":"{\"value\":1}","negative_output_input":instance_original(&negative_instance),
+            "expected_input_error":INPUT_ERROR,"expected_output_error":OUTPUT_ERROR,
+            "negative_input_original":original(&negative_input),"negative_output_original":original(&negative_output)})
+    );
+    assert_eq!(
+        imported.as_ref().ok(),
+        Some(&expected_model),
+        "{imported:#?}"
+    );
+    assert_eq!(
+        reimported.as_ref().and_then(|value| value.as_ref().ok()),
+        Some(&expected_model),
+        "{reimported:#?}"
+    );
+    assert_eq!(
+        exported
+            .as_ref()
+            .ok()
+            .map(|text| serde_json::from_str::<serde_json::Value>(text))
+            .transpose()?,
+        Some(serde_json::from_str(INPUT_SCHEMA)?)
+    );
+    for ((name, _, expected, output), (read, write)) in cases.iter().zip(&actuals) {
+        assert_eq!(read.as_ref().ok(), Some(expected), "{name}: {read:#?}");
+        assert_eq!(write.as_deref().ok(), Some(*output), "{name}: {write:#?}");
+    }
+    assert_eq!(
+        negative_input.as_ref().err().map(error_fields),
+        Some(serde_json::from_str(INPUT_ERROR)?),
+        "{negative_input:#?}"
+    );
+    assert_eq!(
+        negative_output.as_ref().err().map(error_fields),
+        Some(serde_json::from_str(OUTPUT_ERROR)?),
+        "{negative_output:#?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn broader_domains_and_correlated_or_duplicate_branches_stay_refused() -> Result<(), Box<dyn Error>>
 {
     let cases = [
-        (
-            r###"string-float"###,
-            r###"{"title":"Record","type":"object","properties":{"value":{"type":["string","number"],"minimum":2}},"required":["value"],"additionalProperties":false}"###,
-            r###"{"variant":"UnsupportedSchemaUnion","name":"value","reason":"numeric ranges on general scalar unions are not yet supported","display":"JSON Schema union `value` is not representable: numeric ranges on general scalar unions are not yet supported"}"###,
-        ),
         (
             r###"three-domains"###,
             r###"{"title":"Record","type":"object","properties":{"value":{"type":["string","integer","number"],"minimum":2}},"required":["value"],"additionalProperties":false}"###,
