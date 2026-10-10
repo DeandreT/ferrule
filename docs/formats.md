@@ -214,7 +214,15 @@ layout and dialect details that an extension cannot express.
   scalars, including nullable scalar wrappers. Integer constraints normalize to
   one exact inclusive `i64` interval; number constraints retain inclusive or
   exclusive finite endpoints and reject intervals containing no representable
-  finite value. Import accepts both modern numeric exclusive bounds and Draft 4
+  finite value. Signed 64-bit integer JSON tokens on `number` boundaries
+  normalize to the nearest binary64 endpoint with the inclusion flag that
+  preserves the exact original inequality over Float values. This includes
+  endpoints beyond binary64's contiguous integer precision and both signed
+  extremes; an exact endpoint retains its original inclusion flag. Instance
+  and constant precision checks remain separate from boundary normalization.
+  Decimal endpoints and unsigned endpoints outside the signed domain retain
+  their finite-number admission rules. Import accepts both modern numeric
+  exclusive bounds and Draft 4
   boolean exclusives regardless of the declared dialect for interoperability;
   export emits the canonical normalized form. Positive finite `multipleOf`
   divisors are retained as canonical decimal coefficients and exponents, with

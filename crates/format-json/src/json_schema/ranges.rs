@@ -630,12 +630,12 @@ fn number_range(
 ) -> Result<Option<NumberRange>, JsonFormatError> {
     let mut minimum = None;
     for bound in lower {
-        let candidate = number_bound(name, *bound)?;
+        let candidate = number_bound(name, *bound, true)?;
         minimum = stricter_minimum(minimum, Some(candidate));
     }
     let mut maximum = None;
     for bound in upper {
-        let candidate = number_bound(name, *bound)?;
+        let candidate = number_bound(name, *bound, false)?;
         maximum = stricter_maximum(maximum, Some(candidate));
     }
     match (minimum, maximum) {
@@ -646,7 +646,28 @@ fn number_range(
     }
 }
 
-fn number_bound(name: &str, bound: RawBound<'_>) -> Result<NumberBound, JsonFormatError> {
+fn number_bound(
+    name: &str,
+    bound: RawBound<'_>,
+    lower: bool,
+) -> Result<NumberBound, JsonFormatError> {
+    if let Some(integer) = bound.value.as_i64() {
+        let rounded = integer as f64;
+        let value = FiniteF64::new(rounded)
+            .ok_or_else(|| unsupported(name, "numeric bound must be a supported finite number"))?;
+        // The rounded Float is integral and fits i128, including +2^63.
+        // Compare in the exact wider domain, not against a second f64 cast.
+        let exclusive = match (rounded as i128).cmp(&i128::from(integer)) {
+            std::cmp::Ordering::Less => lower,
+            std::cmp::Ordering::Greater => !lower,
+            std::cmp::Ordering::Equal => bound.exclusive,
+        };
+        return Ok(if exclusive {
+            NumberBound::exclusive(value)
+        } else {
+            NumberBound::inclusive(value)
+        });
+    }
     let value = finite_bound_value(name, bound.value)?;
     if bound.value.as_i64().is_none()
         && bound.value.as_u64().is_none()
