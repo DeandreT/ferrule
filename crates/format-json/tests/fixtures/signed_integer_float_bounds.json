@@ -1032,7 +1032,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[9223372036854775808, inf)",
+      "range_text": "[9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1064,7 +1064,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[9223372036854775808, inf)",
+      "range_text": "[9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1096,7 +1096,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[9223372036854775808, inf)",
+      "range_text": "[9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1128,7 +1128,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[9223372036854775808, inf)",
+      "range_text": "[9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1160,7 +1160,7 @@
         "bits": "43e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, 9223372036854775808)",
+      "range_text": "(-inf, 9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1192,7 +1192,7 @@
         "bits": "43e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, 9223372036854775808)",
+      "range_text": "(-inf, 9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1224,7 +1224,7 @@
         "bits": "43e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, 9223372036854775808)",
+      "range_text": "(-inf, 9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1256,7 +1256,7 @@
         "bits": "43e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, 9223372036854775808)",
+      "range_text": "(-inf, 9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1288,7 +1288,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1320,7 +1320,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1352,7 +1352,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1384,7 +1384,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1416,7 +1416,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1448,7 +1448,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1480,7 +1480,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -1512,7 +1512,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2056,7 +2056,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[-9223372036854775808, inf)",
+      "range_text": "[-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2088,7 +2088,7 @@
         "exclusive": false
       },
       "maximum": null,
-      "range_text": "[-9223372036854775808, inf)",
+      "range_text": "[-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2120,7 +2120,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2152,7 +2152,7 @@
         "exclusive": true
       },
       "maximum": null,
-      "range_text": "(-9223372036854775808, inf)",
+      "range_text": "(-9223372036854776000, inf)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2184,7 +2184,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2216,7 +2216,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "(-inf, -9223372036854775808]",
+      "range_text": "(-inf, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2248,7 +2248,7 @@
         "bits": "c3e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, -9223372036854775808)",
+      "range_text": "(-inf, -9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2280,7 +2280,7 @@
         "bits": "c3e0000000000000",
         "exclusive": true
       },
-      "range_text": "(-inf, -9223372036854775808)",
+      "range_text": "(-inf, -9223372036854776000)",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -2882,7 +2882,7 @@
         "bits": "c3e0000000000000",
         "exclusive": false
       },
-      "range_text": "[-9223372036854775808, -9223372036854775808]",
+      "range_text": "[-9223372036854776000, -9223372036854776000]",
       "exported": {
         "title": "Boundary",
         "type": "number",
@@ -3390,7 +3390,7 @@
         },
         "accepted": true,
         "failed_field": "SignedUpper",
-        "range_text": "(-inf, 9223372036854775808)",
+        "range_text": "(-inf, 9223372036854776000)",
         "raw_value": "9223372036854774784"
       },
       {
@@ -3410,7 +3410,7 @@
         },
         "accepted": false,
         "failed_field": "SignedUpper",
-        "range_text": "(-inf, 9223372036854775808)",
+        "range_text": "(-inf, 9223372036854776000)",
         "raw_value": "9223372036854775808"
       },
       {
@@ -3430,7 +3430,7 @@
         },
         "accepted": false,
         "failed_field": "SignedUpper",
-        "range_text": "(-inf, 9223372036854775808)",
+        "range_text": "(-inf, 9223372036854776000)",
         "raw_value": "9223372036854777856"
       },
       {
@@ -3450,7 +3450,7 @@
         },
         "accepted": false,
         "failed_field": "SignedLower",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9.223372036854778e+18"
       },
       {
@@ -3470,7 +3470,7 @@
         },
         "accepted": false,
         "failed_field": "SignedLower",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9223372036854775808"
       },
       {
@@ -3490,7 +3490,7 @@
         },
         "accepted": true,
         "failed_field": "SignedLower",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9223372036854774784"
       },
       {
@@ -3510,7 +3510,7 @@
         },
         "accepted": false,
         "failed_field": "ExactMin",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9.223372036854778e+18"
       },
       {
@@ -3530,7 +3530,7 @@
         },
         "accepted": false,
         "failed_field": "ExactMin",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9223372036854775808"
       },
       {
@@ -3550,7 +3550,7 @@
         },
         "accepted": true,
         "failed_field": "ExactMin",
-        "range_text": "(-9223372036854775808, inf)",
+        "range_text": "(-9223372036854776000, inf)",
         "raw_value": "-9223372036854774784"
       },
       {
