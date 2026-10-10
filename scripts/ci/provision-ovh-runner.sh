@@ -24,6 +24,13 @@ check_runner_paths() {
   done
 }
 
+extract_runner_archive() {
+  # The download remains root-owned and read-only to the CI account.
+  # Extract with that account's permissions into its user-controlled tree.
+  chmod 644 "$1"
+  runuser -u "$runner_user" -- /usr/bin/tar -xzf "$1" -C "$runner_dir" --no-same-owner
+}
+
 if [[ ! -f $script_dir/guard-ovh-job.sh ]]; then
   echo 'Copy guard-ovh-job.sh alongside this provisioning script.' >&2
   exit 1
@@ -67,7 +74,7 @@ usermod --shell /usr/sbin/nologin "$runner_user"
 chmod 700 "$runner_home"
 check_runner_paths "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet" \
   "$runner_home/ci-tmp" "$runner_dir/.path" "$runner_dir/.service" \
-  "$runner_dir/bin/runsvc.sh" "$runner_home/check-runtime.sh"
+  "$runner_dir/bin/runsvc.sh" "$runner_dir/runsvc.sh" "$runner_home/check-runtime.sh"
 
 apt-get update
 NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -88,8 +95,7 @@ if [[ ! -f $runner_dir/config.sh ]]; then
   curl --fail --location --retry 3 --output "$archive" \
     "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-x64-${runner_version}.tar.gz"
   printf '%s  %s\n' "$runner_sha256" "$archive" | sha256sum --check --status
-  tar -xzf "$archive" -C "$runner_dir" --no-same-owner
-  chown -R "$runner_user:$runner_user" "$runner_dir"
+  extract_runner_archive "$archive"
 fi
 
 if [[ ! -f $runner_home/.cargo/bin/rustup ]]; then

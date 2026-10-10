@@ -50,14 +50,15 @@ Private `/tmp` remains enabled for programs that ignore `TMPDIR`.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
 paths, or less than 16 GiB free for native CI and 8 GiB for codegen CI.
-The first native build used approximately
-13 GiB, mostly workspace test executables. It checks Xvfb and native build prerequisites
-before toolchain setup. Build outputs persist outside the cleaned checkout:
+The first native build used approximately 13 GiB, mostly workspace test
+executables. It checks Xvfb and native build prerequisites before toolchain setup.
 
 The XML process-custody tests receive the resolved GNU timeout path through
 `FERRULE_CODEGEN_GNU_TIMEOUT`. Ubuntu 26.04 provides `/usr/bin/gnutimeout`
 alongside its default uutils symlink. This keeps the actual executable's identity
 checks and bounded process commands consistent without changing system defaults.
+
+Build outputs persist outside the cleaned checkout:
 
 - `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds. After a
   successful job, `cargo clean --workspace` removes workspace outputs while
@@ -77,8 +78,8 @@ checks and bounded process commands consistent without changing system defaults.
 
 GitHub-hosted jobs continue to use the existing Actions Rust cache. OVH skips
 that archive cache to avoid duplicating persistent build outputs. Nightly Rust
-and .NET 10 are maintained through the existing setup actions. No permanent
-GitHub access token is installed on the server.
+and .NET 10 are maintained through the existing setup actions. No GitHub
+personal access token is installed on the server.
 Only test/build steps use sccache; clippy runs directly. Incremental Rust
 compilation stays disabled, as required by the compiler cache. Final runner
 diagnostics report cache hits and misses. The cache tool is root-owned and its
@@ -89,8 +90,9 @@ download has a pinned SHA-256, following the [upstream Rust cache contract](http
 The administrator needs SSH sudo access and permission to administer repository
 runners. The installer requires at least 8 GiB free, verifies the downloaded
 runner archive against its pinned SHA-256, installs Ubuntu build prerequisites
-and minimal nightly Rust, then registers the runner. Dependency installation
-does not automatically restart unrelated services.
+and minimal nightly Rust, then registers the runner. Archive extraction uses
+the CI account's permissions; root does not extract into its writable tree.
+Dependency installation does not automatically restart unrelated services.
 
 From a clean checkout with an authenticated GitHub CLI:
 
