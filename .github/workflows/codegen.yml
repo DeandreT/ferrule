@@ -40,6 +40,8 @@ jobs:
           persist-credentials: false
       - name: OVH build resources
         if: runner.environment == 'self-hosted'
+        env:
+          FERRULE_CI_SUITE: codegen
         run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@nightly
         with:
@@ -81,6 +83,6 @@ jobs:
         run: |
           df -h
           free -h
-          if [ "$RUNNER_ENVIRONMENT" = self-hosted ]; then
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
             /opt/ferrule-runner-tools/sccache --show-stats
           fi
