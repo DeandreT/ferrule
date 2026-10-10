@@ -151,6 +151,15 @@ pub(super) fn validate_scope(
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
 
+    if matches!(&scope.construction, ScopeConstruction::Constructed)
+        && target.is_some_and(|node| !matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        issues.push(ValidationIssue::new(
+            &location,
+            "constructed scope requires a group target schema",
+        ));
+    }
+
     if let ScopeConstruction::Scalar { value } = &scope.construction {
         if target.is_none_or(|node| !node.is_scalar()) {
             issues.push(ValidationIssue::new(
