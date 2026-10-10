@@ -606,6 +606,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "sql_like",
         "pad_string_left",
         "pad_string_right",
+        "format_guid_string",
         "isbn10_to_isbn13",
         "round",
         "delay_passthrough",
