@@ -23,6 +23,9 @@ const SHIPMENT_EXPECTED: &str = include_str!("x12/shipment-945-expected.x12");
 const IDENTITY_EXPECTED: &str = include_str!("x12/identity-940-expected.x12");
 const DEEP: &str = include_str!("x12/deep-940.x12");
 
+#[path = "x12/saved_profile.rs"]
+mod saved_profile;
+
 fn scalar(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
 }
@@ -273,6 +276,7 @@ fn order_policy() -> X12BoundaryPolicy {
                 rule(&["Detail", "W01", "W0105"], 0, 30, &[]),
                 rule(&["Detail", "W01", "W0116"], 0, 30, &[]),
             ],
+            ..Default::default()
         }),
         target: None,
     }
@@ -727,6 +731,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
                         release: None,
                     }),
                     constraints: vec![],
+                    ..Default::default()
                 }),
             },
         ),

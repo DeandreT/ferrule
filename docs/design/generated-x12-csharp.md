@@ -3,7 +3,7 @@
 Generated C# libraries can include an explicit raw X12 boundary around the
 ordinary typed mapping. The supported profile is one 004010 interchange,
 functional group and transaction. Source and target schemas, separators and
-value constraints are embedded in the generated source; execution does not
+selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
 
 ## Select the boundary
@@ -55,8 +55,10 @@ complete string or byte array; it does not publish files or transport messages.
 
 An X12 source also adds `ParseX12(string)` and `ParseX12Bytes(byte[])`, returning
 a `FerruleInstance`. An X12 target adds `SerializeX12(FerruleInstance)` and
-`SerializeX12Bytes(FerruleInstance)`. These helpers use the same embedded
-boundary contract as the mapping methods.
+`SerializeX12Bytes(FerruleInstance)`. Both target helpers also have overloads
+taking `FerruleExecutionContext`. These helpers use the same embedded boundary
+contract as the mapping methods. A contextual mapping method passes that same
+context to X12 output after the ordinary mapping succeeds.
 
 ## Schema and metadata
 
@@ -86,10 +88,35 @@ Supported schema metadata consists of fixed scalar values, String character
 length ranges and cardinality on repeating loops or segments. Embedded EDI
 value constraints retain their scalar paths, minimum/maximum character lengths
 and exact code lists. Constraint paths must resolve to declared leaves. Other
-IR metadata, leniency, release/repetition characters, implied decimals,
-lexical compaction and autocomplete options are refused rather than silently
-discarded. External configuration must already be resolved into the admitted
-schema and options.
+IR metadata is refused. External configuration must already be resolved into
+the admitted schema and options; unresolved references remain a generation error.
+
+Selected format metadata has explicit directionality:
+
+| Retained option | X12 input | X12 output |
+| --- | --- | --- |
+| `lenient_segments` | Skip unknown IDs while preserving every segment ID declared in the admitted layout for validation | Inactive |
+| `edi_implied_decimals` | Divide a Float leaf by its configured power of ten once, including repeated instances; preserve Null | Inactive |
+| `edi_lexical_formats` | Inactive | Compact configured dates, times and plain decimals in a private output view |
+| `EdiAutocomplete::X12` | Inactive | Complete selected empty envelope fields and trailers using an explicit execution context |
+
+Every retained path resolves to a scalar; duplicate, absent and nonleaf paths
+fail admission. Active input implied-decimal paths require Float leaves and
+one through eighteen places. Inactive output paths require Int or Float.
+Output date and time formats require String leaves; decimal formats accept
+String, Int or Float. Inactive input lexical paths still resolve to scalars.
+Compact-time widths are within four through eight digits; decimal maximum
+lengths are within one through 255 characters. Each option collection has at
+most 10,000 paths, each with at most 64 components.
+
+Descriptors retain `lenient_segments`, `implied_decimals`, `lexical_formats` and
+`autocomplete`; omitted fields retain strict defaults. Unknown or malformed
+descriptor fields fail before wire traversal. The optional autocomplete object
+contains `request_acknowledgement` and an optional `transaction_set`. A selected
+transaction set is three ASCII digits and agrees with a nonempty fixed target
+ST01. This check uses the actual transaction segment; positional element and
+composite names do not establish segment ownership. Other autocomplete
+dialects and interchange versions remain refused.
 
 The schema contains exactly one each of ISA, GS, ST, SE, GE and IEA, in that
 order and outside repeating loops. They have exactly 16, 8, 2, 2, 2 and 2
@@ -97,14 +124,21 @@ String fields respectively. ISA12 is fixed to `00401`; GS08 is fixed to
 `004010`. String envelope fields preserve lexical controls and identifiers,
 including leading zeros. Static qualifiers and fixed values are validated on
 both input and output. Declared fixed literals may materialize from their schema
-metadata. Controls must still be supplied as nonempty String values; fixed
-metadata does not allocate a control or obtain a date/time from a clock.
+metadata. Without selected completion, controls must still be supplied as
+nonempty String values; fixed metadata does not allocate a control or obtain a
+date/time from a clock.
 
-The generated boundary consumes the complete interchange. Undeclared segments,
-extra elements or components, ambiguous unsupported shapes and mismatched
-qualifiers fail. An EDI constraint with a positive minimum length also rejects
-an empty or missing value. This strict profile does not inherit the native
-adapter's lenient handling of extra fields or missing Null constraints.
+The generated boundary consumes the complete interchange. Strict input rejects
+undeclared segments. Selected lenient input skips only IDs absent from the
+admitted layout. Declared segments in the wrong position or with a wrong fixed
+qualifier remain visible and are refused by schema or loop-cardinality validation;
+a matching declared segment's malformed value remains an error. Valid qualified
+optional and repeating segments retain their ordered owners. This generated
+malformed-segment guarantee is stricter than the native
+reader's qualifier-based skip behavior.
+Extra elements or components, ambiguous unsupported shapes and mismatched
+required qualifiers fail. An EDI constraint with a positive minimum length also
+rejects an empty or missing value; leniency does not relax scalar constraints.
 
 ## Physical syntax and envelope
 
@@ -117,7 +151,9 @@ configured separators against it.
 
 Element and component separators are distinct visible ASCII punctuation.
 The segment terminator is a third distinct punctuation character or LF.
-Release and repetition syntax are outside this 004010 profile. Formatting
+Release syntax is outside this 004010 profile. A configured repetition character
+may be retained as distinct visible ASCII punctuation, but is inactive under
+00401: ISA11 remains `U`, and elements are not split on that character. Formatting
 whitespace is allowed between completed segments; control characters inside a
 segment fail. Data containing an unrepresentable separator cannot be escaped
 or substituted by this adapter.
@@ -133,17 +169,41 @@ native comparison. The generated companion receives unpadded text and applies
 its fixed-width encoding. Both paths compare against the same independent
 complete 945 byte oracle.
 
-The host supplies all envelope controls, dates, times and trailer counts.
+Without selected completion, the host supplies all envelope controls, dates,
+times and trailer counts.
 The boundary validates the single ISA/GS/ST and matching SE/GE/IEA ordering,
 lexical control shapes, matching controls and exact transaction/group counts.
 ISA06/ISA08 and GS02/GS03 require nonblank sender and receiver identities.
 Envelope dates must be valid calendar dates: ISA's `YYMMDD` uses the `20YY`
 century, and GS uses `CCYYMMDD`. ISA time is `HHmm`; GS time is `HHmm`,
 `HHmmss`, or `HHmmss` followed by one or two fractional digits. Hours, minutes
-and seconds must be valid clock values. The adapter does not allocate
-controls, read the clock, repair counts or generate
-acknowledgments. Hosts that retry or transport output own durable control
-allocation and retention of the resulting bytes.
+and seconds must be valid clock values.
+
+Selected X12 completion requires a supplied `FerruleExecutionContext.CurrentDateTime`
+with a valid calendar date and clock time, an optional decimal fraction, and an
+optional `Z` or `±HH:MM` timezone within the XML dateTime offset range. It never
+obtains the current time from a clock. This generated validity check is stricter than native completion's
+timestamp-prefix check. It fills completion-owned empty
+fields, supplies deterministic local fallback controls, and materializes missing
+SE/GE/IEA instances in the declared schema. Sender and receiver identities remain
+caller supplied. Nonempty controls and counts are preserved and must satisfy the
+final envelope checks. Completion does not repair a supplied wrong count or
+control and does not generate acknowledgments. Hosts that retry or transport
+output own durable control allocation and retention of the resulting bytes.
+Under completion, GS05 must contain exactly six compact time digits. Ordinary
+output retains its four-, six-, seven- and eight-digit GS time forms.
+
+Output first formats a private view, then performs selected completion, then
+checks fixed values, lengths, code lists and the complete encoded envelope.
+A missing or Null lexical leaf remains available for selected completion.
+An empty String date or time with a selected lexical format fails with `Value`;
+completion does not bypass that formatting rule. Other completion-owned empty
+String fields remain eligible for their defaults. A malformed lexical value
+therefore fails before a missing or malformed completion
+timestamp, which is an `Envelope` error at the completion step. Mapping failure
+still precedes output processing. Ordinary profiles retain their missing-data
+rules. Native lexical and completion helpers define the individual formatting
+contracts; the generated final-constraint ordering has its own error precedence.
 
 ## Bounds and failures
 
@@ -156,11 +216,16 @@ allocation and retention of the resulting bytes.
 | Schema nodes, at generation and runtime | 10,000 |
 | Elements or components in one positional collection | 1,024 |
 | Segments | 100,000 |
-| Repeated loop/segment instances, shared across collections | 100,000 |
-| Runtime traversal nodes | 1,000,000 |
+| Repeated loop/segment instances, shared across collections within each stage | 100,000 |
+| Runtime traversal nodes per stage | 1,000,000 |
 
 Limits bound admission and traversal. Parsing and serialization still materialize
 the complete document; these are not a streaming API or a process-memory cap.
+The lexical view, completion trailer population, completion replacement and
+final writer each use an independent bounded traversal budget. Strict output
+and inactive reading metadata bypass the private preprocessing views.
+Completion counts all retained envelope field slots before cloning a header or
+trailer, including unknown slots when no lexical formatting is selected.
 The shared descriptor codec also applies its JSON container-depth ceiling;
 each nested schema group introduces several JSON containers, so a constructed
 tree below the schema-node depth limit can still exceed the descriptor limit.
@@ -188,24 +253,30 @@ native order values and shipment bytes, checks descriptor-depth admission, and
 separately compiles fresh standalone C# libraries for source, target and both-side
 profiles. Its compiled cohort invokes text, byte, execution-context and direct
 helper methods, with ordinary typed/JSON controls and failure fixtures.
+Saved-profile fixtures compare complete values and scalar types, literal wire
+bytes, typed failures and failure ordering for native helpers and generated
+public APIs separately. They cover selected reading, numeric scaling,
+formatting and completion metadata, with strict and inactive-option controls.
 
-Run the native and descriptor tests with the repository's nightly toolchain:
+The ordinary integration run includes native and descriptor checks plus the
+freshly generated saved-profile public-host cohort. It requires `dotnet` on
+PATH with the .NET 10 SDK and targeting pack installed:
 
 ```sh
 cargo +nightly test -p codegen-csharp --test x12_dotnet
 ```
 
-The compiled cohort is explicitly ignored in an ordinary test run. It requires
-`dotnet` on PATH with the .NET 10 SDK and targeting pack installed. The generated
-libraries and harness are package-free; their build clears NuGet package sources
-and disables runtime-pack downloads. Run that cohort explicitly:
+The additional strict source/target/both-side compiled cohort is explicitly
+ignored in an ordinary test run. The generated libraries and harnesses are
+package-free; their builds clear NuGet package sources and disable runtime-pack
+downloads. Run that additional cohort explicitly:
 
 ```sh
 cargo +nightly test -p codegen-csharp --test x12_dotnet -- --ignored
 ```
 
-The target prints its owned `ferrule_x12_native_*` or `ferrule_x12_cohort_*`
-temporary evidence directory. Complete fixtures, generated source, command
+The target prints its owned temporary evidence directories for native,
+saved-profile and strict-cohort qualification. Complete fixtures, generated source, command
 outcomes, stdout/stderr and produced artifacts are retained before comparisons,
 including failed runs. Keep those directories when investigating a failure;
 source emission alone does not establish compiled execution. Direct runtime
