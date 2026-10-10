@@ -295,6 +295,235 @@ execution-context variants matching the typed APIs. The host implements
 bytes. Generated adapters require strict UTF-8, parse each document against the
 correct embedded dynamic-source schema, and then invoke the same typed mapping.
 
+### Select one JSON target
+
+Use a selected-target method when the host needs one primary or named JSON
+document. `TargetSelection::Primary` in Rust and
+`FerruleTargetSelection.Primary()` in C# select the primary target.
+`TargetSelection::Named("report")` and
+`FerruleTargetSelection.Named("report")` select a declared named target by its
+exact name. Matching is ordinal and case-sensitive; names are not trimmed or
+Unicode-normalized.
+
+| Boundary | Rust method | C# method |
+| --- | --- | --- |
+| Text | `execute_json_selected_target` | `ExecuteJsonSelectedTarget` |
+| UTF-8 bytes | `execute_json_bytes_selected_target` | `ExecuteJsonBytesSelectedTarget` |
+| Text with named inputs, execution context and loader | `execute_json_selected_target_with_host` | `ExecuteJsonSelectedTargetWithHost` |
+| Bytes with named inputs, execution context and loader | `execute_json_bytes_selected_target_with_host` | `ExecuteJsonBytesSelectedTargetWithHost` |
+| Text with scalar-sequence limits and cancellation | `execute_json_selected_target_with_filter_map_controls` | Use `ExecuteJsonSelectedTargetWithHost` with a configured execution context |
+| Bytes with scalar-sequence limits and cancellation | `execute_json_bytes_selected_target_with_filter_map_controls` | Use `ExecuteJsonBytesSelectedTargetWithHost` with a configured execution context |
+
+The simple methods supply no named inputs. For a mapping with static named
+sources, use a host method and supply the complete declared input set, including
+sources unused by the selected target. Missing, duplicate and unexpected names
+are checked before JSON decoding. After name admission, the primary document
+and **all static named documents** are parsed against their embedded schemas.
+Dynamic sources are supplied through the loader, rather than this static set.
+
+An unknown target is rejected before input admission, JSON parsing, failure
+rules or loader calls. C# first checks `source` and `selection` for null, resolves the target, then
+checks `extraSources` for null before name admission.
+After input parsing, global failure rules run once in declaration order, then
+only the selected target is constructed and serialized with that target's
+schema. A global failure rule can itself request a dynamic source or charge
+scalar-sequence work. Selection skips dynamic loads reached solely from
+unselected targets; it does not skip global failure rules or static admission.
+
+```mermaid
+flowchart TD
+    A[Resolve exact target] --> B[Admit complete static input names]
+    B --> C[Parse primary and all static documents]
+    C --> D[Evaluate ordered global failure rules]
+    D --> E[Construct selected target]
+    E --> F[Serialize with selected target schema]
+    F --> G[Return Primary or Named document]
+    A -->|Unknown target| X[Typed failure]
+    B -->|Invalid input set| X
+    C -->|Invalid document| X
+    D -->|Failure| X
+    E -->|Failure| X
+    F -->|Failure| X
+```
+
+The following simple examples assume no static named inputs, and that the
+mapping declares the named target `report`. Rust text results are
+`SelectedJsonTargetOutput::Primary(String)` or
+`SelectedJsonTargetOutput::Named(NamedJsonOutput)`. Byte results are
+`SelectedJsonBytesTargetOutput::Primary(Vec<u8>)` or
+`SelectedJsonBytesTargetOutput::Named(NamedJsonBytesOutput)`. Both named output
+structs retain the exact `name` and the owned `document`.
+
+```rust
+use ferrule_generated_mapping::{
+    SelectedJsonBytesTargetOutput, SelectedJsonTargetOutput, TargetSelection,
+};
+
+let primary = ferrule_generated_mapping::execute_json_selected_target(
+    source_json,
+    TargetSelection::Primary,
+)?;
+match primary {
+    SelectedJsonTargetOutput::Primary(document) => publish(document),
+    SelectedJsonTargetOutput::Named(output) => {
+        publish_named(output.name, output.document);
+    }
+}
+
+let report = ferrule_generated_mapping::execute_json_bytes_selected_target(
+    source_bytes,
+    TargetSelection::Named("report"),
+)?;
+match report {
+    SelectedJsonBytesTargetOutput::Primary(document) => publish_bytes(document),
+    SelectedJsonBytesTargetOutput::Named(output) => {
+        publish_named_bytes(output.name, output.document);
+    }
+}
+```
+
+C# text results are `SelectedJsonTargetOutput.Primary` with a `Document`, or
+`SelectedJsonTargetOutput.Named` with an `Output` containing `Name` and
+`Document`. The byte result types expose the same properties with `byte[]`
+documents; text documents are .NET strings.
+
+```csharp
+using Ferrule.Runtime;
+
+var primary = GeneratedMapping.ExecuteJsonSelectedTarget(
+    sourceJson, FerruleTargetSelection.Primary());
+switch (primary)
+{
+    case SelectedJsonTargetOutput.Primary primaryOutput:
+        Publish(primaryOutput.Document);
+        break;
+    case SelectedJsonTargetOutput.Named namedOutput:
+        PublishNamed(namedOutput.Output.Name, namedOutput.Output.Document);
+        break;
+}
+
+var report = GeneratedMapping.ExecuteJsonBytesSelectedTarget(
+    sourceBytes, FerruleTargetSelection.Named("report"));
+switch (report)
+{
+    case SelectedJsonBytesTargetOutput.Primary primaryOutput:
+        PublishBytes(primaryOutput.Document);
+        break;
+    case SelectedJsonBytesTargetOutput.Named namedOutput:
+        PublishNamedBytes(namedOutput.Output.Name, namedOutput.Output.Document);
+        break;
+}
+```
+
+Host variants retain the existing execution-context and dynamic-loader
+contracts. In Rust, the argument order is document, named inputs, optional
+execution context, optional JSON loader, then selection:
+
+```rust
+let report = ferrule_generated_mapping::execute_json_selected_target_with_host(
+    source_json,
+    &[ferrule_generated_mapping::NamedJsonInput {
+        name: "catalog",
+        document: catalog_json,
+    }],
+    Some(&execution),
+    Some(&loader),
+    TargetSelection::Named("report"),
+)?;
+```
+
+The byte host method takes `&[u8]` and `NamedJsonBytesInput` in the same order.
+C# places selection immediately after the document, followed by the named
+inputs and the optional context and loader:
+
+```csharp
+var report = GeneratedMapping.ExecuteJsonSelectedTargetWithHost(
+    sourceJson,
+    FerruleTargetSelection.Named("report"),
+    new[] { new NamedJsonInput("catalog", catalogJson) },
+    executionContext: executionContext,
+    loader: loader);
+```
+
+The C# byte host method takes `byte[]` and `NamedJsonBytesInput` with the same
+argument order. These host examples assume that `catalog` is the complete
+static named-source set. The loader implements Rust's
+`DynamicJsonSourceLoader` or C#'s `IFerruleDynamicJsonSourceLoader` and returns
+bytes for reached dynamic requests.
+
+Rust methods return `JsonBoundaryError`. Target and mapping errors are retained
+as `JsonBoundaryError::Execution(RuntimeError)`, including
+`RuntimeError::UnknownTarget { name }`; malformed documents and invalid or
+oversized output retain their boundary variants. C# keeps typed
+`FerruleRuntimeException.Error` categories such as `UnknownTarget` and
+`JsonBoundary`, and scalar-sequence failures retain their existing
+`FerruleFilterMapException` boundary and inner cause. Inspect these structured
+errors rather than matching message text.
+
+Rust's controlled variants add `FilterMapLimits` and an optional
+`FilterMapCancellation` after selection. They return
+`Result<FilterMapExecution<SelectedJsonTargetOutput, JsonBoundaryError>,
+JsonBoundaryError>`, or the corresponding byte output type. Resolution,
+static-name admission and JSON parsing failures are outer `Err` values before
+an execution run exists. Once a run starts, its `outcome` can be `Err` for a
+failure rule, selected evaluation or selected output serialization, while its
+`counters` remain available:
+
+```rust
+use codegen_runtime::FilterMapLimits;
+
+let attempt =
+    ferrule_generated_mapping::execute_json_selected_target_with_filter_map_controls(
+        source_json,
+        &[ferrule_generated_mapping::NamedJsonInput {
+            name: "catalog",
+            document: catalog_json,
+        }],
+        None,
+        None,
+        TargetSelection::Named("report"),
+        FilterMapLimits::default(),
+        None,
+    )?;
+let counters = attempt.counters;
+match attempt.outcome {
+    Ok(output) => publish_selected(output),
+    Err(error) => report_failure(&error, counters),
+}
+```
+
+`counters.source_items` and `counters.work` describe charged scalar-sequence
+work. Each call creates fresh run state shared across its reached scopes;
+these counters are not allocation or whole-process memory measurements.
+Cancellation is the existing synchronous boundary checker supplied by the
+host. C# uses the same existing controls through its execution context and
+continues to return a document or throw a typed exception:
+
+```csharp
+var controlledContext = executionContext
+    .WithFilterMapLimits(FerruleFilterMapLimits.Default)
+    .WithFilterMapCancellation(cancellationChecker);
+var report = GeneratedMapping.ExecuteJsonSelectedTargetWithHost(
+    sourceJson,
+    FerruleTargetSelection.Named("report"),
+    new[] { new NamedJsonInput("catalog", catalogJson) },
+    executionContext: controlledContext,
+    loader: loader);
+```
+
+`cancellationChecker` implements `IFerruleFilterMapCancellation`. Limits retain
+the existing fixed ceilings and can be lowered through the runtime's limits
+constructors. See [route-specific limits](memory-and-limits.md#limits-are-route-specific)
+and the [JSON validation and document limits](#json-validation-and-document-limits)
+below. These methods parse complete input documents and return an owned complete
+output document; the document ceiling is not a total memory budget.
+
+The existing singular `execute_json` / `ExecuteJson` and all-output methods
+keep their evaluation behavior. Choose a selected-target method explicitly to
+avoid constructing unselected targets.
+
+### JSON validation and document limits
+
 Each JSON input and output document is limited to 64 MiB, and each trusted
 embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
 conversion, output serialization, and size failures remain typed boundary
