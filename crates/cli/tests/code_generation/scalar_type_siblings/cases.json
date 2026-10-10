@@ -1,0 +1,1751 @@
+{
+  "contract": "Full typed identity and complete normalized JSON documents; exact established public InvalidInput/JsonBoundary errors. Literal expectations authored before implementation execution.",
+  "source_schema": {
+    "title": "Record",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "any",
+      "broader",
+      "finite",
+      "finite_one",
+      "float_number",
+      "integer_number",
+      "nullable",
+      "nullable_many",
+      "nullable_one",
+      "one"
+    ],
+    "properties": {
+      "any": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "broader": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "integer",
+          "number",
+          "object",
+          "array",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "finite": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "enum": [
+              "amber",
+              "blue"
+            ]
+          },
+          {
+            "const": true
+          },
+          {
+            "const": null
+          }
+        ]
+      },
+      "finite_one": {
+        "title": "Choice",
+        "type": "string",
+        "oneOf": [
+          {
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          {
+            "enum": [
+              "b",
+              "c"
+            ]
+          }
+        ]
+      },
+      "float_number": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "integer_number": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ]
+      },
+      "nullable": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nullable_many": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nullable_one": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "one": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      }
+    }
+  },
+  "expected_model": {
+    "name": "Record",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "any",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          }
+        },
+        {
+          "name": "broader",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          }
+        },
+        {
+          "name": "finite",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          },
+          "nullable": true,
+          "json_allowed_values": [
+            {
+              "type": "json_null"
+            },
+            {
+              "type": "bool",
+              "value": true
+            },
+            {
+              "type": "string",
+              "value": "amber"
+            },
+            {
+              "type": "string",
+              "value": "blue"
+            }
+          ]
+        },
+        {
+          "name": "finite_one",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "json_allowed_values": [
+            {
+              "type": "string",
+              "value": "a"
+            },
+            {
+              "type": "string",
+              "value": "c"
+            }
+          ]
+        },
+        {
+          "name": "float_number",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "float"
+            ]
+          }
+        },
+        {
+          "name": "integer_number",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "int"
+            ]
+          }
+        },
+        {
+          "name": "nullable",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "nullable_many",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          },
+          "nullable": true
+        },
+        {
+          "name": "nullable_one",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          },
+          "nullable": true
+        },
+        {
+          "name": "one",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar_union",
+            "types": [
+              "string",
+              "bool"
+            ]
+          }
+        }
+      ],
+      "required": [
+        "any",
+        "broader",
+        "finite",
+        "finite_one",
+        "float_number",
+        "integer_number",
+        "nullable",
+        "nullable_many",
+        "nullable_one",
+        "one"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "any-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "any-1",
+      "input": "{\"any\":true,\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "bool",
+          "value": true
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": true,
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "any-2",
+      "input": "{\"any\":17,\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`any`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'any' expected declared scalar union, got Number.",
+        "detail": "JSON field 'any' expected declared scalar union, got Number."
+      }
+    },
+    {
+      "id": "any-3",
+      "input": "{\"any\":null,\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`any`: expected declared scalar union, got null",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'any' expected declared scalar union, got Null.",
+        "detail": "JSON field 'any' expected declared scalar union, got Null."
+      }
+    },
+    {
+      "id": "broader-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "broader-1",
+      "input": "{\"any\":\"green\",\"broader\":17,\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`broader`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'broader' expected declared scalar union, got Number.",
+        "detail": "JSON field 'broader' expected declared scalar union, got Number."
+      }
+    },
+    {
+      "id": "broader-2",
+      "input": "{\"any\":\"green\",\"broader\":null,\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`broader`: expected declared scalar union, got null",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'broader' expected declared scalar union, got Null.",
+        "detail": "JSON field 'broader' expected declared scalar union, got Null."
+      }
+    },
+    {
+      "id": "broader-3",
+      "input": "{\"any\":\"green\",\"broader\":[],\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`broader`: expected declared scalar union, got array",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'broader' expected declared scalar union, got Array.",
+        "detail": "JSON field 'broader' expected declared scalar union, got Array."
+      }
+    },
+    {
+      "id": "finite-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "finite-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":true,\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "bool",
+          "value": true
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": true,
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "finite-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":null,\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "json_null"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": null,
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "finite-3",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":false,\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`finite` is not one of its JSON Schema allowed values",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON scalar 'finite' is not one of its declared allowed values: false.",
+        "detail": "JSON scalar 'finite' is not one of its declared allowed values: false."
+      }
+    },
+    {
+      "id": "finite_one-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "finite_one-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"c\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "c"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "c",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "finite_one-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"b\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`finite_one` is not one of its JSON Schema allowed values",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON scalar 'finite_one' is not one of its declared allowed values: b.",
+        "detail": "JSON scalar 'finite_one' is not one of its declared allowed values: b."
+      }
+    },
+    {
+      "id": "float_number-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "float_number-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":3.25,\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "float",
+          "value": 3.25
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": 3.25,
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "float_number-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":false,\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`float_number`: expected declared scalar union, got bool",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'float_number' expected declared scalar union, got False.",
+        "detail": "JSON field 'float_number' expected declared scalar union, got False."
+      }
+    },
+    {
+      "id": "integer_number-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "integer_number-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":23,\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "int",
+          "value": 23
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": 23,
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "integer_number-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":3.25,\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`integer_number`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'integer_number' expected declared scalar union, got Number.",
+        "detail": "JSON field 'integer_number' expected declared scalar union, got Number."
+      }
+    },
+    {
+      "id": "nullable-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":null,\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "json_null"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": null,
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":true,\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`nullable`: expected string, got bool",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'nullable' expected string, got True.",
+        "detail": "JSON field 'nullable' expected string, got True."
+      }
+    },
+    {
+      "id": "nullable_many-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable_many-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":true,\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "bool",
+          "value": true
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": true,
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable_many-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":null,\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "json_null"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": null,
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable_many-3",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":17,\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`nullable_many`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'nullable_many' expected declared scalar union, got Number.",
+        "detail": "JSON field 'nullable_many' expected declared scalar union, got Number."
+      }
+    },
+    {
+      "id": "nullable_one-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable_one-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":null,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "json_null"
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": null,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "nullable_one-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":17,\"one\":\"violet\"}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`nullable_one`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'nullable_one' expected declared scalar union, got Number.",
+        "detail": "JSON field 'nullable_one' expected declared scalar union, got Number."
+      }
+    },
+    {
+      "id": "one-0",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":\"violet\"}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "string",
+          "value": "violet"
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": "violet"
+      }
+    },
+    {
+      "id": "one-1",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":false}",
+      "expected_values": {
+        "any": {
+          "kind": "string",
+          "value": "green"
+        },
+        "broader": {
+          "kind": "string",
+          "value": "broad"
+        },
+        "finite": {
+          "kind": "string",
+          "value": "amber"
+        },
+        "finite_one": {
+          "kind": "string",
+          "value": "a"
+        },
+        "float_number": {
+          "kind": "string",
+          "value": "ratio"
+        },
+        "integer_number": {
+          "kind": "string",
+          "value": "id"
+        },
+        "nullable": {
+          "kind": "string",
+          "value": "maybe"
+        },
+        "nullable_many": {
+          "kind": "string",
+          "value": "item"
+        },
+        "nullable_one": {
+          "kind": "bool",
+          "value": false
+        },
+        "one": {
+          "kind": "bool",
+          "value": false
+        }
+      },
+      "expected_json": {
+        "any": "green",
+        "broader": "broad",
+        "finite": "amber",
+        "finite_one": "a",
+        "float_number": "ratio",
+        "integer_number": "id",
+        "nullable": "maybe",
+        "nullable_many": "item",
+        "nullable_one": false,
+        "one": false
+      }
+    },
+    {
+      "id": "one-2",
+      "input": "{\"any\":\"green\",\"broader\":\"broad\",\"finite\":\"amber\",\"finite_one\":\"a\",\"float_number\":\"ratio\",\"integer_number\":\"id\",\"nullable\":\"maybe\",\"nullable_many\":\"item\",\"nullable_one\":false,\"one\":17}",
+      "expected_rust_error": {
+        "variant": "InvalidInput",
+        "message": "`one`: expected declared scalar union, got number",
+        "source": null
+      },
+      "expected_csharp_error": {
+        "error": "JsonBoundary",
+        "message": "JSON field 'one' expected declared scalar union, got Number.",
+        "detail": "JSON field 'one' expected declared scalar union, got Number."
+      }
+    }
+  ],
+  "expected_call_count": 34,
+  "expected_positive_count": 21
+}
