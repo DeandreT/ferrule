@@ -32,6 +32,21 @@ enum CodegenLanguage {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
+enum CodegenX12EnvelopeProfile {
+    SingleTransaction,
+    GroupedTransactions,
+}
+
+impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
+    fn from(profile: CodegenX12EnvelopeProfile) -> Self {
+        match profile {
+            CodegenX12EnvelopeProfile::SingleTransaction => Self::SingleTransaction,
+            CodegenX12EnvelopeProfile::GroupedTransactions => Self::GroupedTransactions,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
 enum MfdExportProfile {
     FerruleExtensions,
     NativeMfd,
@@ -154,9 +169,18 @@ enum Command {
         /// Include singular JSON5 text and UTF-8 byte companion methods.
         #[arg(long, conflicts_with = "csv_output")]
         json5_adapters: bool,
-        /// Include singular raw X12 004010 text and strict UTF-8 C# methods.
+        /// Include supported raw X12 text and strict UTF-8 C# methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
+        /// Explicit ownership grammar for the primary X12 source.
+        #[arg(long, value_enum, requires = "x12_adapters")]
+        x12_source_envelope_profile: Option<CodegenX12EnvelopeProfile>,
+        /// Explicit ownership grammar for the primary X12 target.
+        #[arg(long, value_enum, requires = "x12_adapters")]
+        x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
+        /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
+        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
+        static_document_adapters: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -620,7 +644,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_output,
             json5_adapters,
             x12_adapters,
+            x12_source_envelope_profile,
+            x12_target_envelope_profile,
+            static_document_adapters,
         } => {
+            if static_document_adapters && matches!(language, CodegenLanguage::Rust) {
+                bail!("--static-document-adapters currently requires --language csharp");
+            }
             if x12_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--x12-adapters currently requires --language csharp");
             }
@@ -637,8 +667,16 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if x12_adapters {
-                cli::generate_project_with_x12_adapters(&project, &out, target)?
+            let outcome = if static_document_adapters {
+                cli::generate_project_with_static_document_adapters(&project, &out, target)?
+            } else if x12_adapters {
+                cli::generate_project_with_x12_envelope_profiles(
+                    &project,
+                    &out,
+                    target,
+                    x12_source_envelope_profile.map(Into::into),
+                    x12_target_envelope_profile.map(Into::into),
+                )?
             } else if json5_adapters {
                 cli::generate_project_with_json5_adapters(&project, &out, target)?
             } else if csv_output {
@@ -816,4 +854,155 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
             .with_context(|| format!("invalid runtime parameter `{name}`"))?;
     }
     Ok(parameters)
+}
+
+#[cfg(test)]
+mod x12_envelope_flag_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_envelope_flags_require_the_x12_companion_and_known_values() {
+        for flag in [
+            "--x12-source-envelope-profile",
+            "--x12-target-envelope-profile",
+        ] {
+            let base = [
+                "ferrule",
+                "generate",
+                "--project",
+                "unused.json",
+                "--language",
+                "csharp",
+                "--out",
+                "unused-output",
+            ];
+            let mut absent = base.to_vec();
+            absent.extend([flag, "grouped-transactions"]);
+            let result = Cli::try_parse_from(&absent);
+            eprintln!(
+                "arguments={absent:?}; original outcome={:?}",
+                result.as_ref().err()
+            );
+            assert_eq!(
+                result.err().unwrap().kind(),
+                ErrorKind::MissingRequiredArgument
+            );
+            for value in ["single-transaction", "grouped-transactions"] {
+                let mut accepted = base.to_vec();
+                accepted.extend(["--x12-adapters", flag, value]);
+                let result = Cli::try_parse_from(&accepted);
+                eprintln!(
+                    "arguments={accepted:?}; original outcome={:?}",
+                    result.as_ref().err()
+                );
+                assert!(result.is_ok());
+            }
+            let mut invalid = base.to_vec();
+            invalid.extend(["--x12-adapters", flag, "automatic"]);
+            let result = Cli::try_parse_from(&invalid);
+            eprintln!(
+                "arguments={invalid:?}; original outcome={:?}",
+                result.as_ref().err()
+            );
+            assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidValue);
+        }
+    }
+
+    #[test]
+    fn grouped_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-grouped-x12-flag-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let output = root.join("absent-parent/output");
+        let args = vec![
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            root.join("absent-project.json").into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--x12-adapters"),
+            OsString::from("--x12-source-envelope-profile"),
+            OsString::from("grouped-transactions"),
+        ];
+        std::fs::write(root.join("ARGUMENTS.original.txt"), format!("{args:#?}")).unwrap();
+        let result = execute(Cli::try_parse_from(args).unwrap());
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--x12-adapters currently requires --language csharp"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
+}
+
+#[cfg(test)]
+mod static_document_flag_tests {
+    use super::*;
+
+    #[test]
+    fn static_document_flag_conflicts_with_other_optional_profiles() {
+        for option in ["--csv-output", "--json5-adapters", "--x12-adapters"] {
+            let args = [
+                "ferrule",
+                "generate",
+                "--project",
+                "unused.json",
+                "--language",
+                "csharp",
+                "--out",
+                "unused-output",
+                "--static-document-adapters",
+                option,
+            ];
+            let result = Cli::try_parse_from(args);
+            let error = result
+                .err()
+                .expect("mutually exclusive optional profiles were admitted");
+            eprintln!("arguments={args:?}; original clap error={error}");
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn static_document_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-static-document-flag-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let input = root.join("absent-project.json");
+        let output = root.join("absent-parent/output");
+        let args = vec![
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            input.into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--static-document-adapters"),
+        ];
+        std::fs::write(root.join("ARGUMENTS.original.txt"), format!("{args:#?}")).unwrap();
+        let result = execute(Cli::try_parse_from(args).unwrap());
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--static-document-adapters currently requires --language csharp"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
 }

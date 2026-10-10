@@ -1,0 +1,175 @@
+{
+  "kind": "Group",
+  "xml_origin": null,
+  "fields": [
+    {
+      "name": "ISA",
+      "value": {
+        "kind": "Group",
+        "xml_origin": null,
+        "fields": [
+          {
+            "name": "ISA01",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA02",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA03",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA04",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA05",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA06",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "SENDER-ALPHA   "
+            }
+          },
+          {
+            "name": "ISA07",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA08",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "RECEIVER-BETA  "
+            }
+          },
+          {
+            "name": "ISA09",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "300615"
+            }
+          },
+          {
+            "name": "ISA10",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "0945"
+            }
+          },
+          {
+            "name": "ISA11",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "^"
+            }
+          },
+          {
+            "name": "ISA12",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00501"
+            }
+          },
+          {
+            "name": "ISA13",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "000000321"
+            }
+          },
+          {
+            "name": "ISA14",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "0"
+            }
+          },
+          {
+            "name": "ISA15",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "T"
+            }
+          },
+          {
+            "name": "ISA16",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": ":"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FunctionalGroups",
+      "value": {
+        "kind": "Repeated",
+        "items": []
+      }
+    },
+    {
+      "name": "IEA",
+      "value": {
+        "kind": "Group",
+        "xml_origin": null,
+        "fields": [
+          {
+            "name": "IEA01",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "0"
+            }
+          },
+          {
+            "name": "IEA02",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "000000321"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ using System.Text;
 namespace Ferrule.Runtime;
 
 /// <summary>
-/// Optional package-free, strict UTF-8 004010 interchange parsing and writing.
+/// Optional package-free, strict UTF-8 single-envelope X12 parsing and writing.
 /// Limits bound documents and traversal; they do not promise a process-memory cap.
 /// </summary>
 public static partial class FerruleX12
@@ -34,11 +34,13 @@ public static partial class FerruleX12
         ArgumentNullException.ThrowIfNull(document);
         RequireUtf8(document, MaximumDocumentBytes, "X12 input");
         Profile profile = ParseProfile(descriptor, input: true);
-        Syntax syntax = DiscoverSyntax(document);
-        if (profile.Separators is { } selected && selected != syntax)
+        Syntax syntax = DiscoverSyntax(document, profile);
+        if (profile.Separators is { } selected && (selected.Element != syntax.Element
+            || selected.Component != syntax.Component || selected.Segment != syntax.Segment
+            || selected.Repetition is { } repetition && repetition != syntax.Repetition))
             throw Failure(FerruleX12Error.Syntax, "Configured separators do not match ISA.");
         List<Segment> segments = Tokenize(document, syntax);
-        ValidateEnvelope(segments);
+        ValidateEnvelope(segments, profile, syntax);
         var cursor = new Cursor(segments, syntax, profile);
         FerruleInstance result = ReadContainer(profile.Root, cursor, [], 0, [], root: true);
         if (cursor.Position != segments.Count)
@@ -65,7 +67,7 @@ public static partial class FerruleX12
     {
         ArgumentNullException.ThrowIfNull(document);
         Profile profile = ParseProfile(descriptor, input: false);
-        Syntax syntax = profile.Separators ?? new('*', ':', '~');
+        Syntax syntax = profile.OutputSyntax;
         FerruleInstance outputView = HasOutputLexical(profile.Root)
             ? FormatOutputView(profile.Root, document, [], new Budget(), 0)
             : document;
@@ -85,7 +87,7 @@ public static partial class FerruleX12
         }
         if (segments[0].Elements[15] != syntax.Component.ToString())
             throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.");
-        ValidateEnvelope(segments);
+        ValidateEnvelope(segments, profile, syntax);
         var output = new StringBuilder();
         long bytes = 0;
         foreach (Segment segment in segments)
@@ -96,7 +98,8 @@ public static partial class FerruleX12
             for (int index = 0; index < last; index++)
             {
                 string text = segment.Elements[index];
-                RequireOutputText(text, syntax, segment.Id == "ISA" && index == 15);
+                RequireOutputText(text, syntax, segment.Id == "ISA" && index == 15,
+                    segment.Id == "ISA" && index == 10);
                 Add(syntax.Element.ToString());
                 Add(text);
             }
@@ -115,10 +118,10 @@ public static partial class FerruleX12
         }
     }
 
-    private readonly record struct Syntax(char Element, char Component, char Segment);
+    private readonly record struct Syntax(char Element, char Component, char Segment, char? Repetition = null);
     private sealed record Segment(string Id, string[] Elements);
 
-    private static Syntax DiscoverSyntax(string text)
+    private static Syntax DiscoverSyntax(string text, Profile profile)
     {
         // Require the fixed-width ISA exactly at the boundary. A BOM or leading whitespace
         // is not silently removed from the caller's document.
@@ -131,7 +134,9 @@ public static partial class FerruleX12
             if (text[offset] != element) throw Failure(FerruleX12Error.Envelope, "ISA element widths are invalid.", 0);
             offset += 1 + IsaWidths[index];
         }
-        var syntax = new Syntax(element, text[104], text[105]);
+        if (profile.SelectedVersion.Modern && text[84..89] != profile.SelectedVersion.Interchange)
+            throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.");
+        var syntax = new Syntax(element, text[104], text[105], profile.SelectedVersion.Modern ? text[82] : null);
         ValidateSyntax(syntax);
         return syntax;
     }
@@ -141,7 +146,9 @@ public static partial class FerruleX12
         static bool Visible(char value) => value is >= '!' and <= '~' && !char.IsAsciiLetterOrDigit(value);
         if (!Visible(syntax.Element) || !Visible(syntax.Component)
             || !(Visible(syntax.Segment) || syntax.Segment == '\n')
-            || syntax.Element == syntax.Component || syntax.Element == syntax.Segment || syntax.Component == syntax.Segment)
+            || syntax.Element == syntax.Component || syntax.Element == syntax.Segment || syntax.Component == syntax.Segment
+            || syntax.Repetition is { } repetition && (!Visible(repetition) || repetition == syntax.Element
+                || repetition == syntax.Component || repetition == syntax.Segment))
             throw Failure(FerruleX12Error.Syntax, "X12 separators must be distinct ASCII punctuation; the segment terminator may be LF.");
     }
 
@@ -178,14 +185,24 @@ public static partial class FerruleX12
             if (id.Length is < 2 or > 3 || !char.IsAsciiLetterUpper(id[0])
                 || id.Any(character => !char.IsAsciiLetterUpper(character) && !char.IsAsciiDigit(character)))
                 throw Failure(FerruleX12Error.Syntax, "X12 segment identifiers must be two or three uppercase alphanumeric characters.", segments.Count);
+            if (syntax.Repetition is { } repetition)
+                for (int index = 1; index < parts.Count; index++)
+                    if (!(id == "ISA" && index == 11) && parts[index].Contains(repetition))
+                        throw Failure(FerruleX12Error.UnsupportedProfile,
+                            "Repeated X12 element values are outside the selected profile.", segments.Count);
             segments.Add(new(id, parts.Skip(1).ToArray()));
             start = end + 1;
         }
         return segments;
     }
 
-    private static void ValidateEnvelope(IReadOnlyList<Segment> segments)
+    private static void ValidateEnvelope(IReadOnlyList<Segment> segments, Profile profile, Syntax syntax)
     {
+        if (profile.Grouped is not null)
+        {
+            ValidateGroupedEnvelope(segments, profile, syntax);
+            return;
+        }
         string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
         var indexes = new int[6];
         for (int index = 0; index < ids.Length; index++)
@@ -206,8 +223,18 @@ public static partial class FerruleX12
         for (int index = 0; index < 16; index++)
             if (isa.Elements[index].Length != IsaWidths[index] || isa.Elements[index].Any(character => character > 127))
                 throw Failure(FerruleX12Error.Envelope, "ISA requires its declared ASCII widths.", 0);
-        if (isa.Elements[11] != "00401" || gs.Elements[7] != "004010" || isa.Elements[10] != "U")
-            throw Failure(FerruleX12Error.UnsupportedProfile, "Only the 00401/004010 envelope without element repetition is supported.");
+        if (!profile.SelectedVersion.Modern)
+        {
+            if (isa.Elements[11] != "00401" || gs.Elements[7] != "004010" || isa.Elements[10] != "U")
+                throw Failure(FerruleX12Error.UnsupportedProfile, "Only the 00401/004010 envelope without element repetition is supported.");
+        }
+        else
+        {
+            if (isa.Elements[11] != profile.SelectedVersion.Interchange || gs.Elements[7] != profile.SelectedVersion.Group)
+                throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.");
+            if (isa.Elements[10] != syntax.Repetition?.ToString())
+                throw Failure(FerruleX12Error.Syntax, "ISA11 must match the selected repetition separator.");
+        }
         if (!Digits(isa.Elements[12], 9, 9) || !Digits(gs.Elements[5], 1, 9) || !Digits(st.Elements[1], 4, 9))
             throw Failure(FerruleX12Error.Envelope, "X12 control numbers have invalid lexical shapes.");
         if (!Digits(st.Elements[0], 3, 3) || string.IsNullOrWhiteSpace(gs.Elements[0])
@@ -234,13 +261,179 @@ public static partial class FerruleX12
             && (value.Length == 4 || int.Parse(value[4..6], CultureInfo.InvariantCulture) < 60);
     }
 
+    private enum GroupedEnvelopeState { GroupOrEnd, TransactionOrEnd, Body, Closed }
+
+    private static void ValidateGroupedEnvelope(IReadOnlyList<Segment> segments, Profile profile, Syntax syntax)
+    {
+        GroupedShape shape = profile.Grouped!;
+        string groupsPath = shape.Groups.Name;
+        string groupPath(int index) => groupsPath + "[" + index.ToString(CultureInfo.InvariantCulture) + "]";
+        string transactionsPath(int index) => groupPath(index) + "/" + shape.Transactions.Name;
+        string transactionPath(int group, int transaction) => transactionsPath(group)
+            + "[" + transaction.ToString(CultureInfo.InvariantCulture) + "]";
+        static void Width(Segment segment, int count, int index, string path)
+        {
+            if (segment.Elements.Length != count)
+                throw Failure(FerruleX12Error.Envelope, "X12 envelope element counts are invalid.", index, path);
+        }
+        static void Controls(bool valid, int index, string path)
+        {
+            if (!valid) throw Failure(FerruleX12Error.Envelope, "X12 control numbers have invalid lexical shapes.", index, path);
+        }
+        static void Identities(bool valid, int index, string path)
+        {
+            if (!valid) throw Failure(FerruleX12Error.Envelope,
+                "X12 requires sender, recipient, transaction and functional group identities.", index, path);
+        }
+        static void Dates(bool shapeValid, string date, string time, int index, string path)
+        {
+            if (!shapeValid) throw Failure(FerruleX12Error.Envelope,
+                "X12 envelope date, time or indicator shapes are invalid.", index, path);
+            if (!DateOnly.TryParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+                || !EnvelopeClock(time))
+                throw Failure(FerruleX12Error.Envelope, "X12 envelope dates or times are invalid.", index, path);
+        }
+        if (segments.Count == 0 || segments[0].Id != "ISA")
+            throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", 0, "ISA");
+        Segment isa = segments[0];
+        Width(isa, 16, 0, "ISA");
+        for (int index = 0; index < 16; index++)
+            if (isa.Elements[index].Length != IsaWidths[index] || isa.Elements[index].Any(character => character > 127))
+                throw Failure(FerruleX12Error.Envelope, "ISA requires its declared ASCII widths.", 0, "ISA");
+        if (isa.Elements[11] != profile.SelectedVersion.Interchange)
+            throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.", 0, "ISA");
+        if (profile.SelectedVersion.Modern)
+        {
+            if (isa.Elements[10] != syntax.Repetition?.ToString())
+                throw Failure(FerruleX12Error.Syntax, "ISA11 must match the selected repetition separator.", 0, "ISA");
+        }
+        else if (isa.Elements[10] != "U")
+            throw Failure(FerruleX12Error.UnsupportedProfile, "Only the 00401/004010 envelope without element repetition is supported.", 0, "ISA");
+        Controls(Digits(isa.Elements[12], 9, 9), 0, "ISA");
+        Identities(!string.IsNullOrWhiteSpace(isa.Elements[5]) && !string.IsNullOrWhiteSpace(isa.Elements[7]), 0, "ISA");
+        Dates(Digits(isa.Elements[8], 6, 6) && Digits(isa.Elements[9], 4, 4)
+            && (isa.Elements[13] is "0" or "1") && (isa.Elements[14] is "P" or "T" or "I"),
+            "20" + isa.Elements[8], isa.Elements[9], 0, "ISA");
+
+        GroupedEnvelopeState state = GroupedEnvelopeState.GroupOrEnd;
+        int groupCount = 0, transactionCount = 0, transactionStart = -1;
+        Segment? gs = null, st = null;
+        for (int index = 1; index < segments.Count; index++)
+        {
+            Segment segment = segments[index];
+            int group = groupCount - 1, transaction = transactionCount - 1;
+            if (segment.Id == "ISA")
+                throw Failure(FerruleX12Error.UnsupportedProfile, "Multiple X12 interchanges are outside the selected profile.", index, "ISA");
+            switch (state)
+            {
+                case GroupedEnvelopeState.GroupOrEnd:
+                    if (segment.Id == "GS")
+                    {
+                        string path = groupPath(groupCount) + "/GS";
+                        Width(segment, 8, index, path);
+                        if (segment.Elements[7] != profile.SelectedVersion.Group)
+                            throw Failure(FerruleX12Error.UnsupportedProfile,
+                                "X12 envelope versions do not match the selected profile.", index, path);
+                        Controls(Digits(segment.Elements[5], 1, 9), index, path);
+                        Identities(!string.IsNullOrWhiteSpace(segment.Elements[0])
+                            && !string.IsNullOrWhiteSpace(segment.Elements[1]) && !string.IsNullOrWhiteSpace(segment.Elements[2]), index, path);
+                        Dates(Digits(segment.Elements[3], 8, 8) && Digits(segment.Elements[4], 4, 8),
+                            segment.Elements[3], segment.Elements[4], index, path);
+                        gs = segment;
+                        groupCount++;
+                        transactionCount = 0;
+                        state = GroupedEnvelopeState.TransactionOrEnd;
+                        break;
+                    }
+                    if (segment.Id == "IEA")
+                    {
+                        if (groupCount == 0)
+                            throw Failure(FerruleX12Error.Envelope,
+                                "Grouped X12 interchange requires at least one functional group.", index, groupsPath);
+                        Width(segment, 2, index, "IEA");
+                        if (!EnvelopeCount(segment.Elements[0], groupCount) || segment.Elements[1] != isa.Elements[12])
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 interchange trailer count or control does not match its owner.", index, "IEA");
+                        state = GroupedEnvelopeState.Closed;
+                        break;
+                    }
+                    throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", index, "IEA");
+                case GroupedEnvelopeState.TransactionOrEnd:
+                    if (segment.Id == "ST")
+                    {
+                        string path = transactionPath(group, transactionCount) + "/ST";
+                        Width(segment, 2, index, path);
+                        Controls(Digits(segment.Elements[1], 4, 9), index, path);
+                        Identities(Digits(segment.Elements[0], 3, 3), index, path);
+                        st = segment;
+                        transactionCount++;
+                        transactionStart = index;
+                        state = GroupedEnvelopeState.Body;
+                        break;
+                    }
+                    if (segment.Id == "GE")
+                    {
+                        if (transactionCount == 0)
+                            throw Failure(FerruleX12Error.Envelope,
+                                "Grouped X12 functional group requires at least one transaction.", index, transactionsPath(group));
+                        string path = groupPath(group) + "/GE";
+                        Width(segment, 2, index, path);
+                        if (!EnvelopeCount(segment.Elements[0], transactionCount) || segment.Elements[1] != gs!.Elements[5])
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 functional group trailer count or control does not match its owner.", index, path);
+                        state = GroupedEnvelopeState.GroupOrEnd;
+                        break;
+                    }
+                    throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", index,
+                        segment.Id == "SE" ? transactionsPath(group) : groupPath(group) + "/GE");
+                case GroupedEnvelopeState.Body:
+                    if (segment.Id == "SE")
+                    {
+                        string path = transactionPath(group, transaction) + "/SE";
+                        Width(segment, 2, index, path);
+                        if (!EnvelopeCount(segment.Elements[0], index - transactionStart + 1) || segment.Elements[1] != st!.Elements[1])
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 transaction trailer count or control does not match its owner.", index, path);
+                        state = GroupedEnvelopeState.TransactionOrEnd;
+                        break;
+                    }
+                    if (IsEnvelope(segment.Id))
+                        throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", index,
+                            transactionPath(group, transaction) + "/SE");
+                    break;
+                case GroupedEnvelopeState.Closed:
+                    throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", index, "IEA");
+            }
+        }
+        if (state != GroupedEnvelopeState.Closed)
+        {
+            string path = state switch
+            {
+                GroupedEnvelopeState.Body => transactionPath(groupCount - 1, transactionCount - 1) + "/SE",
+                GroupedEnvelopeState.TransactionOrEnd => groupPath(groupCount - 1) + "/GE",
+                _ => "IEA",
+            };
+            throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", segments.Count, path);
+        }
+    }
+
+    private static bool EnvelopeCount(string value, int expected) => Digits(value, 1, 9)
+        && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int count) && count == expected;
+
+    private static bool EnvelopeClock(string value) => value.Length is 4 or 6 or 7 or 8
+        && int.Parse(value[..2], CultureInfo.InvariantCulture) < 24
+        && int.Parse(value[2..4], CultureInfo.InvariantCulture) < 60
+        && (value.Length == 4 || int.Parse(value[4..6], CultureInfo.InvariantCulture) < 60);
+
     private static bool Digits(string text, int minimum, int maximum)
         => text.Length >= minimum && text.Length <= maximum && text.All(char.IsAsciiDigit);
 
-    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent)
+    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent, bool isaRepetition)
     {
         if (isaComponent && text == syntax.Component.ToString()) return;
-        if (text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Segment))
+        if (isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString()) return;
+        if (text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Segment
+            || character == syntax.Repetition))
             throw Failure(FerruleX12Error.Value, "X12 output contains an unrepresentable delimiter or control character.");
         // Composite elements have already been built from validated components.
     }

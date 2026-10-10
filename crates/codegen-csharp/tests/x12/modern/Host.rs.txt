@@ -1,0 +1,89 @@
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use std::{fs, path::Path};
+
+fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
+    match &schema.kind {
+        SchemaKind::Group { children, .. } => Instance::Group(
+            children
+                .iter()
+                .map(|child| (child.name.clone(), expected(child, &literal[&child.name])))
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        SchemaKind::Scalar { ty } => Instance::Scalar(if literal.is_null() {
+            Value::Null
+        } else {
+            match ty {
+                ScalarType::String => Value::String(literal.as_str().unwrap().into()),
+                ScalarType::Int => Value::Int(literal.as_i64().unwrap()),
+                ScalarType::Float => Value::Float(literal.as_f64().unwrap()),
+                _ => panic!("invented scalar oracle"),
+            }
+        }),
+        _ => panic!("invented group oracle"),
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let contract: serde_json::Value = serde_json::from_str(&fs::read_to_string("contract.json")?)?;
+    let mut outcomes = Vec::new();
+    for profile in contract["profiles"].as_array().unwrap() {
+        let id = profile["id"].as_str().unwrap();
+        let schema: SchemaNode =
+            serde_json::from_str(&fs::read_to_string(profile["schema"].as_str().unwrap())?)?;
+        let literal: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(profile["values"].as_str().unwrap())?)?;
+        let expected = expected(&schema, &literal);
+        let wire = fs::read_to_string(profile["wire"].as_str().unwrap())?;
+        let source = format_edi::x12::from_str(&wire, &schema, false);
+        let mapped = source.as_ref().ok().map(|source| {
+            if profile["group_version"] == "005010" {
+                profile_005010::execute(source)
+            } else {
+                profile_006040::execute(source)
+            }
+        });
+        let mut output = None;
+        if !id.ends_with("-lf") {
+            if let Some(Ok(instance)) = &mapped {
+                let syntax = &profile["syntax"];
+                let character = |name| syntax[name].as_str().unwrap().chars().next().unwrap();
+                output = Some(format_edi::x12::to_string_with_syntax(
+                    &schema,
+                    instance,
+                    format_edi::x12::Separators {
+                        element: character("element"),
+                        component: character("component"),
+                        segment: character("segment"),
+                        repetition: Some(character("repetition")),
+                        release: None,
+                    },
+                    Some(profile["interchange_version"].as_str().unwrap()),
+                ));
+            }
+        }
+        // Preserve every typed result and the optional native wire before any
+        // semantic assertion. The generated Rust library is typed, not raw X12.
+        fs::write(
+            format!("rust-{id}-outcome.original.txt"),
+            format!(
+                "SOURCE {source:#?}\nMAPPED {mapped:#?}\nWIRE {output:#?}\nEXPECTED {expected:#?}"
+            ),
+        )?;
+        let ok = mapped
+            .as_ref()
+            .is_some_and(|result| result.as_ref().is_ok_and(|value| *value == expected))
+            && output
+                .as_ref()
+                .is_none_or(|result| result.as_ref().is_ok_and(|value| *value == wire));
+        outcomes.push(serde_json::json!({"id":id,"pass":ok}));
+    }
+    fs::write(
+        Path::new("rust-complete-comparisons.original.json"),
+        serde_json::to_vec_pretty(&outcomes)?,
+    )?;
+    assert!(
+        outcomes.iter().all(|result| result["pass"] == true),
+        "full typed/wire outcomes retained"
+    );
+    Ok(())
+}

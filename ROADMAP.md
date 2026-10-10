@@ -89,7 +89,7 @@ of the account billing/spending restriction; those failures are not passes.
 | Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
 | Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
 | JSON Schema | Per-resource reference policies, required-only object-reference siblings, exact intervals in String-or-Int and String-or-Float fields, signed-integer Float bound normalization, redundant scalar composition type siblings, and outer scalar composition bounds | Scalar domains and admission rules are in [Supported formats](docs/formats.md); broader compositions and restrictive intersections remain separately scoped |
-| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, and explicit optional JSON5 or bounded flat CSV companions | Supported emission, compiled calls, physical resource checks, and external execution are separate gates |
+| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, explicit optional JSON5 or bounded flat CSV companions, and [static JSON/X12 selected-document companions](docs/design/generated-x12-csharp.md#static-named-documents-and-selected-output) | Every static endpoint retains its own admitted boundary; supported emission, compiled calls, physical resource checks, and external execution are separate gates |
 | Large files | Per-boundary byte/item/work budgets, CSV temporary-row release and borrowed ordinary JSON output text | Input/target trees and output Strings remain materialized; the [historical output-set study](docs/performance/json-output-set-memory.md) and [matched writer comparison](docs/performance/borrowed-json-output-memory.md) establish no total-RAM cap or streaming |
 | `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
 
@@ -751,8 +751,19 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   [#265](https://github.com/DeandreT/ferrule/pull/265), with three successful hosted jobs.
   Directional parsing, inactive repetition metadata, Float implied decimals,
   lexical output and supplied-context completion preserve strict defaults and
-  typed/JSON APIs. Other versions, repeated-element syntax, external I/O, durable
+  typed/JSON APIs. Repeated-element syntax, external I/O, durable
   control allocation and trading-partner certification remain excluded.
+- [x] Support canonical generated C# `00501`/`005010` and `00604`/`006040`
+  single-envelope scalar-element profiles in
+  [#272](https://github.com/DeandreT/ferrule/issues/272), with exact declared version
+  agreement and active ISA11 repetition delimiters. Repeated element values
+  and implementation references require separate contracts.
+- [x] Support explicit generated C# grouped transaction ownership in
+  [#273](https://github.com/DeandreT/ferrule/issues/273): one interchange with
+  declared repeated GS/GE and ST/SE owners, exact counts/controls and occurrence
+  paths, and private supplied-context completion of declared trailer slots.
+  The [envelope contract](docs/design/generated-x12-csharp.md#declared-grouped-envelopes)
+  retains singleton defaults and whole-document limits.
 - [ ] Grow compile-and-call coverage for applicable mappings and public adapters.
 - [ ] Add other language/backend targets as independent implementations and
   gates; the current emitters are Rust and C#.

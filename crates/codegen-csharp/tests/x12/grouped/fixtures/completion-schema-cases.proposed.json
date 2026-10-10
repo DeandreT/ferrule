@@ -1,0 +1,71 @@
+[
+  {
+    "label": "undeclared-SE-cannot-materialize",
+    "schema": "completion-undeclared-SE-schema.json",
+    "input_values": "completion-missing-values.json",
+    "context": null,
+    "expected_csharp": {
+      "type": "FerruleX12Exception",
+      "error": "Schema",
+      "message": "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.",
+      "segment_index": null,
+      "field_path": "FunctionalGroups/Transactions/SE"
+    },
+    "expected_shared": {
+      "variant": "X12BoundaryPolicyError::Schema",
+      "side": "Target",
+      "path": [
+        "FunctionalGroups",
+        "Transactions",
+        "SE"
+      ],
+      "reason": "grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners"
+    },
+    "precedence": "Descriptor/admission error before missing completion context; no output instance or carrier returned."
+  },
+  {
+    "label": "undeclared-GE-cannot-materialize",
+    "schema": "completion-undeclared-GE-schema.json",
+    "input_values": "completion-missing-values.json",
+    "context": null,
+    "expected_csharp": {
+      "type": "FerruleX12Exception",
+      "error": "Schema",
+      "message": "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.",
+      "segment_index": null,
+      "field_path": "FunctionalGroups/GE"
+    },
+    "expected_shared": {
+      "variant": "X12BoundaryPolicyError::Schema",
+      "side": "Target",
+      "path": [
+        "FunctionalGroups",
+        "GE"
+      ],
+      "reason": "grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners"
+    },
+    "precedence": "Descriptor/admission error before missing completion context; no output instance or carrier returned."
+  },
+  {
+    "label": "undeclared-IEA-cannot-materialize",
+    "schema": "completion-undeclared-IEA-schema.json",
+    "input_values": "completion-missing-values.json",
+    "context": null,
+    "expected_csharp": {
+      "type": "FerruleX12Exception",
+      "error": "Schema",
+      "message": "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.",
+      "segment_index": null,
+      "field_path": "IEA"
+    },
+    "expected_shared": {
+      "variant": "X12BoundaryPolicyError::Schema",
+      "side": "Target",
+      "path": [
+        "IEA"
+      ],
+      "reason": "grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners"
+    },
+    "precedence": "Descriptor/admission error before missing completion context; no output instance or carrier returned."
+  }
+]

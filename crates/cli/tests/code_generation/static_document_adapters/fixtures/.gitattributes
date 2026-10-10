@@ -1,0 +1,3 @@
+*.x12 -text
+*.json -text
+*.bin -text
