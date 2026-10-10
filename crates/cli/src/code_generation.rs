@@ -6,6 +6,7 @@ use codegen::ArtifactSet;
 
 use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
+mod static_documents;
 mod x12;
 
 /// Source language and runtime linkage for one generated mapping project.
@@ -54,7 +55,7 @@ pub fn generate_project_with_json5_adapters(
     generate_project_impl(project_path, output_directory, target, Adapter::Json5)
 }
 
-/// Generate explicit raw X12 004010 companions for a singular C# mapping.
+/// Generate supported explicit single-envelope raw X12 companions for a C# mapping.
 /// The stored primary format identities and all retained options must agree
 /// with the selected bounded boundary before any source tree is published.
 pub fn generate_project_with_x12_adapters(
@@ -62,10 +63,47 @@ pub fn generate_project_with_x12_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
+    generate_project_with_x12_envelope_profiles(project_path, output_directory, target, None, None)
+}
+
+/// Generate explicitly selected primary X12 envelope companions. An absent
+/// selection keeps the single-transaction default; an explicit selection on a
+/// JSON endpoint refuses instead of selecting X12 from its schema shape.
+pub fn generate_project_with_x12_envelope_profiles(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    source_envelope: Option<codegen::X12EnvelopeProfile>,
+    target_envelope: Option<codegen::X12EnvelopeProfile>,
+) -> anyhow::Result<GenerateOutcome> {
     if target != GenerateTarget::CSharp {
         bail!("generated raw X12 adapters currently require the C# backend");
     }
-    generate_project_impl(project_path, output_directory, target, Adapter::X12)
+    generate_project_impl(
+        project_path,
+        output_directory,
+        target,
+        Adapter::X12(source_envelope, target_envelope),
+    )
+}
+
+/// Generate static JSON/X12 document inputs and explicitly selected output methods.
+/// All own endpoint policies and schemas are admitted before ordinary lowering
+/// or atomic publication. This profile requires the C# backend.
+pub fn generate_project_with_static_document_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    if target != GenerateTarget::CSharp {
+        bail!("generated static document adapters currently require the C# backend");
+    }
+    generate_project_impl(
+        project_path,
+        output_directory,
+        target,
+        Adapter::StaticDocuments,
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -73,7 +111,11 @@ enum Adapter {
     Ordinary,
     Csv,
     Json5,
-    X12,
+    X12(
+        Option<codegen::X12EnvelopeProfile>,
+        Option<codegen::X12EnvelopeProfile>,
+    ),
+    StaticDocuments,
 }
 
 fn generate_project_impl(
@@ -83,10 +125,18 @@ fn generate_project_impl(
     adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
-    let x12_policy = if adapter == Adapter::X12 {
-        Some(x12::policy(&project)?)
+    let static_document_policy = if adapter == Adapter::StaticDocuments {
+        let policy = static_documents::policy(&project)?;
+        codegen::prepare_static_document_project_boundaries(&project, &policy)?;
+        Some(policy)
     } else {
         None
+    };
+    let x12_policy = match adapter {
+        Adapter::X12(source, target) => Some(x12::policy_with_envelope_profiles(
+            &project, source, target,
+        )?),
+        _ => None,
     };
     if adapter == Adapter::Json5 {
         // Admission borrows the loaded schemas before ordinary lowering clones them.
@@ -155,7 +205,9 @@ fn generate_project_impl(
             }
         }
         GenerateTarget::CSharp => {
-            if let Some(policy) = &x12_policy {
+            if let Some(policy) = &static_document_policy {
+                codegen_csharp::emit_with_static_document_adapters(&program, policy)?
+            } else if let Some(policy) = &x12_policy {
                 codegen_csharp::emit_with_x12(&program, policy)?
             } else if adapter == Adapter::Json5 {
                 codegen_csharp::emit_with_json5(&program)?

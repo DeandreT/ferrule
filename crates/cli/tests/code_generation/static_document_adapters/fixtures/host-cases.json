@@ -1,0 +1,3380 @@
+[
+  {
+    "id": "base-primary",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-primary.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        },
+        {
+          "name": "quantity",
+          "value": {
+            "kind": "Int64",
+            "value": 6
+          }
+        },
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "Json"
+  },
+  {
+    "id": "base-advice",
+    "family": "base",
+    "selection": "Advice",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-advice.x12",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "ISA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ISA01",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA02",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA03",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA04",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA05",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA06",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER  "
+                }
+              },
+              {
+                "name": "ISA07",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA08",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "ISA09",
+                "value": {
+                  "kind": "String",
+                  "value": "260102"
+                }
+              },
+              {
+                "name": "ISA10",
+                "value": {
+                  "kind": "String",
+                  "value": "0304"
+                }
+              },
+              {
+                "name": "ISA11",
+                "value": {
+                  "kind": "String",
+                  "value": "U"
+                }
+              },
+              {
+                "name": "ISA12",
+                "value": {
+                  "kind": "String",
+                  "value": "00401"
+                }
+              },
+              {
+                "name": "ISA13",
+                "value": {
+                  "kind": "String",
+                  "value": "000000008"
+                }
+              },
+              {
+                "name": "ISA14",
+                "value": {
+                  "kind": "String",
+                  "value": "0"
+                }
+              },
+              {
+                "name": "ISA15",
+                "value": {
+                  "kind": "String",
+                  "value": "T"
+                }
+              },
+              {
+                "name": "ISA16",
+                "value": {
+                  "kind": "String",
+                  "value": ">"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GS",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "GS01",
+                "value": {
+                  "kind": "String",
+                  "value": "SW"
+                }
+              },
+              {
+                "name": "GS02",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER"
+                }
+              },
+              {
+                "name": "GS03",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "GS04",
+                "value": {
+                  "kind": "String",
+                  "value": "20260102"
+                }
+              },
+              {
+                "name": "GS05",
+                "value": {
+                  "kind": "String",
+                  "value": "0304"
+                }
+              },
+              {
+                "name": "GS06",
+                "value": {
+                  "kind": "String",
+                  "value": "0008"
+                }
+              },
+              {
+                "name": "GS07",
+                "value": {
+                  "kind": "String",
+                  "value": "X"
+                }
+              },
+              {
+                "name": "GS08",
+                "value": {
+                  "kind": "String",
+                  "value": "004010"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ST",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ST01",
+                "value": {
+                  "kind": "String",
+                  "value": "945"
+                }
+              },
+              {
+                "name": "ST02",
+                "value": {
+                  "kind": "String",
+                  "value": "0002"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W06",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W0601",
+                "value": {
+                  "kind": "String",
+                  "value": "F"
+                }
+              },
+              {
+                "name": "W0602",
+                "value": {
+                  "kind": "String",
+                  "value": "BASE-EX"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "NTE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE01",
+                "value": {
+                  "kind": "String",
+                  "value": "GEN"
+                }
+              },
+              {
+                "name": "NTE02",
+                "value": {
+                  "kind": "String",
+                  "value": "REF"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W12",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W1201",
+                "value": {
+                  "kind": "String",
+                  "value": "SH"
+                }
+              },
+              {
+                "name": "W1202",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1203",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1204",
+                "value": {
+                  "kind": "Int64",
+                  "value": 0
+                }
+              },
+              {
+                "name": "W1205",
+                "value": {
+                  "kind": "String",
+                  "value": "EA"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "SE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "SE01",
+                "value": {
+                  "kind": "String",
+                  "value": "5"
+                }
+              },
+              {
+                "name": "SE02",
+                "value": {
+                  "kind": "String",
+                  "value": "0002"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "GE01",
+                "value": {
+                  "kind": "String",
+                  "value": "1"
+                }
+              },
+              {
+                "name": "GE02",
+                "value": {
+                  "kind": "String",
+                  "value": "0008"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "IEA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "IEA01",
+                "value": {
+                  "kind": "String",
+                  "value": "1"
+                }
+              },
+              {
+                "name": "IEA02",
+                "value": {
+                  "kind": "String",
+                  "value": "000000008"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Advice",
+    "format": "X12"
+  },
+  {
+    "id": "base-audit",
+    "family": "base",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-audit.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "tag",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "tagAgain",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Audit",
+    "format": "Json"
+  },
+  {
+    "id": "inverse-primary",
+    "family": "inverse",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Base",
+        "document": "primary-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-advice.x12",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "ISA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ISA01",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA02",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA03",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA04",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA05",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA06",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER  "
+                }
+              },
+              {
+                "name": "ISA07",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA08",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "ISA09",
+                "value": {
+                  "kind": "String",
+                  "value": "260102"
+                }
+              },
+              {
+                "name": "ISA10",
+                "value": {
+                  "kind": "String",
+                  "value": "0304"
+                }
+              },
+              {
+                "name": "ISA11",
+                "value": {
+                  "kind": "String",
+                  "value": "U"
+                }
+              },
+              {
+                "name": "ISA12",
+                "value": {
+                  "kind": "String",
+                  "value": "00401"
+                }
+              },
+              {
+                "name": "ISA13",
+                "value": {
+                  "kind": "String",
+                  "value": "000000008"
+                }
+              },
+              {
+                "name": "ISA14",
+                "value": {
+                  "kind": "String",
+                  "value": "0"
+                }
+              },
+              {
+                "name": "ISA15",
+                "value": {
+                  "kind": "String",
+                  "value": "T"
+                }
+              },
+              {
+                "name": "ISA16",
+                "value": {
+                  "kind": "String",
+                  "value": ">"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GS",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "GS01",
+                "value": {
+                  "kind": "String",
+                  "value": "SW"
+                }
+              },
+              {
+                "name": "GS02",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER"
+                }
+              },
+              {
+                "name": "GS03",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "GS04",
+                "value": {
+                  "kind": "String",
+                  "value": "20260102"
+                }
+              },
+              {
+                "name": "GS05",
+                "value": {
+                  "kind": "String",
+                  "value": "0304"
+                }
+              },
+              {
+                "name": "GS06",
+                "value": {
+                  "kind": "String",
+                  "value": "0008"
+                }
+              },
+              {
+                "name": "GS07",
+                "value": {
+                  "kind": "String",
+                  "value": "X"
+                }
+              },
+              {
+                "name": "GS08",
+                "value": {
+                  "kind": "String",
+                  "value": "004010"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ST",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ST01",
+                "value": {
+                  "kind": "String",
+                  "value": "945"
+                }
+              },
+              {
+                "name": "ST02",
+                "value": {
+                  "kind": "String",
+                  "value": "0002"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W06",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W0601",
+                "value": {
+                  "kind": "String",
+                  "value": "F"
+                }
+              },
+              {
+                "name": "W0602",
+                "value": {
+                  "kind": "String",
+                  "value": "BASE-EX"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "NTE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE01",
+                "value": {
+                  "kind": "String",
+                  "value": "GEN"
+                }
+              },
+              {
+                "name": "NTE02",
+                "value": {
+                  "kind": "String",
+                  "value": "REF"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W12",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W1201",
+                "value": {
+                  "kind": "String",
+                  "value": "SH"
+                }
+              },
+              {
+                "name": "W1202",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1203",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1204",
+                "value": {
+                  "kind": "Int64",
+                  "value": 0
+                }
+              },
+              {
+                "name": "W1205",
+                "value": {
+                  "kind": "String",
+                  "value": "EA"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "SE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "SE01",
+                "value": {
+                  "kind": "String",
+                  "value": "5"
+                }
+              },
+              {
+                "name": "SE02",
+                "value": {
+                  "kind": "String",
+                  "value": "0002"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "GE01",
+                "value": {
+                  "kind": "String",
+                  "value": "1"
+                }
+              },
+              {
+                "name": "GE02",
+                "value": {
+                  "kind": "String",
+                  "value": "0008"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "IEA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "IEA01",
+                "value": {
+                  "kind": "String",
+                  "value": "1"
+                }
+              },
+              {
+                "name": "IEA02",
+                "value": {
+                  "kind": "String",
+                  "value": "000000008"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "X12"
+  },
+  {
+    "id": "inverse-summary",
+    "family": "inverse",
+    "selection": "Summary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [
+      {
+        "name": "Base",
+        "document": "primary-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-primary.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        },
+        {
+          "name": "quantity",
+          "value": {
+            "kind": "Int64",
+            "value": 6
+          }
+        },
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Summary",
+    "format": "Json"
+  },
+  {
+    "id": "inverse-audit",
+    "family": "inverse",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Base",
+        "document": "primary-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-audit.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "tag",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "tagAgain",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Audit",
+    "format": "Json"
+  },
+  {
+    "id": "completion-selected",
+    "family": "completion",
+    "selection": "Advice",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-completion.x12",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "ISA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ISA01",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA02",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA03",
+                "value": {
+                  "kind": "String",
+                  "value": "00"
+                }
+              },
+              {
+                "name": "ISA04",
+                "value": {
+                  "kind": "String",
+                  "value": "          "
+                }
+              },
+              {
+                "name": "ISA05",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA06",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER  "
+                }
+              },
+              {
+                "name": "ISA07",
+                "value": {
+                  "kind": "String",
+                  "value": "ZZ"
+                }
+              },
+              {
+                "name": "ISA08",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "ISA11",
+                "value": {
+                  "kind": "String",
+                  "value": "U"
+                }
+              },
+              {
+                "name": "ISA12",
+                "value": {
+                  "kind": "String",
+                  "value": "00401"
+                }
+              },
+              {
+                "name": "ISA13",
+                "value": {
+                  "kind": "String",
+                  "value": "000000008"
+                }
+              },
+              {
+                "name": "ISA14",
+                "value": {
+                  "kind": "String",
+                  "value": "0"
+                }
+              },
+              {
+                "name": "ISA15",
+                "value": {
+                  "kind": "String",
+                  "value": "T"
+                }
+              },
+              {
+                "name": "ISA16",
+                "value": {
+                  "kind": "String",
+                  "value": ">"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GS",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "GS01",
+                "value": {
+                  "kind": "String",
+                  "value": "SW"
+                }
+              },
+              {
+                "name": "GS02",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-SENDER"
+                }
+              },
+              {
+                "name": "GS03",
+                "value": {
+                  "kind": "String",
+                  "value": "AUTHOR-RECEIVER"
+                }
+              },
+              {
+                "name": "GS06",
+                "value": {
+                  "kind": "String",
+                  "value": "0008"
+                }
+              },
+              {
+                "name": "GS07",
+                "value": {
+                  "kind": "String",
+                  "value": "X"
+                }
+              },
+              {
+                "name": "GS08",
+                "value": {
+                  "kind": "String",
+                  "value": "004010"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ST",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "ST01",
+                "value": {
+                  "kind": "String",
+                  "value": "945"
+                }
+              },
+              {
+                "name": "ST02",
+                "value": {
+                  "kind": "String",
+                  "value": "0002"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W06",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W0601",
+                "value": {
+                  "kind": "String",
+                  "value": "F"
+                }
+              },
+              {
+                "name": "W0602",
+                "value": {
+                  "kind": "String",
+                  "value": "BASE-EX"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "NTE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE01",
+                "value": {
+                  "kind": "String",
+                  "value": "GEN"
+                }
+              },
+              {
+                "name": "NTE02",
+                "value": {
+                  "kind": "String",
+                  "value": "REF"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W12",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "W1201",
+                "value": {
+                  "kind": "String",
+                  "value": "SH"
+                }
+              },
+              {
+                "name": "W1202",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1203",
+                "value": {
+                  "kind": "Int64",
+                  "value": 6
+                }
+              },
+              {
+                "name": "W1204",
+                "value": {
+                  "kind": "Int64",
+                  "value": 0
+                }
+              },
+              {
+                "name": "W1205",
+                "value": {
+                  "kind": "String",
+                  "value": "EA"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "SE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": []
+          }
+        },
+        {
+          "name": "GE",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": []
+          }
+        },
+        {
+          "name": "IEA",
+          "value": {
+            "kind": "group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": []
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Advice",
+    "format": "X12"
+  },
+  {
+    "id": "no-named-inputs-primary",
+    "family": "no_sources",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-no-sources.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "Json"
+  },
+  {
+    "id": "no-named-inputs-named",
+    "family": "no_sources",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-audit.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "tag",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "tagAgain",
+          "value": {
+            "kind": "String",
+            "value": "CONTEXT-A"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Audit",
+    "format": "Json"
+  },
+  {
+    "id": "simple-no-named-inputs-primary",
+    "family": "no_sources",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-no-sources.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "Json",
+    "use_simple": true
+  },
+  {
+    "id": "simple-base-missing-named",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MissingNamedSource",
+      "message": "named source Supplement is required by this mapping",
+      "fields": {
+        "Detail": "Supplement"
+      }
+    },
+    "use_simple": true
+  },
+  {
+    "id": "unselected-bad-x12-value-skipped",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "bad-code-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-bad-code-primary.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "value": {
+            "kind": "String",
+            "value": "P|Q-EX"
+          }
+        },
+        {
+          "name": "quantity",
+          "value": {
+            "kind": "Int64",
+            "value": 6
+          }
+        },
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "P|Q-EX"
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "Json"
+  },
+  {
+    "id": "selected-bad-x12-value-refused",
+    "family": "base",
+    "selection": "Advice",
+    "selection_null": false,
+    "primary": "bad-code-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Value",
+      "message": "X12 scalar contains an unrepresentable delimiter.",
+      "segment_index": null,
+      "field_path": "W06/W0602"
+    }
+  },
+  {
+    "id": "unknown-target-13",
+    "family": "base",
+    "selection": "advice",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnknownTarget",
+      "message": "project has no named target `advice`",
+      "fields": {
+        "Detail": "advice"
+      }
+    }
+  },
+  {
+    "id": "unknown-target-14",
+    "family": "base",
+    "selection": "Advice ",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnknownTarget",
+      "message": "project has no named target `Advice `",
+      "fields": {
+        "Detail": "Advice "
+      }
+    }
+  },
+  {
+    "id": "unknown-target-15",
+    "family": "base",
+    "selection": "Ádvice",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnknownTarget",
+      "message": "project has no named target `Ádvice`",
+      "fields": {
+        "Detail": "Ádvice"
+      }
+    }
+  },
+  {
+    "id": "null-source-precedes-unknown-target",
+    "family": "base",
+    "selection": "advice",
+    "selection_null": false,
+    "primary": "NULL",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source"
+    }
+  },
+  {
+    "id": "null-selection-precedes-list-and-parse",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": true,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "selection"
+    }
+  },
+  {
+    "id": "null-list-before-primary-parse",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": true,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "extraSources"
+    }
+  },
+  {
+    "id": "null-entry-before-missing-and-parse",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "extraSource"
+    },
+    "null_entry_index": 0
+  },
+  {
+    "id": "null-name-before-missing-and-parse",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "extraSource.Name"
+    },
+    "null_name_index": 0
+  },
+  {
+    "id": "missing-before-primary-parse",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MissingNamedSource",
+      "message": "named source Unused is required by this mapping",
+      "fields": {
+        "Detail": "Unused"
+      }
+    }
+  },
+  {
+    "id": "missing-declaration-order",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MissingNamedSource",
+      "message": "named source Supplement is required by this mapping",
+      "fields": {
+        "Detail": "Supplement"
+      }
+    }
+  },
+  {
+    "id": "duplicate-before-later-unknown",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Unknown",
+        "document": "unused-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "DuplicateNamedSource",
+      "message": "named source 'Supplement' was supplied more than once",
+      "fields": {
+        "Detail": "Supplement"
+      }
+    }
+  },
+  {
+    "id": "unknown-before-later-duplicate",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unknown",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnexpectedNamedSource",
+      "message": "named source 'Unknown' is not declared by this mapping",
+      "fields": {
+        "Detail": "Unknown"
+      }
+    }
+  },
+  {
+    "id": "text-null-document-before-unknown",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unknown",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "extraSource.Document"
+    }
+  },
+  {
+    "id": "bytes-unknown-before-null-document",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unknown",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnexpectedNamedSource",
+      "message": "named source 'Unknown' is not declared by this mapping",
+      "fields": {
+        "Detail": "Unknown"
+      }
+    }
+  },
+  {
+    "id": "zero-declared-text-unknown-before-null-document",
+    "family": "no_sources",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [
+      {
+        "name": "Unknown",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnexpectedNamedSource",
+      "message": "named source 'Unknown' is not declared by this mapping",
+      "fields": {
+        "Detail": "Unknown"
+      }
+    }
+  },
+  {
+    "id": "zero-declared-bytes-unknown-before-null-document",
+    "family": "no_sources",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "reference-input.x12",
+    "named_inputs": [
+      {
+        "name": "Unknown",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "UnexpectedNamedSource",
+      "message": "named source 'Unknown' is not declared by this mapping",
+      "fields": {
+        "Detail": "Unknown"
+      }
+    }
+  },
+  {
+    "id": "bytes-missing-before-known-null-document",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MissingNamedSource",
+      "message": "named source Reference is required by this mapping",
+      "fields": {
+        "Detail": "Reference"
+      }
+    }
+  },
+  {
+    "id": "bytes-primary-parse-before-named-null",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "malformed.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "JsonBoundary",
+      "message": "JSON input is invalid.",
+      "fields": {
+        "Detail": "JSON input is invalid."
+      }
+    }
+  },
+  {
+    "id": "bytes-known-null-at-parse-turn",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": null
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "extraSource.Document"
+    }
+  },
+  {
+    "id": "unused-schema-validated",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-invalid.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "JsonBoundary",
+      "message": "JSON field 'permit' expected bool, got String.",
+      "fields": {
+        "Detail": "JSON field 'permit' expected bool, got String."
+      }
+    }
+  },
+  {
+    "id": "named-first-supplied-parse-error",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Supplement",
+        "document": "supplement-invalid.json"
+      },
+      {
+        "name": "Unused",
+        "document": "unused-invalid.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "JsonBoundary",
+      "message": "JSON field 'multiplier' expected integer, got String.",
+      "fields": {
+        "Detail": "JSON field 'multiplier' expected integer, got String."
+      }
+    }
+  },
+  {
+    "id": "named-reversed-supplied-parse-error",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-invalid.json"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-invalid.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "JsonBoundary",
+      "message": "JSON field 'permit' expected bool, got String.",
+      "fields": {
+        "Detail": "JSON field 'permit' expected bool, got String."
+      }
+    }
+  },
+  {
+    "id": "reference-qualified-schema-refusal",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-invalid.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Schema",
+      "message": "X12 segment or fixed qualifier does not match the schema.",
+      "segment_index": 3,
+      "field_path": null
+    }
+  },
+  {
+    "id": "reference-invalid-utf8",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "invalid-utf8.bin"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Encoding",
+      "message": "X12 input is not strict UTF-8.",
+      "segment_index": null,
+      "field_path": null
+    }
+  },
+  {
+    "id": "json-invalid-utf8",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "invalid-utf8.bin",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "JsonBoundary",
+      "message": "JSON input is not UTF-8.",
+      "fields": {
+        "Detail": "JSON input is not UTF-8."
+      }
+    }
+  },
+  {
+    "id": "unused-context-parameter-not-evaluated",
+    "family": "base",
+    "selection": "Primary",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-primary.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "code",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        },
+        {
+          "name": "quantity",
+          "value": {
+            "kind": "Int64",
+            "value": 6
+          }
+        },
+        {
+          "name": "reference",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "BASE-EX"
+          }
+        }
+      ]
+    },
+    "carrier": "Primary",
+    "output_name": null,
+    "format": "Json"
+  },
+  {
+    "id": "selected-context-parameter-required",
+    "family": "base",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MissingRuntimeParameter",
+      "message": "node 40: execution context does not provide runtime parameter 'Tag'",
+      "fields": {
+        "Node": 40,
+        "RuntimeParameter": "Tag"
+      }
+    }
+  },
+  {
+    "id": "selected-context-parameter-type",
+    "family": "base",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Tag": {
+          "kind": "Bool",
+          "value": false
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_file": "expected-audit-bool-string.json",
+    "expected_typed": {
+      "kind": "group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "tag",
+          "value": {
+            "kind": "String",
+            "value": "false"
+          }
+        },
+        {
+          "name": "tagAgain",
+          "value": {
+            "kind": "String",
+            "value": "false"
+          }
+        },
+        {
+          "name": "echo",
+          "value": {
+            "kind": "String",
+            "value": "REF"
+          }
+        }
+      ]
+    },
+    "carrier": "Named",
+    "output_name": "Audit",
+    "format": "Json"
+  },
+  {
+    "id": "global-failure-before-selected-context",
+    "family": "base",
+    "selection": "Audit",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": "2026-01-02T03:04:05Z",
+      "parameters": {
+        "Stop": {
+          "kind": "Bool",
+          "value": true
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MappingFailure",
+      "message": "mapping failure rule 1: authored stop",
+      "fields": {
+        "FailureRule": 1,
+        "MappingFailureMessage": "authored stop"
+      }
+    }
+  },
+  {
+    "id": "completion-requires-own-shared-context",
+    "family": "completion",
+    "selection": "Advice",
+    "selection_null": false,
+    "primary": "primary-input.json",
+    "named_inputs": [
+      {
+        "name": "Unused",
+        "document": "unused-input.json"
+      },
+      {
+        "name": "Reference",
+        "document": "reference-input.x12"
+      },
+      {
+        "name": "Supplement",
+        "document": "supplement-input.json"
+      }
+    ],
+    "list_null": false,
+    "context": {
+      "mapping_file_path": "authored/map.mfd",
+      "main_mapping_file_path": "authored/main.mfd",
+      "current_date_time": null,
+      "parameters": {
+        "Tag": {
+          "kind": "String",
+          "value": "CONTEXT-A"
+        },
+        "Stop": {
+          "kind": "Bool",
+          "value": false
+        }
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null
+    }
+  }
+]

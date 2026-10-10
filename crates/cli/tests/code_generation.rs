@@ -90,6 +90,8 @@ mod sequence_context;
 mod sequence_reducers;
 #[path = "code_generation/signed_integer_float_bounds.rs"]
 mod signed_integer_float_bounds;
+#[path = "code_generation/static_document_adapters.rs"]
+mod static_document_adapters;
 #[path = "code_generation/static_sources.rs"]
 mod static_sources;
 #[path = "code_generation/string_float_intervals.rs"]

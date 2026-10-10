@@ -1,25 +1,48 @@
 use std::path::Path;
 
 use anyhow::bail;
-use codegen::{X12BoundaryOptions, X12BoundaryPolicy};
+use codegen::{X12BoundaryOptions, X12BoundaryPolicy, X12EnvelopeProfile};
 use ir::SchemaNode;
 use mapping::{EdiBoundaryKind, FormatOptions, Project};
 
-pub(super) fn policy(project: &Project) -> anyhow::Result<X12BoundaryPolicy> {
+pub(super) fn policy_with_envelope_profiles(
+    project: &Project,
+    source_envelope: Option<X12EnvelopeProfile>,
+    target_envelope: Option<X12EnvelopeProfile>,
+) -> anyhow::Result<X12BoundaryPolicy> {
     Ok(X12BoundaryPolicy {
-        source: boundary(
+        source: selected_boundary(
             &project.source,
             project.source_path.as_deref(),
             &project.source_options,
             "source",
+            source_envelope,
         )?,
-        target: boundary(
+        target: selected_boundary(
             &project.target,
             project.target_path.as_deref(),
             &project.target_options,
             "target",
+            target_envelope,
         )?,
     })
+}
+
+fn selected_boundary(
+    schema: &SchemaNode,
+    path: Option<&str>,
+    options: &FormatOptions,
+    side: &str,
+    envelope: Option<X12EnvelopeProfile>,
+) -> anyhow::Result<Option<X12BoundaryOptions>> {
+    let mut boundary = boundary(schema, path, options, side)?;
+    if let Some(envelope) = envelope {
+        let Some(selected) = boundary.as_mut() else {
+            bail!("generated raw X12 {side} envelope selection requires an X12 endpoint");
+        };
+        selected.envelope_profile = envelope;
+    }
+    Ok(boundary)
 }
 
 fn boundary(
@@ -254,5 +277,162 @@ mod tests {
             "generated raw X12 adapters currently require the C# backend"
         );
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn envelope_selection_is_explicit_and_never_selects_a_json_endpoint() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-x12-cli-envelope-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let json = FormatOptions {
+            json_document: true,
+            ..Default::default()
+        };
+        std::fs::write(root.join("SCHEMA.original.txt"), format!("{:#?}", schema())).unwrap();
+        std::fs::write(root.join("JSON-OPTIONS.original.txt"), format!("{json:#?}")).unwrap();
+        for side in ["source", "target"] {
+            for selection in [
+                X12EnvelopeProfile::SingleTransaction,
+                X12EnvelopeProfile::GroupedTransactions,
+            ] {
+                let json_result = selected_boundary(
+                    &schema(),
+                    Some("document.json"),
+                    &json,
+                    side,
+                    Some(selection),
+                );
+                let x12_result = selected_boundary(
+                    &schema(),
+                    Some("document.x12"),
+                    &FormatOptions::default(),
+                    side,
+                    Some(selection),
+                );
+                std::fs::write(
+                    root.join(format!("{side}-{selection:?}-OUTCOMES.original.txt")),
+                    format!("JSON={json_result:#?}\nX12={x12_result:#?}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    json_result.unwrap_err().to_string(),
+                    format!("generated raw X12 {side} envelope selection requires an X12 endpoint")
+                );
+                assert_eq!(x12_result.unwrap().unwrap().envelope_profile, selection);
+            }
+        }
+        let result = selected_boundary(
+            &schema(),
+            Some("document.x12"),
+            &FormatOptions::default(),
+            "source",
+            None,
+        );
+        std::fs::write(
+            root.join("DEFAULT-OUTCOME.original.txt"),
+            format!("{result:#?}"),
+        )
+        .unwrap();
+        assert_eq!(
+            result.unwrap().unwrap().envelope_profile,
+            X12EnvelopeProfile::SingleTransaction
+        );
+    }
+
+    #[test]
+    fn grouped_facade_backend_refusal_precedes_project_and_output_loading() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-grouped-x12-backend-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let output = root.join("absent-parent/unpublished");
+        let target = crate::GenerateTarget::Rust {
+            runtime_path: root.join("missing-runtime"),
+        };
+        std::fs::write(
+            root.join("INPUT.original.txt"),
+            format!("target={target:#?}\nsource=GroupedTransactions\ntarget_envelope=None\n"),
+        )
+        .unwrap();
+        let result = crate::generate_project_with_x12_envelope_profiles(
+            &root.join("missing-project.json"),
+            &output,
+            target,
+            Some(X12EnvelopeProfile::GroupedTransactions),
+            None,
+        );
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "generated raw X12 adapters currently require the C# backend"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn explicit_json_profile_refusal_preserves_existing_destination_before_lowering() {
+        let project = include_str!(
+            "../../tests/code_generation/static_document_adapters/fixtures/projects/base.json"
+        );
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-grouped-x12-json-refusal-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("project.json");
+        let output = root.join("existing");
+        std::fs::write(&input, project).unwrap();
+        std::fs::create_dir(&output).unwrap();
+        std::fs::write(output.join("sentinel.txt"), "authored unchanged sentinel\n").unwrap();
+        for (source, side) in [(true, "source"), (false, "target")] {
+            for selection in [
+                X12EnvelopeProfile::SingleTransaction,
+                X12EnvelopeProfile::GroupedTransactions,
+            ] {
+                let result = crate::generate_project_with_x12_envelope_profiles(
+                    &input,
+                    &output,
+                    crate::GenerateTarget::CSharp,
+                    source.then_some(selection),
+                    (!source).then_some(selection),
+                );
+                std::fs::write(
+                    root.join(format!("{side}-{selection:?}-OUTCOME.original.txt")),
+                    format!("{result:#?}"),
+                )
+                .unwrap();
+                let entries = std::fs::read_dir(&output)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name())
+                    .collect::<Vec<_>>();
+                let sentinel = std::fs::read_to_string(output.join("sentinel.txt")).unwrap();
+                std::fs::write(
+                    root.join(format!("{side}-{selection:?}-DESTINATION.original.txt")),
+                    format!("entries={entries:?}\nsentinel={sentinel:?}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    result.unwrap_err().to_string(),
+                    format!("generated raw X12 {side} envelope selection requires an X12 endpoint")
+                );
+                assert_eq!(entries, vec![std::ffi::OsString::from("sentinel.txt")]);
+                assert_eq!(sentinel, "authored unchanged sentinel\n");
+            }
+        }
     }
 }

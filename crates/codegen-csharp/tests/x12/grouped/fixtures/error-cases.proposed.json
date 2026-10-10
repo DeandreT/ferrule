@@ -1,0 +1,218 @@
+[
+  {
+    "label": "transaction-count",
+    "wire": "errors/transaction-count.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 transaction trailer count or control does not match its owner.",
+      "segment_index": 21,
+      "field_path": "FunctionalGroups[1]/Transactions[1]/SE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "transaction-cross-control",
+    "wire": "errors/transaction-cross-control.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 transaction trailer count or control does not match its owner.",
+      "segment_index": 13,
+      "field_path": "FunctionalGroups[1]/Transactions[0]/SE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "transaction-count-not-digits",
+    "wire": "errors/transaction-count-not-digits.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 transaction trailer count or control does not match its owner.",
+      "segment_index": 24,
+      "field_path": "FunctionalGroups[1]/Transactions[2]/SE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "group-count",
+    "wire": "errors/group-count.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 functional group trailer count or control does not match its owner.",
+      "segment_index": 25,
+      "field_path": "FunctionalGroups[1]/GE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "group-cross-control",
+    "wire": "errors/group-cross-control.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 functional group trailer count or control does not match its owner.",
+      "segment_index": 25,
+      "field_path": "FunctionalGroups[1]/GE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "interchange-count",
+    "wire": "errors/interchange-count.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 interchange trailer count or control does not match its owner.",
+      "segment_index": 26,
+      "field_path": "IEA"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "interchange-control",
+    "wire": "errors/interchange-control.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 interchange trailer count or control does not match its owner.",
+      "segment_index": 26,
+      "field_path": "IEA"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "missing-first-SE",
+    "wire": "errors/missing-first-SE.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 envelope ordering is invalid.",
+      "segment_index": 7,
+      "field_path": "FunctionalGroups[0]/Transactions[0]/SE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "missing-second-GE",
+    "wire": "errors/missing-second-GE.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 envelope ordering is invalid.",
+      "segment_index": 25,
+      "field_path": "FunctionalGroups[1]/GE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "missing-IEA",
+    "wire": "errors/missing-IEA.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 envelope ordering is invalid.",
+      "segment_index": 26,
+      "field_path": "IEA"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "duplicate-SE",
+    "wire": "errors/duplicate-SE.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 envelope ordering is invalid.",
+      "segment_index": 8,
+      "field_path": "FunctionalGroups[0]/Transactions"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "GS-before-GE",
+    "wire": "errors/GS-before-GE.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 envelope ordering is invalid.",
+      "segment_index": 25,
+      "field_path": "FunctionalGroups[1]/GE"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "later-group-version",
+    "wire": "errors/later-group-version.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "UnsupportedProfile",
+      "message": "X12 envelope versions do not match the selected profile.",
+      "segment_index": 9,
+      "field_path": "FunctionalGroups[1]/GS"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "ST03",
+    "wire": "errors/ST03.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 envelope element counts are invalid.",
+      "segment_index": 10,
+      "field_path": "FunctionalGroups[1]/Transactions[0]/ST"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "repeated-element",
+    "wire": "errors/repeated-element.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "UnsupportedProfile",
+      "message": "Repeated X12 element values are outside the selected profile.",
+      "segment_index": 5,
+      "field_path": null
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "multiple-interchanges",
+    "wire": "errors/multiple-interchanges.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "UnsupportedProfile",
+      "message": "Multiple X12 interchanges are outside the selected profile.",
+      "segment_index": 27,
+      "field_path": "ISA"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "zero-groups",
+    "wire": "native-zero-groups.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 interchange requires at least one functional group.",
+      "segment_index": 1,
+      "field_path": "FunctionalGroups"
+    },
+    "native_negative_parity_claim": false
+  },
+  {
+    "label": "empty-group",
+    "wire": "native-empty-group.x12",
+    "expected": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 functional group requires at least one transaction.",
+      "segment_index": 2,
+      "field_path": "FunctionalGroups[0]/Transactions"
+    },
+    "native_negative_parity_claim": false
+  }
+]
