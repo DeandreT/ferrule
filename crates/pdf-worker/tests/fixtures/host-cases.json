@@ -1,0 +1,329 @@
+{
+  "status": "INDEPENDENT_SOURCE_PLAN_RECIPES_FROZEN_BEFORE_IMPLEMENTATION_ALL_UNRUN",
+  "row_count": 40,
+  "rows": [
+    {
+      "id": "B01",
+      "stimulus": "empty-page ordinary versus worker",
+      "required_evidence_class": "real",
+      "independent_expected": "Succeeded; complete Group[Value Null], exit0, ready/start/reap/cleanup exact",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B02",
+      "stimulus": "hello-page ordinary versus worker",
+      "required_evidence_class": "real",
+      "independent_expected": "Succeeded; complete Group[Value String Hello], exit0, same fixed limits",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B03",
+      "stimulus": "repair layout plus missing/oversized source",
+      "required_evidence_class": "wire/model",
+      "independent_expected": "RepairDependency(ObjectFind) before profile/file/job/parse; no job/target",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B04",
+      "stimulus": "unsupported OS/arch or missing PIDfd capability",
+      "required_evidence_class": "model plus platform",
+      "independent_expected": "UnsupportedHost before PDF parse; no fallback",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B05",
+      "stimulus": "missing/nonregular/replaced packaged worker",
+      "required_evidence_class": "filesystem/model",
+      "independent_expected": "UnsupportedHost; no PDF parse/start; replacement retained",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B06",
+      "stimulus": "each inherited soft/hard bound below fixed profile",
+      "required_evidence_class": "real/model",
+      "independent_expected": "ResourceSetup; no increase/no start/no parse",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B07",
+      "stimulus": "final symlink/FIFO/device/socket/URL input",
+      "required_evidence_class": "filesystem",
+      "independent_expected": "nonregular input refusal; no PDF read/target",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B08",
+      "stimulus": "source identity/size/mtime/ctime changes during bounded copy",
+      "required_evidence_class": "filesystem/model",
+      "independent_expected": "SnapshotMismatch; staged originals retained; no start",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B09",
+      "stimulus": "staged snapshot count/hash mismatch",
+      "required_evidence_class": "wire/real",
+      "independent_expected": "declared host snapshot failure exit2; no from_bytes",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B10",
+      "stimulus": "existing request ID/job/fixed leaf collision",
+      "required_evidence_class": "filesystem",
+      "independent_expected": "create_new refusal; existing bytes untouched",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B11",
+      "stimulus": "child exits before ready or control EOF",
+      "required_evidence_class": "real",
+      "independent_expected": "WorkerExit/raw status or ProtocolError; held child reaped; no success",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B12",
+      "stimulus": "duplicate/trailing/wrong ID/profile/limit ready",
+      "required_evidence_class": "wire/real",
+      "independent_expected": "ProtocolError; no start token; stop/reap owned child",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B13",
+      "stimulus": "ready without permitted start, then cancel",
+      "required_evidence_class": "real",
+      "independent_expected": "Cancelled after held-child reap; no parse",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B14",
+      "stimulus": "exit0 missing/malformed result",
+      "required_evidence_class": "real/wire",
+      "independent_expected": "ProtocolError, no Instance; preserve raw files/status",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B15",
+      "stimulus": "exit2 complete declared PDF error",
+      "required_evidence_class": "real/wire",
+      "independent_expected": "FailedClosed; exact PdfErrorRecord/full bounded Diagnostics; exit2 not success",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B16",
+      "stimulus": "exit2 with ok or exit0 with error",
+      "required_evidence_class": "wire/real",
+      "independent_expected": "ProtocolError raw mismatch; no Instance",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B17",
+      "stimulus": "unexpected signal/exit with partial bytes",
+      "required_evidence_class": "real",
+      "independent_expected": "WorkerExit retaining code/signal/partial originals; no guessed cause",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B18",
+      "stimulus": "instance exact64MiB/one-over and part publication",
+      "required_evidence_class": "wire/filesystem",
+      "independent_expected": "exact complete body admissible with domain; over refuses; no partial ok/rename",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B19",
+      "stimulus": "unexpected artifact/alias or logical retained job over80MiB",
+      "required_evidence_class": "filesystem/model",
+      "independent_expected": "ProtocolError; no unknown unlink or success",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B20",
+      "stimulus": "stderr exact65536/one-over and extra stdout",
+      "required_evidence_class": "real/model",
+      "independent_expected": "exact retained prefix bounded; overflow/extra control is ProtocolError",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B21",
+      "stimulus": "no ready/result until real30s cutoff",
+      "required_evidence_class": "real",
+      "independent_expected": "TimedOut after close; same original30s work/5s closure allowance",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B22",
+      "stimulus": "held child ignores TERM",
+      "required_evidence_class": "real",
+      "independent_expected": "TERM grace<=1s then held-PIDfd KILL; actual reap before closed failure",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B23",
+      "stimulus": "cancel already set before admission",
+      "required_evidence_class": "model/real",
+      "independent_expected": "Cancelled; no job or child created",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B24",
+      "stimulus": "cancel running plus late valid output",
+      "required_evidence_class": "real/model",
+      "independent_expected": "Cancelled wins; no Instance/target; complete late bytes retained",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B25",
+      "stimulus": "cancel during validation/immediately before return",
+      "required_evidence_class": "model",
+      "independent_expected": "Cancelled; no Succeeded state even with valid/reaped data",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B26",
+      "stimulus": "receipt writer advances fake monotonic time30.001",
+      "required_evidence_class": "model",
+      "independent_expected": "TimedOut/no Instance after final publication cutoff; complete receipt retained",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B27",
+      "stimulus": "PIDfd signal failure",
+      "required_evidence_class": "model",
+      "independent_expected": "ClosureIncomplete with primary reason/error and still-owned manager; no PID fallback",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B28",
+      "stimulus": "competing/lost wait relationship",
+      "required_evidence_class": "real/model",
+      "independent_expected": "ClosureIncomplete; no normal-reap inference from process absence",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B29",
+      "stimulus": "observed unknown child/descendant or reused identity",
+      "required_evidence_class": "model",
+      "independent_expected": "ClosureIncomplete; no unknown signal/adoption/reap",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B30",
+      "stimulus": "closure allowance expires while held child unresolved",
+      "required_evidence_class": "model",
+      "independent_expected": "nonterminal ClosureIncomplete; manager ownership retained/service continues",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B31",
+      "stimulus": "post-reap pipe/file/fsync/cleanup/receipt failure",
+      "required_evidence_class": "filesystem/model",
+      "independent_expected": "closed failure or explicit remaining responsibility; never Succeeded",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B32",
+      "stimulus": "primary configured PDF load and selected target",
+      "required_evidence_class": "real CLI",
+      "independent_expected": "one sequential worker per existing primary acquisition; complete selected output",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B33",
+      "stimulus": "used/unused static PDF secondary sources",
+      "required_evidence_class": "real CLI",
+      "independent_expected": "required declaration order; unused secondary zero launches/opens; complete selected output",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B34",
+      "stimulus": "repeated same dynamic(source,path) and unused dynamic source",
+      "required_evidence_class": "real CLI",
+      "independent_expected": "one successful cached load, unused zero; distinct key reload; no partial cache",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B35",
+      "stimulus": "flag-free filesystem PDF route",
+      "required_evidence_class": "real CLI",
+      "independent_expected": "current in-process behavior, complete baseline output/error preserved",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B36",
+      "stimulus": "--pdf-worker with stdin/stdout payload route",
+      "required_evidence_class": "CLI",
+      "independent_expected": "early explicit refusal; no stdin/trace/output/job acquisition",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B37",
+      "stimulus": "worker failure/cancel before mapping publication",
+      "required_evidence_class": "real CLI",
+      "independent_expected": "literal sentinel target bytes remain exact; before_publish not used for PDF polling",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B38",
+      "stimulus": "nonUTF8 filesystem input name",
+      "required_evidence_class": "filesystem/real",
+      "independent_expected": "same frozen bytes/typed output; native path never enters request wire",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B39",
+      "stimulus": "unneeded inherited descriptors/environment",
+      "required_evidence_class": "real",
+      "independent_expected": "only prescribed control/stdio/job capabilities retained; no arbitrary descriptor access",
+      "actual": "UNRUN"
+    },
+    {
+      "id": "B40",
+      "stimulus": "owner dies around child parent-death setup",
+      "required_evidence_class": "real",
+      "independent_expected": "last-resort child event retained separately; no parent normal-closure/crash-cleanup proof",
+      "actual": "UNRUN"
+    }
+  ],
+  "full_baseline_oracles": {
+    "P01": [
+      "Group",
+      [
+        [
+          "Value",
+          [
+            "Null"
+          ]
+        ]
+      ]
+    ],
+    "P02": [
+      "Group",
+      [
+        [
+          "Value",
+          [
+            "String",
+            "Hello"
+          ]
+        ]
+      ]
+    ]
+  },
+  "sentinel_target_original_hex": "73656e74696e656c",
+  "B26_clock": {
+    "admission": 0.0,
+    "cutoff": 30.0,
+    "receipt_completion": 30.001,
+    "expected": "TimedOut, no returned Instance"
+  },
+  "resource_literals": {
+    "AS_soft": 536870912,
+    "AS_hard": 536870912,
+    "CPU_soft": 30,
+    "CPU_hard": 31,
+    "FSIZE_soft": 67108864,
+    "FSIZE_hard": 67108864,
+    "CORE_soft": 0,
+    "CORE_hard": 0
+  },
+  "limits": "These normative recipes are not an implemented executable control driver. Compound subcases require exact source/expected freezing before execution; no claim40 distinct child invocations or source acceptance. Models never prove kernel/lifecycle/OS/PDF behavior."
+}
