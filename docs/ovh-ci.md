@@ -35,6 +35,8 @@ and hard limit of 3500 MiB. OVH jobs use one Cargo build job, two ordinary test
 threads, and one generated-backend test thread. Graphical tests use Xvfb with
 ambient Wayland handles removed. These limits leave capacity for the existing
 Wareboxes runner and Valheim service; they do not reserve capacity from them.
+The persistent Roslyn compiler process is disabled so C# builds release memory
+before subsequent Rust host builds.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
 paths, or less than 4 GiB free. It checks Xvfb and native build prerequisites
@@ -43,12 +45,18 @@ before toolchain setup. Build outputs persist outside the cleaned checkout:
 - `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds.
 - `/home/ferrule-runner/ci-cache/generated-host-target` — generated host builds
   that support `FERRULE_CODEGEN_HOST_TARGET_DIR`, separate from outer Cargo.
+- `/home/ferrule-runner/ci-cache/compiler` — sccache, capped at 2 GB, reuses
+  compatible Rust library compilation across otherwise isolated host builds.
 - `/home/ferrule-runner/.cargo`, `.rustup`, and `.dotnet` — dependency/tool caches.
 
 GitHub-hosted jobs continue to use the existing Actions Rust cache. OVH skips
 that archive cache to avoid duplicating persistent build outputs. Nightly Rust
 and .NET 10 are maintained through the existing setup actions. No permanent
 GitHub access token is installed on the server.
+Only test/build steps use sccache; clippy runs directly. Incremental Rust
+compilation stays disabled, as required by the compiler cache. Final runner
+diagnostics report cache hits and misses. The cache tool is root-owned and its
+download has a pinned SHA-256, following the [upstream Rust cache contract](https://github.com/mozilla/sccache/blob/main/docs/Rust.md).
 
 ## Provision or replace the runner
 

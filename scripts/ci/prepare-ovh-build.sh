@@ -9,7 +9,7 @@ if [[ ${HOME:?} != /home/ferrule-runner || ! -f ${GITHUB_ENV:?} ]]; then
   echo 'Unexpected runner home or missing GitHub environment file.' >&2
   exit 1
 fi
-for prerequisite in df awk realpath xvfb-run xauth cc pkg-config; do
+for prerequisite in df awk realpath xvfb-run xauth cc pkg-config sccache; do
   command -v "$prerequisite" >/dev/null
 done
 
@@ -17,7 +17,8 @@ done
 cache_root="$HOME/ci-cache"
 if [[ $(realpath -m "$cache_root") != "$cache_root" ||
       $(realpath -m "$cache_root/workspace-target") != "$cache_root/workspace-target" ||
-      $(realpath -m "$cache_root/generated-host-target") != "$cache_root/generated-host-target" ]]; then
+      $(realpath -m "$cache_root/generated-host-target") != "$cache_root/generated-host-target" ||
+      $(realpath -m "$cache_root/compiler") != "$cache_root/compiler" ]]; then
   echo 'Refusing symlinked build-cache paths.' >&2
   exit 1
 fi
@@ -28,13 +29,16 @@ if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < 4 * 1024 * 1024 )); 
   df -h "$HOME" >&2
   exit 1
 fi
-mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" "$HOME/.dotnet"
+mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" \
+  "$cache_root/compiler" "$HOME/.dotnet"
 
 {
   printf 'CARGO_TARGET_DIR=%s/workspace-target\n' "$cache_root"
   printf 'FERRULE_CODEGEN_HOST_TARGET_DIR=%s/generated-host-target\n' "$cache_root"
   printf 'DOTNET_INSTALL_DIR=%s/.dotnet\n' "$HOME"
-  printf '%s\n' 'CARGO_BUILD_JOBS=1' 'RUST_TEST_THREADS=2' 'MSBUILDDISABLENODEREUSE=1'
+  printf 'SCCACHE_DIR=%s/compiler\n' "$cache_root"
+  printf '%s\n' 'SCCACHE_CACHE_SIZE=2G' 'CARGO_BUILD_JOBS=1' 'RUST_TEST_THREADS=2' \
+    'MSBUILDDISABLENODEREUSE=1' 'UseSharedCompilation=false'
 } >> "$GITHUB_ENV"
 df -h "$cache_root"
 free -h

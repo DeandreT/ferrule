@@ -57,6 +57,8 @@ jobs:
           --features codegen-tests -- -D warnings
       - name: codegen crate tests
         if: matrix.suite == 'crates'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo test
           -p codegen
@@ -66,6 +68,8 @@ jobs:
           -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
       - name: generated Rust and C# parity tests
         if: matrix.suite == 'mappings'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo test -p cli --test code_generation
           --features codegen-tests -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
@@ -74,3 +78,6 @@ jobs:
         run: |
           df -h
           free -h
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ]; then
+            /opt/ferrule-runner-tools/sccache --show-stats
+          fi
