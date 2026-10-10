@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-09
+Updated: 2026-10-10
 
 ## Goal
 
@@ -23,14 +23,23 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
 ## Current Baseline
 
-Status snapshot: 2026-10-09 13:13:15 UTC, against merged main
-[`0a645d3`](https://github.com/DeandreT/ferrule/commit/0a645d3e2d98207c87f3ad59229ebfc49580e11a).
+Status snapshot: 2026-10-10 00:26:04 UTC, against merged main
+[`732d7ab`](https://github.com/DeandreT/ferrule/commit/732d7abf623c8b2d6ff49c672cf8be02efc88686).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#212](https://github.com/DeandreT/ferrule/issues/212); its final two revised
-parallel-diagram renders are complete. Publication status is tracked in #212.
+[#252](https://github.com/DeandreT/ferrule/issues/252). The earlier
+[#212](https://github.com/DeandreT/ferrule/issues/212) refresh is merged in
+[#215](https://github.com/DeandreT/ferrule/pull/215); its finite rendered diagrams remain historical evidence.
+Publication status for this snapshot is tracked in #252. Memory-study publication
+[#249](https://github.com/DeandreT/ferrule/pull/249) merged on 2026-10-10 at 00:07:26 UTC;
+the dependent host-policy [#251](https://github.com/DeandreT/ferrule/pull/251) merged
+at 00:16:28 UTC. Both PRs have three successful hosted jobs, and fresh combined-main
+workspace strict warnings and formatting pass. These publication checks do not
+execute #218's pending JSON calls, #201's duplication workflows or #248's analysis.
 Earlier #173/#175 and
-#182/#187 snapshots remain historical records. Compact GUI #194 and guidance #210
+#182/#187 snapshots remain historical records. The revised dependency maps in this
+refresh require their own bounded render review; earlier renders do not qualify
+changed fences. Compact GUI #194 and guidance #210
 are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). Fresh strict
 warnings, formatting, one affected unit check and the production build pass;
 earlier focused/full GUI and web-demo crate suites are retained separately.
@@ -38,9 +47,9 @@ Finite desktop inspection and editor-driven identity Rust/C# generation pass.
 The two generated public String JSON calls each match the complete 172-byte
 independent golden with normal owned host closure; earlier GUI parts needed owned
 helper cleanup. Three earlier diagram fences rendered as three SVGs and six PNGs
-with owned helper cleanup. The final two parallel diagrams rendered as two SVGs
+with owned helper cleanup. The #212 final two parallel diagrams rendered as two SVGs
 and four PNGs with owned helper cleanup; the unchanged roadmap fence reuses its
-earlier rendered evidence. The current map needs horizontal scrolling or zoom at
+earlier rendered evidence. That historical current map needs scrolling or zoom at
 1200 pixels, and the complete map's labels need zoom. All three hosted #214 jobs
 ran zero validation steps because
 of the account billing/spending restriction; those failures are not passes.
@@ -184,24 +193,53 @@ an unrestricted publication-parity promise.
   compiler failure is retained; 15 independent native observations, 45 compiled
   typed/text/byte calls, 114 Rust tests and six local steps pass. Native values
   are independently compared, not used to manufacture generated expectations.
-- [ ] Qualify additive generated typed target selection in
-  [#198](https://github.com/DeandreT/ferrule/issues/198). Its 15-role source and
-  latest merged-main binding are accepted; all 90 planned native/Rust/C# calls
-  remain unrun. Adopt its shared C# test changes after #205 releases
-  `crates/codegen-csharp/src/json5_output_tests.rs`; this source handoff does not
-  replace backend qualification.
-  Preserve ordinary all-output APIs, static input admission, failure-rule order,
-  lazy selected-target loaders and shared counters. JSON/JSON5 selection overloads
-  and GUI integration are excluded.
-- [ ] Execute the three test-only artifact-retention roles in
-  [#205](https://github.com/DeandreT/ferrule/issues/205), including intentional
-  failing-comparison retention controls. Source is accepted; actual checks and
-  matched log/file-size comparisons remain unrun. No memory saving is inferred.
+- [x] Qualify additive generated typed target selection in
+  [#198](https://github.com/DeandreT/ferrule/issues/198), merged in
+  [#219](https://github.com/DeandreT/ferrule/pull/219): all 90 independent
+  native/Rust/C# comparisons, 435 owning library tests, three existing compiled
+  regressions and exact-manifest, strict-warning and formatting checks pass.
+  Complete static named-input admission and global failure rules remain enforced;
+  selected construction and dynamic loaders stay lazy, with shared counters.
+  Ordinary all-output APIs remain available. Selected JSON overloads are #218;
+  JSON5 selection and GUI integration remain outside this increment.
+- [x] Qualify the test-only artifact-retention change in
+  [#205](https://github.com/DeandreT/ferrule/issues/205), merged in
+  [#216](https://github.com/DeandreT/ferrule/pull/216): five matched tests and
+  two intentional failing-comparison controls retain complete originals. Raw logs
+  change from 137,823,450 to 124,980 bytes; retained files change from 876,481 to
+  6,110,354 bytes. Two admission logs increase. These are log/file observations,
+  not memory savings, and unrecorded historical error details are not inferred.
+- [x] Repair the hosted nightly lint findings in
+  [#220](https://github.com/DeandreT/ferrule/issues/220)/[#222](https://github.com/DeandreT/ferrule/pull/222),
+  then the exact generated C# test inventories and opt-in successful retention in
+  [#223](https://github.com/DeandreT/ferrule/issues/223)/[#228](https://github.com/DeandreT/ferrule/pull/228) and
+  [#225](https://github.com/DeandreT/ferrule/issues/225)/[#229](https://github.com/DeandreT/ferrule/pull/229).
+  Original mapping-job failures remain retained; the latter PRs each have three
+  successful hosted jobs. This maintenance changes no mapping semantics.
+- [x] Qualify the three older generated CLI wrappers' shared-cache and retained-original
+  behavior in [#217](https://github.com/DeandreT/ferrule/issues/217): nine helper controls,
+  three paired Rust/C# regressions, three default-cleanup repeats and three
+  intentional configuration refusals pass. The dedicated host cache grows by
+  93,835,264 bytes; no duplicate cache is required. Merged in
+  [#251](https://github.com/DeandreT/ferrule/pull/251) after #249; all three hosted
+  jobs succeed. Existing default isolation and production behavior remain unchanged.
+- [ ] Execute selected-target JSON boundary APIs in
+  [#218](https://github.com/DeandreT/ferrule/issues/218). The reviewed 40-recipe contract
+  and Rust/C# source proposals preserve 229 planned calls: 76 native, 76 Rust and
+  77 C#. All remain unrun. Bind complete public JSON results before independently
+  decoded wire observations; preserve schema/name, UTF-8, static admission,
+  loader laziness and existing limits. #207/#217's publication prerequisites are
+  merged; fresh source binding precedes executable qualification.
+  JSON5, filesystem/GUI selection and resource-policy expansion remain excluded.
 
 These new sequence cohorts retain their own finite profiles and complete original
 failures. They do not close broader desktop workflows, external saved-design
-execution or whole-product compatibility gates. Hosted jobs for the merged increments ran
-zero validation steps because of the account billing/spending restriction.
+execution or whole-product compatibility gates. Earlier hosted jobs for the
+sequence increments ran zero validation steps under a billing/spending restriction;
+those failures remain distinct from later jobs. Hosted execution has resumed:
+[#228](https://github.com/DeandreT/ferrule/pull/228), [#229](https://github.com/DeandreT/ferrule/pull/229) and
+[#238](https://github.com/DeandreT/ferrule/pull/238) each have three successful jobs.
+Other earlier mapping-job failures remain retained; pending PRs are not passes.
 
 The four XML public-host cohorts above include small prerequisites and
 separate opt-in boundary runs. The [XML qualification index](docs/generated-xml-qualification-index.md)
@@ -443,21 +481,27 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   save/reload and history coverage remains separate. Constant-7 controls do not
   prove real parent-frame positions. Independent document copies are in scope;
   same-project duplication is #201.
-- [ ] Agree and implement atomic sequence-consumer duplication in the available
-  [#201](https://github.com/DeandreT/ferrule/issues/201) lane after coordinating the
-  shared GUI files. Reserve/remap private owners without changing the original;
-  general clipboard and arbitrary graph copying are excluded.
-- [ ] Qualify the available test-only GUI frame diagnostic change in
-  [#211](https://github.com/DeandreT/ferrule/issues/211) after #194 releases its
-  helper. Preserve full mapping outcomes and control evidence; compare complete
-  log sizes separately from process memory. Production behavior is excluded.
-- [ ] Fit complete desktop node bounds in the claimed
-  [#213](https://github.com/DeandreT/ferrule/issues/213) lane on the released #194
-  GUI baseline. The observed 900 × 700 mapping has five graph nodes and
-  source/target blocks; resizing exposes the clipped graph. Own only the desktop
-  fit action and required view transform, preserving Project data, wires, saved
-  positions and layout sidecars. Browser Fit, factories/icons and authoring are
-  separate scopes.
+- [ ] Qualify the accepted atomic sequence-consumer duplication proposal in
+  [#201](https://github.com/DeandreT/ferrule/issues/201), assigned to DeandreT. The frozen
+  contract has 28 controls, 87 snapshots and 56 complete canvas tables; all 67
+  planned native calls and desktop checks remain unrun. Final source adoption
+  preserves #213's Fit hooks and privately remaps owners without changing the
+  original. General clipboard and arbitrary graph copying are excluded.
+- [x] Qualify the test-only GUI frame diagnostic change in
+  [#211](https://github.com/DeandreT/ferrule/issues/211), merged in
+  [#232](https://github.com/DeandreT/ferrule/pull/232): the same 20 tests retain
+  complete mapping outcomes and control evidence while logs change from 538.6 MB
+  to 23.6 MB (95.6%). This is a log-size comparison, separate from process memory
+  and production behavior.
+- [x] Fit complete desktop node bounds in
+  [#213](https://github.com/DeandreT/ferrule/issues/213), merged in
+  [#238](https://github.com/DeandreT/ferrule/pull/238): nine focused Fit tests,
+  the popup regression, all 749 GUI tests, fresh strict warnings, formatting and
+  the production build pass. Four finite alternate-display parts cover main,
+  named, single and empty views at 900 × 700 / 1200 × 900 without saved-data changes.
+  GUI processes close normally; private bus helpers need owned cleanup. Browser
+  Fit, factories/icons, model/history and broader authoring remain separate.
+
 - [ ] For every new wizard, verify ordinary viewport reachability and normal
   desktop save/reopen, as well as state-method tests.
 
@@ -568,11 +612,25 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   language match frozen expectations after the original four mismatches per
   language were retained. Evaluate all arguments left to right before adaptation;
   interpreter/coercion/frame policy is unchanged.
+- [x] Qualify eager ordered Boolean calls with at least two operands in
+  [#237](https://github.com/DeandreT/ferrule/issues/237)/[#245](https://github.com/DeandreT/ferrule/pull/245).
+  Zero/one-operand calls still refuse; broader nullable logical semantics and
+  external equivalence remain separate.
+- [ ] Define explicit same-scope singular-target multiple-feed semantics in
+  [#241](https://github.com/DeandreT/ferrule/issues/241) before admitting them. Preserve
+  distinct expressions and the existing duplicate-binding refusal; #239's
+  declared ancestor branches do not supply an inferred winner.
 - [ ] Define faithful saved-design interchange for the admitted sequence in
-  [#203](https://github.com/DeandreT/ferrule/issues/203). This available design and
-  synthetic-fixture lane must establish exact stage/capture/position/error
-  preservation before any importer/exporter implementation. Existing typed
-  refusal remains; XML annotations and JSON5 metadata are separate contracts.
+  [#203](https://github.com/DeandreT/ferrule/issues/203). Its source-reviewed design
+  and 24 synthetic recipes admit no faithful new saved form; materialization,
+  native qualification and save/reopen remain unrun. Exact stage/capture/position/
+  error preservation is required before any importer/exporter implementation.
+  Existing typed refusal remains; XML annotations and JSON5 metadata are separate contracts.
+- [ ] Qualify internal capture/stage/counter observations from #203's frozen fixture
+  in [#253](https://github.com/DeandreT/ferrule/issues/253). Focused engine unit controls
+  and a narrow test-only borrowed sink remain separate from public saved-design
+  observations. Preserve budgets and public APIs; a construction marker establishes
+  code-path reach, without allocator telemetry. All executable checks remain unrun.
 - [x] Measure large captures and eager mapped outputs in
   [#207](https://github.com/DeandreT/ferrule/issues/207): all 72 measured native/Rust/C#
   runs and 72 separate complete verifiers pass. The
@@ -580,6 +638,14 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   36 matched pairs and whole-process counter limits. Allocation profiling is
   [#248](https://github.com/DeandreT/ferrule/issues/248); production optimization,
   new resource policy, streaming and universal memory claims remain outside this study.
+  Merged in [#249](https://github.com/DeandreT/ferrule/pull/249). Its Linux-only
+  observation guard [#242](https://github.com/DeandreT/ferrule/issues/242) and study-workspace
+  packaging repair [#246](https://github.com/DeandreT/ferrule/issues/246) are qualified within
+  that increment; other-platform execution is not claimed.
+- [ ] Attribute generated C# large-string costs in
+  [#248](https://github.com/DeandreT/ferrule/issues/248) using #207's merged fixtures. Retain an
+  allocation/GC trace and its perturbation separately from whole-process RSS;
+  any optimization or new budget requires another bounded issue.
 
 ### B. Visual Authoring and Debugging
 
@@ -593,7 +659,10 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 - [x] Inspect existing SQLite table and foreign-key metadata through read-only
   connections, with MFD fallback behavior and refusal of write-required recovery
-  documented in the [metadata contract](docs/formats.md#sqlite-metadata-inspection).
+  documented in the [metadata contract](docs/formats.md#sqlite-metadata-inspection),
+  merged in [#233](https://github.com/DeandreT/ferrule/issues/233)/[#236](https://github.com/DeandreT/ferrule/pull/236).
+  WAL shared-memory sidecars can still occur; read-only admission is not universal
+  filesystem isolation.
 - [ ] Add a typed query/write model before general database mutation modes.
 - [ ] Extend adapters and transport only with confinement, cancellation,
   original-error, resource, and publication contracts.
@@ -602,12 +671,35 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 ### D. Generated Execution
 
+- [x] Qualify opt-in bounded generated C# raw X12 004010 adapters in
+  [#221](https://github.com/DeandreT/ferrule/issues/221)/[#226](https://github.com/DeandreT/ferrule/pull/226), and
+  native fixed-width ISA output encoding in
+  [#224](https://github.com/DeandreT/ferrule/issues/224)/[#230](https://github.com/DeandreT/ferrule/pull/230).
+  Synthetic 940/JSON/945 controls remain separate from trading-partner certification;
+  ordinary typed/JSON APIs and caller-supplied controls are preserved.
+- [ ] Extend only native-defined 004010 format options in
+  [#250](https://github.com/DeandreT/ferrule/issues/250): settle directionality, implied
+  decimals, lenient traversal, lexical output and supplied-context completion before
+  runtime changes and compiled checks. Other versions, repeated-element syntax,
+  external I/O and durable control allocation remain excluded.
 - [ ] Grow compile-and-call coverage for applicable mappings and public adapters.
 - [ ] Add other language/backend targets as independent implementations and
   gates; the current emitters are Rust and C#.
 
 ### E. Product, Packaging, and Automation
 
+- [x] Retain actionable atomic-publication refusals in
+  [#227](https://github.com/DeandreT/ferrule/issues/227)/[#231](https://github.com/DeandreT/ferrule/pull/231);
+  no non-atomic fallback is added. MFD resource reads are confined through nested
+  schemas and discovered modules in [#234](https://github.com/DeandreT/ferrule/issues/234)/
+  [#243](https://github.com/DeandreT/ferrule/pull/243), and explicit single-project
+  executable import admission is available in [#235](https://github.com/DeandreT/ferrule/issues/235)/
+  [#240](https://github.com/DeandreT/ferrule/pull/240). Static admission is distinct
+  from execution parity; pipeline profile combinations remain refused.
+- [ ] Diagnose and repair the actual Pages deployment HTTP 404 in the available
+  [#247](https://github.com/DeandreT/ferrule/issues/247) lane. The successful site build
+  does not establish publication; workflow/configuration work stays separate from
+  site content and mapping implementation.
 - [ ] Package reproducible runtimes and examples with clear host boundaries.
 - [ ] Design reusable libraries, projects, configuration, and automation without
   implying compatibility with another product's proprietary package format.
