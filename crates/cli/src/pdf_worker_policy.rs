@@ -258,3 +258,9 @@ mod tests {
         );
     }
 }
+
+impl crate::FilesystemPdfReader for FilesystemRunPolicy {
+    fn read_pdf(&self, path: &Path, layout: &mapping::PdfLayout) -> anyhow::Result<ir::Instance> {
+        FilesystemRunPolicy::read_pdf(self, path, layout)
+    }
+}
