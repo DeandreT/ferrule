@@ -1,0 +1,31 @@
+{
+  "project": "project.json",
+  "context": "context.json",
+  "cases": [
+    {
+      "id": "zero",
+      "input": "zero.csv",
+      "source": "zero-source-tags.json",
+      "typed_target": "zero-typed-target-tags.json",
+      "wire": "zero-expected.x12",
+      "segment_count": 6
+    },
+    {
+      "id": "one",
+      "input": "one.csv",
+      "source": "one-source-tags.json",
+      "typed_target": "one-typed-target-tags.json",
+      "wire": "one-expected.x12",
+      "segment_count": 7
+    },
+    {
+      "id": "multiple",
+      "input": "multiple.csv",
+      "source": "multiple-source-tags.json",
+      "typed_target": "multiple-typed-target-tags.json",
+      "wire": "multiple-expected.x12",
+      "segment_count": 9
+    }
+  ],
+  "contract": "All rows feed one body loop in one singular interchange. Unbound typed trailer scopes produce empty groups before completion. Authored wire uses LF framing after each segment. No Ferrule execution was used to author these literals."
+}

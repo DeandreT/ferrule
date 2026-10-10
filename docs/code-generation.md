@@ -220,6 +220,50 @@ scalar unions and conflicting physical adapters are refused before any
 generated files are published. Dynamic loaded documents and mapped rows remain
 materialized, so the CSV output limit is not a total memory limit.
 
+## Flat CSV Input to X12
+
+Select `--csv-x12-adapters` with `--language csharp` to generate flat CSV text
+and UTF-8 byte input methods plus singular X12 output methods. The source must
+retain an explicit CSV family or `.csv` identity, and the target must retain
+an explicit X12 family or `.x12`/`.edi` identity. Schema contents never select
+the physical formats. Other optional adapter flags are mutually exclusive.
+
+The source row schema is a closed, non-repeating group with zero to 256
+non-repeating String, Int, Float or Bool fields. Field names are nonempty and
+ordinally unique. Other schema metadata, named boundaries, unresolved text
+repair settings and foreign format options are refused. Root and field names
+share a 1 MiB UTF-8 admission budget; the existing schema descriptor limit
+also applies to the encoded representation. The X12 target retains its own
+bounded schema, syntax, constraints and completion policy. Both borrowed
+schemas are admitted before ordinary lowering or recursive validation.
+
+`ParseCsv` and `ParseCsvBytes` return every supplied data row as one ordered
+repeated instance, including an empty collection for zero rows. The row schema
+itself remains non-repeating. `ExecuteCsvToX12`,
+`ExecuteCsvToX12WithContext`, `ExecuteCsvToX12Bytes` and
+`ExecuteCsvToX12BytesWithContext` parse the entire input, execute the ordinary
+typed mapping once, then serialize its complete primary X12 result. A body
+scope using `source: []` can iterate all rows while the root constructs one
+envelope. These libraries expose ordinary typed methods and the CSV input
+companions. JSON source entry points are not generated for this profile.
+
+Input honors the native positional header, delimiter, quote, quote-disabled
+and empty-string settings. Header labels and width do not change field order.
+Missing trailing cells remain Null; physically empty String cells are retained
+only when selected. Input accepts one leading UTF-8 BOM. Int and finite Float
+lexical values are untrimmed ASCII numbers; Bool accepts native Unicode
+whitespace around lowercase `true`, `false`, `1` or `0`.
+
+CSV parsing is bounded by 8 MiB of input, 1 MiB per decoded cell, 100,000
+logical records including a skipped header, 256 physical columns and
+1,000,000 instance nodes. The root, each data row and every declared field
+slot count as nodes. Cell/column and record limits precede row width; width
+precedes row node reservation and scalar conversion. Byte APIs check input
+length before strict UTF-8 decoding. Text APIs validate all Unicode before
+checking UTF-8 byte size. A parsing or mapping failure returns no partial
+result. Mapped target trees and completed output remain materialized, so these
+limits establish no total process memory bound.
+
 ## Dynamic Source Host Boundary
 
 Dynamic source paths remain graph expressions evaluated once for every item in

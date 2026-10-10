@@ -35,6 +35,17 @@ struct BindingPlan<'a> {
 }
 
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
+    render_with_json_boundaries(program, true)
+}
+
+pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
+    render_with_json_boundaries(program, false)
+}
+
+fn render_with_json_boundaries(
+    program: &Program,
+    json_boundaries: bool,
+) -> Result<String, EmitError> {
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
     for node in &program.expressions {
@@ -61,11 +72,15 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         .find("public static class GeneratedMapping")
         .expect("generated mapping header");
     output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
-    output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
+    if json_boundaries {
+        output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
+    }
     output.insert_str(type_position, xml_api::render_types(program)?);
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
-    render_json_entry_points(program, &mut output)?;
-    selected_json_api::render(program, &mut output);
+    if json_boundaries {
+        render_json_entry_points(program, &mut output)?;
+        selected_json_api::render(program, &mut output);
+    }
     xml_api::render(program, &mut output)?;
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {

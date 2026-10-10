@@ -1,0 +1,199 @@
+[
+  {
+    "id": "default",
+    "input": {},
+    "expected_policy": {
+      "delimiter": null,
+      "quote": null,
+      "quote_disabled": false,
+      "has_headers": true,
+      "preserve_empty_strings": false,
+      "utf8_bom": false
+    }
+  },
+  {
+    "id": "all-csv-options",
+    "input": {
+      "tabular_kind": "csv",
+      "delimiter": ";",
+      "csv_quote": "'",
+      "csv_quote_disabled": false,
+      "has_header_row": false,
+      "csv_preserve_empty_strings": true,
+      "csv_utf8_bom": true
+    },
+    "expected_policy": {
+      "delimiter": ";",
+      "quote": "'",
+      "quote_disabled": false,
+      "has_headers": false,
+      "preserve_empty_strings": true,
+      "utf8_bom": true
+    }
+  },
+  {
+    "id": "disabled-quotes",
+    "input": {
+      "csv_quote_disabled": true
+    },
+    "expected_policy": {
+      "delimiter": null,
+      "quote": null,
+      "quote_disabled": true,
+      "has_headers": true,
+      "preserve_empty_strings": false,
+      "utf8_bom": false
+    }
+  },
+  {
+    "id": "repair-first",
+    "input": {
+      "csv_text_repair_dependency": {
+        "causes": [
+          "unsupported_encoding"
+        ]
+      },
+      "json_document": true,
+      "delimiter": "é"
+    },
+    "expected_error": {
+      "variant": "SourceRepairRequired"
+    }
+  },
+  {
+    "id": "foreign-tabular",
+    "input": {
+      "tabular_kind": "xlsx"
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "json-option",
+    "input": {
+      "json_document": true
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "edi-option",
+    "input": {
+      "edi_kind": "x12"
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "xml-option",
+    "input": {
+      "xml_document": true
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "unresolved-json-option",
+    "input": {
+      "json_schema_unresolved_reference": "authored.schema.json"
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "lenient-option",
+    "input": {
+      "lenient_segments": true
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "foreign-before-dialect",
+    "input": {
+      "json5": true,
+      "delimiter": "é"
+    },
+    "expected_error": {
+      "variant": "SourceFormatOptions"
+    }
+  },
+  {
+    "id": "delimiter-nul",
+    "input": {
+      "delimiter": "\u0000"
+    },
+    "expected_error": {
+      "variant": "BadDelimiter",
+      "character": "\u0000"
+    }
+  },
+  {
+    "id": "delimiter-cr",
+    "input": {
+      "delimiter": "\r"
+    },
+    "expected_error": {
+      "variant": "BadDelimiter",
+      "character": "\r"
+    }
+  },
+  {
+    "id": "delimiter-unicode",
+    "input": {
+      "delimiter": "é"
+    },
+    "expected_error": {
+      "variant": "BadDelimiter",
+      "character": "é"
+    }
+  },
+  {
+    "id": "disabled-explicit-quote-before-quote",
+    "input": {
+      "csv_quote_disabled": true,
+      "csv_quote": "é"
+    },
+    "expected_error": {
+      "variant": "ConflictingQuoteSettings"
+    }
+  },
+  {
+    "id": "bad-quote",
+    "input": {
+      "csv_quote": " "
+    },
+    "expected_error": {
+      "variant": "BadQuote",
+      "character": " "
+    }
+  },
+  {
+    "id": "same-delimiter-quote",
+    "input": {
+      "delimiter": "'",
+      "csv_quote": "'"
+    },
+    "expected_error": {
+      "variant": "DelimiterQuoteConflict"
+    }
+  },
+  {
+    "id": "delimiter-before-disabled-quote",
+    "input": {
+      "delimiter": "é",
+      "csv_quote_disabled": true,
+      "csv_quote": "é"
+    },
+    "expected_error": {
+      "variant": "BadDelimiter",
+      "character": "é"
+    }
+  }
+]

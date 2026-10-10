@@ -1,0 +1,365 @@
+using System.Globalization;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+// Wholly authored preimplementation host. No public fixture comes from an original map.
+static class Program
+{
+    static readonly UTF8Encoding Utf8 = new(false, true);
+    static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    static string Fixtures = "";
+    static string Evidence = "";
+    static readonly List<JsonObject> Results = [];
+    static int Failures;
+
+    static int Main(string[] args)
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length != 3 || args[1] is not ("base" or "failure" or "dialect"))
+            throw new ArgumentException("Expected fixture directory, base|failure|dialect, evidence directory.");
+        Fixtures = Path.GetFullPath(args[0]);
+        Evidence = Path.GetFullPath(args[2]);
+        Directory.CreateDirectory(Evidence);
+        Save(Path.Combine(Evidence, "invocation.json"), new JsonObject
+        {
+            ["arguments"] = new JsonArray(args.Select(x => JsonValue.Create(x)).ToArray()),
+            ["family"] = args[1], ["current_directory"] = Environment.CurrentDirectory,
+            ["culture"] = CultureInfo.CurrentCulture.Name,
+        });
+        if (args[1] == "base")
+            foreach (JsonObject row in LoadArray("direct-cases.json").OfType<JsonObject>())
+                foreach (string route in row["routes"]!.AsArray().Select(x => x!.GetValue<string>()))
+                    Direct(row, route);
+        foreach (JsonObject row in LoadArray("generated-cases.json").OfType<JsonObject>())
+            if (row["family"]!.GetValue<string>() == args[1]) Generated(row);
+        Save(Path.Combine(Evidence, "results.json"), new JsonArray(Results.ToArray()));
+        Save(Path.Combine(Evidence, "summary.json"), new JsonObject
+        {
+            ["family"] = args[1], ["calls"] = Results.Count, ["failures"] = Failures,
+        });
+        Console.WriteLine($"CSV authored host {args[1]}: {Results.Count} calls, {Failures} failures.");
+        return Failures == 0 ? 0 : 1;
+    }
+
+    static JsonArray LoadArray(string name) => JsonNode.Parse(File.ReadAllBytes(Path.Combine(Fixtures, name)))!.AsArray();
+    static JsonNode Load(string name) => JsonNode.Parse(File.ReadAllBytes(Path.Combine(Fixtures, name)))!;
+    static void Save(string path, JsonNode? value) => File.WriteAllText(path, value?.ToJsonString(JsonOptions) ?? "null", Utf8);
+    static string Sha(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
+    static string ShaFile(string path) { using var input = File.OpenRead(path); return Convert.ToHexStringLower(SHA256.HashData(input)); }
+    static JsonNode? Copy(JsonNode? value) => value?.DeepClone();
+    static string? Text(JsonNode? value) => value is null ? null : value.GetValue<string>();
+
+    static string FromUnits(JsonArray values) => new(values.Select(x => (char)x!.GetValue<int>()).ToArray());
+    static string BuildText(JsonObject row)
+    {
+        if (row["recipe"] is not JsonObject recipe) return row["input"]!.GetValue<string>();
+        if (recipe["utf16_units"] is JsonArray units) return FromUnits(units);
+        var result = new StringBuilder();
+        if (recipe["parts"] is JsonArray parts)
+            foreach (JsonObject part in parts.OfType<JsonObject>())
+            {
+                string text = part["text"]!.GetValue<string>();
+                int count = part["repeat"]!.GetValue<int>();
+                for (int index = 0; index < count; index++) result.Append(text);
+            }
+        if (recipe["append_utf16_units"] is JsonArray tail) result.Append(FromUnits(tail));
+        return result.ToString();
+    }
+    static (string? Text, byte[]? Bytes) Input(JsonObject row, bool bytes, bool generated)
+    {
+        if (row["recipe"] is JsonObject recipe)
+        {
+            if (bytes && recipe["bytes_hex"] is JsonNode hex) return (null, Convert.FromHexString(hex.GetValue<string>()));
+            if (bytes && recipe["bytes_repeat"] is JsonObject repeat)
+            {
+                byte[] item = Convert.FromHexString(repeat["hex"]!.GetValue<string>());
+                int count = repeat["count"]!.GetValue<int>();
+                var body = new byte[checked(item.Length * count)];
+                for (int index = 0; index < count; index++) item.CopyTo(body, index * item.Length);
+                return (null, body);
+            }
+            string text = BuildText(row);
+            return bytes ? (null, Utf8.GetBytes(text)) : (text, null);
+        }
+        if (row["input"] is null) return (null, null);
+        if (generated)
+        {
+            byte[] body = File.ReadAllBytes(Path.Combine(Fixtures, row["input"]!.GetValue<string>()));
+            return bytes ? (null, body) : (Utf8.GetString(body), null);
+        }
+        string literal = row["input"]!.GetValue<string>();
+        return bytes ? (null, Utf8.GetBytes(literal)) : (literal, null);
+    }
+    static JsonObject RetainInput(string directory, string? text, byte[]? bytes)
+    {
+        if (bytes is not null)
+        {
+            File.WriteAllBytes(Path.Combine(directory, "input.bytes"), bytes);
+            return new JsonObject { ["kind"] = "bytes", ["bytes"] = bytes.Length, ["sha256"] = Sha(bytes) };
+        }
+        if (text is null) return new JsonObject { ["kind"] = "null" };
+        string name = Path.Combine(directory, "input.utf16le");
+        using (var output = new BinaryWriter(File.Create(name))) foreach (char unit in text) output.Write((ushort)unit);
+        return new JsonObject { ["kind"] = "text", ["utf16_units"] = text.Length, ["utf16le_sha256"] = ShaFile(name) };
+    }
+    static FerruleCsvReadField[]? Fields(JsonNode? value)
+    {
+        if (value is null) return null;
+        return value.AsArray().Select(node =>
+        {
+            if (node is null) return null!;
+            var field = node.AsObject();
+            string name = field["name_utf16_units"] is JsonArray units ? FromUnits(units) : field["name"] is null ? null! : field["name"]!.GetValue<string>();
+            string type = field["type"]!.GetValue<string>();
+            var scalar = int.TryParse(type, out int number) ? (FerruleScalarType)number : Enum.Parse<FerruleScalarType>(type);
+            return new FerruleCsvReadField(name, scalar);
+        }).ToArray();
+    }
+    static FerruleCsvReadOptions? Options(JsonNode? value)
+    {
+        if (value is null) return null;
+        var options = value.AsObject();
+        return new FerruleCsvReadOptions
+        {
+            Delimiter = options["delimiter"] is null ? null : options["delimiter"]!.GetValue<string>()[0],
+            Quote = options["quote"] is null ? null : options["quote"]!.GetValue<string>()[0],
+            QuoteDisabled = options["quote_disabled"]?.GetValue<bool>() ?? false,
+            HasHeaders = options["has_headers"]?.GetValue<bool>() ?? true,
+            PreserveEmptyStrings = options["preserve_empty_strings"]?.GetValue<bool>() ?? false,
+        };
+    }
+    static JsonNode? FieldSnapshot(FerruleCsvReadField[]? fields) => fields is null ? null : new JsonArray(fields.Select(field => field is null ? null : (JsonNode)new JsonObject
+    {
+        ["name_utf16_units"] = field.Name is null ? null : new JsonArray(field.Name.Select(c => JsonValue.Create((int)c)).ToArray()),
+        ["type"] = field.Type.ToString(),
+    }).ToArray());
+    static JsonNode? OptionsSnapshot(FerruleCsvReadOptions? options) => options is null ? null : new JsonObject
+    {
+        ["Delimiter"] = options.Delimiter?.ToString(), ["Quote"] = options.Quote?.ToString(),
+        ["QuoteDisabled"] = options.QuoteDisabled, ["HasHeaders"] = options.HasHeaders,
+        ["PreserveEmptyStrings"] = options.PreserveEmptyStrings,
+    };
+    static JsonObject Error(Exception error)
+    {
+        var result = new JsonObject
+        {
+            ["type"] = error.GetType().Name, ["message"] = error.Message,
+            ["inner_type"] = error.InnerException?.GetType().Name,
+        };
+        if (error is ArgumentNullException argument) result["parameter"] = argument.ParamName;
+        else if (error is FerruleX12Exception x12)
+        {
+            result["error"] = x12.Error.ToString(); result["segment_index"] = x12.SegmentIndex;
+            result["field_path"] = x12.FieldPath;
+        }
+        else
+        {
+            var fields = new JsonObject();
+            foreach (PropertyInfo property in error.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).OrderBy(p => p.Name, StringComparer.Ordinal))
+            {
+                object? value = property.GetValue(error);
+                if (property.Name == "Error") { result["error"] = value?.ToString(); continue; }
+                fields[property.Name] = value switch
+                {
+                    null => null,
+                    Enum enumeration => JsonValue.Create(enumeration.ToString()),
+                    char character => JsonValue.Create(character.ToString()),
+                    UInt128 wide => JsonValue.Create(wide.ToString(CultureInfo.InvariantCulture)),
+                    _ => JsonSerializer.SerializeToNode(value),
+                };
+            }
+            result["fields"] = fields;
+        }
+        return result;
+    }
+    static JsonObject Tags(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => ScalarTags(scalar.Value),
+        FerruleGroup group => new JsonObject
+        {
+            ["kind"] = "Group", ["xml_type_origin"] = new JsonObject
+            {
+                ["kind"] = group.XmlTypeOrigin.Kind.ToString(), ["identity"] = group.XmlTypeOrigin.Identity,
+                ["literal"] = group.XmlTypeOrigin.Literal,
+            },
+            ["fields"] = new JsonArray(group.Fields.Select(field => (JsonNode)new JsonObject { ["name"] = field.Name, ["value"] = Tags(field.Value) }).ToArray()),
+        },
+        FerruleRepeated repeated => new JsonObject { ["kind"] = "Repeated", ["items"] = new JsonArray(repeated.Items.Select(item => (JsonNode)Tags(item)).ToArray()) },
+        FerruleMappedSequence mapped => new JsonObject { ["kind"] = "MappedSequence", ["items"] = new JsonArray(mapped.Items.Select(item => (JsonNode)Tags(item)).ToArray()) },
+        FerruleDocumentSet documents => new JsonObject { ["kind"] = "DocumentSet", ["documents"] = new JsonArray(documents.Documents.Select(document => (JsonNode)new JsonObject { ["path"] = document.Path, ["resolved_source_path"] = document.ResolvedSourcePath, ["value"] = Tags(document.Value) }).ToArray()) },
+        _ => throw new InvalidOperationException("Unknown closed Ferrule instance kind."),
+    };
+    static JsonObject ScalarTags(FerruleValue value)
+    {
+        var result = new JsonObject { ["kind"] = value.Kind switch { FerruleValueKind.Int64 => "Int", FerruleValueKind.Double => "Float", _ => value.Kind.ToString() } };
+        switch (value.Kind)
+        {
+            case FerruleValueKind.Null: case FerruleValueKind.JsonNull: case FerruleValueKind.XmlNil: break;
+            case FerruleValueKind.String: result["value"] = value.StringValue; break;
+            case FerruleValueKind.Int64: result["value"] = value.Int64Value; break;
+            case FerruleValueKind.Double: result["bits"] = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture); break;
+            case FerruleValueKind.Bool: result["value"] = value.BooleanValue; break;
+            default: throw new InvalidOperationException("Unknown closed Ferrule scalar kind.");
+        }
+        return result;
+    }
+    static string Base64(string value) => Convert.ToBase64String(Utf8.GetBytes(value));
+    static void Proof(TextWriter writer, FerruleInstance instance)
+    {
+        switch (instance)
+        {
+            case FerruleRepeated repeated:
+                writer.Write($"R {repeated.Items.Count}\n"); foreach (var item in repeated.Items) Proof(writer, item); break;
+            case FerruleGroup group:
+                writer.Write($"G {group.Fields.Count} {group.XmlTypeOrigin.Kind} {(group.XmlTypeOrigin.Identity is null ? "-" : Base64(group.XmlTypeOrigin.Identity))} {(group.XmlTypeOrigin.Literal is null ? "-" : Base64(group.XmlTypeOrigin.Literal))}\n");
+                foreach (var field in group.Fields) { writer.Write($"F {Base64(field.Name)}\n"); Proof(writer, field.Value); } break;
+            case FerruleScalar scalar:
+                var tag = ScalarTags(scalar.Value); string kind = tag["kind"]!.GetValue<string>();
+                string suffix = kind switch
+                {
+                    "String" => " " + Base64(scalar.Value.StringValue), "Int" => " " + scalar.Value.Int64Value.ToString(CultureInfo.InvariantCulture),
+                    "Float" => " " + tag["bits"]!.GetValue<string>(), "Bool" => scalar.Value.BooleanValue ? " 1" : " 0", _ => "",
+                };
+                writer.Write($"S {kind}{suffix}\n"); break;
+            default: writer.Write("UNEXPECTED " + Tags(instance).ToJsonString() + "\n"); break;
+        }
+    }
+    static JsonObject RetainProof(string directory, FerruleInstance value)
+    {
+        string path = Path.Combine(directory, "actual.complete-tag-lines");
+        using (var writer = new StreamWriter(path, false, Utf8)) Proof(writer, value);
+        return new JsonObject { ["format"] = "csv275-tag-lines-v1", ["bytes"] = new FileInfo(path).Length, ["sha256"] = ShaFile(path) };
+    }
+    static void Finish(string directory, JsonObject record, JsonNode? expected, JsonNode? actual, bool unchanged)
+    {
+        record["expected"] = Copy(expected); record["actual"] = Copy(actual); record["caller_inputs_unchanged"] = unchanged;
+        Save(Path.Combine(directory, "outcome-before-comparison.json"), record);
+        bool passed = record["call_started"]?.GetValue<bool>() == true && unchanged && JsonNode.DeepEquals(expected, actual);
+        record["passed"] = passed;
+        if (!passed) { Failures++; Console.Error.WriteLine($"CSV authored contract failed: {record["id"]}"); }
+        Save(Path.Combine(directory, "comparison.json"), record);
+        Results.Add(record);
+    }
+    static void Direct(JsonObject row, string route)
+    {
+        string id = row["id"]!.GetValue<string>() + "-" + route;
+        string directory = Path.Combine(Evidence, id); Directory.CreateDirectory(directory);
+        Save(Path.Combine(directory, "authored-case.json"), row);
+        var record = new JsonObject { ["id"] = id, ["route"] = route, ["return_assigned"] = false, ["call_started"] = false };
+        JsonNode? actual = null; JsonNode? expected = row["expected_error"] ?? row["expected_proof"] ?? row["expected"];
+        bool unchanged = true;
+        byte[]? callerBytes = null; byte[]? bytesBefore = null;
+        FerruleCsvReadField[]? fields = null; FerruleCsvReadOptions? options = null;
+        JsonNode? fieldsBefore = null; JsonNode? optionsBefore = null;
+        try
+        {
+            bool bytes = route == "bytes";
+            var input = Input(row, bytes, generated: false); callerBytes = input.Bytes; bytesBefore = callerBytes?.ToArray();
+            record["input"] = RetainInput(directory, input.Text, input.Bytes);
+            fields = Fields(row["fields"]); options = Options(row["options"]);
+            fieldsBefore = FieldSnapshot(fields); optionsBefore = OptionsSnapshot(options);
+            record["fields_before"] = Copy(fieldsBefore); record["options_before"] = Copy(optionsBefore);
+            record["call_started"] = true;
+            Save(Path.Combine(directory, "invocation-before-call.json"), record);
+            FerruleInstance result = bytes ? FerruleCsvInput.ParseBytes(input.Bytes!, fields!, options) : FerruleCsvInput.Parse(input.Text!, fields!, options);
+            record["return_assigned"] = true;
+            actual = row["expected_proof"] is not null ? RetainProof(directory, result) : Tags(result);
+        }
+        catch (Exception error) { record["exception_original"] = error.ToString(); actual = Error(error); }
+        finally
+        {
+            var fieldsAfter = FieldSnapshot(fields); var optionsAfter = OptionsSnapshot(options);
+            record["fields_after"] = Copy(fieldsAfter); record["options_after"] = Copy(optionsAfter);
+            unchanged = (callerBytes is null || callerBytes.AsSpan().SequenceEqual(bytesBefore))
+                && JsonNode.DeepEquals(fieldsBefore, fieldsAfter) && JsonNode.DeepEquals(optionsBefore, optionsAfter);
+            if (callerBytes is not null) record["input_bytes_after_sha256"] = Sha(callerBytes);
+        }
+        Finish(directory, record, expected, actual, unchanged);
+    }
+    static FerruleExecutionContext? Context(string name) => name switch
+    {
+        "null" or "absent" => null,
+        "missing" => new FerruleExecutionContext("authored/rows.mfd", "authored/main.mfd"),
+        "malformed" => new FerruleExecutionContext("authored/rows.mfd", "authored/main.mfd", "2028-02-30T12:34:56Z"),
+        "valid" => new FerruleExecutionContext("authored/rows.mfd", "authored/main.mfd", Load("all-row/context.json")["current_date_time"]!.GetValue<string>()),
+        _ => throw new InvalidOperationException("Unknown authored context variant."),
+    };
+    static JsonObject? ContextSnapshot(FerruleExecutionContext? context) => context is null ? null : new JsonObject
+    {
+        ["MappingFilePath"] = context.MappingFilePath, ["MainMappingFilePath"] = context.MainMappingFilePath,
+        ["CurrentDateTime"] = context.CurrentDateTime,
+    };
+    static void Generated(JsonObject row)
+    {
+        string id = row["id"]!.GetValue<string>(); string route = row["route"]!.GetValue<string>();
+        string directory = Path.Combine(Evidence, id); Directory.CreateDirectory(directory);
+        Save(Path.Combine(directory, "authored-case.json"), row);
+        var record = new JsonObject { ["id"] = id, ["route"] = route, ["return_assigned"] = false, ["call_started"] = false };
+        byte[]? callerBytes = null; byte[]? bytesBefore = null;
+        FerruleExecutionContext? context = null; JsonNode? contextBefore = null;
+        JsonNode? expected = null; JsonNode? actual = null; bool unchanged = true;
+        try
+        {
+            var input = Input(row, route.Contains("Bytes", StringComparison.Ordinal), generated: true);
+            callerBytes = input.Bytes; bytesBefore = callerBytes?.ToArray(); record["input"] = RetainInput(directory, input.Text, input.Bytes);
+            context = Context(row["context"]!.GetValue<string>()); contextBefore = ContextSnapshot(context);
+            record["context_before"] = Copy(contextBefore); record["call_started"] = true; Save(Path.Combine(directory, "invocation-before-call.json"), record);
+            object result = route switch
+            {
+                "ParseCsv" => GeneratedMapping.ParseCsv(input.Text!),
+                "ParseCsvBytes" => GeneratedMapping.ParseCsvBytes(input.Bytes!),
+                "ExecuteCsvToX12" => GeneratedMapping.ExecuteCsvToX12(input.Text!),
+                "ExecuteCsvToX12WithContext" => GeneratedMapping.ExecuteCsvToX12WithContext(input.Text!, context!),
+                "ExecuteCsvToX12Bytes" => GeneratedMapping.ExecuteCsvToX12Bytes(input.Bytes!),
+                "ExecuteCsvToX12BytesWithContext" => GeneratedMapping.ExecuteCsvToX12BytesWithContext(input.Bytes!, context!),
+                _ => throw new InvalidOperationException("Unknown authored public route."),
+            };
+            record["return_assigned"] = true;
+            if (result is FerruleInstance source)
+            {
+                actual = Tags(source); expected = row["expected_source"] is JsonNode name ? Load(name.GetValue<string>()) : null;
+                Save(Path.Combine(directory, "returned-source-original.json"), actual);
+            }
+            else
+            {
+                byte[] wire = result is byte[] raw ? raw : Utf8.GetBytes((string)result);
+                File.WriteAllBytes(Path.Combine(directory, "returned-wire.bytes"), wire);
+                byte[] authored = row["expected_wire"] is JsonNode name ? File.ReadAllBytes(Path.Combine(Fixtures, name.GetValue<string>())) : [];
+                expected = new JsonObject { ["bytes"] = authored.Length, ["sha256"] = Sha(authored) };
+                actual = new JsonObject { ["bytes"] = wire.Length, ["sha256"] = Sha(wire) };
+                record["complete_wire_equal"] = wire.AsSpan().SequenceEqual(authored);
+                unchanged &= wire.AsSpan().SequenceEqual(authored);
+                // Independently exercise the ordinary typed path, with complete source/target snapshots.
+                FerruleInstance parsed = callerBytes is not null ? GeneratedMapping.ParseCsvBytes(callerBytes) : GeneratedMapping.ParseCsv(input.Text!);
+                JsonObject sourceBefore = Tags(parsed); Save(Path.Combine(directory, "typed-source-before.json"), sourceBefore);
+                FerruleInstance target = context is null ? GeneratedMapping.Execute(parsed) : GeneratedMapping.Execute(parsed, context);
+                JsonObject targetBefore = Tags(target); Save(Path.Combine(directory, "typed-target-original.json"), targetBefore);
+                JsonObject sourceAfter = Tags(parsed); JsonObject targetAfter = Tags(target);
+                Save(Path.Combine(directory, "typed-source-after.json"), sourceAfter); Save(Path.Combine(directory, "typed-target-after.json"), targetAfter);
+                JsonNode authoredSource = Load(row["expected_source"]!.GetValue<string>());
+                JsonNode authoredTarget = Load(row["expected_typed_target"]!.GetValue<string>());
+                Save(Path.Combine(directory, "typed-source-expected.json"), authoredSource); Save(Path.Combine(directory, "typed-target-expected.json"), authoredTarget);
+                record["complete_typed_source_equal"] = JsonNode.DeepEquals(authoredSource, sourceBefore);
+                record["complete_typed_target_equal"] = JsonNode.DeepEquals(authoredTarget, targetBefore);
+                unchanged &= JsonNode.DeepEquals(sourceBefore, sourceAfter) && JsonNode.DeepEquals(targetBefore, targetAfter)
+                    && JsonNode.DeepEquals(authoredSource, sourceBefore) && JsonNode.DeepEquals(authoredTarget, targetBefore);
+            }
+        }
+        catch (Exception error) { record["exception_original"] = error.ToString(); actual = Error(error); }
+        finally
+        {
+            JsonNode? contextAfter = ContextSnapshot(context); record["context_after"] = Copy(contextAfter);
+            unchanged &= JsonNode.DeepEquals(contextBefore, contextAfter) && (callerBytes is null || callerBytes.AsSpan().SequenceEqual(bytesBefore));
+            if (callerBytes is not null) record["input_bytes_after_sha256"] = Sha(callerBytes);
+        }
+        if (row["expected_error"] is not null) expected = row["expected_error"];
+        if (row["expected_error"] is not null && record["return_assigned"]!.GetValue<bool>()) unchanged = false;
+        Finish(directory, record, expected, actual, unchanged);
+    }
+}
