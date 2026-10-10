@@ -345,6 +345,13 @@ public static partial class FerruleJson
             jsonAny,
             fixedValue,
             patternContext);
+        if (numericRange is JsonNumberRange && IsStringFloatUnion(scalarDomain) &&
+            (jsonAllowedValues is not null || jsonMultipleOf is not null ||
+             stringLengthRange is not null || jsonPatterns is not null))
+        {
+            throw Boundary(
+                $"Embedded JSON schema node '{name}' has unsupported constraints on a String-or-Float interval union.");
+        }
         var itemCountRange = ReadItemCountRange(name, element, repeating);
         var jsonContains = ReadJsonContains(
             name,
@@ -950,7 +957,8 @@ public static partial class FerruleJson
             JsonValueKind.Object,
             $"schema node '{name}' numeric range",
             "object");
-        if ((!IsSingleScalar(scalarDomain) && !IsStringIntUnion(scalarDomain)) || jsonAny)
+        if ((!IsSingleScalar(scalarDomain) && !IsStringIntUnion(scalarDomain) &&
+             !IsStringFloatUnion(scalarDomain)) || jsonAny)
         {
             throw Boundary(
                 $"Embedded JSON schema node '{name}' has a numeric range without one concrete numeric scalar type.");
@@ -963,7 +971,7 @@ public static partial class FerruleJson
         {
             "integer" when scalarDomain == JsonScalarDomain.Int64 || IsStringIntUnion(scalarDomain) =>
                 ReadIntegerRange(name, bounds),
-            "number" when scalarDomain == JsonScalarDomain.Double =>
+            "number" when scalarDomain == JsonScalarDomain.Double || IsStringFloatUnion(scalarDomain) =>
                 ReadNumberRange(name, bounds, exactFloatMarkers),
             "integer" or "number" => throw Boundary(
                 $"Embedded JSON schema node '{name}' numeric range does not match its scalar type."),
@@ -3136,13 +3144,16 @@ public static partial class FerruleJson
     private static bool IsStringIntUnion(JsonScalarDomain domain) =>
         domain == (JsonScalarDomain.String | JsonScalarDomain.Int64);
 
+    private static bool IsStringFloatUnion(JsonScalarDomain domain) =>
+        domain == (JsonScalarDomain.String | JsonScalarDomain.Double);
+
     private static bool NumericRangeContains(
         JsonSchemaNode schema,
         JsonNumericRange range,
         FerruleValue value) =>
-        (IsStringIntUnion(schema.ScalarDomain) &&
-         range is JsonIntegerRange &&
-         value.Kind == FerruleValueKind.String) || range.Contains(value);
+        (value.Kind == FerruleValueKind.String &&
+         ((IsStringIntUnion(schema.ScalarDomain) && range is JsonIntegerRange) ||
+          (IsStringFloatUnion(schema.ScalarDomain) && range is JsonNumberRange))) || range.Contains(value);
 
     private static string InstanceKind(FerruleInstance instance) => instance switch
     {

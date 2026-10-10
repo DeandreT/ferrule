@@ -40,6 +40,22 @@ pub(super) fn apply(
             let range = integer_range(name, &lower, &upper)?.map(NumericRange::Integer);
             node.numeric_range = intersect(name, node.numeric_range, range, ScalarType::Int)?;
         }
+        SchemaKind::ScalarUnion { .. }
+            if node.is_string_float_union()
+                && [
+                    "minLength",
+                    "maxLength",
+                    "pattern",
+                    "multipleOf",
+                    "enum",
+                    "const",
+                ]
+                .iter()
+                .all(|keyword| schema.get(keyword).is_none()) =>
+        {
+            let range = number_range(name, &lower, &upper)?.map(NumericRange::Number);
+            node.numeric_range = intersect(name, node.numeric_range, range, ScalarType::Float)?;
+        }
         SchemaKind::ScalarUnion { .. } => {
             return Err(unsupported(
                 name,
@@ -84,9 +100,9 @@ pub(crate) fn validate_json(
     if value.is_null() && schema.nullable {
         return Ok(());
     }
-    if matches!(range, NumericRange::Integer(_))
-        && schema.is_string_int_union()
-        && value.is_string()
+    if value.is_string()
+        && ((matches!(range, NumericRange::Integer(_)) && schema.is_string_int_union())
+            || (matches!(range, NumericRange::Number(_)) && schema.is_string_float_union()))
     {
         return Ok(());
     }

@@ -1269,6 +1269,17 @@ impl SchemaNode {
         )
     }
 
+    /// Whether this node admits exactly String and finite Float values.
+    pub fn is_string_float_union(&self) -> bool {
+        matches!(
+            self.kind,
+            SchemaKind::ScalarUnion { types }
+                if types.contains(ScalarType::String)
+                    && types.contains(ScalarType::Float)
+                    && types.iter().count() == 2
+        )
+    }
+
     pub fn accepts_scalar_type(&self, ty: ScalarType) -> bool {
         match self.kind {
             SchemaKind::Scalar { ty: expected } => expected == ty,
@@ -1520,9 +1531,10 @@ impl SchemaNode {
             }
     }
 
-    /// Checks that numeric-range metadata matches one concrete numeric scalar
-    /// or the Int member of an exact String-or-Int union, and that an optional
-    /// fixed lexical value lies inside the interval.
+    /// Checks that numeric-range metadata matches one concrete numeric scalar,
+    /// the Int member of an exact String-or-Int union, or the Float member of
+    /// an unconstrained String-or-Float union. Union intervals have no fixed
+    /// value; a concrete scalar's optional fixed value lies inside its interval.
     pub fn numeric_range_is_valid(&self) -> bool {
         let Some(range) = self.numeric_range else {
             return true;
@@ -1552,6 +1564,16 @@ impl SchemaNode {
                 if self.is_string_int_union() =>
             {
                 self.fixed.is_none() && !self.json_any
+            }
+            (NumericRange::Number(_), SchemaKind::ScalarUnion { .. })
+                if self.is_string_float_union() =>
+            {
+                self.fixed.is_none()
+                    && !self.json_any
+                    && self.json_allowed_values.is_none()
+                    && self.json_multiple_of.is_none()
+                    && self.string_length_range.is_none()
+                    && self.json_patterns.is_none()
             }
             _ => false,
         }

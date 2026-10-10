@@ -1,0 +1,2258 @@
+{
+  "contract": "exact String-or-Float with one finite interval and unconstrained String; no coercion of text",
+  "schema_cases": [
+    {
+      "id": "anyof",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "nullable": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "canonical-type-array",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "nullable": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "oneof",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "oneOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "nullable": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "nullable-anyof",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nullable": true,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "nullable-canonical",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "nullable": true,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "nullable-wrapper",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nullable": true,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "local-ref",
+      "schema": {
+        "title": "Boundary",
+        "$ref": "#/$defs/Interval",
+        "$defs": {
+          "Interval": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      "nullable": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "broad-outer-type",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "nullable": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "annotations-and-format",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "An authored interval with text identifiers",
+        "format": "uri"
+      },
+      "nullable": false,
+      "formats": [
+        "uri"
+      ],
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5,
+        "format": "uri"
+      },
+      "minimum_bits": "c013000000000000",
+      "maximum_bits": "401a000000000000",
+      "minimum_exclusive": false,
+      "maximum_exclusive": true
+    },
+    {
+      "id": "signed-integer-bound-normalization",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": 0,
+        "maximum": 9223372036854775807
+      },
+      "nullable": false,
+      "minimum_bits": "0000000000000000",
+      "maximum_bits": "43e0000000000000",
+      "maximum_exclusive": true,
+      "minimum_exclusive": false,
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": 0.0,
+        "exclusiveMaximum": 9.223372036854776e+18
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "accepted": true,
+          "bits": "43dfffffffffffff"
+        },
+        {
+          "input": "9223372036854775808",
+          "accepted": false,
+          "error": "range",
+          "range_text": "[0, 9223372036854776000)",
+          "got": "9223372036854775808"
+        }
+      ]
+    }
+  ],
+  "schema_refusals": [
+    {
+      "id": "string-length",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string",
+            "minLength": 2
+          }
+        ]
+      },
+      "error": "scalar anyOf numeric ranges cannot be attached to a heterogeneous scalar union"
+    },
+    {
+      "id": "string-pattern",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string",
+            "pattern": "^A"
+          }
+        ]
+      },
+      "error": "scalar anyOf numeric ranges cannot be attached to a heterogeneous scalar union"
+    },
+    {
+      "id": "float-multiple",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5,
+            "multipleOf": 0.5
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "error": "scalar anyOf numeric ranges cannot be attached to a heterogeneous scalar union"
+    },
+    {
+      "id": "mixed-numeric",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "integer",
+            "minimum": 0
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "error": "scalar anyOf numeric ranges cannot be attached to a heterogeneous scalar union"
+    },
+    {
+      "id": "two-float-intervals",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -8,
+            "maximum": -6
+          },
+          {
+            "type": "number",
+            "minimum": 2,
+            "maximum": 4
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "error": "scalar anyOf numeric ranges cannot be attached to a heterogeneous scalar union"
+    },
+    {
+      "id": "restrictive-outer",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "type": "string"
+      },
+      "error": "scalar composition cannot preserve `type` validation"
+    },
+    {
+      "id": "malformed-bound",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": "Infinity"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "error": "numeric bound must be a supported finite number"
+    },
+    {
+      "id": "correlated-range-multiple",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "multipleOf": 0.1
+          },
+          {
+            "type": "number",
+            "minimum": 3,
+            "maximum": 4,
+            "multipleOf": 0.5
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "error": "scalar anyOf correlates different numeric-range and multipleOf constraints"
+    },
+    {
+      "id": "direct-string-length",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "minimum": -4.75,
+        "exclusiveMaximum": 6.5,
+        "minLength": 2
+      },
+      "error": "numeric ranges on general scalar unions are not yet supported"
+    },
+    {
+      "id": "outer-minLength",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "minLength": 2
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minLength` validation"
+    },
+    {
+      "id": "outer-pattern",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "pattern": "^A"
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `pattern` validation"
+    },
+    {
+      "id": "outer-multipleOf",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "multipleOf": 0.5
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `multipleOf` validation"
+    },
+    {
+      "id": "outer-minimum",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "minimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minimum` validation"
+    },
+    {
+      "id": "outer-enum",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "enum": [
+          "AUTHORED",
+          2
+        ]
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `enum` validation"
+    },
+    {
+      "id": "nullable-outer-minimum",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "minimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minimum` validation"
+    },
+    {
+      "id": "ref-outer-minimum",
+      "schema": {
+        "title": "Boundary",
+        "$ref": "#/$defs/Interval",
+        "$defs": {
+          "Interval": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "minimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minimum` validation"
+    },
+    {
+      "id": "nullable-outer-minLength",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "minLength": 2
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minLength` validation"
+    },
+    {
+      "id": "ref-outer-minLength",
+      "schema": {
+        "title": "Boundary",
+        "$ref": "#/$defs/Interval",
+        "$defs": {
+          "Interval": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "minLength": 2
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minLength` validation"
+    },
+    {
+      "id": "allof-range",
+      "schema": {
+        "title": "Boundary",
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": -4.75,
+                "exclusiveMaximum": 6.5
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        ]
+      },
+      "error": "numeric range is incompatible with the intersected scalar type"
+    },
+    {
+      "id": "oneof-outer-minimum",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "oneOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "minimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minimum` validation"
+    },
+    {
+      "id": "flat-nullable-outer-minimum",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "minimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `minimum` validation"
+    },
+    {
+      "id": "outer-maxLength",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "maxLength": 8
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `maxLength` validation"
+    },
+    {
+      "id": "outer-exclusiveMinimum",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "exclusiveMinimum": 0
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `exclusiveMinimum` validation"
+    },
+    {
+      "id": "outer-exclusiveMaximum",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "exclusiveMaximum": 4
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `exclusiveMaximum` validation"
+    },
+    {
+      "id": "outer-const",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -4.75,
+            "exclusiveMaximum": 6.5
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "const": "AUTHORED"
+      },
+      "error": "String-or-Float interval composition cannot preserve outer `const` validation"
+    },
+    {
+      "id": "unbounded-outer-range-minLength",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maximum": 3.5,
+        "minLength": 2
+      },
+      "error": "numeric ranges on general scalar unions are not yet supported"
+    },
+    {
+      "id": "unbounded-outer-range-pattern",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maximum": 3.5,
+        "pattern": "^A"
+      },
+      "error": "numeric ranges on general scalar unions are not yet supported"
+    },
+    {
+      "id": "unbounded-outer-range-multipleOf",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maximum": 3.5,
+        "multipleOf": 0.5
+      },
+      "error": "numeric ranges on general scalar unions are not yet supported"
+    },
+    {
+      "id": "mixed-outer-range",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "maximum": 3.5
+      },
+      "error": "numeric ranges on general scalar unions are not yet supported"
+    }
+  ],
+  "malformed_ir_cases": [
+    {
+      "id": "wrong-integer-kind",
+      "schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "integer",
+          "bounds": {
+            "minimum": -4,
+            "maximum": 6
+          }
+        }
+      },
+      "csharp_message": "Embedded JSON schema node 'Boundary' numeric range does not match its scalar type.",
+      "native_error_category": "Data"
+    },
+    {
+      "id": "mixed-int-float",
+      "schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "int",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -4.75
+            },
+            "maximum": {
+              "value": 6.5,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "csharp_message": "Embedded JSON schema node 'Boundary' has a numeric range without one concrete numeric scalar type.",
+      "native_error_category": "Data"
+    },
+    {
+      "id": "string-length",
+      "schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -4.75
+            },
+            "maximum": {
+              "value": 6.5,
+              "exclusive": true
+            }
+          }
+        },
+        "string_length_range": {
+          "minimum": 2
+        }
+      },
+      "csharp_message": "Embedded JSON schema node 'Boundary' has unsupported constraints on a String-or-Float interval union.",
+      "native_error_category": "Data"
+    },
+    {
+      "id": "fixed-value",
+      "schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -4.75
+            },
+            "maximum": {
+              "value": 6.5,
+              "exclusive": true
+            }
+          }
+        },
+        "fixed": "7"
+      },
+      "csharp_message": "Embedded JSON schema node 'Boundary' has a fixed value without one concrete scalar type.",
+      "native_error_category": "Data"
+    }
+  ],
+  "probes": [
+    {
+      "id": "lower",
+      "input": "-4.75",
+      "kind": "float",
+      "value": -4.75,
+      "accepted": true,
+      "serialized": "-4.75\n",
+      "bits": "c013000000000000"
+    },
+    {
+      "id": "integer-token",
+      "input": "2",
+      "kind": "float",
+      "value": 2.0,
+      "accepted": true,
+      "serialized": "2.0\n",
+      "bits": "4000000000000000"
+    },
+    {
+      "id": "interior",
+      "input": "6.25",
+      "kind": "float",
+      "value": 6.25,
+      "accepted": true,
+      "serialized": "6.25\n",
+      "bits": "4019000000000000"
+    },
+    {
+      "id": "empty-string",
+      "input": "\"\"",
+      "kind": "string",
+      "value": "",
+      "accepted": true,
+      "serialized": "\"\"\n"
+    },
+    {
+      "id": "authored-string",
+      "input": "\"AUTHORED\"",
+      "kind": "string",
+      "value": "AUTHORED",
+      "accepted": true,
+      "serialized": "\"AUTHORED\"\n"
+    },
+    {
+      "id": "numeric-string",
+      "input": "\"7.0\"",
+      "kind": "string",
+      "value": "7.0",
+      "accepted": true,
+      "serialized": "\"7.0\"\n"
+    },
+    {
+      "id": "below",
+      "input": "-5",
+      "kind": "float",
+      "value": -5.0,
+      "accepted": false,
+      "serialized": "-5.0\n",
+      "bits": "c014000000000000",
+      "error": "range",
+      "got": "-5"
+    },
+    {
+      "id": "exclusive-upper",
+      "input": "6.5",
+      "kind": "float",
+      "value": 6.5,
+      "accepted": false,
+      "serialized": "6.5\n",
+      "bits": "401a000000000000",
+      "error": "range",
+      "got": "6.5"
+    },
+    {
+      "id": "above",
+      "input": "7",
+      "kind": "float",
+      "value": 7.0,
+      "accepted": false,
+      "serialized": "7.0\n",
+      "bits": "401c000000000000",
+      "error": "range",
+      "got": "7"
+    },
+    {
+      "id": "bool",
+      "input": "true",
+      "kind": "bool",
+      "value": true,
+      "accepted": false,
+      "serialized": "true\n",
+      "error": "shape",
+      "got": "bool"
+    },
+    {
+      "id": "null",
+      "input": "null",
+      "kind": "json_null",
+      "value": null,
+      "accepted": false,
+      "serialized": "null\n",
+      "error": "shape",
+      "got": "null"
+    },
+    {
+      "id": "array",
+      "input": "[]",
+      "kind": "array",
+      "value": [],
+      "accepted": false,
+      "serialized": "[]\n",
+      "error": "shape",
+      "got": "array"
+    },
+    {
+      "id": "object",
+      "input": "{}",
+      "kind": "object",
+      "value": {},
+      "accepted": false,
+      "serialized": "{}\n",
+      "error": "shape",
+      "got": "object"
+    },
+    {
+      "id": "precision-first",
+      "input": "9007199254740993",
+      "kind": "int",
+      "value": 9007199254740993,
+      "accepted": false,
+      "error": "precision",
+      "got": "integer outside the exact f64 range"
+    }
+  ],
+  "range_text": "[-4.75, 6.5)",
+  "minimum_bits": "c013000000000000",
+  "maximum_bits": "401a000000000000",
+  "compiled": {
+    "bounded_schema": "{\"type\":\"object\",\"properties\":{\"Reading\":{\"type\":[\"string\",\"number\"],\"minimum\":-4.75,\"exclusiveMaximum\":6.5},\"OptionalReading\":{\"type\":[\"string\",\"number\",\"null\"],\"minimum\":-4.75,\"exclusiveMaximum\":6.5}},\"required\":[\"Reading\",\"OptionalReading\"],\"additionalProperties\":false}",
+    "unbounded_schema": "{\"type\":\"object\",\"properties\":{\"Reading\":{\"type\":[\"string\",\"number\"]},\"OptionalReading\":{\"type\":[\"string\",\"number\",\"null\"]}},\"required\":[\"Reading\",\"OptionalReading\"],\"additionalProperties\":false}",
+    "fields": [
+      "Reading",
+      "OptionalReading"
+    ],
+    "cases": [
+      {
+        "id": "lower",
+        "input": "{\"Reading\":-4.75,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": -4.75,
+        "accepted": true,
+        "serialized": "-4.75\n",
+        "bits": "c013000000000000",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": -4.75
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": -4.75,
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "integer-token",
+        "input": "{\"Reading\":2,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": 2.0,
+        "accepted": true,
+        "serialized": "2.0\n",
+        "bits": "4000000000000000",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": 2.0
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": 2.0,
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "interior",
+        "input": "{\"Reading\":6.25,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": 6.25,
+        "accepted": true,
+        "serialized": "6.25\n",
+        "bits": "4019000000000000",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": 6.25
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": 6.25,
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "empty-string",
+        "input": "{\"Reading\":\"\",\"OptionalReading\":null}",
+        "kind": "string",
+        "value": "",
+        "accepted": true,
+        "serialized": "\"\"\n",
+        "expected_values": {
+          "Reading": {
+            "kind": "string",
+            "value": ""
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": "",
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "authored-string",
+        "input": "{\"Reading\":\"AUTHORED\",\"OptionalReading\":null}",
+        "kind": "string",
+        "value": "AUTHORED",
+        "accepted": true,
+        "serialized": "\"AUTHORED\"\n",
+        "expected_values": {
+          "Reading": {
+            "kind": "string",
+            "value": "AUTHORED"
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": "AUTHORED",
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "numeric-string",
+        "input": "{\"Reading\":\"7.0\",\"OptionalReading\":null}",
+        "kind": "string",
+        "value": "7.0",
+        "accepted": true,
+        "serialized": "\"7.0\"\n",
+        "expected_values": {
+          "Reading": {
+            "kind": "string",
+            "value": "7.0"
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": "7.0",
+          "OptionalReading": null
+        },
+        "failed_field": null,
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "below",
+        "input": "{\"Reading\":-5,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": -5.0,
+        "accepted": false,
+        "serialized": "-5.0\n",
+        "bits": "c014000000000000",
+        "error": "range",
+        "got": "-5",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": -5.0
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": -5.0,
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "exclusive-upper",
+        "input": "{\"Reading\":6.5,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": 6.5,
+        "accepted": false,
+        "serialized": "6.5\n",
+        "bits": "401a000000000000",
+        "error": "range",
+        "got": "6.5",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": 6.5
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": 6.5,
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "above",
+        "input": "{\"Reading\":7,\"OptionalReading\":null}",
+        "kind": "float",
+        "value": 7.0,
+        "accepted": false,
+        "serialized": "7.0\n",
+        "bits": "401c000000000000",
+        "error": "range",
+        "got": "7",
+        "expected_values": {
+          "Reading": {
+            "kind": "float",
+            "value": 7.0
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": 7.0,
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": false,
+        "csharp_shape_got": null,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "bool",
+        "input": "{\"Reading\":true,\"OptionalReading\":null}",
+        "kind": "bool",
+        "value": true,
+        "accepted": false,
+        "serialized": "true\n",
+        "error": "shape",
+        "got": "bool",
+        "expected_values": {
+          "Reading": {
+            "kind": "bool",
+            "value": true
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": true,
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": true,
+        "csharp_shape_got": "True",
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "null",
+        "input": "{\"Reading\":null,\"OptionalReading\":null}",
+        "kind": "json_null",
+        "value": null,
+        "accepted": false,
+        "serialized": "null\n",
+        "error": "shape",
+        "got": "null",
+        "expected_values": {
+          "Reading": {
+            "kind": "json_null",
+            "value": null
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": null,
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": true,
+        "csharp_shape_got": "Null",
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "array",
+        "input": "{\"Reading\":[],\"OptionalReading\":null}",
+        "kind": "array",
+        "value": [],
+        "accepted": false,
+        "serialized": "[]\n",
+        "error": "shape",
+        "got": "array",
+        "expected_values": {
+          "Reading": {
+            "kind": "array",
+            "value": []
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": [],
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": true,
+        "csharp_shape_got": "Array",
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "object",
+        "input": "{\"Reading\":{},\"OptionalReading\":null}",
+        "kind": "object",
+        "value": {},
+        "accepted": false,
+        "serialized": "{}\n",
+        "error": "shape",
+        "got": "object",
+        "expected_values": {
+          "Reading": {
+            "kind": "object",
+            "value": {}
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": {},
+          "OptionalReading": null
+        },
+        "failed_field": "Reading",
+        "input_only": true,
+        "csharp_shape_got": "Object",
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "nullable-number",
+        "input": "{\"Reading\":\"AUTHORED\",\"OptionalReading\":-4.75}",
+        "expected_values": {
+          "Reading": {
+            "kind": "string",
+            "value": "AUTHORED"
+          },
+          "OptionalReading": {
+            "kind": "float",
+            "value": -4.75
+          }
+        },
+        "serialized_json": {
+          "Reading": "AUTHORED",
+          "OptionalReading": -4.75
+        },
+        "accepted": true,
+        "input_only": false,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "nullable-string",
+        "input": "{\"Reading\":\"AUTHORED\",\"OptionalReading\":\"7.0\"}",
+        "expected_values": {
+          "Reading": {
+            "kind": "string",
+            "value": "AUTHORED"
+          },
+          "OptionalReading": {
+            "kind": "string",
+            "value": "7.0"
+          }
+        },
+        "serialized_json": {
+          "Reading": "AUTHORED",
+          "OptionalReading": "7.0"
+        },
+        "accepted": true,
+        "input_only": false,
+        "range_text": "[-4.75, 6.5)"
+      },
+      {
+        "id": "precision-first",
+        "input": "{\"Reading\":9007199254740993,\"OptionalReading\":null}",
+        "kind": "int",
+        "value": 9007199254740993,
+        "accepted": false,
+        "error": "precision",
+        "got": "integer outside the exact f64 range",
+        "input_only": true,
+        "failed_field": "Reading",
+        "csharp_shape_got": "integer outside the exact double range",
+        "expected_values": {
+          "Reading": {
+            "kind": "int",
+            "value": 9007199254740993
+          },
+          "OptionalReading": {
+            "kind": "json_null",
+            "value": null
+          }
+        },
+        "serialized_json": {
+          "Reading": 9007199254740993,
+          "OptionalReading": null
+        }
+      }
+    ]
+  },
+  "direct_cases": [
+    {
+      "id": "repeated-values",
+      "schema": {
+        "title": "Boundary",
+        "type": "array",
+        "items": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "minimum": -4.75,
+          "exclusiveMaximum": 6.5
+        }
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "repeating": true,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -4.75
+            },
+            "maximum": {
+              "value": 6.5,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "[-4.75,\"7.0\",2]",
+      "accepted": true,
+      "expected": [
+        {
+          "kind": "float",
+          "value": -4.75
+        },
+        {
+          "kind": "string",
+          "value": "7.0"
+        },
+        {
+          "kind": "float",
+          "value": 2.0
+        }
+      ],
+      "serialized": "[\n  -4.75,\n  \"7.0\",\n  2.0\n]\n",
+      "exported": {
+        "title": "Boundary",
+        "type": "array",
+        "items": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "minimum": -4.75,
+          "exclusiveMaximum": 6.5
+        }
+      }
+    },
+    {
+      "id": "repeated-range",
+      "schema": {
+        "title": "Boundary",
+        "type": "array",
+        "items": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "minimum": -4.75,
+          "exclusiveMaximum": 6.5
+        }
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "repeating": true,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -4.75
+            },
+            "maximum": {
+              "value": 6.5,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "[6.5]",
+      "accepted": false,
+      "expected": [
+        {
+          "kind": "float",
+          "value": 6.5
+        }
+      ],
+      "error": "range",
+      "error_name": "Boundary",
+      "range_text": "[-4.75, 6.5)",
+      "got": "6.5",
+      "exported": {
+        "title": "Boundary",
+        "type": "array",
+        "items": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "minimum": -4.75,
+          "exclusiveMaximum": 6.5
+        }
+      }
+    },
+    {
+      "id": "lower-only",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "exclusiveMinimum": -1.25
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -1.25,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "0",
+      "accepted": true,
+      "expected": {
+        "kind": "float",
+        "value": 0.0
+      },
+      "serialized": "0.0\n",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "exclusiveMinimum": -1.25
+      }
+    },
+    {
+      "id": "lower-only-edge",
+      "schema": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "exclusiveMinimum": -1.25
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -1.25,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "-1.25",
+      "accepted": false,
+      "expected": {
+        "kind": "float",
+        "value": -1.25
+      },
+      "error": "range",
+      "error_name": "Boundary",
+      "range_text": "(-1.25, inf)",
+      "got": "-1.25",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "exclusiveMinimum": -1.25
+      }
+    },
+    {
+      "id": "outer-homogeneous-inclusive",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maximum": 3.5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar",
+          "ty": "float"
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "maximum": {
+              "value": 3.5
+            }
+          }
+        }
+      },
+      "input": "3.5",
+      "accepted": true,
+      "expected": {
+        "kind": "float",
+        "value": 3.5
+      },
+      "serialized": "3.5\n",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 3.5
+      }
+    },
+    {
+      "id": "outer-homogeneous-intersection",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": -2,
+            "maximum": 8
+          },
+          {
+            "type": "number",
+            "minimum": -2,
+            "maximum": 8
+          }
+        ],
+        "exclusiveMaximum": 3.5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar",
+          "ty": "float"
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -2.0
+            },
+            "maximum": {
+              "value": 3.5,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "3.5",
+      "accepted": false,
+      "expected": {
+        "kind": "float",
+        "value": 3.5
+      },
+      "error": "range",
+      "error_name": "Boundary",
+      "range_text": "[-2, 3.5)",
+      "got": "3.5",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -2.0,
+        "exclusiveMaximum": 3.5
+      }
+    },
+    {
+      "id": "outer-string-int-inclusive",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "minimum": 1,
+        "exclusiveMaximum": 5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "int"
+          ]
+        },
+        "numeric_range": {
+          "kind": "integer",
+          "bounds": {
+            "minimum": 1,
+            "maximum": 4
+          }
+        }
+      },
+      "input": "4",
+      "accepted": true,
+      "expected": {
+        "kind": "int",
+        "value": 4
+      },
+      "serialized": "4\n",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "integer"
+        ],
+        "minimum": 1,
+        "maximum": 4
+      }
+    },
+    {
+      "id": "outer-string-int-exclusive",
+      "schema": {
+        "title": "Boundary",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "exclusiveMinimum": 1,
+        "maximum": 4
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "int"
+          ]
+        },
+        "numeric_range": {
+          "kind": "integer",
+          "bounds": {
+            "minimum": 2,
+            "maximum": 4
+          }
+        }
+      },
+      "input": "1",
+      "accepted": false,
+      "expected": {
+        "kind": "int",
+        "value": 1
+      },
+      "error": "range",
+      "error_name": "Boundary",
+      "range_text": "[2, 4]",
+      "got": "1",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "integer"
+        ],
+        "minimum": 2,
+        "maximum": 4
+      }
+    },
+    {
+      "id": "outer-string-float-text",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maximum": 3.5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "maximum": {
+              "value": 3.5
+            }
+          }
+        }
+      },
+      "input": "\"7.0\"",
+      "accepted": true,
+      "expected": {
+        "kind": "string",
+        "value": "7.0"
+      },
+      "serialized": "\"7.0\"\n",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "maximum": 3.5
+      }
+    },
+    {
+      "id": "outer-string-float-exclusive",
+      "schema": {
+        "title": "Boundary",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "exclusiveMaximum": 3.5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "maximum": {
+              "value": 3.5,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "input": "3.5",
+      "accepted": false,
+      "expected": {
+        "kind": "float",
+        "value": 3.5
+      },
+      "error": "range",
+      "error_name": "Boundary",
+      "range_text": "(-inf, 3.5)",
+      "got": "3.5",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "exclusiveMaximum": 3.5
+      }
+    },
+    {
+      "id": "outer-nullable-interval",
+      "schema": {
+        "title": "Boundary",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "minimum": -1.25
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": -1.25
+            }
+          }
+        },
+        "nullable": true
+      },
+      "input": "null",
+      "accepted": true,
+      "expected": {
+        "kind": "json_null",
+        "value": null
+      },
+      "serialized": "null\n",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "minimum": -1.25
+      }
+    },
+    {
+      "id": "outer-reference-interval",
+      "schema": {
+        "title": "Boundary",
+        "$ref": "#/$defs/Reading",
+        "$defs": {
+          "Reading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "maximum": 3.5
+      },
+      "ir_schema": {
+        "name": "Boundary",
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        },
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "maximum": {
+              "value": 3.5
+            }
+          }
+        }
+      },
+      "input": "3",
+      "accepted": true,
+      "expected": {
+        "kind": "float",
+        "value": 3.0
+      },
+      "serialized": "3.0\n",
+      "exported": {
+        "title": "Boundary",
+        "type": [
+          "string",
+          "number"
+        ],
+        "maximum": 3.5
+      }
+    }
+  ]
+}

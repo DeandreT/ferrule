@@ -1,0 +1,259 @@
+use codegen_runtime::{
+    Instance, JsonBoundaryError, SchemaNode, Value, XmlTypeOrigin, field, group, parse_json,
+    parse_json_bytes, repeated, scalar, serialize_json, serialize_json_bytes,
+};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_bytes};
+use serde_json::Value as Json;
+use std::{error::Error, fs, path::Path};
+
+fn expected_value(value: &Json) -> Instance {
+    if let Some(items) = value.as_array() {
+        return repeated(items.iter().map(expected_value));
+    }
+    scalar(match value["kind"].as_str().unwrap() {
+        "string" => Value::String(value["value"].as_str().unwrap().into()),
+        "float" => Value::Float(value["value"].as_f64().unwrap()),
+        "int" => Value::Int(value["value"].as_i64().unwrap()),
+        "bool" => Value::Bool(value["value"].as_bool().unwrap()),
+        "json_null" => Value::json_null(),
+        _ => panic!("authored scalar tag required"),
+    })
+}
+
+fn expected_group(case: &Json) -> Instance {
+    group(
+        case["expected_values"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| field(name, expected_value(value))),
+    )
+}
+
+fn complete_json(actual: &Json, wanted: &Json) -> bool {
+    match (actual, wanted) {
+        (Json::Number(actual), Json::Number(wanted)) => actual
+            .as_f64()
+            .zip(wanted.as_f64())
+            .is_some_and(|(actual, wanted)| actual.to_bits() == wanted.to_bits()),
+        (Json::Array(actual), Json::Array(wanted)) => {
+            actual.len() == wanted.len()
+                && actual.iter().zip(wanted).all(|(a, w)| complete_json(a, w))
+        }
+        (Json::Object(actual), Json::Object(wanted)) => {
+            actual.len() == wanted.len()
+                && actual.keys().eq(wanted.keys())
+                && actual
+                    .iter()
+                    .all(|(name, a)| complete_json(a, &wanted[name]))
+        }
+        _ => actual == wanted,
+    }
+}
+
+fn document_matches(text: &str, wanted: &Json) -> bool {
+    text.ends_with('\n')
+        && serde_json::from_str::<Json>(text).is_ok_and(|actual| complete_json(&actual, wanted))
+}
+
+fn boundary_error(message: String, input: bool) -> JsonBoundaryError {
+    if input {
+        JsonBoundaryError::InvalidInput { message }
+    } else {
+        JsonBoundaryError::InvalidOutput { message }
+    }
+}
+
+fn compiled_error(case: &Json, input_bounded: bool) -> JsonBoundaryError {
+    let name = case["failed_field"].as_str().unwrap();
+    let input_only = case["input_only"] == true;
+    let message = match case["error"].as_str().unwrap() {
+        "precision" => format!(
+            "`{name}`: expected number, got {}",
+            case["got"].as_str().unwrap()
+        ),
+        "shape" => format!(
+            "`{name}`: expected declared scalar union, got {}",
+            case["got"].as_str().unwrap()
+        ),
+        "range" => {
+            let got = if input_bounded {
+                serde_json::from_str::<Json>(case["input"].as_str().unwrap()).unwrap()[name]
+                    .to_string()
+            } else {
+                serde_json::Number::from_f64(
+                    case["expected_values"][name]["value"].as_f64().unwrap(),
+                )
+                .unwrap()
+                .to_string()
+            };
+            format!(
+                "`{name}` requires numeric range {}, got {got}",
+                case["range_text"].as_str().unwrap()
+            )
+        }
+        _ => panic!("authored boundary error required"),
+    };
+    boundary_error(message, input_bounded || input_only)
+}
+
+fn complete_error(actual: &JsonBoundaryError, wanted: &JsonBoundaryError) -> bool {
+    actual == wanted && actual.source().is_none()
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if arguments.len() != 2 || (arguments[1] != "input" && arguments[1] != "output") {
+        return Err("need evidence directory and input/output boundary side".into());
+    }
+    let directory = Path::new(&arguments[0]);
+    let input_bounded = arguments[1] == "input";
+    let corpus: Json = serde_json::from_str(&fs::read_to_string(directory.join("cases.json"))?)?;
+    let rows = corpus["compiled"]["cases"]
+        .as_array()
+        .ok_or("compiled cases required")?;
+    let direct = corpus["direct_cases"]
+        .as_array()
+        .ok_or("direct cases required")?;
+    let malformed = corpus["malformed_ir_cases"]
+        .as_array()
+        .ok_or("malformed cases required")?;
+    let mut mismatches = Vec::new();
+
+    for case in rows {
+        let id = case["id"].as_str().unwrap();
+        let input = case["input"].as_str().unwrap();
+        let expected = (case["input_only"] != true).then(|| expected_group(case));
+        let typed = expected.as_ref().map(execute);
+        let text = execute_json(input);
+        let bytes = execute_json_bytes(input.as_bytes());
+        fs::write(
+            directory.join(format!("{id}-COMPILED-COMPLETE-ORIGINAL.txt")),
+            format!(
+                "case={case:#?}\nexpected={expected:#?}\ntyped={typed:#?}\ntext={text:#?}\nbytes={bytes:#?}\n"
+            ),
+        )?;
+        if let Some(wanted) = expected.as_ref() {
+            if !matches!(&typed, Some(Ok(actual)) if actual == wanted && matches!(actual, Instance::Group(fields) if fields.xml_type_origin() == XmlTypeOrigin::Unknown))
+            {
+                mismatches.push(format!("{id}: complete typed mapping/origin differs"));
+            }
+        }
+        if case["accepted"] == true {
+            if !matches!(&text, Ok(text) if document_matches(text, &case["serialized_json"]))
+                || !matches!(&bytes, Ok(bytes) if std::str::from_utf8(bytes).is_ok_and(|text| document_matches(text, &case["serialized_json"])))
+                || !matches!((&text, &bytes), (Ok(text), Ok(bytes)) if text.as_bytes() == bytes.as_slice())
+            {
+                mismatches.push(format!("{id}: complete generated text/bytes differ"));
+            }
+        } else {
+            let wanted = compiled_error(case, input_bounded);
+            fs::write(
+                directory.join(format!("{id}-COMPILED-EXPECTED-ERROR.txt")),
+                format!("{wanted:#?}\n"),
+            )?;
+            if !matches!(&text, Err(error) if complete_error(error, &wanted))
+                || !matches!(&bytes, Err(error) if complete_error(error, &wanted))
+            {
+                mismatches.push(format!("{id}: complete generated error differs"));
+            }
+        }
+    }
+
+    for case in direct {
+        let id = case["id"].as_str().unwrap();
+        let schema = serde_json::to_string(&case["ir_schema"])?;
+        let input = case["input"].as_str().unwrap();
+        let expected = expected_value(&case["expected"]);
+        let parsed = parse_json(&schema, input);
+        let parsed_bytes = parse_json_bytes(&schema, input.as_bytes());
+        let serialized = serialize_json(&schema, &expected);
+        let serialized_bytes = serialize_json_bytes(&schema, &expected);
+        fs::write(
+            directory.join(format!("{id}-DIRECT-COMPLETE-ORIGINAL.txt")),
+            format!(
+                "case={case:#?}\nschema={schema}\nexpected={expected:#?}\nparsed={parsed:#?}\nparsed_bytes={parsed_bytes:#?}\nserialized={serialized:#?}\nserialized_bytes={serialized_bytes:#?}\n"
+            ),
+        )?;
+        if case["accepted"] == true {
+            let wanted_text = case["serialized"].as_str().unwrap();
+            if !matches!(&parsed, Ok(value) if value == &expected)
+                || !matches!(&parsed_bytes, Ok(value) if value == &expected)
+                || !matches!(&serialized, Ok(value) if value == wanted_text)
+                || !matches!(&serialized_bytes, Ok(value) if value.as_slice() == wanted_text.as_bytes())
+            {
+                mismatches.push(format!("{id}: complete direct typed/text/bytes differ"));
+            }
+        } else {
+            let message = format!(
+                "`{}` requires numeric range {}, got {}",
+                case["error_name"].as_str().unwrap(),
+                case["range_text"].as_str().unwrap(),
+                case["got"].as_str().unwrap()
+            );
+            let wanted_input = boundary_error(message.clone(), true);
+            let wanted_output = boundary_error(message, false);
+            fs::write(
+                directory.join(format!("{id}-DIRECT-EXPECTED-ERROR.txt")),
+                format!("input={wanted_input:#?}\noutput={wanted_output:#?}\n"),
+            )?;
+            if !matches!(&parsed, Err(error) if complete_error(error, &wanted_input))
+                || !matches!(&parsed_bytes, Err(error) if complete_error(error, &wanted_input))
+                || !matches!(&serialized, Err(error) if complete_error(error, &wanted_output))
+                || !matches!(&serialized_bytes, Err(error) if complete_error(error, &wanted_output))
+            {
+                mismatches.push(format!("{id}: complete direct range errors differ"));
+            }
+        }
+    }
+
+    for case in malformed {
+        let id = case["id"].as_str().unwrap();
+        let schema = serde_json::to_string(&case["schema"])?;
+        let raw_decode = serde_json::from_str::<SchemaNode>(&schema);
+        let expected = scalar(Value::Float(2.0));
+        let parsed = parse_json(&schema, "2");
+        let parsed_bytes = parse_json_bytes(&schema, b"2");
+        let serialized = serialize_json(&schema, &expected);
+        let serialized_bytes = serialize_json_bytes(&schema, &expected);
+        fs::write(
+            directory.join(format!("{id}-MALFORMED-COMPLETE-ORIGINAL.txt")),
+            format!(
+                "case={case:#?}\nschema={schema}\nraw_decode={raw_decode:#?}\nexpected={expected:#?}\nparsed={parsed:#?}\nparsed_bytes={parsed_bytes:#?}\nserialized={serialized:#?}\nserialized_bytes={serialized_bytes:#?}\n"
+            ),
+        )?;
+        let Err(decode_error) = raw_decode else {
+            mismatches.push(format!("{id}: malformed IR unexpectedly deserializes"));
+            continue;
+        };
+        let wanted = JsonBoundaryError::InvalidEmbeddedSchema {
+            message: format!("cannot read embedded schema: {decode_error}"),
+        };
+        fs::write(
+            directory.join(format!("{id}-MALFORMED-EXPECTED-ERROR.txt")),
+            format!("{wanted:#?}\ncategory={:?}\n", decode_error.classify()),
+        )?;
+        if decode_error.classify() != serde_json::error::Category::Data
+            || !matches!(&parsed, Err(error) if complete_error(error, &wanted))
+            || !matches!(&parsed_bytes, Err(error) if complete_error(error, &wanted))
+            || !matches!(&serialized, Err(error) if complete_error(error, &wanted))
+            || !matches!(&serialized_bytes, Err(error) if complete_error(error, &wanted))
+        {
+            mismatches.push(format!("{id}: complete malformed descriptor errors differ"));
+        }
+    }
+    fs::write(
+        directory.join("COMPLETE-COMPARISONS.txt"),
+        format!(
+            "compiled={}\ndirect={}\nmalformed={}\n{mismatches:#?}\n",
+            rows.len(),
+            direct.len(),
+            malformed.len()
+        ),
+    )?;
+    if rows.len() != 16 || direct.len() != 12 || malformed.len() != 4 || !mismatches.is_empty() {
+        return Err("complete authored String-or-Float interval cohort differs".into());
+    }
+    println!("16 compiled, 12 direct and 4 malformed complete interval outcomes passed");
+    Ok(())
+}

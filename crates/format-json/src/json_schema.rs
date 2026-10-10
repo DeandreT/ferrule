@@ -301,6 +301,7 @@ fn parse_one_of_branch(
     }
     if let Some(scalar) = parse_scalar_one_of(name, schema, alternatives, doc, active_refs)? {
         let mut scalar = scalar;
+        ranges::apply(name, schema, &mut scalar, false)?;
         multiples::apply(name, schema, &mut scalar, false)?;
         property_counts::validate_ignored(name, schema)?;
         property_dependencies::validate_ignored(name, schema)?;
@@ -372,6 +373,7 @@ fn parse_any_of_branch(
     }
     if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
         let mut scalar = scalar;
+        ranges::apply(name, schema, &mut scalar, false)?;
         multiples::apply(name, schema, &mut scalar, false)?;
         property_counts::validate_ignored(name, schema)?;
         property_dependencies::validate_ignored(name, schema)?;
@@ -692,6 +694,7 @@ fn apply_known_shape_constraints(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
+    alternatives::reject_string_float_interval_siblings(name, schema, node)?;
     allowed_values::apply(name, schema, node)?;
     property_counts::apply(name, schema, node, false)?;
     property_dependencies::apply(name, schema, node, false)?;

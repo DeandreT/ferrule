@@ -242,8 +242,25 @@ layout and dialect details that an extension cannot express.
   range branches normalize to one exact interval when their divisor constraints
   are identical. When an `anyOf` varies both its numeric range and divisor
   constraint, Ferrule rejects the correlated union rather than independently
-  widening either axis. Numeric-range-bearing heterogeneous scalar unions remain
-  unsupported.
+  widening either axis. An exact String-or-Int union can retain one integer
+  interval. An exact String-or-Float union can retain one finite-number interval
+  when its String branch is unconstrained. Numeric input and output enforce the
+  interval after the ordinary Float precision/coercion checks; text retains its
+  String tag even when it looks numeric. Nullable forms additionally admit
+  explicit JSON null. Canonical type-array export and re-import preserve these
+  domains and bounds.
+  Scalar `anyOf` and `oneOf` apply outer numeric bounds to the represented
+  concrete numeric or exact String-or-Int/String-or-Float domain. Concrete
+  intervals and String-or-Int intervals retain exact compatible intersections.
+  A branch-bounded String-or-Float interval composition refuses additional outer
+  numeric, length, pattern, multiple-of, const, or enum assertions. Its direct
+  type-array form admits one interval without those other assertions. Redundant
+  outer type containment and nonasserting annotations remain separate. This
+  String-or-Float range composition requires exactly one unconstrained String
+  branch and one bounded Number branch. Wider range-bearing heterogeneous
+  domains and correlated range predicates remain outside this subset.
+  Homogeneous numeric interval unions retain their separate compatible-union
+  behavior.
   Concrete arrays retain exact non-negative `minItems` and `maxItems`
   intervals through references, nullable wrappers, compatible `allOf`
   intersections, and exactly representable `anyOf` unions. Input and output
