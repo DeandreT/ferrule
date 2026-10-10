@@ -181,6 +181,12 @@ impl Job {
         result
     }
 }
+// Leave polling slack inside the unchanged at-most-one-second TERM grace.
+// The real signal interval still requires independent physical qualification.
+fn kill_due(grace: Duration, kill_attempted: bool) -> bool {
+    grace >= Duration::from_millis(900) && !kill_attempted
+}
+
 fn micros(d: Duration) -> u64 {
     u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
 }
@@ -616,7 +622,7 @@ impl PdfWorkerManager {
                     }
                 }
             }
-            if grace >= Duration::from_secs(1) && !job.kill_attempted {
+            if kill_due(grace, job.kill_attempted) {
                 job.kill_attempted = true;
                 if let Some(fd) = &job.pidfd {
                     let r = super::linux::signal(fd, libc::SIGKILL);
@@ -1101,3 +1107,7 @@ mod tests {
         assert!(broken.pipe.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "escalation358_tests.rs"]
+mod escalation358_tests;
