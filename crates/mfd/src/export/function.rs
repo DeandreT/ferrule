@@ -69,6 +69,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "right_trim" => "right-trim",
         "pad_string_left" => "pad-string-left",
         "pad_string_right" => "pad-string-right",
+        "format_guid_string" => "format-guid-string",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "normalize_space" => "normalize-space",
@@ -118,6 +119,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
+        | "format_guid_string"
         | "is_numeric"
         | "is_empty"
         | "year_from_datetime"
@@ -172,6 +174,11 @@ mod tests {
         assert_eq!(function_library("delay_passthrough"), "lang");
         assert_eq!(unmap_function_name("create_guid"), "create-guid");
         assert_eq!(function_library("create_guid"), "lang");
+        assert_eq!(
+            unmap_function_name("format_guid_string"),
+            "format-guid-string"
+        );
+        assert_eq!(function_library("format_guid_string"), "lang");
         assert_eq!(function_library("to_number"), "ferrule");
         assert_eq!(function_library("sql_like"), "ferrule");
         assert_eq!(function_library("json_serialize_object"), "ferrule");

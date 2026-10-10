@@ -161,8 +161,8 @@ impl GraphBuilder<'_> {
                             "function `{name}` has no ferrule equivalent; imported \
                              as-is and will fail at run time until replaced"
                         ));
-                        if name == "random" {
-                            format!("unsupported:{}:{}:random", fc.library, fc.kind)
+                        if matches!(name, "random" | "format_guid_string") {
+                            format!("unsupported:{}:{}:{name}", fc.library, fc.kind)
                         } else {
                             name.to_string()
                         }

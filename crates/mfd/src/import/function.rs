@@ -490,9 +490,14 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
 }
 
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
+    if component.name == "format-guid-string" {
+        return (component.library == "lang" && component.kind == 5)
+            .then_some("format_guid_string");
+    }
     if component.name == "random" {
-        (component.kind == 5 && component.library == "lang").then_some("random")
-    } else if component.library == "ferrule"
+        return (component.kind == 5 && component.library == "lang").then_some("random");
+    }
+    if component.library == "ferrule"
         && component.kind == 5
         && canonical_function::is_internal(&component.name)
     {
@@ -663,6 +668,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "floor" => "floor",
         "create-guid" => "create_guid",
         "random" => "random",
+        "format-guid-string" => "format_guid_string",
         "format-number" => "format_number",
         "format-date" => "format_date",
         "format-dateTime" => "format_datetime",
@@ -728,6 +734,7 @@ mod tests {
         assert_eq!(map_name("positive"), Some("positive"));
         assert_eq!(map_name("floor"), Some("floor"));
         assert_eq!(map_name("create-guid"), Some("create_guid"));
+        assert_eq!(map_name("format-guid-string"), Some("format_guid_string"));
         assert_eq!(map_name("format-date"), Some("format_date"));
         assert_eq!(map_name("format-dateTime"), Some("format_datetime"));
         assert_eq!(map_name("format-time"), Some("format_time"));
@@ -773,6 +780,24 @@ mod tests {
         assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("sleep"), Some("delay_passthrough"));
+    }
+
+    #[test]
+    fn guid_formatting_requires_the_standard_lang_scalar_component() {
+        for (library, kind, expected) in [
+            ("lang", "5", Some("format_guid_string")),
+            ("core", "5", None),
+            ("vendor", "5", None),
+            ("lang", "6", None),
+            ("lang", "19", None),
+        ] {
+            let text = format!(
+                r#"<component library="{library}" name="format-guid-string" kind="{kind}"/>"#
+            );
+            let document = roxmltree::Document::parse(&text).expect("authored component XML");
+            let component = read(&document.root_element());
+            assert_eq!(map_component_name(&component), expected);
+        }
     }
 
     #[test]
