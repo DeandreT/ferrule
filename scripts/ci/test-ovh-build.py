@@ -7,6 +7,7 @@ import signal
 from pathlib import Path
 import subprocess
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import Mock
 
@@ -117,6 +118,69 @@ class ResourceGuardTests(unittest.TestCase):
 
 
 class ProvisioningPathTests(unittest.TestCase):
+    def test_root_provisioning_checks_launcher_destination(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("check_runner_paths() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "check_runner_paths() {\n" + body + "\n}\n"
+        invocation = "check_runner_paths " + script.split("\ncheck_runner_paths ", 1)[1].split("\n\n", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="ferrule-launcher-path-") as tmp:
+            root = Path(tmp)
+            home = root / "runner"
+            runner = home / "actions-runner"
+            runner.mkdir(parents=True)
+            outside = root / "protected"
+            outside.mkdir()
+            (runner / "runsvc.sh").symlink_to(outside, target_is_directory=True)
+            result = subprocess.run(
+                ["bash", "-euc", function + invocation],
+                env=os.environ | {"runner_home": str(home), "runner_dir": str(runner)},
+                text=True, capture_output=True, check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Refusing a runner provisioning path", result.stderr)
+
+    def test_runner_archive_extraction_drops_root_permissions(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("extract_runner_archive() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "extract_runner_archive() {\n" + body + "\n}\n"
+        with tempfile.TemporaryDirectory(prefix="ferrule-extraction-") as tmp:
+            root = Path(tmp)
+            source = root / "marker"
+            source.write_text("Ferrule archive preflight\n")
+            archive = root / "runner.tar.gz"
+            with tarfile.open(archive, "w:gz") as output:
+                output.add(source, arcname="marker")
+            archive.chmod(0o600)
+            runner = root / "runner"
+            runner.mkdir()
+            tools = root / "bin"
+            tools.mkdir()
+            runuser = tools / "runuser"
+            runuser.write_text('#!/bin/sh\n'
+                               'printf "%s\\n" "$@" > "$FIXTURE_ARGUMENTS"\n'
+                               '[ "$1" = -u ] && [ "$2" = ferrule-runner ] && '
+                               '[ "$3" = -- ] || exit 1\n'
+                               'shift 3\nexec "$@"\n')
+            runuser.chmod(0o755)
+            arguments = root / "arguments"
+            environment = os.environ | {
+                "PATH": str(tools) + ":/usr/bin:/bin",
+                "FIXTURE_ARGUMENTS": str(arguments),
+                "runner_user": "ferrule-runner",
+                "runner_dir": str(runner),
+                "FIXTURE_ARCHIVE": str(archive),
+            }
+            result = subprocess.run(["bash", "-euc", function +
+                                     'extract_runner_archive "$FIXTURE_ARCHIVE"'],
+                                    env=environment, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((runner / "marker").read_text(), source.read_text())
+            self.assertEqual(archive.stat().st_mode & 0o777, 0o644)
+            self.assertEqual(arguments.read_text().splitlines(), [
+                "-u", "ferrule-runner", "--", "/usr/bin/tar", "-xzf",
+                str(archive), "-C", str(runner), "--no-same-owner",
+            ])
+
     def test_root_provisioning_follows_only_runner_home_paths(self):
         script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
         body = script.split("check_runner_paths() {\n", 1)[1].split("\n}\n", 1)[0]
