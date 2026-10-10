@@ -1,3 +1,4 @@
+#[allow(dead_code, unused_imports)]
 mod support;
 
 use ir::{Instance, Value};
