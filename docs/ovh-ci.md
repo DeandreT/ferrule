@@ -18,6 +18,11 @@ application homes and game data are hidden. Runner application updates remain
 enabled. Review write access to this public repository: contributors able to
 create repository branches can execute jobs on this persistent runner.
 
+Service startup checks archive creation/extraction and Xvfb under the actual
+service restrictions. Ubuntu 26.04's tar needs `openat2`; the service leaves
+`RestrictSUIDSGID` off to avoid its [documented syscall conflict](https://github.com/systemd/systemd/issues/43314).
+`NoNewPrivileges` and an empty capability set prevent privilege escalation.
+
 There is one runner slot, so native and codegen matrix jobs execute sequentially.
 The service has a CPU quota of 150% (1.5 cores), memory high watermark of 3 GiB,
 and hard limit of 3500 MiB. OVH jobs use one Cargo build job, two ordinary test

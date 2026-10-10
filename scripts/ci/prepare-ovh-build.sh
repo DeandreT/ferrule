@@ -15,20 +15,20 @@ done
 
 # Caches sit outside checkout so checkout's normal clean cannot delete them.
 cache_root="$HOME/ci-cache"
-mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" "$HOME/.dotnet"
-if [[ $(realpath "$cache_root") != "$cache_root" ||
-      $(realpath "$cache_root/workspace-target") != "$cache_root/workspace-target" ||
-      $(realpath "$cache_root/generated-host-target") != "$cache_root/generated-host-target" ]]; then
+if [[ $(realpath -m "$cache_root") != "$cache_root" ||
+      $(realpath -m "$cache_root/workspace-target") != "$cache_root/workspace-target" ||
+      $(realpath -m "$cache_root/generated-host-target") != "$cache_root/generated-host-target" ]]; then
   echo 'Refusing symlinked build-cache paths.' >&2
   exit 1
 fi
 
-available_kib=$(df -Pk "$cache_root" | awk 'NR == 2 { print $4 }')
+available_kib=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
 if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < 4 * 1024 * 1024 )); then
   echo 'OVH needs at least 4 GiB free before starting a build; inspect Ferrule caches.' >&2
-  df -h "$cache_root" >&2
+  df -h "$HOME" >&2
   exit 1
 fi
+mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" "$HOME/.dotnet"
 
 {
   printf 'CARGO_TARGET_DIR=%s/workspace-target\n' "$cache_root"
