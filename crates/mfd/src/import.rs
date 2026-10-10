@@ -71,7 +71,7 @@ use function::{
     is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component,
     map_name as map_function_name, read as read_fn_component, read_isbn_converter_component,
 };
-use graph::{GraphBuilder, read_copy_all_targets, read_edges};
+use graph::{GraphBuilder, read_copy_all_targets, read_edge_inputs};
 use schema::{
     ComponentFormat, SchemaComponent, enrich_unresolved_edi_source_schemas, note_skipped_library,
     read_csv_component, read_db_component_in_package, read_edi_component,
@@ -704,7 +704,11 @@ fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, M
             component.attribute("library").unwrap_or_default()
         )));
     }
-    let edge_from = read_edges(&structure, Some(&wrapper));
+    let edges = read_edge_inputs(&structure, Some(&wrapper));
+    if !edges.conflicts.is_empty() {
+        return Err(MfdError::UnsupportedImport(edges.conflicts.join("; ")));
+    }
+    let edge_from = edges.feeds;
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     let connected_inputs = |component: &roxmltree::Node<'_, '_>| {
         component.descendants().any(|node| {
@@ -1501,7 +1505,8 @@ fn import_resolved(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    let mut warnings = Vec::new();
+    let edges = read_edge_inputs(&structure, Some(&wrapper));
+    let mut warnings = edges.conflicts.clone();
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
     let mut json_serializers = Vec::new();
@@ -1525,6 +1530,7 @@ fn import_resolved(
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if matches!(selection, StageSelection::Ordinary)
+        && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
             crate::export::qualified_root_view::import_project(&text, structure, resources)?
@@ -1549,7 +1555,7 @@ fn import_resolved(
     let mut xml_boundary_witnesses = Vec::new();
     let mut fallback_xml_source_outputs = BTreeSet::new();
     let mut fallback_xml_target_inputs = BTreeSet::new();
-    let source_node_functions = source_node_function::read(&mapping_el);
+    let source_node_functions = source_node_function::read(&mapping_el, &mut warnings);
 
     if let Some(children) = structure
         .children()
@@ -2041,8 +2047,8 @@ fn import_resolved(
         component.is_source = false;
     }
 
-    // Edges are indexed as to-key -> from-key; each input has at most one feed.
-    let edge_from = read_edges(&structure, Some(&wrapper));
+    // Only inputs with one distinct physical feed enter the lowering map.
+    let edge_from = edges.feeds;
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     for component in &schema_components {
         if matches!(selection, StageSelection::Ordinary)

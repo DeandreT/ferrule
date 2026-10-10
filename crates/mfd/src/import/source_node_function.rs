@@ -4,7 +4,7 @@ use ir::{ScalarType, Value};
 use mapping::{Node, NodeId};
 
 use super::function::{FnComponent, map_component_name, parse_constant, read as read_function};
-use super::graph::{GraphBuilder, read_edges};
+use super::graph::{GraphBuilder, read_edge_inputs};
 use super::schema::parse_u32;
 
 const MAX_EXPRESSION_DEPTH: usize = 256;
@@ -43,7 +43,7 @@ pub(super) type Definitions = BTreeMap<String, Expr>;
 
 /// Reads scalar output-node rules attached to schema entries. Unsupported
 /// definitions remain inert, matching the importer's historical behavior.
-pub(super) fn read(mapping: &roxmltree::Node<'_, '_>) -> Rules {
+pub(super) fn read(mapping: &roxmltree::Node<'_, '_>, warnings: &mut Vec<String>) -> Rules {
     let definitions = mapping
         .children()
         .filter(|node| {
@@ -52,6 +52,19 @@ pub(super) fn read(mapping: &roxmltree::Node<'_, '_>) -> Rules {
         })
         .filter_map(|component| {
             let name = component.attribute("name")?.to_string();
+            if let Some(structure) = component
+                .children()
+                .find(|node| node.has_tag_name("structure"))
+            {
+                let conflicts = read_edge_inputs(&structure, Some(&component)).conflicts;
+                if !conflicts.is_empty() {
+                    warnings.push(format!(
+                        "skipped node function `{name}`: {}",
+                        conflicts.join("; ")
+                    ));
+                    return None;
+                }
+            }
             read_definition(component, false).map(|definition| (name, definition))
         })
         .collect::<BTreeMap<_, _>>();
@@ -350,7 +363,11 @@ fn read_definition(component: roxmltree::Node<'_, '_>, allow_target_context: boo
     let [Some(output_input)] = output.inputs.as_slice() else {
         return None;
     };
-    let edge_from = read_edges(&structure, Some(&component));
+    let edges = read_edge_inputs(&structure, Some(&component));
+    if !edges.conflicts.is_empty() {
+        return None;
+    }
+    let edge_from = edges.feeds;
     let feed = *edge_from.get(output_input)?;
     let by_output = functions
         .iter()
@@ -597,5 +614,50 @@ fn typed_default(value: &str, ty: ScalarType) -> Value {
             .filter(|value| value.is_finite())
             .map(Value::Float)
             .unwrap_or(Value::Null),
+    }
+}
+
+#[cfg(test)]
+mod input_guard_tests {
+    use super::{Expr, read, read_definition};
+
+    #[test]
+    fn node_function_physical_conflicts_refuse_with_exact_diagnostics() {
+        for (xml, expected) in [
+            (
+                include_str!("../../tests/fixtures/input_guard/node-output-conflict.mfd"),
+                "skipped node function `Echo`: input port 1010 has conflicting source feeds [1000, 1001, 1002]; all feeds to this input were skipped",
+            ),
+            (
+                include_str!("../../tests/fixtures/input_guard/node-default-conflict.mfd"),
+                "skipped node function `Echo`: input port 1003 has conflicting source feeds [1001, 1002]; all feeds to this input were skipped",
+            ),
+        ] {
+            let doc = roxmltree::Document::parse(xml).unwrap();
+            let mapping = doc.root_element();
+            let component = mapping
+                .children()
+                .find(|node| node.has_tag_name("component"))
+                .unwrap();
+            assert!(read_definition(component, false).is_none());
+            let mut warnings = Vec::new();
+            assert!(read(&mapping, &mut warnings).is_empty());
+            assert_eq!(warnings, [expected]);
+        }
+        for xml in [
+            include_str!("../../tests/fixtures/input_guard/node-clean.mfd"),
+            include_str!("../../tests/fixtures/input_guard/node-same-source.mfd"),
+        ] {
+            let doc = roxmltree::Document::parse(xml).unwrap();
+            let component = doc
+                .root_element()
+                .children()
+                .find(|node| node.has_tag_name("component"))
+                .unwrap();
+            assert!(matches!(
+                read_definition(component, false),
+                Some(Expr::Input)
+            ));
+        }
     }
 }
