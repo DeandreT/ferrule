@@ -80,6 +80,7 @@ mod run_ui;
 mod scope_retirement;
 #[path = "scopes.rs"]
 mod scope_ui;
+pub(crate) mod sequence_consumer_duplication;
 #[path = "workspace.rs"]
 mod workspace_ui;
 

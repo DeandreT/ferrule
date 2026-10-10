@@ -1086,6 +1086,7 @@ impl FerruleApp {
         );
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
         let canvas_id = self.embedded_canvas_id(egui::Id::new("main_mapping_canvas"));
+        sequence_consumer_duplication::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
@@ -1166,6 +1167,9 @@ impl FerruleApp {
             }
             requested_function = viewer.requested_function_open;
         });
+        if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
+            self.apply_sequence_duplication_request(MappingDocument::Main, node);
+        }
         if let Some(function) = requested_function {
             self.open_function_tab(function);
         }

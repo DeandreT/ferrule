@@ -387,6 +387,7 @@ impl FerruleApp {
         let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
         let mut requested_function = None;
         let mut error = None;
+        sequence_consumer_duplication::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (targets, canvases) = (
                 &mut self.project.extra_targets,
@@ -475,6 +476,9 @@ impl FerruleApp {
             requested_function = viewer.requested_function_open;
             error = viewer.error;
         });
+        if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
+            self.apply_sequence_duplication_request(MappingDocument::Target(target_index), node);
+        }
         if let Some(error) = error {
             self.status = "target graph edit failed".to_string();
             self.diagnostics.error("Target edit failed", error);

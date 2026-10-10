@@ -908,7 +908,9 @@ impl GraphViewer<'_> {
             if seen.insert(id)
                 && let Some(node) = self.graph.nodes.get(&id)
             {
-                pending.extend(node.dependencies());
+                // Owned item identities belong to the reducer, not its parent inputs.
+                // Actual input edges still reach and refuse raw stage inputs above.
+                pending.extend(node_inputs(node));
             }
         }
         if let Some((id, index)) = to
@@ -2485,6 +2487,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 self.select_function_output(mapping_id);
                 ui.close();
             }
+        }
+        if self.function_output.is_none()
+            && matches!(
+                self.graph.nodes.get(&mapping_id),
+                Some(
+                    Node::SequenceExists { .. }
+                        | Node::SequenceItemAt { .. }
+                        | Node::SequenceAggregate { .. }
+                )
+            )
+            && ui.button("Duplicate sequence consumer").clicked()
+        {
+            crate::app::sequence_consumer_duplication::request(ui.ctx(), mapping_id);
+            ui.close();
         }
         let references = self.blocking_references_to(mapping_id);
         let remove = ui
