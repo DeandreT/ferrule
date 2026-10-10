@@ -1,0 +1,898 @@
+[
+  {
+    "id": "zero-ParseCsv",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_source": "all-row/zero-source-tags.json"
+  },
+  {
+    "id": "zero-ParseCsvBytes",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_source": "all-row/zero-source-tags.json"
+  },
+  {
+    "id": "zero-ExecuteCsvToX12",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "zero-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_wire": "all-row/zero-expected.x12",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_typed_target": "all-row/zero-typed-target-tags.json"
+  },
+  {
+    "id": "zero-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "zero-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_wire": "all-row/zero-expected.x12",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_typed_target": "all-row/zero-typed-target-tags.json"
+  },
+  {
+    "id": "one-ParseCsv",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_source": "all-row/one-source-tags.json"
+  },
+  {
+    "id": "one-ParseCsvBytes",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_source": "all-row/one-source-tags.json"
+  },
+  {
+    "id": "one-ExecuteCsvToX12",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_source": "all-row/one-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "one-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_wire": "all-row/one-expected.x12",
+    "expected_source": "all-row/one-source-tags.json",
+    "expected_typed_target": "all-row/one-typed-target-tags.json"
+  },
+  {
+    "id": "one-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_source": "all-row/one-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "one-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_wire": "all-row/one-expected.x12",
+    "expected_source": "all-row/one-source-tags.json",
+    "expected_typed_target": "all-row/one-typed-target-tags.json"
+  },
+  {
+    "id": "multiple-ParseCsv",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_source": "all-row/multiple-source-tags.json"
+  },
+  {
+    "id": "multiple-ParseCsvBytes",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_source": "all-row/multiple-source-tags.json"
+  },
+  {
+    "id": "multiple-ExecuteCsvToX12",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_source": "all-row/multiple-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "multiple-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_wire": "all-row/multiple-expected.x12",
+    "expected_source": "all-row/multiple-source-tags.json",
+    "expected_typed_target": "all-row/multiple-typed-target-tags.json"
+  },
+  {
+    "id": "multiple-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_source": "all-row/multiple-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "multiple-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "all-row/multiple.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_wire": "all-row/multiple-expected.x12",
+    "expected_source": "all-row/multiple-source-tags.json",
+    "expected_typed_target": "all-row/multiple-typed-target-tags.json"
+  },
+  {
+    "id": "dialect-ParseCsv",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_source": "dialect-source-tags.json"
+  },
+  {
+    "id": "dialect-ParseCsvBytes",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_source": "dialect-source-tags.json"
+  },
+  {
+    "id": "dialect-ExecuteCsvToX12",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_source": "dialect-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "dialect-ExecuteCsvToX12WithContext",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_wire": "dialect-expected.x12",
+    "expected_source": "dialect-source-tags.json",
+    "expected_typed_target": "dialect-typed-target-tags.json"
+  },
+  {
+    "id": "dialect-ExecuteCsvToX12Bytes",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_source": "dialect-source-tags.json",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "dialect-ExecuteCsvToX12BytesWithContext",
+    "family": "dialect",
+    "input": "inputs/dialect.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_wire": "dialect-expected.x12",
+    "expected_source": "dialect-source-tags.json",
+    "expected_typed_target": "dialect-typed-target-tags.json"
+  },
+  {
+    "id": "failure-zero-rows-ExecuteCsvToX12WithContext",
+    "family": "failure",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_wire": "all-row/zero-expected.x12",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_typed_target": "all-row/zero-typed-target-tags.json"
+  },
+  {
+    "id": "mapping-before-context-ExecuteCsvToX12WithContext",
+    "family": "failure",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MappingFailure",
+      "message": "mapping failure rule 1: AUTHORED CSV rejection",
+      "fields": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": 1,
+        "MappingFailureMessage": "AUTHORED CSV rejection",
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-mapping-ExecuteCsvToX12WithContext",
+    "family": "failure",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-context-before-parse-ExecuteCsvToX12WithContext",
+    "family": "failure",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "null",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "executionContext",
+      "message": "Value cannot be null. (Parameter 'executionContext')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "source-null-before-context-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "null",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "context-missing-datetime-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "missing",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "context-invalid-calendar-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a valid supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "final-x12-delimiter-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": "inputs/reserved-target.csv",
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Value",
+      "message": "X12 scalar contains an unrepresentable delimiter.",
+      "segment_index": null,
+      "field_path": "Notes/NTE/NTE02",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "failure-zero-rows-ExecuteCsvToX12BytesWithContext",
+    "family": "failure",
+    "input": "all-row/zero.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_wire": "all-row/zero-expected.x12",
+    "expected_source": "all-row/zero-source-tags.json",
+    "expected_typed_target": "all-row/zero-typed-target-tags.json"
+  },
+  {
+    "id": "mapping-before-context-ExecuteCsvToX12BytesWithContext",
+    "family": "failure",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "error": "MappingFailure",
+      "message": "mapping failure rule 1: AUTHORED CSV rejection",
+      "fields": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": 1,
+        "MappingFailureMessage": "AUTHORED CSV rejection",
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-mapping-ExecuteCsvToX12BytesWithContext",
+    "family": "failure",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-context-before-parse-ExecuteCsvToX12BytesWithContext",
+    "family": "failure",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "null",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "executionContext",
+      "message": "Value cannot be null. (Parameter 'executionContext')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "source-null-before-context-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "null",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "context-missing-datetime-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "missing",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "context-invalid-calendar-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "all-row/one.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "malformed",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a valid supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null,
+      "inner_type": null
+    }
+  },
+  {
+    "id": "final-x12-delimiter-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": "inputs/reserved-target.csv",
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Value",
+      "message": "X12 scalar contains an unrepresentable delimiter.",
+      "segment_index": null,
+      "field_path": "Notes/NTE/NTE02",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-source-ParseCsv",
+    "family": "base",
+    "input": null,
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-missing-context-ParseCsv",
+    "family": "base",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ParseCsv",
+    "context": "absent",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-source-ParseCsvBytes",
+    "family": "base",
+    "input": null,
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-missing-context-ParseCsvBytes",
+    "family": "base",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ParseCsvBytes",
+    "context": "absent",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-source-ExecuteCsvToX12",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-missing-context-ExecuteCsvToX12",
+    "family": "base",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12",
+    "context": "absent",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "null-source-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "parameter": "source",
+      "message": "Value cannot be null. (Parameter 'source')",
+      "inner_type": null
+    }
+  },
+  {
+    "id": "parse-before-missing-context-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": "inputs/invalid-second-row.csv",
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "absent",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Parse",
+      "message": "row 1: column `Count` expected Int, got `bad`",
+      "fields": {
+        "Row": 1,
+        "Record": 2,
+        "Column": 1,
+        "Field": "Count",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    }
+  },
+  {
+    "id": "encoding-ParseCsv",
+    "family": "base",
+    "input": null,
+    "route": "ParseCsv",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input must contain valid Unicode.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "utf16_units": [
+        55296
+      ]
+    }
+  },
+  {
+    "id": "encoding-ParseCsvBytes",
+    "family": "base",
+    "input": null,
+    "route": "ParseCsvBytes",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input bytes must be valid UTF-8.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "bytes_hex": "ff"
+    }
+  },
+  {
+    "id": "encoding-ExecuteCsvToX12",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input must contain valid Unicode.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "utf16_units": [
+        55296
+      ]
+    }
+  },
+  {
+    "id": "encoding-ExecuteCsvToX12WithContext",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12WithContext",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input must contain valid Unicode.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "utf16_units": [
+        55296
+      ]
+    }
+  },
+  {
+    "id": "encoding-ExecuteCsvToX12Bytes",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12Bytes",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input bytes must be valid UTF-8.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "bytes_hex": "ff"
+    }
+  },
+  {
+    "id": "encoding-ExecuteCsvToX12BytesWithContext",
+    "family": "base",
+    "input": null,
+    "route": "ExecuteCsvToX12BytesWithContext",
+    "context": "valid",
+    "expected_error": {
+      "type": "FerruleCsvInputException",
+      "error": "Encoding",
+      "message": "CSV input bytes must be valid UTF-8.",
+      "fields": {
+        "Row": null,
+        "Record": null,
+        "Column": null,
+        "Field": null,
+        "ExpectedType": null,
+        "Cell": null,
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      },
+      "inner_type": null
+    },
+    "recipe": {
+      "bytes_hex": "ff"
+    }
+  }
+]
