@@ -9,6 +9,12 @@ runner_user=ferrule-runner
 runner_home=/home/ferrule-runner
 runner_dir="$runner_home/actions-runner"
 service=ferrule-actions-runner.service
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+if [[ ! -f $script_dir/guard-ovh-job.sh ]]; then
+  echo 'Copy guard-ovh-job.sh alongside this provisioning script.' >&2
+  exit 1
+fi
 
 if (( EUID != 0 )) || [[ $(uname -m) != x86_64 ]]; then
   echo 'Provisioning requires root on an x86_64 Ubuntu host.' >&2
@@ -90,6 +96,9 @@ install -o "$runner_user" -g "$runner_user" -m 755 \
   "$runner_dir/bin/runsvc.sh" "$runner_dir/runsvc.sh"
 printf '%s\n' "$service" > "$runner_dir/.service"
 chown "$runner_user:$runner_user" "$runner_dir/.service"
+install -d -o root -g root -m 755 /opt/ferrule-runner-tools
+install -o root -g root -m 755 "$script_dir/guard-ovh-job.sh" \
+  /opt/ferrule-runner-tools/guard-ovh-job.sh
 
 # Exercise archive extraction and Xvfb inside the actual service sandbox.
 cat > "$runner_home/check-runtime.sh" <<'CHECK'
@@ -124,6 +133,7 @@ Environment=DOTNET_INSTALL_DIR=/home/ferrule-runner/.dotnet
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
 Environment=DOTNET_NOLOGO=1
 Environment=MSBUILDDISABLENODEREUSE=1
+Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/ferrule-runner-tools/guard-ovh-job.sh
 Restart=always
 RestartSec=10
 KillMode=mixed

@@ -18,6 +18,12 @@ application homes and game data are hidden. Runner application updates remain
 enabled. Review write access to this public repository: contributors able to
 create repository branches can execute jobs on this persistent runner.
 
+A root-owned pre-job hook at `/opt/ferrule-runner-tools/guard-ovh-job.sh`
+independently admits only Ferrule main pushes, repository-branch manual runs,
+and same-repository pull requests. It rejects fork events even if their workflow
+edits request the runner label directly. The service account cannot change
+this hook. Job-hook failures stop execution before checkout/action steps.
+
 Service startup checks archive creation/extraction and Xvfb under the actual
 service restrictions. Ubuntu 26.04's tar needs `openat2`; the service leaves
 `RestrictSUIDSGID` off to avoid its [documented syscall conflict](https://github.com/systemd/systemd/issues/43314).
@@ -56,6 +62,7 @@ From a clean checkout with an authenticated GitHub CLI:
 
 ```sh
 scp scripts/ci/provision-ovh-runner.sh ovh:/tmp/ferrule-provision-runner.sh
+scp scripts/ci/guard-ovh-job.sh ovh:/tmp/guard-ovh-job.sh
 gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
   --jq .token | ssh ovh 'sudo -n bash /tmp/ferrule-provision-runner.sh'
 gh api repos/DeandreT/ferrule/actions/runners \
