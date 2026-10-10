@@ -97,7 +97,7 @@ pub enum StaticDocumentBoundaryError {
     },
     X12 {
         owner: StaticDocumentBoundaryOwner,
-        error: X12BoundaryPolicyError,
+        error: Box<X12BoundaryPolicyError>,
     },
     Validation(ProgramValidationError),
 }
@@ -130,7 +130,7 @@ impl std::error::Error for StaticDocumentBoundaryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::EmbeddedSchema { error, .. } => Some(error),
-            Self::X12 { error, .. } => Some(error),
+            Self::X12 { error, .. } => Some(error.as_ref()),
             Self::Validation(error) => Some(error),
             _ => None,
         }
@@ -238,7 +238,7 @@ fn prepare(
             crate::x12_boundary::preflight_schema_bounds(endpoint.schema, endpoint.owner.side())
                 .map_err(|error| StaticDocumentBoundaryError::X12 {
                     owner: endpoint.owner.clone(),
-                    error,
+                    error: Box::new(error),
                 })?;
         }
         encoded.push(
@@ -269,7 +269,7 @@ fn prepare(
                 )
                 .map_err(|error| StaticDocumentBoundaryError::X12 {
                     owner: endpoint.owner.clone(),
-                    error,
+                    error: Box::new(error),
                 })?,
             },
         };
