@@ -611,7 +611,7 @@ fn unsupported_retained_format_fields_fail_before_emission() {
             ..Default::default()
         },
         FormatOptions {
-            x12_interchange_version: Some("00501".into()),
+            x12_interchange_version: Some("00502".into()),
             ..Default::default()
         },
         FormatOptions {
