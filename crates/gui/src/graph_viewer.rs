@@ -2486,6 +2486,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 ui.close();
             }
         }
+        if self.function_output.is_none()
+            && matches!(
+                self.graph.nodes.get(&mapping_id),
+                Some(
+                    Node::SequenceExists { .. }
+                        | Node::SequenceItemAt { .. }
+                        | Node::SequenceAggregate { .. }
+                )
+            )
+            && ui.button("Duplicate sequence consumer").clicked()
+        {
+            crate::app::sequence_consumer_duplication::request(ui.ctx(), mapping_id);
+            ui.close();
+        }
         let references = self.blocking_references_to(mapping_id);
         let remove = ui
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
