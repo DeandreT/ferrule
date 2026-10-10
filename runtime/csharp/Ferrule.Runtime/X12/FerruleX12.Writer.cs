@@ -15,7 +15,7 @@ public static partial class FerruleX12
         if (id is not null)
         {
             if (segments.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
-            Syntax syntax = profile.Separators ?? new('*', ':', '~');
+            Syntax syntax = profile.OutputSyntax;
             int control = id switch { "ISA" => 12, "GS" => 5, "ST" or "SE" or "GE" or "IEA" => 1, _ => -1 };
             if (control >= 0 && (!group.TryGetField(node.Children[control].Name, out FerruleInstance? supplied)
                 || supplied is not FerruleScalar { Value.Kind: FerruleValueKind.String } scalar || scalar.Value.StringValue.Length == 0))
@@ -26,11 +26,18 @@ public static partial class FerruleX12
             for (int index = 0; index < elements.Length; index++)
             {
                 Node child = node.Children[index];
-                string text = WriteElement(child,
-                    group.TryGetField(child.Name, out FerruleInstance? value) ? value : null,
+                FerruleInstance? value = group.TryGetField(child.Name, out FerruleInstance? suppliedValue) ? suppliedValue : null;
+                // A modern ISA11 default is the explicitly selected physical
+                // syntax, never inferred from a supplied nonempty value.
+                if (id == "ISA" && index == 10 && syntax.Repetition is { } repetition
+                    && (value is null || value is FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull }
+                        || value is FerruleScalar { Value.Kind: FerruleValueKind.String } empty && empty.Value.StringValue.Length == 0))
+                    value = new FerruleScalar(FerruleValue.FromString(child.Fixed is { Length: > 0 } fixedValue
+                        ? fixedValue : repetition.ToString()));
+                string text = WriteElement(child, value,
                     syntax, [.. path, child.Name], budget, depth + 1, id == "ISA" && index == 15,
                     Math.Max(0, budget.RemainingOutput - id.Length - 1 - (syntax.Segment == '\n' ? 0 : 1)
-                        - textBytes - index - 1));
+                        - textBytes - index - 1), id == "ISA" && index == 10);
                 elements[index] = text;
                 textBytes += StrictUtf8.GetByteCount(text);
                 if (id == "ISA" && index is 1 or 3 or 5 or 7)
@@ -72,7 +79,7 @@ public static partial class FerruleX12
     }
 
     private static string WriteElement(Node node, FerruleInstance? instance, Syntax syntax, string[] path,
-        Budget budget, int depth, bool isaComponent = false, long maximumBytes = MaximumDocumentBytes)
+        Budget budget, int depth, bool isaComponent = false, long maximumBytes = MaximumDocumentBytes, bool isaRepetition = false)
     {
         budget.Visit(depth);
         if (node.Type is null)
@@ -120,7 +127,9 @@ public static partial class FerruleX12
         RequireUtf8(text, MaximumDocumentBytes, "X12 field");
         ValidateText(node, text, path);
         if (!(isaComponent && text == syntax.Component.ToString())
-            && text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Component || character == syntax.Segment))
+            && !(isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString())
+            && text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Component
+                || character == syntax.Segment || character == syntax.Repetition))
             throw Failure(FerruleX12Error.Value, "X12 scalar contains an unrepresentable delimiter.", path: string.Join('/', path));
         return text;
     }
