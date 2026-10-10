@@ -13,6 +13,7 @@ use crate::{EmitError, literal};
 
 mod failures;
 mod filter_map;
+mod selected_json_api;
 mod xml_api;
 
 struct ScopePlan<'a> {
@@ -60,9 +61,11 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         .find("public static class GeneratedMapping")
         .expect("generated mapping header");
     output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
+    output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
     output.insert_str(type_position, xml_api::render_types(program)?);
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     render_json_entry_points(program, &mut output)?;
+    selected_json_api::render(program, &mut output);
     xml_api::render(program, &mut output)?;
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
