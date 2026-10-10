@@ -76,6 +76,7 @@ pub(super) fn call_builtin(
         BuiltinId::Positive => positive(args),
         BuiltinId::Floor => floor(args),
         BuiltinId::CreateGuid => create_guid(args),
+        BuiltinId::Random => Ok(Value::Float(rand::random::<f64>())),
         BuiltinId::FormatNumber => format_number::format_number(args),
         BuiltinId::Exists => exists(args),
         BuiltinId::Round => round(args),
