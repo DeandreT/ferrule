@@ -42,6 +42,7 @@ public static partial class FerruleFunctions
             "positive" => Positive(arguments),
             "floor" => Floor(arguments),
             "create_guid" => CreateGuid(arguments),
+            "random" => RandomNumber(arguments),
             "json_parse_field" => JsonParseField(arguments),
             "json_serialize_object" => JsonSerializeObject(arguments),
             "format_number" => FormatNumber(arguments),
@@ -113,6 +114,12 @@ public static partial class FerruleFunctions
     {
         RequireArity("create_guid", arguments, 0);
         return FerruleValue.FromString(Guid.NewGuid().ToString("N"));
+    }
+
+    private static FerruleValue RandomNumber(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("random", arguments, 0);
+        return FerruleValue.FromDouble(Random.Shared.NextDouble());
     }
 
     public static bool RequireBoolean(FerruleValue value, uint conditionNode)

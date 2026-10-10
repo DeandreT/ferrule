@@ -454,7 +454,17 @@ It never borrows the untyped entry tree as an executable schema. Export and
 re-import preserve that state without inventing a resource path, and CLI or
 payload execution rejects it before publishing any output.
 Zero-input `create-guid` generator components execute in the interpreter and
-generated Rust/C# mappings and round-trip as native `lang` components. Scalar
+generated Rust/C# mappings and round-trip as native `lang` components.
+Zero-input `random` components in the standard `lang` library return a finite,
+positive-sign floating-point value in `[0, 1)`. Native and generated execution
+use their runtime's pseudorandom generator and preserve ordinary graph
+evaluation rules. Supplied arguments fail with an arity error. Random draws
+are evaluated separately for each target binding; sharing a graph node does
+not promise reuse of one draw across bindings. Random values
+are nondeterministic; generated backends preserve the type and range without
+promising identical sequences. Same-name components in other libraries retain
+their executable-admission refusal.
+Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database
 inputs.
 The standard `lang` `format-guid-string` component maps to the pure,
