@@ -1,0 +1,59 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Ferrule.Runtime;
+
+internal static class SharedReferenceInput
+{
+    internal sealed record Aliased(FerruleGroup Source, FerruleGroup GS, FerruleGroup GE,
+        FerruleGroup ST, FerruleGroup SE);
+
+    private static FerruleInstance Field(FerruleGroup owner, string name) =>
+        owner.TryGetField(name, out var value) ? value : throw new InvalidOperationException(name);
+    private static FerruleGroup Group(FerruleGroup owner, string name) => (FerruleGroup)Field(owner, name);
+    private static FerruleRepeated Repeated(FerruleGroup owner, string name) => (FerruleRepeated)Field(owner, name);
+    private static FerruleGroup Replace(FerruleGroup owner, string name, FerruleInstance value) =>
+        new(owner.Fields.Select(field => field.Name == name ? new FerruleField(name, value) : field));
+
+    // Parse the frozen value literal first; this only installs the declared reference aliases.
+    internal static Aliased Create(FerruleGroup literal)
+    {
+        var groups = Repeated(literal, "FunctionalGroups");
+        var first = (FerruleGroup)groups.Items[0];
+        var second = (FerruleGroup)groups.Items[1];
+        var sharedGS = Group(first, "GS");
+        var sharedGE = Group(first, "GE");
+        var transactions = Repeated(second, "Transactions");
+        var b = (FerruleGroup)transactions.Items[0];
+        var c = (FerruleGroup)transactions.Items[1];
+        var sharedST = Group(b, "ST");
+        var sharedSE = Group(b, "SE");
+        c = Replace(Replace(c, "ST", sharedST), "SE", sharedSE);
+        var rebuiltTransactions = new FerruleRepeated(new FerruleInstance[] { b, c, transactions.Items[2] });
+        second = Replace(Replace(Replace(second, "GS", sharedGS), "GE", sharedGE),
+            "Transactions", rebuiltTransactions);
+        var source = Replace(literal, "FunctionalGroups", new FerruleRepeated(new FerruleInstance[] { first, second }));
+        return new Aliased(source, sharedGS, sharedGE, sharedST, sharedSE);
+    }
+
+    internal static IReadOnlyDictionary<string, bool> ReferenceProof(Aliased input)
+    {
+        var groups = Repeated(input.Source, "FunctionalGroups");
+        var first = (FerruleGroup)groups.Items[0];
+        var second = (FerruleGroup)groups.Items[1];
+        var transactions = Repeated(second, "Transactions");
+        var b = (FerruleGroup)transactions.Items[0];
+        var c = (FerruleGroup)transactions.Items[1];
+        return new Dictionary<string, bool>
+        {
+            ["first.GS"] = ReferenceEquals(Group(first, "GS"), input.GS),
+            ["second.GS"] = ReferenceEquals(Group(second, "GS"), input.GS),
+            ["first.GE"] = ReferenceEquals(Group(first, "GE"), input.GE),
+            ["second.GE"] = ReferenceEquals(Group(second, "GE"), input.GE),
+            ["B.ST"] = ReferenceEquals(Group(b, "ST"), input.ST),
+            ["C.ST"] = ReferenceEquals(Group(c, "ST"), input.ST),
+            ["B.SE"] = ReferenceEquals(Group(b, "SE"), input.SE),
+            ["C.SE"] = ReferenceEquals(Group(c, "SE"), input.SE)
+        };
+    }
+}

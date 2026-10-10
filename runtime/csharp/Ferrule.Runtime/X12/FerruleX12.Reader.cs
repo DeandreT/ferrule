@@ -107,7 +107,9 @@ public static partial class FerruleX12
                         || !triggers.Any(trigger => Matches(trigger, cursor.Segments[cursor.Position], cursor.Syntax))) break;
                     if (++cursor.Loops > MaximumLoopInstances) throw Limit("X12 loop instance limit exceeded.");
                     int before = cursor.Position;
-                    items.Add(ReadContainer(child, cursor, childPath, depth + 1, nestedFollow));
+                    string[] itemPath = cursor.Profile.Grouped is not null
+                        ? [.. path, child.Name + "[" + items.Count.ToString(CultureInfo.InvariantCulture) + "]"] : childPath;
+                    items.Add(ReadContainer(child, cursor, itemPath, depth + 1, nestedFollow));
                     if (before == cursor.Position) throw Failure(FerruleX12Error.Schema, "An X12 loop failed to consume a segment.", cursor.Position);
                 }
                 ValidateCount(child, items.Count, childPath);

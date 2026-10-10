@@ -1,8 +1,10 @@
 # Generated C# X12 companions
 
 Generated C# libraries can include an explicit raw X12 boundary around the
-ordinary typed mapping. Each supported version profile contains one interchange,
-functional group and transaction. Source and target schemas, separators and
+ordinary typed mapping. The default envelope profile contains one interchange,
+functional group and transaction. An explicit grouped profile admits declared
+functional-group and transaction collections inside one interchange. Source and
+target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
 
@@ -41,7 +43,75 @@ Rust callers constructing `X12BoundaryOptions` can supply the optional
 `interchange_version` constraint or use `..Default::default()` when none was
 retained. This field preserves the saved physical setting through shared
 admission; it does not independently select a version. Exhaustive struct
-literals include this field. Generated C# public method signatures are unchanged.
+literals include this field and `envelope_profile`. Generated C# public method
+signatures are unchanged.
+
+### Declared grouped envelopes
+
+`X12EnvelopeProfile::SingleTransaction` is the default. Select
+`X12EnvelopeProfile::GroupedTransactions` on each intended X12 endpoint's
+`X12BoundaryOptions`; retained format options do not infer grouped ownership.
+The descriptor omits the default `envelope_profile` field and writes
+`"grouped_transactions"` for explicit grouped ownership. An absent descriptor
+field keeps the singleton contract.
+
+For primary CLI companions, select either direction independently:
+
+```sh
+ferrule generate --project project.json --language csharp --out generated \
+  --x12-adapters \
+  --x12-source-envelope-profile grouped-transactions \
+  --x12-target-envelope-profile grouped-transactions
+```
+
+Both envelope flags require `--x12-adapters`. An explicit selection, including
+`single-transaction`, on a JSON endpoint fails admission. The additive writer
+`cli::generate_project_with_x12_envelope_profiles` accepts optional source and
+target selections; the existing three-argument writer delegates with neither
+selected. Backend refusal precedes project loading. A Rust static-document
+policy can select grouped ownership on its own named X12 endpoints; the primary
+CLI flags do not override named endpoints.
+
+Grouped schemas contain exactly these declared owners:
+
+- A singular root with ISA first, one repeating functional-group container,
+  and IEA last.
+- Each functional-group template with GS first, one repeating transaction
+  container, and GE last.
+- Each transaction template with ST first, its ordered body segments and loops,
+  and SE last.
+
+The six envelope templates are unique. Owner containers have non-segment names;
+each envelope segment is singular and has its existing exact String element
+width. Other nested envelope segments, missing owner trailers and additional
+interchanges fail admission. All supported version pairs, scalar/composite
+rules and directional options still apply. A generated document requires at
+least one functional group and at least one transaction within every group.
+
+Input validates physical owner transitions, each GS version, inclusive ST-through-SE
+segment counts, each group's transaction count, and interchange group count.
+Controls must match their owning header. Errors retain the physical segment
+index and declared owner path with occurrence indices. Counts or equal control
+values alone never establish ownership. Body qualifiers and scalar validation
+run after envelope validation.
+
+Output retains lexical formatting, supplied-context completion, final scalar
+constraints, then owner validation. Completion materializes absent declared
+SE/GE/IEA groups and fills missing, Null or empty scalar control fields in present
+envelope groups. GS/ST owner groups are supplied by the mapping. Envelope
+containers require Group instances. Nonempty supplied counts and controls remain
+unchanged for final validation. Fallback ST controls use document order across
+groups. Replacements identify an occurrence by declared child-slot and
+repeated-item indices, including reserved absent trailer slots. Reused caller
+Group objects can therefore receive
+different values in the private output view without changing any caller fields,
+collections, values or references. Physical ordinals and object references do
+not serve as replacement keys.
+
+Resource limits remain whole-document limits at each stage and never reset for
+an individual owner. Native EDI structural reading and completion can admit
+empty collections or synthesize trailers more broadly; generated strict owner
+validation does not inherit those behaviors.
 
 For the CLI companion request, a retained X12 component family selects that
 side, including an imported component whose stored instance path ends in
@@ -151,7 +221,7 @@ Only that target's own codec serializes the resulting instance. The same
 execution context reaches selected X12 completion. Caller arrays, lists and
 instances remain unchanged, and a failure returns no output carrier.
 
-## Singular schema and metadata
+## Default singular schema and metadata
 
 The program has a singular primary document and no named sources, named
 targets, primary-document iteration or XML boundary. Ordinary graph lowering
@@ -209,7 +279,7 @@ ST01. This check uses the actual transaction segment; positional element and
 composite names do not establish segment ownership. Other autocomplete
 dialects and version pairs remain refused.
 
-The schema contains exactly one each of ISA, GS, ST, SE, GE and IEA, in that
+The default envelope schema contains exactly one each of ISA, GS, ST, SE, GE and IEA, in that
 order and outside repeating loops. They have exactly 16, 8, 2, 2, 2 and 2
 String fields respectively. ISA12 and GS08 have one of the exact fixed pairs
 above. String envelope fields preserve lexical controls and identifiers,

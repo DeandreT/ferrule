@@ -1,0 +1,1031 @@
+{
+  "kind": "Group",
+  "xml_origin": null,
+  "fields": [
+    {
+      "name": "ISA",
+      "value": {
+        "kind": "Group",
+        "xml_origin": null,
+        "fields": [
+          {
+            "name": "ISA01",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA02",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA03",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA04",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA05",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA06",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "SENDER-ALPHA   "
+            }
+          },
+          {
+            "name": "ISA07",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA08",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "RECEIVER-BETA  "
+            }
+          },
+          {
+            "name": "ISA09",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "300615"
+            }
+          },
+          {
+            "name": "ISA10",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "0945"
+            }
+          },
+          {
+            "name": "ISA11",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "^"
+            }
+          },
+          {
+            "name": "ISA12",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "00501"
+            }
+          },
+          {
+            "name": "ISA13",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "000000321"
+            }
+          },
+          {
+            "name": "ISA14",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "0"
+            }
+          },
+          {
+            "name": "ISA15",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": "T"
+            }
+          },
+          {
+            "name": "ISA16",
+            "value": {
+              "kind": "Scalar",
+              "scalar_kind": "String",
+              "value": ":"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FunctionalGroups",
+      "value": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "xml_origin": null,
+            "fields": [
+              {
+                "name": "GS",
+                "value": {
+                  "kind": "Group",
+                  "xml_origin": null,
+                  "fields": [
+                    {
+                      "name": "GS01",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "OW"
+                      }
+                    },
+                    {
+                      "name": "GS02",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "SENDER-A"
+                      }
+                    },
+                    {
+                      "name": "GS03",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "RECEIVER-B"
+                      }
+                    },
+                    {
+                      "name": "GS04",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "20300615"
+                      }
+                    },
+                    {
+                      "name": "GS05",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "094501"
+                      }
+                    },
+                    {
+                      "name": "GS06",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "00321"
+                      }
+                    },
+                    {
+                      "name": "GS07",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "X"
+                      }
+                    },
+                    {
+                      "name": "GS08",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "005010"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Transactions",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "xml_origin": null,
+                      "fields": [
+                        {
+                          "name": "ST",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "ST01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "940"
+                                }
+                              },
+                              {
+                                "name": "ST02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0001"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_1",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "N901",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "OP"
+                                    }
+                                  },
+                                  {
+                                    "name": "N902",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "PREFIX-A"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_2",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "N901",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "LI"
+                                }
+                              },
+                              {
+                                "name": "N902",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "ALPHA"
+                                }
+                              },
+                              {
+                                "name": "N903",
+                                "value": {
+                                  "kind": "Group",
+                                  "xml_origin": null,
+                                  "fields": [
+                                    {
+                                      "name": "Type",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "String",
+                                        "value": "SKU"
+                                      }
+                                    },
+                                    {
+                                      "name": "Index",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "Int",
+                                        "value": 10
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "W01",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": 2.5
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Null",
+                                      "value": null
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "EA"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": 0.0
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "LOT-A"
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "BX"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "SE",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "SE01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "6"
+                                }
+                              },
+                              {
+                                "name": "SE02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0001"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "xml_origin": null,
+            "fields": [
+              {
+                "name": "GS",
+                "value": {
+                  "kind": "Group",
+                  "xml_origin": null,
+                  "fields": [
+                    {
+                      "name": "GS01",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "OW"
+                      }
+                    },
+                    {
+                      "name": "GS02",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "SENDER-C"
+                      }
+                    },
+                    {
+                      "name": "GS03",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "RECEIVER-D"
+                      }
+                    },
+                    {
+                      "name": "GS04",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "20300615"
+                      }
+                    },
+                    {
+                      "name": "GS05",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "094501"
+                      }
+                    },
+                    {
+                      "name": "GS06",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "9"
+                      }
+                    },
+                    {
+                      "name": "GS07",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "X"
+                      }
+                    },
+                    {
+                      "name": "GS08",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "005010"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Transactions",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "xml_origin": null,
+                      "fields": [
+                        {
+                          "name": "ST",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "ST01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "940"
+                                }
+                              },
+                              {
+                                "name": "ST02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0002"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_1",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        },
+                        {
+                          "name": "N9_2",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "N901",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "LI"
+                                }
+                              },
+                              {
+                                "name": "N902",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "BETA"
+                                }
+                              },
+                              {
+                                "name": "N903",
+                                "value": {
+                                  "kind": "Group",
+                                  "xml_origin": null,
+                                  "fields": [
+                                    {
+                                      "name": "Type",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "String",
+                                        "value": "SKU"
+                                      }
+                                    },
+                                    {
+                                      "name": "Index",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "Int",
+                                        "value": 20
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "W01",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": -5.0
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Null",
+                                      "value": null
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "EA"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "xml_origin": null,
+                      "fields": [
+                        {
+                          "name": "ST",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "ST01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "940"
+                                }
+                              },
+                              {
+                                "name": "ST02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0003"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_1",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "N901",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "OP"
+                                    }
+                                  },
+                                  {
+                                    "name": "N902",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "PREFIX-C1"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "N901",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "OP"
+                                    }
+                                  },
+                                  {
+                                    "name": "N902",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "PREFIX-C2"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_2",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "N901",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "LI"
+                                }
+                              },
+                              {
+                                "name": "N902",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "GAMMA"
+                                }
+                              },
+                              {
+                                "name": "N903",
+                                "value": {
+                                  "kind": "Group",
+                                  "xml_origin": null,
+                                  "fields": [
+                                    {
+                                      "name": "Type",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "String",
+                                        "value": "SKU"
+                                      }
+                                    },
+                                    {
+                                      "name": "Index",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "Int",
+                                        "value": 30
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "W01",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": 7.5
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Null",
+                                      "value": null
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "EA"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": 1.0
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "LOT-C"
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "EA"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "Group",
+                                "xml_origin": null,
+                                "fields": [
+                                  {
+                                    "name": "W0101",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Float",
+                                      "value": 0.0
+                                    }
+                                  },
+                                  {
+                                    "name": "W0102",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "Null",
+                                      "value": null
+                                    }
+                                  },
+                                  {
+                                    "name": "W0103",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "scalar_kind": "String",
+                                      "value": "CS"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "SE",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "SE01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "Null",
+                                  "value": null
+                                }
+                              },
+                              {
+                                "name": "SE02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0003"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "xml_origin": null,
+                      "fields": [
+                        {
+                          "name": "ST",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "ST01",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "940"
+                                }
+                              },
+                              {
+                                "name": "ST02",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "0004"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "N9_1",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        },
+                        {
+                          "name": "N9_2",
+                          "value": {
+                            "kind": "Group",
+                            "xml_origin": null,
+                            "fields": [
+                              {
+                                "name": "N901",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "LI"
+                                }
+                              },
+                              {
+                                "name": "N902",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "scalar_kind": "String",
+                                  "value": "DELTA"
+                                }
+                              },
+                              {
+                                "name": "N903",
+                                "value": {
+                                  "kind": "Group",
+                                  "xml_origin": null,
+                                  "fields": [
+                                    {
+                                      "name": "Type",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "String",
+                                        "value": "SKU"
+                                      }
+                                    },
+                                    {
+                                      "name": "Index",
+                                      "value": {
+                                        "kind": "Scalar",
+                                        "scalar_kind": "Int",
+                                        "value": 40
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "W01",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "GE",
+                "value": {
+                  "kind": "Group",
+                  "xml_origin": null,
+                  "fields": [
+                    {
+                      "name": "GE01",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "3"
+                      }
+                    },
+                    {
+                      "name": "GE02",
+                      "value": {
+                        "kind": "Scalar",
+                        "scalar_kind": "String",
+                        "value": "9"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
