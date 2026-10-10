@@ -111,7 +111,8 @@ fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
             children
                 .iter()
                 .map(|child| (child.name.clone(), expected(child, &literal[&child.name])))
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
         ),
         SchemaKind::Scalar { ty } => Instance::Scalar(if literal.is_null() {
             Value::Null
@@ -125,6 +126,12 @@ fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
         }),
         _ => panic!("frozen invented group contract"),
     }
+}
+fn child_mut<'a>(schema: &'a mut SchemaNode, name: &str) -> &'a mut SchemaNode {
+    children_mut(schema)
+        .iter_mut()
+        .find(|child| child.name == name)
+        .unwrap()
 }
 fn syntax(selected: &serde_json::Value) -> X12Separators {
     let character = |name| selected[name].as_str().unwrap().chars().next().unwrap();
@@ -334,70 +341,31 @@ fn modern_profile_admission_retains_versions_direction_and_typed_refusals() {
         ] {
             match label {
                 "noncanonical-group" => {
-                    rejected
-                        .target
-                        .child_mut("GS")
-                        .unwrap()
-                        .child_mut("GS08")
-                        .unwrap()
-                        .fixed = Some(format!("{group}X"))
+                    child_mut(child_mut(&mut rejected.target, "GS"), "GS08").fixed =
+                        Some(format!("{group}X"))
                 }
                 "missing-schema-version" => {
-                    rejected
-                        .target
-                        .child_mut("ISA")
-                        .unwrap()
-                        .child_mut("ISA12")
-                        .unwrap()
-                        .fixed = None
+                    child_mut(child_mut(&mut rejected.target, "ISA"), "ISA12").fixed = None
                 }
-                "st03" => {
-                    children_mut(rejected.target.child_mut("ST").unwrap()).push(scalar("ST03"))
-                }
+                "st03" => children_mut(child_mut(&mut rejected.target, "ST")).push(scalar("ST03")),
                 "repeating-element" => {
-                    rejected
-                        .target
-                        .child_mut("W05")
-                        .unwrap()
-                        .child_mut("W0502")
-                        .unwrap()
-                        .repeating = true
+                    child_mut(child_mut(&mut rejected.target, "W05"), "W0502").repeating = true
                 }
                 "fixed-isa11-conflict" => {
-                    rejected
-                        .target
-                        .child_mut("ISA")
-                        .unwrap()
-                        .child_mut("ISA11")
-                        .unwrap()
-                        .fixed = Some("+".into())
+                    child_mut(child_mut(&mut rejected.target, "ISA"), "ISA11").fixed =
+                        Some("+".into())
                 }
                 "fixed-isa11-empty" => {
-                    rejected
-                        .target
-                        .child_mut("ISA")
-                        .unwrap()
-                        .child_mut("ISA11")
-                        .unwrap()
-                        .fixed = Some("".into())
+                    child_mut(child_mut(&mut rejected.target, "ISA"), "ISA11").fixed =
+                        Some("".into())
                 }
                 "fixed-isa16-conflict" => {
-                    rejected
-                        .target
-                        .child_mut("ISA")
-                        .unwrap()
-                        .child_mut("ISA16")
-                        .unwrap()
-                        .fixed = Some(">".into())
+                    child_mut(child_mut(&mut rejected.target, "ISA"), "ISA16").fixed =
+                        Some(">".into())
                 }
                 "fixed-isa16-empty" => {
-                    rejected
-                        .target
-                        .child_mut("ISA")
-                        .unwrap()
-                        .child_mut("ISA16")
-                        .unwrap()
-                        .fixed = Some("".into())
+                    child_mut(child_mut(&mut rejected.target, "ISA"), "ISA16").fixed =
+                        Some("".into())
                 }
                 _ => {}
             }

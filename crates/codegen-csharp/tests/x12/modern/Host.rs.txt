@@ -7,7 +7,8 @@ fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
             children
                 .iter()
                 .map(|child| (child.name.clone(), expected(child, &literal[&child.name])))
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
         ),
         SchemaKind::Scalar { ty } => Instance::Scalar(if literal.is_null() {
             Value::Null
