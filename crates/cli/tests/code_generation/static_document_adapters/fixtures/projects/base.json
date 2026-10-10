@@ -1,0 +1,1379 @@
+{
+  "source": {
+    "name": "PrimaryInput",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "code",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        }
+      ],
+      "required": [
+        "code",
+        "quantity"
+      ]
+    }
+  },
+  "target": {
+    "name": "PrimaryOutput",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "code",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "reference",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "echo",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ],
+      "required": [
+        "code",
+        "quantity",
+        "reference",
+        "echo"
+      ]
+    }
+  },
+  "source_path": "authored/primary.json",
+  "target_path": "authored/primary-output.json",
+  "source_options": {
+    "json_document": true
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_sources": [
+    {
+      "name": "Supplement",
+      "path": "authored/supplement.json",
+      "schema": {
+        "name": "SupplementInput",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "suffix",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "multiplier",
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ],
+          "required": [
+            "suffix",
+            "multiplier"
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      }
+    },
+    {
+      "name": "Reference",
+      "path": "authored/reference.x12",
+      "schema": {
+        "name": "Reference",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "ISA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "ISA01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA05",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA09",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA10",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA11",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA12",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "00401"
+                  },
+                  {
+                    "name": "ISA13",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA14",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA15",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA16",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "GS",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GS01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS05",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "004010"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "ST",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "ST01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "940"
+                  },
+                  {
+                    "name": "ST02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "W05",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "W0501",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "N"
+                  },
+                  {
+                    "name": "W0502",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "SE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "SE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "SE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "GE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "IEA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "IEA01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "IEA02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "edi_kind": "x12",
+        "x12_separators": {
+          "element": "*",
+          "component": ":",
+          "segment": "~"
+        }
+      }
+    },
+    {
+      "name": "Unused",
+      "path": "authored/unused.json",
+      "schema": {
+        "name": "UnusedInput",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "permit",
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ],
+          "required": [
+            "permit"
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      }
+    }
+  ],
+  "extra_targets": [
+    {
+      "name": "Advice",
+      "path": "authored/advice.x12",
+      "schema": {
+        "name": "Advice",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "ISA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "ISA01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA05",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA09",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA10",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA11",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA12",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "00401"
+                  },
+                  {
+                    "name": "ISA13",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA14",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA15",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "ISA16",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "GS",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GS01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS05",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "004010"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "ST",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "ST01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "945"
+                  },
+                  {
+                    "name": "ST02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "W06",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "W0601",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "F"
+                  },
+                  {
+                    "name": "W0602",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "NTE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "NTE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "GEN"
+                  },
+                  {
+                    "name": "NTE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "W12",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "W1201",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "SH"
+                  },
+                  {
+                    "name": "W1202",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "W1203",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "W1204",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "W1205",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "EA"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "SE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "SE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "SE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "GE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "IEA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "IEA01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "IEA02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "edi_kind": "x12",
+        "x12_separators": {
+          "element": "|",
+          "component": ">",
+          "segment": "!"
+        }
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [],
+        "children": [
+          {
+            "target_field": "ISA",
+            "bindings": [
+              {
+                "target_field": "ISA01",
+                "node": 100
+              },
+              {
+                "target_field": "ISA02",
+                "node": 101
+              },
+              {
+                "target_field": "ISA03",
+                "node": 102
+              },
+              {
+                "target_field": "ISA04",
+                "node": 103
+              },
+              {
+                "target_field": "ISA05",
+                "node": 104
+              },
+              {
+                "target_field": "ISA06",
+                "node": 105
+              },
+              {
+                "target_field": "ISA07",
+                "node": 106
+              },
+              {
+                "target_field": "ISA08",
+                "node": 107
+              },
+              {
+                "target_field": "ISA09",
+                "node": 108
+              },
+              {
+                "target_field": "ISA10",
+                "node": 109
+              },
+              {
+                "target_field": "ISA11",
+                "node": 110
+              },
+              {
+                "target_field": "ISA12",
+                "node": 111
+              },
+              {
+                "target_field": "ISA13",
+                "node": 112
+              },
+              {
+                "target_field": "ISA14",
+                "node": 113
+              },
+              {
+                "target_field": "ISA15",
+                "node": 114
+              },
+              {
+                "target_field": "ISA16",
+                "node": 115
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "GS",
+            "bindings": [
+              {
+                "target_field": "GS01",
+                "node": 116
+              },
+              {
+                "target_field": "GS02",
+                "node": 117
+              },
+              {
+                "target_field": "GS03",
+                "node": 118
+              },
+              {
+                "target_field": "GS04",
+                "node": 119
+              },
+              {
+                "target_field": "GS05",
+                "node": 120
+              },
+              {
+                "target_field": "GS06",
+                "node": 121
+              },
+              {
+                "target_field": "GS07",
+                "node": 122
+              },
+              {
+                "target_field": "GS08",
+                "node": 123
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "ST",
+            "bindings": [
+              {
+                "target_field": "ST01",
+                "node": 124
+              },
+              {
+                "target_field": "ST02",
+                "node": 125
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "W06",
+            "bindings": [
+              {
+                "target_field": "W0601",
+                "node": 126
+              },
+              {
+                "target_field": "W0602",
+                "node": 20
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "NTE",
+            "bindings": [
+              {
+                "target_field": "NTE01",
+                "node": 127
+              },
+              {
+                "target_field": "NTE02",
+                "node": 30
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "W12",
+            "bindings": [
+              {
+                "target_field": "W1201",
+                "node": 128
+              },
+              {
+                "target_field": "W1202",
+                "node": 21
+              },
+              {
+                "target_field": "W1203",
+                "node": 21
+              },
+              {
+                "target_field": "W1204",
+                "node": 129
+              },
+              {
+                "target_field": "W1205",
+                "node": 130
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "SE",
+            "bindings": [
+              {
+                "target_field": "SE01",
+                "node": 131
+              },
+              {
+                "target_field": "SE02",
+                "node": 132
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "GE",
+            "bindings": [
+              {
+                "target_field": "GE01",
+                "node": 133
+              },
+              {
+                "target_field": "GE02",
+                "node": 134
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "IEA",
+            "bindings": [
+              {
+                "target_field": "IEA01",
+                "node": 135
+              },
+              {
+                "target_field": "IEA02",
+                "node": 136
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "Audit",
+      "path": "authored/audit.json",
+      "schema": {
+        "name": "AuditOutput",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "tag",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "tagAgain",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "echo",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ],
+          "required": [
+            "tag",
+            "tagAgain",
+            "echo"
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [
+          {
+            "target_field": "tag",
+            "node": 40
+          },
+          {
+            "target_field": "tagAgain",
+            "node": 40
+          },
+          {
+            "target_field": "echo",
+            "node": 30
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [
+    {
+      "iteration": {
+        "kind": "source",
+        "collection": []
+      },
+      "selection": {
+        "kind": "when_true",
+        "predicate": 41
+      },
+      "message": 42
+    }
+  ],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "10": {
+        "kind": "source_field",
+        "path": [
+          "code"
+        ]
+      },
+      "11": {
+        "kind": "source_field",
+        "path": [
+          "quantity"
+        ]
+      },
+      "12": {
+        "kind": "source_field",
+        "path": [
+          "Supplement",
+          "suffix"
+        ]
+      },
+      "13": {
+        "kind": "source_field",
+        "path": [
+          "Supplement",
+          "multiplier"
+        ]
+      },
+      "20": {
+        "kind": "call",
+        "function": "concat",
+        "args": [
+          10,
+          12
+        ]
+      },
+      "21": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          11,
+          13
+        ]
+      },
+      "30": {
+        "kind": "source_field",
+        "path": [
+          "Reference",
+          "W05",
+          "W0502"
+        ]
+      },
+      "40": {
+        "kind": "runtime_parameter",
+        "name": "Tag",
+        "ty": "string"
+      },
+      "41": {
+        "kind": "runtime_parameter",
+        "name": "Stop",
+        "ty": "bool"
+      },
+      "42": {
+        "kind": "const",
+        "value": "authored stop"
+      },
+      "100": {
+        "kind": "const",
+        "value": "00"
+      },
+      "101": {
+        "kind": "const",
+        "value": "          "
+      },
+      "102": {
+        "kind": "const",
+        "value": "00"
+      },
+      "103": {
+        "kind": "const",
+        "value": "          "
+      },
+      "104": {
+        "kind": "const",
+        "value": "ZZ"
+      },
+      "105": {
+        "kind": "const",
+        "value": "AUTHOR-SENDER  "
+      },
+      "106": {
+        "kind": "const",
+        "value": "ZZ"
+      },
+      "107": {
+        "kind": "const",
+        "value": "AUTHOR-RECEIVER"
+      },
+      "108": {
+        "kind": "const",
+        "value": "260102"
+      },
+      "109": {
+        "kind": "const",
+        "value": "0304"
+      },
+      "110": {
+        "kind": "const",
+        "value": "U"
+      },
+      "111": {
+        "kind": "const",
+        "value": "00401"
+      },
+      "112": {
+        "kind": "const",
+        "value": "000000008"
+      },
+      "113": {
+        "kind": "const",
+        "value": "0"
+      },
+      "114": {
+        "kind": "const",
+        "value": "T"
+      },
+      "115": {
+        "kind": "const",
+        "value": ">"
+      },
+      "116": {
+        "kind": "const",
+        "value": "SW"
+      },
+      "117": {
+        "kind": "const",
+        "value": "AUTHOR-SENDER"
+      },
+      "118": {
+        "kind": "const",
+        "value": "AUTHOR-RECEIVER"
+      },
+      "119": {
+        "kind": "const",
+        "value": "20260102"
+      },
+      "120": {
+        "kind": "const",
+        "value": "0304"
+      },
+      "121": {
+        "kind": "const",
+        "value": "0008"
+      },
+      "122": {
+        "kind": "const",
+        "value": "X"
+      },
+      "123": {
+        "kind": "const",
+        "value": "004010"
+      },
+      "124": {
+        "kind": "const",
+        "value": "945"
+      },
+      "125": {
+        "kind": "const",
+        "value": "0002"
+      },
+      "126": {
+        "kind": "const",
+        "value": "F"
+      },
+      "127": {
+        "kind": "const",
+        "value": "GEN"
+      },
+      "128": {
+        "kind": "const",
+        "value": "SH"
+      },
+      "129": {
+        "kind": "const",
+        "value": 0
+      },
+      "130": {
+        "kind": "const",
+        "value": "EA"
+      },
+      "131": {
+        "kind": "const",
+        "value": "5"
+      },
+      "132": {
+        "kind": "const",
+        "value": "0002"
+      },
+      "133": {
+        "kind": "const",
+        "value": "1"
+      },
+      "134": {
+        "kind": "const",
+        "value": "0008"
+      },
+      "135": {
+        "kind": "const",
+        "value": "1"
+      },
+      "136": {
+        "kind": "const",
+        "value": "000000008"
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "bindings": [
+      {
+        "target_field": "code",
+        "node": 20
+      },
+      {
+        "target_field": "quantity",
+        "node": 21
+      },
+      {
+        "target_field": "reference",
+        "node": 30
+      },
+      {
+        "target_field": "echo",
+        "node": 20
+      }
+    ],
+    "children": []
+  }
+}

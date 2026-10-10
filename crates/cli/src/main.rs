@@ -157,6 +157,9 @@ enum Command {
         /// Include supported single-envelope raw X12 text and strict UTF-8 C# methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
+        /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
+        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
+        static_document_adapters: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -620,7 +623,11 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_output,
             json5_adapters,
             x12_adapters,
+            static_document_adapters,
         } => {
+            if static_document_adapters && matches!(language, CodegenLanguage::Rust) {
+                bail!("--static-document-adapters currently requires --language csharp");
+            }
             if x12_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--x12-adapters currently requires --language csharp");
             }
@@ -637,7 +644,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if x12_adapters {
+            let outcome = if static_document_adapters {
+                cli::generate_project_with_static_document_adapters(&project, &out, target)?
+            } else if x12_adapters {
                 cli::generate_project_with_x12_adapters(&project, &out, target)?
             } else if json5_adapters {
                 cli::generate_project_with_json5_adapters(&project, &out, target)?
@@ -816,4 +825,67 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
             .with_context(|| format!("invalid runtime parameter `{name}`"))?;
     }
     Ok(parameters)
+}
+
+#[cfg(test)]
+mod static_document_flag_tests {
+    use super::*;
+
+    #[test]
+    fn static_document_flag_conflicts_with_other_optional_profiles() {
+        for option in ["--csv-output", "--json5-adapters", "--x12-adapters"] {
+            let args = [
+                "ferrule",
+                "generate",
+                "--project",
+                "unused.json",
+                "--language",
+                "csharp",
+                "--out",
+                "unused-output",
+                "--static-document-adapters",
+                option,
+            ];
+            let result = Cli::try_parse_from(args);
+            let error = result
+                .err()
+                .expect("mutually exclusive optional profiles were admitted");
+            eprintln!("arguments={args:?}; original clap error={error}");
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn static_document_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-static-document-flag-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let input = root.join("absent-project.json");
+        let output = root.join("absent-parent/output");
+        let args = vec![
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            input.into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--static-document-adapters"),
+        ];
+        std::fs::write(root.join("ARGUMENTS.original.txt"), format!("{args:#?}")).unwrap();
+        let result = execute(Cli::try_parse_from(args).unwrap());
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--static-document-adapters currently requires --language csharp"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
 }
