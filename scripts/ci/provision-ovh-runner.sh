@@ -13,6 +13,17 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 sccache_version=0.18.0
 sccache_sha256=45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
 
+check_runner_paths() {
+  # The CI account owns these paths. Root must not follow redirected files
+  # into other accounts or system files when provisioning an existing runner.
+  for runner_path in "$@"; do
+    if [[ $(realpath -m -- "$runner_path") != "$runner_home/"* ]]; then
+      echo 'Refusing a runner provisioning path outside its dedicated home.' >&2
+      return 1
+    fi
+  done
+}
+
 if [[ ! -f $script_dir/guard-ovh-job.sh ]]; then
   echo 'Copy guard-ovh-job.sh alongside this provisioning script.' >&2
   exit 1
@@ -45,14 +56,18 @@ if [[ ! -f $runner_dir/.runner ]]; then
 fi
 
 if ! id "$runner_user" >/dev/null 2>&1; then
-  useradd --create-home --user-group --shell /bin/bash "$runner_user"
+  useradd --create-home --user-group --shell /usr/sbin/nologin "$runner_user"
 fi
 if [[ $(getent passwd "$runner_user" | cut -d: -f6) != "$runner_home" ||
       $(id -Gn "$runner_user") != "$runner_user" || -L $runner_home ]]; then
   echo 'Refusing an account with an unexpected home or supplemental groups.' >&2
   exit 1
 fi
+usermod --shell /usr/sbin/nologin "$runner_user"
 chmod 700 "$runner_home"
+check_runner_paths "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet" \
+  "$runner_home/ci-tmp" "$runner_dir/.path" "$runner_dir/.service" \
+  "$runner_dir/bin/runsvc.sh" "$runner_home/check-runtime.sh"
 
 apt-get update
 NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

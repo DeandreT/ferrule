@@ -98,6 +98,39 @@ class ResourceGuardTests(unittest.TestCase):
         })
 
 
+class ProvisioningPathTests(unittest.TestCase):
+    def test_root_provisioning_follows_only_runner_home_paths(self):
+        script = SCRIPT.with_name("provision-ovh-runner.sh").read_text()
+        body = script.split("check_runner_paths() {\n", 1)[1].split("\n}\n", 1)[0]
+        function = "check_runner_paths() {\n" + body + "\n}\n"
+        with tempfile.TemporaryDirectory(prefix="ferrule-provision-paths-") as tmp:
+            root = Path(tmp)
+            home = root / "runner"
+            home.mkdir()
+            versioned = home / "bin.2.337.0"
+            versioned.mkdir()
+            (home / "bin").symlink_to(versioned, target_is_directory=True)
+            outside = root / "runner-other"
+            outside.mkdir()
+            (home / "redirected").symlink_to(outside, target_is_directory=True)
+            (home / ".path").symlink_to(outside / "secret")
+            paths = {
+                home / "new-directory": True,
+                home / "bin" / "runsvc.sh": True,
+                home / "redirected" / "runsvc.sh": False,
+                home / ".path": False,
+                outside / "new-directory": False,
+            }
+            for path, allowed in paths.items():
+                with self.subTest(path=path):
+                    result = subprocess.run(
+                        ["bash", "-c", function + '\nrunner_home=$1\ncheck_runner_paths "$2"',
+                         "fixture", str(home), str(path)],
+                        text=True, capture_output=True, check=False,
+                    )
+                    self.assertEqual(result.returncode == 0, allowed, result.stderr)
+
+
 class JobAdmissionTests(unittest.TestCase):
     def run_guard(self, kind, event, **environment):
         with tempfile.TemporaryDirectory(prefix="ferrule-ci-event-") as tmp:
