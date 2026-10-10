@@ -12,3 +12,6 @@ mapping = { workspace = true }
 csv = { workspace = true }
 csv-core = "=0.1.13"
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

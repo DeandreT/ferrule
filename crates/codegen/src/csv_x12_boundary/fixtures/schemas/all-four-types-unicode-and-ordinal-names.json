@@ -1,0 +1,36 @@
+{
+  "name": "é😀",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "A",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      },
+      {
+        "name": "a",
+        "kind": {
+          "kind": "scalar",
+          "ty": "int"
+        }
+      },
+      {
+        "name": "é",
+        "kind": {
+          "kind": "scalar",
+          "ty": "float"
+        }
+      },
+      {
+        "name": "😀",
+        "kind": {
+          "kind": "scalar",
+          "ty": "bool"
+        }
+      }
+    ]
+  }
+}

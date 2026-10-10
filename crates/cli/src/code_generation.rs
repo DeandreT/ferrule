@@ -6,6 +6,7 @@ use codegen::ArtifactSet;
 
 use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
+mod csv_x12;
 mod static_documents;
 mod x12;
 
@@ -106,6 +107,20 @@ pub fn generate_project_with_static_document_adapters(
     )
 }
 
+/// Generate all-row flat CSV input and singular X12 output C# companions.
+/// Stored format identities and borrowed schema limits are proved before
+/// ordinary lowering and atomic publication.
+pub fn generate_project_with_csv_x12_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    if target != GenerateTarget::CSharp {
+        bail!("generated CSV-to-X12 adapters require the C# backend");
+    }
+    generate_project_impl(project_path, output_directory, target, Adapter::CsvX12)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Adapter {
     Ordinary,
@@ -116,6 +131,7 @@ enum Adapter {
         Option<codegen::X12EnvelopeProfile>,
     ),
     StaticDocuments,
+    CsvX12,
 }
 
 fn generate_project_impl(
@@ -125,6 +141,13 @@ fn generate_project_impl(
     adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
+    let csv_x12_policy = if adapter == Adapter::CsvX12 {
+        let policy = csv_x12::policy(&project)?;
+        codegen::prepare_csv_x12_project_boundary(&project, &policy)?;
+        Some(policy)
+    } else {
+        None
+    };
     let static_document_policy = if adapter == Adapter::StaticDocuments {
         let policy = static_documents::policy(&project)?;
         codegen::prepare_static_document_project_boundaries(&project, &policy)?;
@@ -205,7 +228,9 @@ fn generate_project_impl(
             }
         }
         GenerateTarget::CSharp => {
-            if let Some(policy) = &static_document_policy {
+            if let Some(policy) = &csv_x12_policy {
+                codegen_csharp::emit_with_csv_x12_adapters(&program, policy)?
+            } else if let Some(policy) = &static_document_policy {
                 codegen_csharp::emit_with_static_document_adapters(&program, policy)?
             } else if let Some(policy) = &x12_policy {
                 codegen_csharp::emit_with_x12(&program, policy)?

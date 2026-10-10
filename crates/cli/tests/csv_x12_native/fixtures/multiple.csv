@@ -1,0 +1,4 @@
+arbitrary,labels,are,skipped,positionally
+"ROW,A",3,1.5,true,end-a
+ROW-B,-2,-0.0,false,
+ROW-C,8,2.25,1

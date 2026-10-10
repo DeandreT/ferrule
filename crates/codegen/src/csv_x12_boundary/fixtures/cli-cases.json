@@ -1,0 +1,105 @@
+[
+  {
+    "id": "unsupported-backend-before-load",
+    "project_path": "missing-project.json",
+    "backend": "Rust",
+    "flag": "--csv-x12-adapters",
+    "expected_error": "generated CSV-to-X12 adapters require the C# backend"
+  },
+  {
+    "id": "unknown-source-identity",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "source_path": "authored/rows.dat",
+      "source_options": {}
+    },
+    "expected_error": "generated CSV-to-X12 source requires an explicit CSV format identity"
+  },
+  {
+    "id": "unknown-target-identity",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "target_path": "authored/notes.dat",
+      "target_options": {}
+    },
+    "expected_error": "generated CSV-to-X12 target requires an explicit X12 format identity"
+  },
+  {
+    "id": "csv-family-no-path",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "source_path": null
+    },
+    "expected": "accept exact retained Csv family"
+  },
+  {
+    "id": "csv-extension-only",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "source_options": {}
+    },
+    "expected": "accept exact .csv identity"
+  },
+  {
+    "id": "x12-family-generic-path",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "target_path": "authored/notes.txt"
+    },
+    "expected": "accept retained X12 family, do not reopen path"
+  },
+  {
+    "id": "csv-no-schema-sniff",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "source_path": null,
+      "source_options": {}
+    },
+    "expected_error": "generated CSV-to-X12 source requires an explicit CSV format identity"
+  },
+  {
+    "id": "x12-no-schema-sniff",
+    "project": "constant-envelope-project.json",
+    "changes": {
+      "target_path": null,
+      "target_options": {}
+    },
+    "expected_error": "generated CSV-to-X12 target requires an explicit X12 format identity"
+  },
+  {
+    "id": "conflict-x12-adapters",
+    "project_path": "missing-project.json",
+    "flags": [
+      "--csv-x12-adapters",
+      "--x12-adapters"
+    ],
+    "expected": "CLI parser conflict before project load"
+  },
+  {
+    "id": "conflict-static-document-adapters",
+    "project_path": "missing-project.json",
+    "flags": [
+      "--csv-x12-adapters",
+      "--static-document-adapters"
+    ],
+    "expected": "CLI parser conflict before project load"
+  },
+  {
+    "id": "conflict-json5-adapters",
+    "project_path": "missing-project.json",
+    "flags": [
+      "--csv-x12-adapters",
+      "--json5-adapters"
+    ],
+    "expected": "CLI parser conflict before project load"
+  },
+  {
+    "id": "conflict-csv-output",
+    "project_path": "missing-project.json",
+    "flags": [
+      "--csv-x12-adapters",
+      "--csv-output"
+    ],
+    "expected": "CLI parser conflict before project load"
+  }
+]

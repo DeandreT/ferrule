@@ -1,0 +1,666 @@
+{
+  "source": {
+    "name": "Row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Label",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Count",
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Ratio",
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Enabled",
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Tail",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Interchange",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "ISA",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "ISA01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA03",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA04",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA05",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA06",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA07",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA08",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA09",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA10",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA11",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA12",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "fixed": "00401"
+              },
+              {
+                "name": "ISA13",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA14",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA15",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA16",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GS",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "GS01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS03",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS04",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS05",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS06",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS07",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS08",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "fixed": "004010"
+              }
+            ]
+          }
+        },
+        {
+          "name": "ST",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "ST01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "fixed": "940"
+              },
+              {
+                "name": "ST02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Notes",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "NTE",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "NTE01",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      },
+                      "fixed": "GEN"
+                    },
+                    {
+                      "name": "NTE02",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "repeating": true
+        },
+        {
+          "name": "SE",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "SE01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "SE02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GE",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "GE01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GE02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "IEA",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "IEA01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "IEA02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "authored/rows.csv",
+  "target_path": "authored/notes.x12",
+  "source_options": {
+    "tabular_kind": "csv",
+    "has_header_row": false,
+    "delimiter": "|",
+    "csv_quote": "'",
+    "csv_preserve_empty_strings": true,
+    "csv_utf8_bom": true
+  },
+  "target_options": {
+    "edi_kind": "x12",
+    "x12_separators": {
+      "element": "*",
+      "component": ":",
+      "segment": "~"
+    },
+    "edi_autocomplete": {
+      "x12": {
+        "request_acknowledgement": false,
+        "transaction_set": "940"
+      }
+    }
+  },
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Label"
+        ]
+      },
+      "2": {
+        "kind": "const",
+        "value": "GEN"
+      },
+      "10": {
+        "kind": "const",
+        "value": "00"
+      },
+      "11": {
+        "kind": "const",
+        "value": "          "
+      },
+      "12": {
+        "kind": "const",
+        "value": "00"
+      },
+      "13": {
+        "kind": "const",
+        "value": "          "
+      },
+      "14": {
+        "kind": "const",
+        "value": "ZZ"
+      },
+      "15": {
+        "kind": "const",
+        "value": "AUTHOR-SENDER  "
+      },
+      "16": {
+        "kind": "const",
+        "value": "ZZ"
+      },
+      "17": {
+        "kind": "const",
+        "value": "AUTHOR-RECEIVER"
+      },
+      "18": {
+        "kind": "const",
+        "value": "260102"
+      },
+      "19": {
+        "kind": "const",
+        "value": "0304"
+      },
+      "20": {
+        "kind": "const",
+        "value": "U"
+      },
+      "21": {
+        "kind": "const",
+        "value": "00401"
+      },
+      "22": {
+        "kind": "const",
+        "value": "000000007"
+      },
+      "23": {
+        "kind": "const",
+        "value": "0"
+      },
+      "24": {
+        "kind": "const",
+        "value": "T"
+      },
+      "25": {
+        "kind": "const",
+        "value": ":"
+      },
+      "26": {
+        "kind": "const",
+        "value": "OW"
+      },
+      "27": {
+        "kind": "const",
+        "value": "AUTHOR-SENDER"
+      },
+      "28": {
+        "kind": "const",
+        "value": "AUTHOR-RECEIVER"
+      },
+      "29": {
+        "kind": "const",
+        "value": "20260102"
+      },
+      "30": {
+        "kind": "const",
+        "value": "030405"
+      },
+      "31": {
+        "kind": "const",
+        "value": "0007"
+      },
+      "32": {
+        "kind": "const",
+        "value": "X"
+      },
+      "33": {
+        "kind": "const",
+        "value": "004010"
+      },
+      "34": {
+        "kind": "const",
+        "value": "940"
+      },
+      "35": {
+        "kind": "const",
+        "value": "0011"
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "ISA",
+        "bindings": [
+          {
+            "target_field": "ISA01",
+            "node": 10
+          },
+          {
+            "target_field": "ISA02",
+            "node": 11
+          },
+          {
+            "target_field": "ISA03",
+            "node": 12
+          },
+          {
+            "target_field": "ISA04",
+            "node": 13
+          },
+          {
+            "target_field": "ISA05",
+            "node": 14
+          },
+          {
+            "target_field": "ISA06",
+            "node": 15
+          },
+          {
+            "target_field": "ISA07",
+            "node": 16
+          },
+          {
+            "target_field": "ISA08",
+            "node": 17
+          },
+          {
+            "target_field": "ISA09",
+            "node": 18
+          },
+          {
+            "target_field": "ISA10",
+            "node": 19
+          },
+          {
+            "target_field": "ISA11",
+            "node": 20
+          },
+          {
+            "target_field": "ISA12",
+            "node": 21
+          },
+          {
+            "target_field": "ISA13",
+            "node": 22
+          },
+          {
+            "target_field": "ISA14",
+            "node": 23
+          },
+          {
+            "target_field": "ISA15",
+            "node": 24
+          },
+          {
+            "target_field": "ISA16",
+            "node": 25
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "GS",
+        "bindings": [
+          {
+            "target_field": "GS01",
+            "node": 26
+          },
+          {
+            "target_field": "GS02",
+            "node": 27
+          },
+          {
+            "target_field": "GS03",
+            "node": 28
+          },
+          {
+            "target_field": "GS04",
+            "node": 29
+          },
+          {
+            "target_field": "GS05",
+            "node": 30
+          },
+          {
+            "target_field": "GS06",
+            "node": 31
+          },
+          {
+            "target_field": "GS07",
+            "node": 32
+          },
+          {
+            "target_field": "GS08",
+            "node": 33
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "ST",
+        "bindings": [
+          {
+            "target_field": "ST01",
+            "node": 34
+          },
+          {
+            "target_field": "ST02",
+            "node": 35
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "Notes",
+        "source": [],
+        "bindings": [],
+        "children": [
+          {
+            "target_field": "NTE",
+            "bindings": [
+              {
+                "target_field": "NTE01",
+                "node": 2
+              },
+              {
+                "target_field": "NTE02",
+                "node": 1
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "target_field": "SE",
+        "bindings": [],
+        "children": []
+      },
+      {
+        "target_field": "GE",
+        "bindings": [],
+        "children": []
+      },
+      {
+        "target_field": "IEA",
+        "bindings": [],
+        "children": []
+      }
+    ]
+  }
+}

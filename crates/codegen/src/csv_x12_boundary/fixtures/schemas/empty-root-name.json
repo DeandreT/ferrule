@@ -1,0 +1,15 @@
+{
+  "name": "",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "Cell",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      }
+    ]
+  }
+}

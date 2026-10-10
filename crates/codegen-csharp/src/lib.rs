@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod csv_output;
+mod csv_x12;
 mod error;
 #[cfg(test)]
 mod filter_map_guard_tests;
@@ -33,6 +34,7 @@ mod raise_tests;
 #[cfg(test)]
 mod xml_input_tests;
 
+pub use csv_x12::CsvX12EmitError;
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
 pub use static_documents::StaticDocumentEmitError;
@@ -51,6 +53,19 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
+    emit_mapping_artifacts(program, generated_mapping)
+}
+
+fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
+    validate_program(program)?;
+    let generated_mapping = mapping::render_typed(program)?;
+    emit_mapping_artifacts(program, generated_mapping)
+}
+
+fn emit_mapping_artifacts(
+    program: &Program,
+    generated_mapping: String,
+) -> Result<ArtifactSet, EmitError> {
     let dynamic_input_document_outputs = program.xml_output_mode()?
         == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments);
     let mut files = Vec::with_capacity(
@@ -67,6 +82,15 @@ pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
         files.push(file(path, source)?);
     }
     Ok(ArtifactSet::new(files)?)
+}
+
+/// Emit flat CSV text/byte input and one X12 document through typed execution.
+/// The selected physical profile exposes CSV companions and typed entry points.
+pub fn emit_with_csv_x12_adapters(
+    program: &Program,
+    policy: &codegen::CsvX12BoundaryPolicy,
+) -> Result<ArtifactSet, CsvX12EmitError> {
+    csv_x12::emit(program, policy)
 }
 
 /// Emit an explicitly selected flat primary CSV output adapter.
