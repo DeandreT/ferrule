@@ -1,0 +1,86 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static double Number(JsonElement bits) => BitConverter.Int64BitsToDouble(unchecked((long)Convert.ToUInt64(bits.GetString(), 16)));
+static FerruleInstance Expected(JsonElement row) => new FerruleGroup(row.GetProperty("bits").EnumerateObject().Select(field =>
+    new FerruleField(field.Name, new FerruleScalar(FerruleValue.FromDouble(Number(field.Value))))));
+static object RawValue(FerruleValue value) => new { kind = value.Kind.ToString(), payload = value.Kind switch {
+    FerruleValueKind.Double => (object)new { bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture), text = value.DoubleValue.ToString("R", CultureInfo.InvariantCulture) },
+    FerruleValueKind.Int64 => value.Int64Value, FerruleValueKind.Bool => value.BooleanValue,
+    FerruleValueKind.String => value.StringValue, _ => (object?)null,
+}};
+static object RawInstance(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", value = RawValue(scalar.Value) },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = RawInstance(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() },
+    FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document => new { document.Path, document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() },
+    _ => new { unexpected = value.GetType().FullName, original = value.ToString() },
+};
+static object Raw(object original) => original switch {
+    FerruleInstance value => RawInstance(value), string text => new { text }, byte[] bytes => new { bytes = Convert.ToBase64String(bytes) },
+    Exception error => new { type = error.GetType().FullName, error.Message, error.HResult, original = error.ToString(), inner = error.InnerException?.ToString(),
+        properties = error.GetType().GetProperties().Where(property => property.DeclaringType == error.GetType() && property.GetIndexParameters().Length == 0)
+            .ToDictionary(property => property.Name, property => property.GetValue(error)?.ToString()),
+        data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray() },
+    _ => new { unexpected = original.GetType().FullName, original = original.ToString() },
+};
+static object Capture(Func<object> action) { try { return action(); } catch (Exception error) { return error; } }
+static bool CompleteDocument(object original, JsonElement row) {
+    string text;
+    if (original is string str) text = str;
+    else if (original is byte[] bytes) { try { text = new UTF8Encoding(false, true).GetString(bytes); } catch { return false; } }
+    else return false;
+    try {
+        using var document = JsonDocument.Parse(text);
+        var actual = document.RootElement.EnumerateObject().ToArray();
+        var wanted = row.GetProperty("bits").EnumerateObject().ToArray();
+        return text.EndsWith('\n') && actual.Length == wanted.Length && actual.Zip(wanted).All(pair =>
+            pair.First.Name == pair.Second.Name && pair.First.Value.ValueKind == JsonValueKind.Number &&
+            BitConverter.DoubleToInt64Bits(pair.First.Value.GetDouble()) == BitConverter.DoubleToInt64Bits(Number(pair.Second.Value)));
+    } catch { return false; }
+}
+static string WantedMessage(JsonElement row, bool inputBounded) {
+    var name = row.GetProperty("failed_field").GetString();
+    if (row.TryGetProperty("input_only", out var inputOnly) && inputOnly.GetBoolean())
+        return $"JSON field '{name}' expected number, got integer outside the exact double range.";
+    var value = inputBounded ? row.GetProperty("raw_value").GetString() : Number(row.GetProperty("bits").GetProperty(name!)).ToString("R", CultureInfo.InvariantCulture);
+    return $"JSON scalar '{name}' is outside its numeric range: {value}.";
+}
+static bool CompleteError(object original, string message) => original is FerruleRuntimeException error &&
+    error.Error == FerruleRuntimeError.JsonBoundary && error.Message == message && error.Detail == message &&
+    error.InnerException is null && error.Data.Count == 0 && error.GetType().GetProperties().Where(property =>
+        property.DeclaringType == error.GetType() && property.Name is not "Error" and not "Detail").All(property => property.GetValue(error) is null);
+if (args.Length != 2) throw new InvalidOperationException("Need evidence directory and boundary side");
+var inputBounded = args[1] == "input";
+using var corpus = JsonDocument.Parse(File.ReadAllText(Path.Combine(args[0], "cases.json")));
+var rows = corpus.RootElement.GetProperty("compiled").GetProperty("cases").EnumerateArray().ToArray();
+var outcomes = rows.Select(row => {
+    var inputOnly = row.TryGetProperty("input_only", out var value) && value.GetBoolean();
+    var typed = inputOnly ? null : Expected(row);
+    var text = row.GetProperty("input").GetString()!;
+    return new { row, typed, actualTyped = typed is null ? null : Capture(() => GeneratedMapping.Execute(typed)),
+        actualText = Capture(() => GeneratedMapping.ExecuteJson(text)), actualBytes = Capture(() => GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(text))) };
+}).ToArray();
+File.WriteAllText(Path.Combine(args[0], "COMPLETE-INPUTS-TYPED-TEXT-BYTES-ORIGINALS.json"), JsonSerializer.Serialize(outcomes.Select(item => new {
+    item.row, typed = item.typed is null ? null : Raw(item.typed), actualTyped = item.actualTyped is null ? null : Raw(item.actualTyped),
+    actualText = Raw(item.actualText), actualBytes = Raw(item.actualBytes),
+}).ToArray()));
+var mismatches = new List<string>();
+foreach (var item in outcomes) {
+    var id = item.row.GetProperty("id").GetString();
+    if (item.typed is not null && (item.actualTyped is null || JsonSerializer.Serialize(Raw(item.actualTyped)) != JsonSerializer.Serialize(Raw(item.typed))))
+        mismatches.Add($"{id}: complete typed instance differs");
+    if (item.row.GetProperty("accepted").GetBoolean()) {
+        if (!CompleteDocument(item.actualText, item.row) || !CompleteDocument(item.actualBytes, item.row)) mismatches.Add($"{id}: complete serialized document differs");
+    } else {
+        var message = WantedMessage(item.row, inputBounded);
+        if (!CompleteError(item.actualText, message) || !CompleteError(item.actualBytes, message)) mismatches.Add($"{id}: complete error differs: expected {message}");
+    }
+}
+File.WriteAllText(Path.Combine(args[0], "COMPLETE-COMPARISONS.json"), JsonSerializer.Serialize(new { calls = rows.Length, mismatches }));
+if (rows.Length != 31 || mismatches.Count != 0) throw new InvalidOperationException("Complete authored numeric boundary cohort differs");
+Console.WriteLine("31 complete numeric boundary cases: typed, text and byte APIs");

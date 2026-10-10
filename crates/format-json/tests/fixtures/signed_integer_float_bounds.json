@@ -1,0 +1,3634 @@
+{
+  "boundary_cases": [
+    {
+      "id": "positive-down-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-down-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-down-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":9007199254740993}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-down-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-down-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740993}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-down-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740993,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-down-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":9007199254740993}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-down-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740993,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-up-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740995}",
+      "minimum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-up-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740995,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-up-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":9007199254740995}",
+      "minimum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-up-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740995,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-up-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740995}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740996)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-up-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740995,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740996)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-up-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":9007199254740995}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740996)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-up-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740995,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740996)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740996
+      },
+      "probes": [
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740996",
+          "bits": "4340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740998",
+          "bits": "4340000000000003",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-up-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740993}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-up-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740993,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-up-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":-9007199254740993}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-up-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740993,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-up-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740993}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-up-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740993,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-up-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":-9007199254740993}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-up-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740993,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-down-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740995}",
+      "minimum": {
+        "bits": "c340000000000002",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-down-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740995,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "c340000000000002",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-down-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":-9007199254740995}",
+      "minimum": {
+        "bits": "c340000000000002",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-down-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740995,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "c340000000000002",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740996, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-down-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740995}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000002",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740996]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-down-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740995,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000002",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740996]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-down-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":-9007199254740995}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000002",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740996]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-down-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740995,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000002",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740996]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740996
+      },
+      "probes": [
+        {
+          "input": "-9007199254740998",
+          "bits": "c340000000000003",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740996",
+          "bits": "c340000000000002",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-max-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9223372036854775807}",
+      "minimum": {
+        "bits": "43e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-max-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9223372036854775807,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "43e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-max-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":9223372036854775807}",
+      "minimum": {
+        "bits": "43e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-max-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9223372036854775807,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "43e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-max-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9223372036854775807}",
+      "minimum": null,
+      "maximum": {
+        "bits": "43e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-max-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9223372036854775807,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "43e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-max-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":9223372036854775807}",
+      "minimum": null,
+      "maximum": {
+        "bits": "43e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-max-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9223372036854775807,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "43e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "9223372036854774784",
+          "bits": "43dfffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9223372036854775808",
+          "bits": "43e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9223372036854777856",
+          "bits": "43e0000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-max-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775807}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-max-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775807,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-max-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":-9223372036854775807}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-max-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775807,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-max-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775807}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-max-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775807,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-max-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":-9223372036854775807}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-max-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775807,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740992}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740992,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":9007199254740992}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740992,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740992}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740992,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":9007199254740992}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "positive-exact-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740992,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740992}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740992,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":-9007199254740992}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740992,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9007199254740992, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740992}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740992,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":-9007199254740992}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "negative-exact-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9007199254740992,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c340000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9007199254740992)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9007199254740992
+      },
+      "probes": [
+        {
+          "input": "-9007199254740994",
+          "bits": "c340000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9007199254740992",
+          "bits": "c340000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9007199254740991",
+          "bits": "c33fffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775808}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775808,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":-9223372036854775808}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775808,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(-9223372036854775808, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775808}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775808,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":-9223372036854775808}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "signed-min-exact-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":-9223372036854775808,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, -9223372036854775808)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": -9223372036854775808
+      },
+      "probes": [
+        {
+          "input": "-9.223372036854778e+18",
+          "bits": "c3e0000000000001",
+          "accepted": true
+        },
+        {
+          "input": "-9223372036854775808",
+          "bits": "c3e0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "-9223372036854774784",
+          "bits": "c3dfffffffffffff",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "small-exact-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":42}",
+      "minimum": {
+        "bits": "4045000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[42, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": true
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "small-exact-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":42,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "4045000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[42, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": true
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "small-exact-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":42}",
+      "minimum": {
+        "bits": "4045000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(42, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": false
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "small-exact-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":42,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "4045000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(42, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": false
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "small-exact-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":42}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4045000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 42]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": true
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "small-exact-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":42,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4045000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 42]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": true
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "small-exact-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":42}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4045000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 42)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": false
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "small-exact-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":42,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "4045000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 42)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 42
+      },
+      "probes": [
+        {
+          "input": "41.99999999999999",
+          "bits": "4044ffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "42",
+          "bits": "4045000000000000",
+          "accepted": false
+        },
+        {
+          "input": "42.00000000000001",
+          "bits": "4045000000000001",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-lower-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":0}",
+      "minimum": {
+        "bits": "0000000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[0, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": true
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-lower-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":0,\"exclusiveMinimum\":false}",
+      "minimum": {
+        "bits": "0000000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[0, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": true
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-lower-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":0}",
+      "minimum": {
+        "bits": "0000000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(0, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": false
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-lower-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":0,\"exclusiveMinimum\":true}",
+      "minimum": {
+        "bits": "0000000000000000",
+        "exclusive": true
+      },
+      "maximum": null,
+      "range_text": "(0, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": false
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": false
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-upper-inclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":0}",
+      "minimum": null,
+      "maximum": {
+        "bits": "0000000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 0]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": true
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-upper-inclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":0,\"exclusiveMaximum\":false}",
+      "minimum": null,
+      "maximum": {
+        "bits": "0000000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 0]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": true
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-upper-exclusive-modern",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":0}",
+      "minimum": null,
+      "maximum": {
+        "bits": "0000000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 0)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": false
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "zero-exact-upper-exclusive-legacy",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":0,\"exclusiveMaximum\":true}",
+      "minimum": null,
+      "maximum": {
+        "bits": "0000000000000000",
+        "exclusive": true
+      },
+      "range_text": "(-inf, 0)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMaximum": 0
+      },
+      "probes": [
+        {
+          "input": "-1",
+          "bits": "bff0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "0",
+          "bits": "0000000000000000",
+          "accepted": false
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": false
+        }
+      ]
+    },
+    {
+      "id": "inexact-singleton-empty",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993,\"maximum\":9007199254740993}",
+      "error": "numeric range is empty"
+    },
+    {
+      "id": "negative-singleton-empty",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9007199254740993,\"maximum\":-9007199254740993}",
+      "error": "numeric range is empty"
+    },
+    {
+      "id": "empty-between-floats",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":9007199254740992,\"exclusiveMaximum\":9007199254740994}",
+      "error": "numeric range is empty"
+    },
+    {
+      "id": "mixed-modern-intersection",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993,\"exclusiveMinimum\":9007199254740995,\"maximum\":9007199254740997}",
+      "minimum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": false
+      },
+      "range_text": "[9007199254740996, 9007199254740996]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 9007199254740996,
+        "maximum": 9007199254740996
+      },
+      "probes": []
+    },
+    {
+      "id": "allof-single-float",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"allOf\":[{\"type\":\"number\",\"minimum\":9007199254740993},{\"type\":\"number\",\"maximum\":9007199254740995}]}",
+      "minimum": {
+        "bits": "4340000000000000",
+        "exclusive": true
+      },
+      "maximum": {
+        "bits": "4340000000000002",
+        "exclusive": true
+      },
+      "range_text": "(9007199254740992, 9007199254740996)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "exclusiveMinimum": 9007199254740992,
+        "exclusiveMaximum": 9007199254740996
+      },
+      "probes": []
+    },
+    {
+      "id": "signed-min-singleton",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775808,\"maximum\":-9223372036854775808}",
+      "minimum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "maximum": {
+        "bits": "c3e0000000000000",
+        "exclusive": false
+      },
+      "range_text": "[-9223372036854775808, -9223372036854775808]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": -9223372036854775808,
+        "maximum": -9223372036854775808
+      },
+      "probes": []
+    },
+    {
+      "id": "decimal-preserved",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":0.25,\"exclusiveMaximum\":1.25}",
+      "minimum": {
+        "bits": "3fd0000000000000",
+        "exclusive": false
+      },
+      "maximum": {
+        "bits": "3ff4000000000000",
+        "exclusive": true
+      },
+      "range_text": "[0.25, 1.25)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 0.25,
+        "exclusiveMaximum": 1.25
+      },
+      "probes": []
+    },
+    {
+      "id": "ambiguous-decimal-one",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":1.0}",
+      "error": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+    },
+    {
+      "id": "ambiguous-decimal-wide",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740993.0}",
+      "error": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+    },
+    {
+      "id": "unsigned-inexact-unchanged",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9223372036854775809}",
+      "error": "numeric bound must be a supported finite number"
+    },
+    {
+      "id": "unsigned-max-unchanged",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":18446744073709551615}",
+      "error": "numeric bound must be a supported finite number"
+    },
+    {
+      "id": "negative-outside-signed-unchanged",
+      "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-9223372036854775809}",
+      "error": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+    }
+  ],
+  "compiled": {
+    "bounded_schema": "{\"title\":\"BoundaryRecord\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"LowerDown\":{\"type\":\"number\",\"minimum\":9007199254740993},\"UpperDown\":{\"type\":\"number\",\"exclusiveMaximum\":9007199254740993},\"LowerUp\":{\"type\":\"number\",\"exclusiveMinimum\":9007199254740995},\"UpperUp\":{\"type\":\"number\",\"maximum\":9007199254740995},\"NegativeLower\":{\"type\":\"number\",\"minimum\":-9007199254740993},\"NegativeUpper\":{\"type\":\"number\",\"maximum\":-9007199254740993},\"SignedUpper\":{\"type\":\"number\",\"maximum\":9223372036854775807},\"SignedLower\":{\"type\":\"number\",\"minimum\":-9223372036854775807},\"ExactMin\":{\"type\":\"number\",\"exclusiveMinimum\":-9223372036854775808},\"ExactUpper\":{\"type\":\"number\",\"maximum\":9007199254740992}},\"required\":[\"LowerDown\",\"UpperDown\",\"LowerUp\",\"UpperUp\",\"NegativeLower\",\"NegativeUpper\",\"SignedUpper\",\"SignedLower\",\"ExactMin\",\"ExactUpper\"]}",
+    "unbounded_schema": "{\"title\":\"BoundaryRecord\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"LowerDown\":{\"type\":\"number\"},\"UpperDown\":{\"type\":\"number\"},\"LowerUp\":{\"type\":\"number\"},\"UpperUp\":{\"type\":\"number\"},\"NegativeLower\":{\"type\":\"number\"},\"NegativeUpper\":{\"type\":\"number\"},\"SignedUpper\":{\"type\":\"number\"},\"SignedLower\":{\"type\":\"number\"},\"ExactMin\":{\"type\":\"number\"},\"ExactUpper\":{\"type\":\"number\"}},\"required\":[\"LowerDown\",\"UpperDown\",\"LowerUp\",\"UpperUp\",\"NegativeLower\",\"NegativeUpper\",\"SignedUpper\",\"SignedLower\",\"ExactMin\",\"ExactUpper\"]}",
+    "expected_ranges": {
+      "LowerDown": {
+        "minimum": {
+          "bits": "4340000000000000",
+          "exclusive": true
+        },
+        "maximum": null
+      },
+      "UpperDown": {
+        "minimum": null,
+        "maximum": {
+          "bits": "4340000000000000",
+          "exclusive": false
+        }
+      },
+      "LowerUp": {
+        "minimum": {
+          "bits": "4340000000000002",
+          "exclusive": false
+        },
+        "maximum": null
+      },
+      "UpperUp": {
+        "minimum": null,
+        "maximum": {
+          "bits": "4340000000000002",
+          "exclusive": true
+        }
+      },
+      "NegativeLower": {
+        "minimum": {
+          "bits": "c340000000000000",
+          "exclusive": false
+        },
+        "maximum": null
+      },
+      "NegativeUpper": {
+        "minimum": null,
+        "maximum": {
+          "bits": "c340000000000000",
+          "exclusive": true
+        }
+      },
+      "SignedUpper": {
+        "minimum": null,
+        "maximum": {
+          "bits": "43e0000000000000",
+          "exclusive": true
+        }
+      },
+      "SignedLower": {
+        "minimum": {
+          "bits": "c3e0000000000000",
+          "exclusive": true
+        },
+        "maximum": null
+      },
+      "ExactMin": {
+        "minimum": {
+          "bits": "c3e0000000000000",
+          "exclusive": true
+        },
+        "maximum": null
+      },
+      "ExactUpper": {
+        "minimum": null,
+        "maximum": {
+          "bits": "4340000000000000",
+          "exclusive": false
+        }
+      }
+    },
+    "cases": [
+      {
+        "id": "LowerDown-0",
+        "input": "{\"LowerDown\":9007199254740991,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "433fffffffffffff",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "LowerDown",
+        "range_text": "(9007199254740992, inf)",
+        "raw_value": "9007199254740991"
+      },
+      {
+        "id": "LowerDown-1",
+        "input": "{\"LowerDown\":9007199254740992,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000000",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "LowerDown",
+        "range_text": "(9007199254740992, inf)",
+        "raw_value": "9007199254740992"
+      },
+      {
+        "id": "LowerDown-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "LowerDown",
+        "range_text": "(9007199254740992, inf)",
+        "raw_value": "9007199254740994"
+      },
+      {
+        "id": "UpperDown-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740991,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "433fffffffffffff",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "UpperDown",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740991"
+      },
+      {
+        "id": "UpperDown-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "UpperDown",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740992"
+      },
+      {
+        "id": "UpperDown-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740994,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000001",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "UpperDown",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740994"
+      },
+      {
+        "id": "LowerUp-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740994,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000001",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "LowerUp",
+        "range_text": "[9007199254740996, inf)",
+        "raw_value": "9007199254740994"
+      },
+      {
+        "id": "LowerUp-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "LowerUp",
+        "range_text": "[9007199254740996, inf)",
+        "raw_value": "9007199254740996"
+      },
+      {
+        "id": "LowerUp-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740998,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000003",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "LowerUp",
+        "range_text": "[9007199254740996, inf)",
+        "raw_value": "9007199254740998"
+      },
+      {
+        "id": "UpperUp-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "UpperUp",
+        "range_text": "(-inf, 9007199254740996)",
+        "raw_value": "9007199254740994"
+      },
+      {
+        "id": "UpperUp-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740996,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000002",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "UpperUp",
+        "range_text": "(-inf, 9007199254740996)",
+        "raw_value": "9007199254740996"
+      },
+      {
+        "id": "UpperUp-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740998,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000003",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "UpperUp",
+        "range_text": "(-inf, 9007199254740996)",
+        "raw_value": "9007199254740998"
+      },
+      {
+        "id": "NegativeLower-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740994,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000001",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "NegativeLower",
+        "range_text": "[-9007199254740992, inf)",
+        "raw_value": "-9007199254740994"
+      },
+      {
+        "id": "NegativeLower-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "NegativeLower",
+        "range_text": "[-9007199254740992, inf)",
+        "raw_value": "-9007199254740992"
+      },
+      {
+        "id": "NegativeLower-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740991,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c33fffffffffffff",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "NegativeLower",
+        "range_text": "[-9007199254740992, inf)",
+        "raw_value": "-9007199254740991"
+      },
+      {
+        "id": "NegativeUpper-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "NegativeUpper",
+        "range_text": "(-inf, -9007199254740992)",
+        "raw_value": "-9007199254740994"
+      },
+      {
+        "id": "NegativeUpper-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740992,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000000",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "NegativeUpper",
+        "range_text": "(-inf, -9007199254740992)",
+        "raw_value": "-9007199254740992"
+      },
+      {
+        "id": "NegativeUpper-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740991,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c33fffffffffffff",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "NegativeUpper",
+        "range_text": "(-inf, -9007199254740992)",
+        "raw_value": "-9007199254740991"
+      },
+      {
+        "id": "SignedUpper-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "SignedUpper",
+        "range_text": "(-inf, 9223372036854775808)",
+        "raw_value": "9223372036854774784"
+      },
+      {
+        "id": "SignedUpper-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854775808,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43e0000000000000",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "SignedUpper",
+        "range_text": "(-inf, 9223372036854775808)",
+        "raw_value": "9223372036854775808"
+      },
+      {
+        "id": "SignedUpper-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854777856,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43e0000000000001",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "SignedUpper",
+        "range_text": "(-inf, 9223372036854775808)",
+        "raw_value": "9223372036854777856"
+      },
+      {
+        "id": "SignedLower-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9.223372036854778e+18,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3e0000000000001",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "SignedLower",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9.223372036854778e+18"
+      },
+      {
+        "id": "SignedLower-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854775808,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3e0000000000000",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "SignedLower",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9223372036854775808"
+      },
+      {
+        "id": "SignedLower-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "SignedLower",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9223372036854774784"
+      },
+      {
+        "id": "ExactMin-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9.223372036854778e+18,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3e0000000000001",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "ExactMin",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9.223372036854778e+18"
+      },
+      {
+        "id": "ExactMin-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854775808,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3e0000000000000",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": false,
+        "failed_field": "ExactMin",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9223372036854775808"
+      },
+      {
+        "id": "ExactMin-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "ExactMin",
+        "range_text": "(-9223372036854775808, inf)",
+        "raw_value": "-9223372036854774784"
+      },
+      {
+        "id": "ExactUpper-0",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740991}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "433fffffffffffff"
+        },
+        "accepted": true,
+        "failed_field": "ExactUpper",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740991"
+      },
+      {
+        "id": "ExactUpper-1",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000000"
+        },
+        "accepted": true,
+        "failed_field": "ExactUpper",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740992"
+      },
+      {
+        "id": "ExactUpper-2",
+        "input": "{\"LowerDown\":9007199254740994,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740994}",
+        "bits": {
+          "LowerDown": "4340000000000001",
+          "UpperDown": "4340000000000000",
+          "LowerUp": "4340000000000002",
+          "UpperUp": "4340000000000001",
+          "NegativeLower": "c340000000000000",
+          "NegativeUpper": "c340000000000001",
+          "SignedUpper": "43dfffffffffffff",
+          "SignedLower": "c3dfffffffffffff",
+          "ExactMin": "c3dfffffffffffff",
+          "ExactUpper": "4340000000000001"
+        },
+        "accepted": false,
+        "failed_field": "ExactUpper",
+        "range_text": "(-inf, 9007199254740992]",
+        "raw_value": "9007199254740994"
+      },
+      {
+        "id": "instance-precision-unchanged",
+        "input": "{\"LowerDown\":9007199254740993,\"UpperDown\":9007199254740992,\"LowerUp\":9007199254740996,\"UpperUp\":9007199254740994,\"NegativeLower\":-9007199254740992,\"NegativeUpper\":-9007199254740994,\"SignedUpper\":9223372036854774784,\"SignedLower\":-9223372036854774784,\"ExactMin\":-9223372036854774784,\"ExactUpper\":9007199254740992}",
+        "input_only": true,
+        "accepted": false,
+        "failed_field": "LowerDown",
+        "range_text": "(9007199254740992, inf)",
+        "raw_value": "9007199254740993"
+      }
+    ]
+  },
+  "contract": {
+    "domain": "finite IEEE 754 binary64 Float",
+    "endpoint_scope": "signed 64-bit integer JSON tokens",
+    "input_and_const_precision": "unchanged",
+    "decimal_and_unsigned_endpoint_policy": "unchanged",
+    "serialized_success": "complete numeric property set and exact binary64 values; equivalent JSON number spellings permitted"
+  }
+}
