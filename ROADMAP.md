@@ -543,6 +543,10 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   in [#241](https://github.com/DeandreT/ferrule/issues/241).
 - [ ] Extend one concrete supported-path mismatch at a time, with a self-authored
   triggering design and preserved refusal controls.
+- [x] Support standard GUID text formatting in
+  [#269](https://github.com/DeandreT/ferrule/issues/269), with strict ASCII-hex
+  admission, preserved case, native saved-function round trips, and complete
+  native/generated value and error contracts.
 - [x] Retain modern required-only object reference siblings natively in
   [#100](https://github.com/DeandreT/ferrule/issues/100), native increment merged in
   [#170](https://github.com/DeandreT/ferrule/pull/170). Seven focused groups and
