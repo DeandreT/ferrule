@@ -154,6 +154,15 @@ fn redundant_scalar_type_siblings_compiled_complete_oracles() -> TestResult<()> 
         std::fs::write(directory.join("cases.json"), CASES)?;
         std::fs::write(directory.join("descriptor.json"), &descriptor)?;
         if language == "rust" {
+            let manifest_path = directory.join("Cargo.toml");
+            let manifest = std::fs::read_to_string(&manifest_path)?;
+            std::fs::write(
+                manifest_path,
+                manifest.replace(
+                    "\n[workspace]",
+                    "\nserde_json = { version = \"1\", features = [\"preserve_order\"] }\n\n[workspace]",
+                ),
+            )?;
             std::fs::write(
                 directory.join("src/main.rs"),
                 include_str!("scalar_type_siblings/Host.rs.txt"),
