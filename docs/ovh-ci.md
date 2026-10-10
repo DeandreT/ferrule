@@ -11,7 +11,8 @@ continues through the separate Pages workflow.
 
 The existing SSH alias `ovh` connects as `ubuntu` to the Ubuntu x86_64 host
 `quinta`. Provisioning installs a dedicated `ferrule-runner` account, with no
-supplemental groups, sudo privileges, Docker socket, or SSH credentials.
+supplemental groups, sudo privileges, Docker socket, or SSH credentials. Its
+login shell is disabled; the service runs its commands directly.
 `ferrule-actions-runner.service` starts at boot and automatically restarts.
 The service can write only its home and private temporary directory; other
 application homes and game data are hidden. Runner application updates remain
