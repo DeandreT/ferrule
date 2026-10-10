@@ -144,7 +144,21 @@ pub(super) fn read_edges(
     structure: &roxmltree::Node<'_, '_>,
     legacy_parent: Option<&roxmltree::Node<'_, '_>>,
 ) -> BTreeMap<u32, u32> {
-    let mut edge_from = BTreeMap::new();
+    read_edge_inputs(structure, legacy_parent).feeds
+}
+
+pub(super) struct EdgeInputs {
+    pub(super) feeds: BTreeMap<u32, u32>,
+    pub(super) conflicts: Vec<String>,
+}
+
+/// Census both saved vocabularies before choosing any input feed. Identical
+/// records are idempotent; distinct feeds leave the input unconnected.
+pub(super) fn read_edge_inputs(
+    structure: &roxmltree::Node<'_, '_>,
+    legacy_parent: Option<&roxmltree::Node<'_, '_>>,
+) -> EdgeInputs {
+    let mut sources = BTreeMap::<u32, BTreeSet<u32>>::new();
     if let Some(graph) = structure
         .children()
         .find(|node| node.is_element() && node.has_tag_name("graph"))
@@ -161,21 +175,21 @@ pub(super) fn read_edges(
                 .filter(|node| node.has_tag_name("edge"))
             {
                 if let Some(to) = parse_u32(edge.attribute("vertexkey")) {
-                    edge_from.insert(to, from);
+                    sources.entry(to).or_default().insert(from);
                 }
             }
         }
     }
-    let connections = structure
+    let local_connections = structure
         .children()
-        .find(|node| node.is_element() && node.has_tag_name("connections"))
-        .or_else(|| {
-            legacy_parent.and_then(|parent| {
-                parent
-                    .children()
-                    .find(|node| node.is_element() && node.has_tag_name("connections"))
-            })
-        });
+        .find(|node| node.is_element() && node.has_tag_name("connections"));
+    let connections = local_connections.or_else(|| {
+        legacy_parent.and_then(|parent| {
+            parent
+                .children()
+                .find(|node| node.is_element() && node.has_tag_name("connections"))
+        })
+    });
     if let Some(connections) = connections {
         for edge in connections
             .children()
@@ -185,11 +199,49 @@ pub(super) fn read_edges(
                 parse_u32(edge.attribute("from")),
                 parse_u32(edge.attribute("to")),
             ) {
-                edge_from.insert(to, from);
+                sources.entry(to).or_default().insert(from);
             }
         }
     }
-    edge_from
+    let selected_inputs = sources.keys().copied().collect::<BTreeSet<_>>();
+    // Preserve the retained local-over-parent connection selection for
+    // lowering, but do not let an alternate saved container hide a conflict.
+    if local_connections.is_some()
+        && let Some(parent_connections) = legacy_parent.and_then(|parent| {
+            parent
+                .children()
+                .find(|node| node.is_element() && node.has_tag_name("connections"))
+        })
+    {
+        for edge in parent_connections
+            .children()
+            .filter(|node| node.is_element() && node.has_tag_name("edge"))
+        {
+            if let (Some(from), Some(to)) = (
+                parse_u32(edge.attribute("from")),
+                parse_u32(edge.attribute("to")),
+            ) {
+                sources.entry(to).or_default().insert(from);
+            }
+        }
+    }
+    let mut feeds = BTreeMap::new();
+    let mut conflicts = Vec::new();
+    for (input, sources) in sources {
+        if sources.len() == 1 && selected_inputs.contains(&input) {
+            feeds.insert(input, *sources.first().expect("one source"));
+        } else if sources.len() > 1 {
+            let sources = sources
+                .into_iter()
+                .map(|source| source.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            conflicts.push(format!(
+                "input port {input} has conflicting source feeds [{sources}]; all feeds to this input were skipped"
+            ));
+        }
+    }
+    EdgeInputs { feeds, conflicts }
 }
 
 pub(super) fn read_copy_all_targets(
@@ -253,4 +305,37 @@ pub(super) fn read_copy_all_targets(
         })
         .filter_map(|edge| super::schema::parse_u32(edge.attribute("to")));
     modern.into_iter().chain(legacy).collect()
+}
+
+#[cfg(test)]
+mod input_guard_tests {
+    use std::collections::BTreeMap;
+
+    use super::read_edge_inputs;
+
+    #[test]
+    fn full_census_orders_conflicts_and_never_reintroduces_a_sink() {
+        let xml = r#"<component><structure><graph><vertices>
+          <vertex vertexkey="83"><edges><edge vertexkey="19"/></edges></vertex>
+          <vertex vertexkey="80"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="81"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="80"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="21"/></edges></vertex>
+        </vertices></graph><connections><edge from="82" to="19"/></connections></structure></component>"#;
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let wrapper = doc.root_element();
+        let structure = wrapper
+            .children()
+            .find(|node| node.has_tag_name("structure"))
+            .unwrap();
+        let result = read_edge_inputs(&structure, Some(&wrapper));
+        assert_eq!(result.feeds, BTreeMap::from([(21, 11)]));
+        assert_eq!(
+            result.conflicts,
+            [
+                "input port 19 has conflicting source feeds [82, 83]; all feeds to this input were skipped",
+                "input port 20 has conflicting source feeds [80, 81]; all feeds to this input were skipped",
+            ]
+        );
+    }
 }
