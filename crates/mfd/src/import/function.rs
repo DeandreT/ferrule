@@ -490,7 +490,9 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
 }
 
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
-    if component.library == "ferrule"
+    if component.name == "random" {
+        (component.kind == 5 && component.library == "lang").then_some("random")
+    } else if component.library == "ferrule"
         && component.kind == 5
         && canonical_function::is_internal(&component.name)
     {
@@ -660,6 +662,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "positive" => "positive",
         "floor" => "floor",
         "create-guid" => "create_guid",
+        "random" => "random",
         "format-number" => "format_number",
         "format-date" => "format_date",
         "format-dateTime" => "format_datetime",
