@@ -31,8 +31,10 @@ public static partial class FerruleX12
     {
         internal bool Modern => Interchange != "00401";
     }
+    private sealed record GroupedShape(Node Groups, Node Transactions);
     private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
-        char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null)
+        char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null,
+        GroupedShape? Grouped = null)
     {
         internal VersionProfile SelectedVersion => Version ?? new("00401", "004010");
         internal Syntax OutputSyntax => Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
@@ -46,7 +48,14 @@ public static partial class FerruleX12
         {
             using JsonDocument parsed = JsonDocument.Parse(descriptor, new JsonDocumentOptions { MaxDepth = 127 });
             JsonElement wrapper = parsed.RootElement;
-            Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete"]);
+            Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete", "envelope_profile"]);
+            bool grouped = wrapper.TryGetProperty("envelope_profile", out JsonElement envelopeProfile)
+                && (envelopeProfile.GetString() switch
+                {
+                    "single_transaction" => false,
+                    "grouped_transactions" => true,
+                    _ => throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 envelope profile."),
+                });
             VersionProfile version = wrapper.GetProperty("version").GetString() switch
             {
                 "004010" => new("00401", "004010"),
@@ -62,7 +71,8 @@ public static partial class FerruleX12
             Node root = ParseNode(schemaDocument.RootElement, 0, ref nodeCount);
             if (root.Repeating || root.Type is not null)
                 throw Failure(FerruleX12Error.Schema, "X12 requires a singular root container.");
-            ValidateShape(root, root: true, element: false, component: false, repeated: false);
+            GroupedShape? groupedShape = grouped ? ValidateGroupedShape(root) : null;
+            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped);
             var envelopes = new List<Node>();
             CollectEnvelopes(root, envelopes, true);
             string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
@@ -151,7 +161,7 @@ public static partial class FerruleX12
                     || separators is { } componentSyntax && fixedComponent != componentSyntax.Component.ToString()
                     || separators is null && !input && fixedComponent != ":"))
                 throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA16 does not agree with the selected modern component syntax.");
-            return new(root, separators, lenient, inactiveRepetition, autocomplete, version);
+            return new(root, separators, lenient, inactiveRepetition, autocomplete, version, groupedShape);
         }
         catch (FerruleX12Exception) { throw; }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
@@ -336,7 +346,7 @@ public static partial class FerruleX12
             && name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character)) ? name : null;
     }
 
-    private static void ValidateShape(Node node, bool root, bool element, bool component, bool repeated)
+    private static void ValidateShape(Node node, bool root, bool element, bool component, bool repeated, bool grouped = false)
     {
         if (element)
         {
@@ -344,7 +354,7 @@ public static partial class FerruleX12
                 throw Failure(FerruleX12Error.UnsupportedProfile, "004010 elements cannot repeat or contain nested composites.");
             if (node.Children.Length > MaximumElements) throw Limit("X12 composite schema component limit exceeded.");
             if (node.Type is null)
-                foreach (Node child in node.Children) ValidateShape(child, false, true, true, false);
+                foreach (Node child in node.Children) ValidateShape(child, false, true, true, false, grouped);
             return;
         }
         if (node.Type is not null) throw Failure(FerruleX12Error.Schema, "X12 containers require groups.");
@@ -352,11 +362,48 @@ public static partial class FerruleX12
         if (id is not null)
         {
             if (node.Children.Length > MaximumElements) throw Limit("X12 schema element limit exceeded.");
-            if (IsEnvelope(id) && (node.Repeating || repeated))
+            if (IsEnvelope(id) && (node.Repeating || repeated) && !grouped)
                 throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope schemas cannot repeat.");
-            foreach (Node child in node.Children) ValidateShape(child, false, true, false, false);
+            foreach (Node child in node.Children) ValidateShape(child, false, true, false, false, grouped);
         }
-        else foreach (Node child in node.Children) ValidateShape(child, false, false, false, repeated || node.Repeating);
+        else foreach (Node child in node.Children) ValidateShape(child, false, false, false, repeated || node.Repeating, grouped);
+    }
+
+    private static GroupedShape ValidateGroupedShape(Node root)
+    {
+        const string message = "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.";
+        static FerruleX12Exception Invalid(string path) => Failure(FerruleX12Error.Schema, message, path: path);
+        static Node Envelope(Node owner, int index, string id, string[] path)
+        {
+            if (index < 0 || index >= owner.Children.Length
+                || SegmentId(owner.Children[index].Name) != id || owner.Children[index].Repeating)
+                throw Invalid(string.Join('/', [.. path, id]));
+            return owner.Children[index];
+        }
+        Envelope(root, 0, "ISA", []);
+        Envelope(root, root.Children.Length - 1, "IEA", []);
+        if (root.Children.Length != 3) throw Invalid("");
+        Node groups = root.Children[1];
+        if (groups.Type is not null || !groups.Repeating || SegmentId(groups.Name) is not null)
+            throw Invalid(groups.Name);
+        Envelope(groups, 0, "GS", [groups.Name]);
+        Envelope(groups, groups.Children.Length - 1, "GE", [groups.Name]);
+        if (groups.Children.Length != 3) throw Invalid(groups.Name);
+        Node transactions = groups.Children[1];
+        if (transactions.Type is not null || !transactions.Repeating || SegmentId(transactions.Name) is not null)
+            throw Invalid(string.Join('/', [groups.Name, transactions.Name]));
+        string[] transactionPath = [groups.Name, transactions.Name];
+        Envelope(transactions, 0, "ST", transactionPath);
+        Envelope(transactions, transactions.Children.Length - 1, "SE", transactionPath);
+        if (transactions.Children.Length < 2) throw Invalid(string.Join('/', transactionPath));
+        for (int index = 1; index < transactions.Children.Length - 1; index++)
+        {
+            var envelopes = new List<Node>();
+            CollectEnvelopes(transactions.Children[index], envelopes, false);
+            if (envelopes.Count != 0)
+                throw Invalid(string.Join('/', [.. transactionPath, transactions.Children[index].Name]));
+        }
+        return new(groups, transactions);
     }
 
     private static bool IsEnvelope(string id) => id is "ISA" or "GS" or "ST" or "SE" or "GE" or "IEA";

@@ -63,10 +63,28 @@ pub fn generate_project_with_x12_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
+    generate_project_with_x12_envelope_profiles(project_path, output_directory, target, None, None)
+}
+
+/// Generate explicitly selected primary X12 envelope companions. An absent
+/// selection keeps the single-transaction default; an explicit selection on a
+/// JSON endpoint refuses instead of selecting X12 from its schema shape.
+pub fn generate_project_with_x12_envelope_profiles(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    source_envelope: Option<codegen::X12EnvelopeProfile>,
+    target_envelope: Option<codegen::X12EnvelopeProfile>,
+) -> anyhow::Result<GenerateOutcome> {
     if target != GenerateTarget::CSharp {
         bail!("generated raw X12 adapters currently require the C# backend");
     }
-    generate_project_impl(project_path, output_directory, target, Adapter::X12)
+    generate_project_impl(
+        project_path,
+        output_directory,
+        target,
+        Adapter::X12(source_envelope, target_envelope),
+    )
 }
 
 /// Generate static JSON/X12 document inputs and explicitly selected output methods.
@@ -93,7 +111,10 @@ enum Adapter {
     Ordinary,
     Csv,
     Json5,
-    X12,
+    X12(
+        Option<codegen::X12EnvelopeProfile>,
+        Option<codegen::X12EnvelopeProfile>,
+    ),
     StaticDocuments,
 }
 
@@ -111,10 +132,11 @@ fn generate_project_impl(
     } else {
         None
     };
-    let x12_policy = if adapter == Adapter::X12 {
-        Some(x12::policy(&project)?)
-    } else {
-        None
+    let x12_policy = match adapter {
+        Adapter::X12(source, target) => Some(x12::policy_with_envelope_profiles(
+            &project, source, target,
+        )?),
+        _ => None,
     };
     if adapter == Adapter::Json5 {
         // Admission borrows the loaded schemas before ordinary lowering clones them.

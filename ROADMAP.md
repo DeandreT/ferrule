@@ -756,9 +756,14 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 - [x] Support canonical generated C# `00501`/`005010` and `00604`/`006040`
   single-envelope scalar-element profiles in
   [#272](https://github.com/DeandreT/ferrule/issues/272), with exact declared version
-  agreement and active ISA11 repetition delimiters. Repeated element values,
-  additional transaction envelopes and implementation references require
-  separate contracts.
+  agreement and active ISA11 repetition delimiters. Repeated element values
+  and implementation references require separate contracts.
+- [x] Support explicit generated C# grouped transaction ownership in
+  [#273](https://github.com/DeandreT/ferrule/issues/273): one interchange with
+  declared repeated GS/GE and ST/SE owners, exact counts/controls and occurrence
+  paths, and private supplied-context completion of declared trailer slots.
+  The [envelope contract](docs/design/generated-x12-csharp.md#declared-grouped-envelopes)
+  retains singleton defaults and whole-document limits.
 - [ ] Grow compile-and-call coverage for applicable mappings and public adapters.
 - [ ] Add other language/backend targets as independent implementations and
   gates; the current emitters are Rust and C#.

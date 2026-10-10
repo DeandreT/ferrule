@@ -120,7 +120,7 @@ schema-shaped `Instance` for each source-name/logical-path request.
 
 ## Explicit C# X12 Companions
 
-Add `--x12-adapters` to the C# CLI generation command for singular raw X12
+Add `--x12-adapters` to the C# CLI generation command for explicit raw X12
 input/output methods around the ordinary typed mapping. Fixed ISA12/GS08
 schemas select `00401`/`004010`, `00501`/`005010`, or `00604`/`006040`.
 The flag defaults
@@ -133,6 +133,14 @@ and Float implied-decimal scaling; selected output metadata supports compact
 date/time and plain-decimal formatting plus explicit X12 envelope completion.
 Repetition punctuation is inactive metadata under 00401 and active ISA11
 syntax in the modern profiles; repeated element values remain refused.
+The envelope defaults to one functional group and transaction. Explicit
+`--x12-source-envelope-profile grouped-transactions` or
+`--x12-target-envelope-profile grouped-transactions` selects declared repeated
+GS/GE and ST/SE owners within one interchange on that X12 side. Each selected
+side has its own schema/version agreement, counts and controls. Both flags
+require `--x12-adapters`; an explicit selection on JSON refuses. The additive
+`generate_project_with_x12_envelope_profiles` writer accepts the two optional
+selections while the existing writer keeps default singleton behavior.
 Contextual output
 completion uses the host-supplied execution-context dateTime, formats a private
 view, completes permitted fields, and validates final controls and counts.
@@ -151,7 +159,7 @@ unselected targets. The generated text and UTF-8 byte carriers retain the
 selected target name and format. Name/list preflight precedes primary parsing;
 all supplied documents parse before typed selected execution. The same context
 reaches selected X12 completion. This flag is separate from, and conflicts with,
-the singular `--x12-adapters` flag. The normal `code_generation` integration
+the primary `--x12-adapters` flag. The normal `code_generation` integration
 target contains the authored native and compiled static-document contracts;
 it requires `--features codegen-tests` and the .NET 10 SDK. See the
 [static document API and error order](design/generated-x12-csharp.md#static-named-documents-and-selected-output).

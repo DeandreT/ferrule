@@ -1,0 +1,104 @@
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use std::fs;
+
+fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
+    if schema.repeating {
+        let mut item = schema.clone();
+        item.repeating = false;
+        return Instance::Repeated(
+            literal
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| expected(&item, value))
+                .collect(),
+        );
+    }
+    match &schema.kind {
+        SchemaKind::Group { children, .. } => Instance::Group(
+            children
+                .iter()
+                .filter_map(|child| {
+                    literal
+                        .get(&child.name)
+                        .map(|value| (child.name.clone(), expected(child, value)))
+                })
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        SchemaKind::Scalar { ty } => Instance::Scalar(if literal.is_null() {
+            Value::Null
+        } else {
+            match ty {
+                ScalarType::String => Value::String(literal.as_str().unwrap().into()),
+                ScalarType::Int => Value::Int(literal.as_i64().unwrap()),
+                ScalarType::Float => Value::Float(literal.as_f64().unwrap()),
+                _ => panic!("invented scalar oracle"),
+            }
+        }),
+        _ => panic!("invented group oracle"),
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut outcomes = Vec::new();
+    for (isa, version) in [
+        ("00401", "004010"),
+        ("00501", "005010"),
+        ("00604", "006040"),
+    ] {
+        let schema: SchemaNode =
+            serde_json::from_str(&fs::read_to_string(format!("{version}-schema.json"))?)?;
+        let literal: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(format!("{version}-values.json"))?)?;
+        let expected = expected(&schema, &literal);
+        let input = fs::read_to_string(format!("{version}-complete.x12"))?;
+        let expected_wire = fs::read_to_string(format!("{version}-output.x12"))?;
+        let source = format_edi::x12::from_str(&input, &schema, false);
+        let mapped = source.as_ref().ok().map(|source| match version {
+            "004010" => profile_004010::execute(source),
+            "005010" => profile_005010::execute(source),
+            _ => profile_006040::execute(source),
+        });
+        let wire = mapped
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .map(|instance| {
+                format_edi::x12::to_string_with_syntax(
+                    &schema,
+                    instance,
+                    format_edi::x12::Separators {
+                        element: '*',
+                        component: ':',
+                        segment: '~',
+                        repetition: Some('^'),
+                        release: None,
+                    },
+                    Some(isa),
+                )
+            });
+        // Keep the original typed errors, instances and complete bytes before interpreting them.
+        fs::write(
+            format!("rust-{version}-outcome.original.txt"),
+            format!(
+                "SOURCE {source:#?}\nMAPPED {mapped:#?}\nWIRE {wire:#?}\nEXPECTED {expected:#?}\nEXPECTED_WIRE {expected_wire:?}"
+            ),
+        )?;
+        let ok = source.as_ref().is_ok_and(|value| *value == expected)
+            && mapped
+                .as_ref()
+                .is_some_and(|result| result.as_ref().is_ok_and(|value| *value == expected))
+            && wire
+                .as_ref()
+                .is_some_and(|result| result.as_ref().is_ok_and(|value| *value == expected_wire));
+        outcomes.push(serde_json::json!({"id":version,"pass":ok}));
+        fs::write(
+            "rust-complete-comparisons.original.json",
+            serde_json::to_vec_pretty(&outcomes)?,
+        )?;
+    }
+    assert!(
+        outcomes.len() == 3 && outcomes.iter().all(|result| result["pass"] == true),
+        "complete typed and wire evidence retained"
+    );
+    Ok(())
+}

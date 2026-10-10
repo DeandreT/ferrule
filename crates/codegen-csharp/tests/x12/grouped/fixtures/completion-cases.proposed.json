@@ -1,0 +1,135 @@
+[
+  {
+    "label": "all-declared-trailers-missing",
+    "input_values": "completion-missing-values.json",
+    "caller_before_after": "completion-missing-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_values": "completion-expected-values.json",
+    "expected_wire": "completion-output.x12",
+    "expected_error": null,
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "mixed-supplied-missing-null-trailers",
+    "input_values": "completion-mixed-values.json",
+    "caller_before_after": "completion-mixed-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_values": "005010-values.json",
+    "expected_wire": "005010-output.x12",
+    "expected_error": null,
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "nonempty-wrong-SE-control-survives",
+    "input_values": "completion-wrong-control-values.json",
+    "caller_before_after": "completion-wrong-control-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 transaction trailer count or control does not match its owner.",
+      "segment_index": 21,
+      "field_path": "FunctionalGroups[1]/Transactions[1]/SE"
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "invalid-calendar-before-final-owner-error",
+    "input_values": "completion-wrong-control-values.json",
+    "caller_before_after": "completion-wrong-control-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-30T12:34:56Z",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a valid supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "invalid-suffix-before-final-owner-error",
+    "input_values": "completion-wrong-control-values.json",
+    "caller_before_after": "completion-wrong-control-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56INVALID",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a valid supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "missing-context-before-final-owner-error",
+    "input_values": "completion-wrong-control-values.json",
+    "caller_before_after": "completion-wrong-control-values-caller-before-after-typed-tree.json",
+    "context": null,
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "zero-groups-generated-minimum",
+    "input_values": "native-zero-groups-values.json",
+    "caller_before_after": "native-zero-groups-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 interchange requires at least one functional group.",
+      "segment_index": 1,
+      "field_path": "FunctionalGroups"
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "empty-group-generated-minimum",
+    "input_values": "native-empty-group-values.json",
+    "caller_before_after": "native-empty-group-values-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "Grouped X12 functional group requires at least one transaction.",
+      "segment_index": 2,
+      "field_path": "FunctionalGroups[0]/Transactions"
+    },
+    "caller_reference_immutability": "Every original group, repeated collection, field instance and scalar remains the same reference/value; missing fields remain missing."
+  },
+  {
+    "label": "shared-group-references-unequal-owners",
+    "input_values": "completion-shared-reference-values.json",
+    "constructor": "SharedReferenceInput.cs.txt",
+    "alias_plan": "shared-reference-alias-plan.proposed.json",
+    "caller_before_after": "completion-shared-reference-caller-before-after-typed-tree.json",
+    "context": "2028-02-29T12:34:56.12+05:30",
+    "expected_values": "completion-shared-reference-expected-values.json",
+    "expected_typed_tree": "completion-shared-reference-expected-typed-tree.json",
+    "expected_wire": "completion-shared-reference-output.x12",
+    "expected_error": null,
+    "caller_reference_immutability": "Every caller reference/value and all eight explicit alias relations must be retained before/after each text/bytes call."
+  },
+  {
+    "label": "shared-group-references-invalid-context-preserves-caller",
+    "input_values": "completion-shared-reference-values.json",
+    "constructor": "SharedReferenceInput.cs.txt",
+    "alias_plan": "shared-reference-alias-plan.proposed.json",
+    "caller_before_after": "completion-shared-reference-caller-before-after-typed-tree.json",
+    "context": "2028-02-30T12:34:56Z",
+    "expected_error": {
+      "type": "FerruleX12Exception",
+      "error": "Envelope",
+      "message": "X12 completion requires a valid supplied current dateTime.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "caller_reference_immutability": "Every caller reference/value and all eight explicit alias relations must be retained after refusal."
+  }
+]

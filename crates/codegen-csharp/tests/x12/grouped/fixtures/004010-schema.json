@@ -1,0 +1,400 @@
+{
+  "name": "Interchange",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "ISA",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "ISA01",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA02",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA03",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA04",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA05",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA06",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA07",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA08",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA09",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA10",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA11",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA12",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "fixed": "00401"
+            },
+            {
+              "name": "ISA13",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA14",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA15",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "ISA16",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "FunctionalGroups",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "GS",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GS01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS05",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GS08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "fixed": "004010"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Transactions",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "ST",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "ST01",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          },
+                          "fixed": "940"
+                        },
+                        {
+                          "name": "ST02",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "N9_1",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "N901",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          },
+                          "fixed": "OP"
+                        },
+                        {
+                          "name": "N902",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "repeating": true
+                  },
+                  {
+                    "name": "N9_2",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "N901",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          },
+                          "fixed": "LI"
+                        },
+                        {
+                          "name": "N902",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "N903",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "Type",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              },
+                              {
+                                "name": "Index",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "int"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "W01",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "W0101",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "float"
+                          }
+                        },
+                        {
+                          "name": "W0102",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "W0103",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "repeating": true
+                  },
+                  {
+                    "name": "SE",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "SE01",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "SE02",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            },
+            {
+              "name": "GE",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GE01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "GE02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "repeating": true
+      },
+      {
+        "name": "IEA",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "IEA01",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "IEA02",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

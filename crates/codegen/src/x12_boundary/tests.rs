@@ -374,6 +374,160 @@ fn source_policy() -> X12BoundaryPolicy {
     }
 }
 
+fn grouped_schema() -> SchemaNode {
+    serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../codegen-csharp/tests/x12/grouped/fixtures/004010-schema.json"
+    )))
+    .unwrap()
+}
+
+#[test]
+fn grouped_envelope_admission_is_explicit_and_keeps_singleton_descriptors() {
+    let explicit_single = X12BoundaryOptions {
+        envelope_profile: X12EnvelopeProfile::SingleTransaction,
+        ..Default::default()
+    };
+    let default = retained_profile(
+        "singleton-default",
+        &schema(),
+        &X12BoundaryOptions::default(),
+        X12BoundarySide::Source,
+    )
+    .unwrap();
+    let explicit = retained_profile(
+        "singleton-explicit",
+        &schema(),
+        &explicit_single,
+        X12BoundarySide::Source,
+    )
+    .unwrap();
+    assert_eq!(default, explicit);
+    let default: serde_json::Value = serde_json::from_str(&default).unwrap();
+    assert!(default.get("envelope_profile").is_none());
+
+    let grouped = X12BoundaryOptions {
+        envelope_profile: X12EnvelopeProfile::GroupedTransactions,
+        ..Default::default()
+    };
+    for (literal, version) in [
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../codegen-csharp/tests/x12/grouped/fixtures/004010-schema.json"
+            )),
+            "004010",
+        ),
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../codegen-csharp/tests/x12/grouped/fixtures/005010-schema.json"
+            )),
+            "005010",
+        ),
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../codegen-csharp/tests/x12/grouped/fixtures/006040-schema.json"
+            )),
+            "006040",
+        ),
+    ] {
+        let candidate: SchemaNode = serde_json::from_str(literal).unwrap();
+        for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
+            let encoded = retained_profile("grouped-version", &candidate, &grouped, side).unwrap();
+            let descriptor: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(descriptor["envelope_profile"], "grouped_transactions");
+            assert_eq!(descriptor["version"], version);
+            let decoded = codegen_schema::decode(
+                descriptor["schema"].as_str().unwrap(),
+                MAX_EMBEDDED_X12_DESCRIPTOR_BYTES,
+            )
+            .unwrap();
+            assert_eq!(decoded, candidate);
+        }
+    }
+    let refused = retained_profile(
+        "grouped-not-inferred",
+        &grouped_schema(),
+        &X12BoundaryOptions::default(),
+        X12BoundarySide::Source,
+    );
+    assert!(matches!(
+        refused,
+        Err(X12BoundaryPolicyError::Schema { side: X12BoundarySide::Source, path, reason:
+            "envelope segments cannot repeat or occur in repeating loops" })
+            if path == ["FunctionalGroups", "GS"]
+    ));
+    let captured = retained_capture("grouping-not-inferred", &FormatOptions::default()).unwrap();
+    assert_eq!(
+        captured.envelope_profile,
+        X12EnvelopeProfile::SingleTransaction
+    );
+}
+
+#[test]
+fn grouped_grammar_requires_every_declared_owner_before_completion() {
+    let options = X12BoundaryOptions {
+        envelope_profile: X12EnvelopeProfile::GroupedTransactions,
+        autocomplete: Some(X12Autocomplete {
+            request_acknowledgement: false,
+            transaction_set: None,
+        }),
+        ..Default::default()
+    };
+    for path in [
+        vec!["FunctionalGroups", "Transactions", "SE"],
+        vec!["FunctionalGroups", "GE"],
+        vec!["IEA"],
+    ] {
+        let mut candidate = grouped_schema();
+        let mut owner = &mut candidate;
+        for name in &path[..path.len() - 1] {
+            owner = owner.child_mut(name).unwrap();
+        }
+        let SchemaKind::Group { children, .. } = &mut owner.kind else {
+            panic!("grouped test owner must be a group");
+        };
+        children.retain(|child| child.name != path[path.len() - 1]);
+        let result = retained_profile(
+            "grouped-missing-owner",
+            &candidate,
+            &options,
+            X12BoundarySide::Target,
+        );
+        assert!(matches!(
+            result,
+            Err(X12BoundaryPolicyError::Schema { side: X12BoundarySide::Target, path: actual,
+                reason: "grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners" })
+                if actual == path
+        ));
+    }
+    for path in [
+        vec!["FunctionalGroups"],
+        vec!["FunctionalGroups", "Transactions"],
+    ] {
+        let mut candidate = grouped_schema();
+        let mut owner = &mut candidate;
+        for name in &path {
+            owner = owner.child_mut(name).unwrap();
+        }
+        owner.repeating = false;
+        let result = retained_profile(
+            "grouped-singular-owner",
+            &candidate,
+            &options,
+            X12BoundarySide::Target,
+        );
+        assert!(matches!(
+            result,
+            Err(X12BoundaryPolicyError::Schema { side: X12BoundarySide::Target, path: actual,
+                reason: "grouped X12 owners must be non-segment repeating containers" })
+                if actual == path
+        ));
+    }
+}
+
 #[test]
 fn constructed_ir_is_bounded_before_recursive_validation_or_metadata_copies() {
     let discard_iteratively = |schema: SchemaNode| {

@@ -1,4 +1,4 @@
-//! Admission for explicitly selected, single-envelope generated X12 companions.
+//! Admission for explicitly selected generated X12 envelope companions.
 //! Ordinary typed and JSON generation does not select this profile.
 
 use std::collections::BTreeSet;
@@ -16,11 +16,21 @@ pub const MAX_EMBEDDED_X12_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
 
+/// Declared ownership grammar for one complete X12 interchange.
+/// Grouped ownership is explicit; saved schemas and format options do not infer it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum X12EnvelopeProfile {
+    #[default]
+    SingleTransaction,
+    GroupedTransactions,
+}
+
 /// One explicitly selected raw X12 side. Missing separators mean ISA discovery
 /// on input and `*`, `:`, `~` on output, with `^` repetition for modern
 /// profiles. Completion is explicitly selected.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct X12BoundaryOptions {
+    pub envelope_profile: X12EnvelopeProfile,
     /// Explicit five-digit ISA12 metadata, when retained by the source design.
     /// The fixed ISA12/GS08 schema pair always determines the selected profile.
     pub interchange_version: Option<String>,
@@ -69,6 +79,7 @@ impl X12BoundaryOptions {
             return Err(X12BoundaryPolicyError::FormatOptions);
         }
         let result = Self {
+            envelope_profile: X12EnvelopeProfile::default(),
             interchange_version: options.x12_interchange_version.clone(),
             separators: options.x12_separators,
             constraints: options.edi_value_constraints.clone(),
@@ -374,7 +385,7 @@ pub(crate) fn descriptor(
         }
         encoded
     });
-    let encoded = serde_json::json!({
+    let mut encoded = serde_json::json!({
         "version": version.expect("selected X12 schema has a proved version"),
         "schema": schema_descriptor,
         "separators": separators,
@@ -383,8 +394,11 @@ pub(crate) fn descriptor(
         "implied_decimals": options.implied_decimals,
         "lexical_formats": options.lexical_formats,
         "autocomplete": options.autocomplete,
-    })
-    .to_string();
+    });
+    if options.envelope_profile == X12EnvelopeProfile::GroupedTransactions {
+        encoded["envelope_profile"] = serde_json::json!("grouped_transactions");
+    }
+    let encoded = encoded.to_string();
     if encoded.len() > MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
         return Err(X12BoundaryPolicyError::Descriptor {
             side,
@@ -438,6 +452,9 @@ fn validate_schema(
             "a singular root container is required",
         ));
     }
+    if options.envelope_profile == X12EnvelopeProfile::GroupedTransactions {
+        validate_grouped_grammar(schema, side)?;
+    }
     let mut nodes = 0;
     let mut envelopes = Vec::new();
     visit_schema(
@@ -448,6 +465,7 @@ fn validate_schema(
         &mut nodes,
         false,
         true,
+        options.envelope_profile,
         &mut envelopes,
     )?;
     let expected = [
@@ -601,6 +619,83 @@ fn validate_schema(
     Ok(version)
 }
 
+fn validate_grouped_grammar(
+    schema: &SchemaNode,
+    side: X12BoundarySide,
+) -> Result<(), X12BoundaryPolicyError> {
+    const OWNERS: &str = "grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners";
+    fn children(node: &SchemaNode) -> Option<&[SchemaNode]> {
+        match &node.kind {
+            SchemaKind::Group { children, .. } => Some(children.as_slice()),
+            _ => None,
+        }
+    }
+    let required_segment = |nodes: &[SchemaNode], id: &str, owner: &[String]| {
+        if nodes
+            .iter()
+            .filter(|node| segment_id(&node.name) == Some(id))
+            .count()
+            != 1
+        {
+            let mut path = owner.to_vec();
+            path.push(id.to_owned());
+            return Err(schema_error(side, &path, OWNERS));
+        }
+        Ok(())
+    };
+    let root = children(schema).ok_or_else(|| schema_error(side, &[], OWNERS))?;
+    for id in ["ISA", "IEA"] {
+        required_segment(root, id, &[])?;
+    }
+    if root.len() != 3
+        || segment_id(&root[0].name) != Some("ISA")
+        || segment_id(&root[2].name) != Some("IEA")
+    {
+        return Err(schema_error(side, &[], OWNERS));
+    }
+    let group = &root[1];
+    let group_path = vec![group.name.clone()];
+    if !group.repeating || segment_id(&group.name).is_some() {
+        return Err(schema_error(
+            side,
+            &group_path,
+            "grouped X12 owners must be non-segment repeating containers",
+        ));
+    }
+    let group_children = children(group).ok_or_else(|| schema_error(side, &group_path, OWNERS))?;
+    for id in ["GS", "GE"] {
+        required_segment(group_children, id, &group_path)?;
+    }
+    if group_children.len() != 3
+        || segment_id(&group_children[0].name) != Some("GS")
+        || segment_id(&group_children[2].name) != Some("GE")
+    {
+        return Err(schema_error(side, &group_path, OWNERS));
+    }
+    let transaction = &group_children[1];
+    let mut transaction_path = group_path;
+    transaction_path.push(transaction.name.clone());
+    if !transaction.repeating || segment_id(&transaction.name).is_some() {
+        return Err(schema_error(
+            side,
+            &transaction_path,
+            "grouped X12 owners must be non-segment repeating containers",
+        ));
+    }
+    let transaction_children =
+        children(transaction).ok_or_else(|| schema_error(side, &transaction_path, OWNERS))?;
+    for id in ["ST", "SE"] {
+        required_segment(transaction_children, id, &transaction_path)?;
+    }
+    if transaction_children.len() < 2
+        || segment_id(&transaction_children[0].name) != Some("ST")
+        || segment_id(&transaction_children[transaction_children.len() - 1].name) != Some("SE")
+    {
+        return Err(schema_error(side, &transaction_path, OWNERS));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn visit_schema<'a>(
     node: &'a SchemaNode,
@@ -610,6 +705,7 @@ fn visit_schema<'a>(
     nodes: &mut usize,
     repeated_ancestor: bool,
     root: bool,
+    envelope_profile: X12EnvelopeProfile,
     envelopes: &mut Vec<(&'a str, &'a SchemaNode, Vec<String>)>,
 ) -> Result<(), X12BoundaryPolicyError> {
     *nodes += 1;
@@ -650,7 +746,9 @@ fn visit_schema<'a>(
             ));
         }
         if ["ISA", "GS", "ST", "SE", "GE", "IEA"].contains(&id) {
-            if repeated_ancestor || node.repeating {
+            if node.repeating
+                || repeated_ancestor && envelope_profile == X12EnvelopeProfile::SingleTransaction
+            {
                 return Err(schema_error(
                     side,
                     path,
@@ -675,6 +773,7 @@ fn visit_schema<'a>(
                 nodes,
                 repeated_ancestor || node.repeating,
                 false,
+                envelope_profile,
                 envelopes,
             )?;
             path.pop();
