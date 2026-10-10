@@ -1441,7 +1441,7 @@
       },
       "error": {
         "name": "Choice",
-        "reason": "scalar composition cannot preserve `not` validation"
+        "reason": "`not` validation is not supported"
       }
     },
     {
