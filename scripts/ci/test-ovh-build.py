@@ -18,7 +18,7 @@ GUARD = Path(__file__).with_name("guard-ovh-job.sh")
 class ResourceGuardTests(unittest.TestCase):
     def run_guard(self, *, free_kib="16777216", user="ferrule-runner",
                   runner="self-hosted", home="/home/ferrule-runner",
-                  symlink="", env_file=True):
+                  symlink="", env_file=True, suite="native", gnu_timeout=True):
         with tempfile.TemporaryDirectory(prefix="ferrule-ci-guard-") as tmp:
             root = Path(tmp)
             tools = root / "bin"
@@ -38,6 +38,7 @@ class ResourceGuardTests(unittest.TestCase):
                 "cc": "exit 0",
                 "pkg-config": "exit 0",
                 "sccache": "exit 0",
+                "gnutimeout": 'printf "%s\\n" "$FIXTURE_TIMEOUT_VERSION"',
             }
             for name, body in commands.items():
                 tool = tools / name
@@ -54,6 +55,9 @@ class ResourceGuardTests(unittest.TestCase):
                 "FIXTURE_USER": user,
                 "FIXTURE_FREE_KIB": free_kib,
                 "FIXTURE_SYMLINK": symlink,
+                "FERRULE_CI_SUITE": suite,
+                "FIXTURE_TIMEOUT_VERSION": ("timeout (GNU coreutils) 9.7"
+                                            if gnu_timeout else "timeout (uutils)"),
             }
             result = subprocess.run(["bash", str(SCRIPT)], env=environment,
                                     text=True, capture_output=True, check=False)
@@ -75,6 +79,16 @@ class ResourceGuardTests(unittest.TestCase):
             with self.subTest(free_kib=capacity):
                 self.assert_refused(free_kib=capacity)
 
+    def test_codegen_reserves_eight_gib_and_rejects_unknown_profiles(self):
+        self.assert_refused(suite="codegen", free_kib="8388607")
+        result, output = self.run_guard(suite="codegen", free_kib="8388608")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CARGO_BUILD_JOBS=1\n", output)
+        self.assert_refused(suite="unknown")
+
+    def test_non_gnu_timeout_is_refused(self):
+        self.assert_refused(gnu_timeout=False)
+
     def test_symlinked_cache_paths(self):
         for suffix in ("", "/workspace-target", "/generated-host-target", "/compiler"):
             with self.subTest(suffix=suffix):
@@ -84,7 +98,11 @@ class ResourceGuardTests(unittest.TestCase):
     def test_minimum_capacity_publishes_isolated_bounded_caches(self):
         result, output = self.run_guard()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(dict(line.split("=", 1) for line in output.splitlines()), {
+        settings = dict(line.split("=", 1) for line in output.splitlines())
+        timeout = Path(settings.pop("FERRULE_CODEGEN_GNU_TIMEOUT"))
+        self.assertTrue(timeout.is_absolute())
+        self.assertEqual(timeout.name, "gnutimeout")
+        self.assertEqual(settings, {
             "CARGO_TARGET_DIR": "/home/ferrule-runner/ci-cache/workspace-target",
             "FERRULE_CODEGEN_HOST_TARGET_DIR": "/home/ferrule-runner/ci-cache/generated-host-target",
             "DOTNET_INSTALL_DIR": "/home/ferrule-runner/.dotnet",

@@ -71,10 +71,14 @@ check_runner_paths "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet" 
 
 apt-get update
 NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  build-essential pkg-config git curl ca-certificates unzip python3 \
+  build-essential pkg-config git curl ca-certificates unzip python3 time \
   libssl-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev \
   libgl1-mesa-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev \
   libicu-dev xvfb xauth
+# Ubuntu 26.04 ships GNU binaries under prefixed names alongside uutils.
+if apt-cache show gnu-coreutils >/dev/null 2>&1; then
+  NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnu-coreutils
+fi
 
 install -d -o "$runner_user" -g "$runner_user" -m 700 \
   "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet" "$runner_home/ci-tmp"

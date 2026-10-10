@@ -49,9 +49,15 @@ files reached 2.6 GiB and caused memory-pressure stalls in the first run.
 Private `/tmp` remains enabled for programs that ignore `TMPDIR`.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
-paths, or less than 16 GiB free. The first native build used approximately
+paths, or less than 16 GiB free for native CI and 8 GiB for codegen CI.
+The first native build used approximately
 13 GiB, mostly workspace test executables. It checks Xvfb and native build prerequisites
 before toolchain setup. Build outputs persist outside the cleaned checkout:
+
+The XML process-custody tests receive the resolved GNU timeout path through
+`FERRULE_CODEGEN_GNU_TIMEOUT`. Ubuntu 26.04 provides `/usr/bin/gnutimeout`
+alongside its default uutils symlink. This keeps the actual executable's identity
+checks and bounded process commands consistent without changing system defaults.
 
 - `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds. After a
   successful job, `cargo clean --workspace` removes workspace outputs while
@@ -103,7 +109,8 @@ installer refuses an active Ferrule service; stop it only after the runner is
 idle before reprovisioning. An existing registration is retained. If replacing
 the machine, remove its old registration through GitHub's runner settings
 first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`. Builds require
-16 GiB free after provisioning, even though installation itself requires less.
+16 GiB free for native CI and 8 GiB for codegen after provisioning, even though
+installation itself requires less.
 
 ## Check and maintain
 
