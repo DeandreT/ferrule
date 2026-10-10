@@ -27,6 +27,17 @@ may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
 
+Each physical MFD input connector may have one distinct source feed. The
+importer checks modern graph edges and legacy connections before lowering;
+identical records are idempotent. Distinct sources on one input produce a
+deterministic diagnostic and every feed to that input is skipped in the
+repair-oriented project. Executable import refuses that diagnostic before
+publishing a destination. Function definitions and pipeline imports refuse
+conflicted physical inputs rather than choosing an expression or a default.
+Source fan-out and separately declared target occurrences retain their own
+cardinality and ordering rules; competing bindings to a singular target remain
+subject to executable validation.
+
 For a mapping package whose resources sit above or beside the design directory,
 declare the trusted package root:
 

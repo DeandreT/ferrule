@@ -7,7 +7,7 @@ use mapping::{
 };
 
 use super::function::read as read_function;
-use super::graph::{GraphBuilder, read_edges};
+use super::graph::{GraphBuilder, read_edge_inputs, read_edges};
 use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
 use crate::resource::ResourceResolver;
 
@@ -317,6 +317,18 @@ impl Registry {
                 key.1, key.0
             ));
         };
+
+        if let Some(structure) = component
+            .children()
+            .find(|node| node.has_tag_name("structure"))
+        {
+            let conflicts = read_edge_inputs(&structure, Some(&component)).conflicts;
+            if !conflicts.is_empty() {
+                let reason = conflicts.join("; ");
+                self.unsupported.insert(key.clone(), reason.clone());
+                return Err(reason);
+            }
+        }
 
         active.push(key.clone());
         let nested = nested_definition_keys(component);
@@ -1509,6 +1521,57 @@ mod tests {
     use super::{
         Call, Definition, MAX_NESTED_UDF_DEPTH, OutputExpr, Registry, ScalarExpr, instantiate,
     };
+
+    #[test]
+    fn physical_input_guard_rejects_output_and_unused_default_conflicts() {
+        for (xml, expected) in [
+            (
+                include_str!("../../../tests/fixtures/input_guard/udf-output-conflict.mfd"),
+                "input port 1010 has conflicting source feeds [1000, 1001, 1002]; all feeds to this input were skipped",
+            ),
+            (
+                include_str!("../../../tests/fixtures/input_guard/udf-default-conflict.mfd"),
+                "input port 1003 has conflicting source feeds [1001, 1002]; all feeds to this input were skipped",
+            ),
+        ] {
+            let doc = Document::parse(xml).unwrap();
+            let registry = Registry::read(
+                &doc.root_element(),
+                std::path::Path::new("design.mfd"),
+                &mut Vec::new(),
+            );
+            assert_eq!(registry.supported("helpers", "Echo"), None);
+            assert_eq!(
+                registry.unsupported_reason("helpers", "Echo"),
+                Some(expected)
+            );
+            assert!(registry.user_functions().is_empty());
+        }
+        let clean = Document::parse(include_str!(
+            "../../../tests/fixtures/input_guard/udf-clean.mfd"
+        ))
+        .unwrap();
+        let duplicate = Document::parse(include_str!(
+            "../../../tests/fixtures/input_guard/udf-same-source.mfd"
+        ))
+        .unwrap();
+        let clean = Registry::read(
+            &clean.root_element(),
+            std::path::Path::new("design.mfd"),
+            &mut Vec::new(),
+        );
+        let duplicate = Registry::read(
+            &duplicate.root_element(),
+            std::path::Path::new("design.mfd"),
+            &mut Vec::new(),
+        );
+        assert_eq!(clean.supported("helpers", "Echo"), Some(0));
+        assert_eq!(
+            serde_json::to_value(clean.user_functions()).unwrap(),
+            serde_json::to_value(duplicate.user_functions()).unwrap()
+        );
+        assert!(!clean.user_functions().is_empty());
+    }
 
     #[test]
     fn omitted_scalar_parameter_expands_to_null() {
