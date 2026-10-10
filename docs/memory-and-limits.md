@@ -57,6 +57,11 @@ error ordering, and additional schema/format limits.
 | Literal, fixed-length, regex, and integer-range generated sequences | At most 1,000,000 generated items; regex has additional pattern and compiled-program bounds |
 | PDF extraction input | 8 MiB before reading; event/node/value/depth caps apply later, and do not isolate upstream decompression or recursive content traversal |
 
+The [PDF worker contract](pdf-worker-contract.md) is a proposed filesystem host
+route for #104. Its Linux child, transport limits, deadline, cancellation and
+owned cleanup require implementation and qualification. Current PDF library and
+payload calls remain in-process; no worker or RSS ceiling is claimed here.
+
 See [Project files](project-files.md), [Supported formats](formats.md),
 [Code generation](code-generation.md), and the
 [payload API](../README.md#quick-start) for the full boundary contracts.
