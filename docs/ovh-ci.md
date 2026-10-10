@@ -22,7 +22,12 @@ A root-owned pre-job hook at `/opt/ferrule-runner-tools/guard-ovh-job.sh`
 independently admits only Ferrule main pushes, repository-branch manual runs,
 and same-repository pull requests. It rejects fork events even if their workflow
 edits request the runner label directly. The service account cannot change
-this hook. Job-hook failures stop execution before checkout/action steps.
+this hook. On rejection it aborts its parent job worker before checkout/action
+steps, so even a workflow's `always()` steps cannot continue. An ordinary hook
+exit is insufficient for that boundary: the runner's
+[step condition handling](https://github.com/actions/runner/blob/v2.337.0/src/Runner.Worker/StepsRunner.cs)
+can continue after a failed step. Direct administrator/test invocations return
+failure without signaling their caller.
 
 Service startup checks archive creation/extraction and Xvfb under the actual
 service restrictions. Ubuntu 26.04's tar needs `openat2`; the service leaves
@@ -89,7 +94,7 @@ first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`.
 ```sh
 ssh ovh 'sudo systemctl status ferrule-actions-runner.service --no-pager'
 ssh ovh 'sudo journalctl -u ferrule-actions-runner.service -n 100 --no-pager'
-ssh ovh 'df -h /home; sudo du -sh /home/ferrule-runner/ci-cache/*'
+ssh ovh 'df -h /home; sudo du -h -d 1 /home/ferrule-runner/ci-cache'
 gh workflow run ci.yml --repo DeandreT/ferrule
 gh workflow run codegen.yml --repo DeandreT/ferrule
 ```

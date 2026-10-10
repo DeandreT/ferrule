@@ -6,7 +6,19 @@ set -euo pipefail
 exec /usr/bin/python3 -I - <<'PY'
 import json
 import os
+import signal
 import sys
+
+
+def abort_rejected_worker():
+    # An ordinary hook failure does not prevent a workflow's always() steps.
+    # Only abort the actual job worker, never an administrator/test caller.
+    parent = os.getppid()
+    executable = os.path.realpath(f"/proc/{parent}/exe")
+    worker = os.path.realpath("/home/ferrule-runner/actions-runner/bin/Runner.Worker")
+    if executable == worker:
+        os.kill(parent, signal.SIGKILL)
+
 
 repository = "DeandreT/ferrule"
 try:
@@ -29,7 +41,8 @@ try:
     else:
         raise ValueError("event type is not admitted on OVH")
 except (OSError, KeyError, ValueError, AttributeError, TypeError) as error:
-    print(f"OVH job refused: {error}", file=sys.stderr)
+    print(f"OVH job refused: {error}", file=sys.stderr, flush=True)
+    abort_rejected_worker()
     sys.exit(1)
 print("OVH job admitted for a trusted Ferrule repository event.")
 PY

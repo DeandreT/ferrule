@@ -2,10 +2,13 @@
 """Exercise the resource guard without changing host paths or disk allocation."""
 import os
 import json
+import ast
+import signal
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 
 SCRIPT = Path(__file__).with_name("prepare-ovh-build.sh")
@@ -147,6 +150,27 @@ class JobAdmissionTests(unittest.TestCase):
             "ref": "refs/heads/feature"}).returncode, 0)
         self.assertNotEqual(self.run_guard("workflow_dispatch", payload,
                                          GITHUB_REF="refs/tags/v1").returncode, 0)
+
+    def test_rejection_aborts_only_the_job_worker(self):
+        # Exercise the production signal boundary without signaling live PIDs.
+        code = GUARD.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        tree = ast.parse(code)
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == "abort_rejected_worker")
+        module = ast.Module(body=[function], type_ignores=[])
+        worker = "/home/ferrule-runner/actions-runner/bin/Runner.Worker"
+        for executable in (worker, "/usr/bin/python3", "/usr/bin/bash"):
+            with self.subTest(executable=executable):
+                process = Mock()
+                process.getppid.return_value = 12345
+                process.path.realpath.side_effect = [executable, worker]
+                namespace = {"os": process, "signal": signal}
+                exec(compile(module, str(GUARD), "exec"), namespace)
+                namespace["abort_rejected_worker"]()
+                if executable == worker:
+                    process.kill.assert_called_once_with(12345, signal.SIGKILL)
+                else:
+                    process.kill.assert_not_called()
 
 
 if __name__ == "__main__":
