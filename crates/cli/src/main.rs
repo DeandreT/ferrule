@@ -181,6 +181,9 @@ enum Command {
         /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
         static_document_adapters: bool,
+        /// Include all-row flat CSV input and singular X12 C# output methods.
+        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters"])]
+        csv_x12_adapters: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -647,7 +650,11 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             x12_source_envelope_profile,
             x12_target_envelope_profile,
             static_document_adapters,
+            csv_x12_adapters,
         } => {
+            if csv_x12_adapters && matches!(language, CodegenLanguage::Rust) {
+                bail!("--csv-x12-adapters requires --language csharp");
+            }
             if static_document_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--static-document-adapters currently requires --language csharp");
             }
@@ -667,7 +674,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if static_document_adapters {
+            let outcome = if csv_x12_adapters {
+                cli::generate_project_with_csv_x12_adapters(&project, &out, target)?
+            } else if static_document_adapters {
                 cli::generate_project_with_static_document_adapters(&project, &out, target)?
             } else if x12_adapters {
                 cli::generate_project_with_x12_envelope_profiles(
@@ -1002,6 +1011,73 @@ mod static_document_flag_tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "--static-document-adapters currently requires --language csharp"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
+}
+
+#[cfg(test)]
+mod csv_x12_flag_tests {
+    use super::*;
+
+    #[test]
+    fn csv_x12_flag_conflicts_before_project_loading() {
+        for option in [
+            "--csv-output",
+            "--json5-adapters",
+            "--x12-adapters",
+            "--static-document-adapters",
+        ] {
+            let args = [
+                "ferrule",
+                "generate",
+                "--project",
+                "absent.json",
+                "--language",
+                "csharp",
+                "--out",
+                "absent-output",
+                "--csv-x12-adapters",
+                option,
+            ];
+            let result = Cli::try_parse_from(args);
+            let error = result
+                .err()
+                .expect("mutually exclusive adapters were admitted");
+            eprintln!("arguments={args:?}; full original clap error={error}");
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[test]
+    fn csv_x12_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-csv-x12-flag-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let output = root.join("absent-parent/output");
+        let args = vec![
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            root.join("absent-project.json").into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--csv-x12-adapters"),
+        ];
+        std::fs::write(root.join("ARGUMENTS.original.txt"), format!("{args:#?}")).unwrap();
+        let result = execute(Cli::try_parse_from(args).unwrap());
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--csv-x12-adapters requires --language csharp"
         );
         assert!(!output.parent().unwrap().exists());
     }

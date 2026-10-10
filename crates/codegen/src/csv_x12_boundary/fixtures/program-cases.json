@@ -1,0 +1,135 @@
+[
+  {
+    "id": "all-row-body-loop",
+    "project": "all-row-project.json",
+    "expected": "accept complete ordered source[] row collection, ordinary construction and singular envelope"
+  },
+  {
+    "id": "constant-envelope",
+    "project": "constant-envelope-project.json",
+    "expected": "accept all five source fields even when unused"
+  },
+  {
+    "id": "refuse-xml_boundary",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": "xml_boundary",
+    "expected_error": {
+      "variant": "ProgramField",
+      "field": "xml_boundary"
+    }
+  },
+  {
+    "id": "refuse-extra_sources",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": "extra_sources",
+    "expected_error": {
+      "variant": "ProgramField",
+      "field": "extra_sources"
+    }
+  },
+  {
+    "id": "refuse-extra_targets",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": "extra_targets",
+    "expected_error": {
+      "variant": "ProgramField",
+      "field": "extra_targets"
+    }
+  },
+  {
+    "id": "refuse-primary_output",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": "primary_output",
+    "expected_error": {
+      "variant": "ProgramField",
+      "field": "primary_output"
+    }
+  },
+  {
+    "id": "refuse-dynamic_target",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": "dynamic_target",
+    "expected_error": {
+      "variant": "ProgramField",
+      "field": "dynamic_target"
+    }
+  },
+  {
+    "id": "deep-target-before-invalid-expression",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": {
+      "target": {
+        "nested_group_depth": 65
+      },
+      "expression": {
+        "node": 999,
+        "missing_dependency": 998
+      }
+    },
+    "expected_error": {
+      "variant": "TargetX12",
+      "cause": {
+        "variant": "Schema",
+        "side": "Target",
+        "path": [],
+        "reason": "schema depth or node limit exceeded"
+      }
+    }
+  },
+  {
+    "id": "wide-target-before-invalid-expression",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": {
+      "target": {
+        "root_child_count": 10000
+      },
+      "expression": {
+        "node": 999,
+        "missing_dependency": 998
+      }
+    },
+    "expected_error": {
+      "variant": "TargetX12",
+      "cause": {
+        "variant": "Schema",
+        "side": "Target",
+        "path": [],
+        "reason": "schema depth or node limit exceeded"
+      }
+    }
+  },
+  {
+    "id": "source-shape-before-invalid-expression",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": {
+      "source": "schemas/nested-column.json",
+      "expression": {
+        "node": 999,
+        "missing_dependency": 998
+      }
+    },
+    "expected_error": {
+      "variant": "SourceSchema",
+      "field": 0,
+      "reason": "each column must have one non-repeating scalar type"
+    }
+  },
+  {
+    "id": "ordinary-validation-cause",
+    "template": "constant-envelope-project.json",
+    "direct_program_mutation": {
+      "expression": {
+        "node": 999,
+        "missing_dependency": 998
+      }
+    },
+    "expected_error": {
+      "variant": "Validation",
+      "cause": {
+        "variant": "MissingDependency",
+        "node": 999,
+        "dependency": 998
+      }
+    }
+  }
+]

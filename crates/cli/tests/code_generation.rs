@@ -20,6 +20,8 @@ mod collection_find;
 mod copy_current_source;
 #[path = "code_generation/csv_output.rs"]
 mod csv_output;
+#[path = "code_generation/csv_x12_adapters.rs"]
+mod csv_x12_adapters;
 #[path = "code_generation/disconnected_inputs.rs"]
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]

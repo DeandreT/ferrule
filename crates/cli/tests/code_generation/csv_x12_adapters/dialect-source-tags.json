@@ -1,0 +1,50 @@
+{
+  "kind": "Repeated",
+  "items": [
+    {
+      "kind": "Group",
+      "xml_type_origin": {
+        "kind": "Unknown",
+        "identity": null,
+        "literal": null
+      },
+      "fields": [
+        {
+          "name": "Label",
+          "value": {
+            "kind": "String",
+            "value": "ROW|A"
+          }
+        },
+        {
+          "name": "Count",
+          "value": {
+            "kind": "Int",
+            "value": 3
+          }
+        },
+        {
+          "name": "Ratio",
+          "value": {
+            "kind": "Float",
+            "bits": "3ff0000000000000"
+          }
+        },
+        {
+          "name": "Enabled",
+          "value": {
+            "kind": "Bool",
+            "value": false
+          }
+        },
+        {
+          "name": "Tail",
+          "value": {
+            "kind": "String",
+            "value": ""
+          }
+        }
+      ]
+    }
+  ]
+}
