@@ -332,8 +332,8 @@
           "string",
           "number"
         ],
-        "minimum": 0.0,
-        "exclusiveMaximum": 9.223372036854776e+18
+        "minimum": 0,
+        "exclusiveMaximum": 9223372036854775808
       },
       "probes": [
         {
@@ -481,7 +481,7 @@
           }
         ]
       },
-      "error": "numeric bound must be a supported finite number"
+      "error": "`minimum` must be a number"
     },
     {
       "id": "correlated-range-multiple",
@@ -1943,7 +1943,7 @@
       "exported": {
         "title": "Boundary",
         "type": "number",
-        "minimum": -2.0,
+        "minimum": -2,
         "exclusiveMaximum": 3.5
       }
     },

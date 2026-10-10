@@ -219,9 +219,24 @@ fn string_float_interval_complete_native_and_round_trip_oracles() -> TestResult<
     }
     let integer = Instance::Scalar(Value::Int(2));
     let integer_output = to_string(&schema, &integer);
-    evidence.record("INT-TO-FLOAT-OUTPUT", &(&integer, &integer_output))?;
-    if !matches!(integer_output, Ok(ref text) if text == "2.0\n") {
-        mismatches.push("exact typed Int output must normalize to Float".into());
+    let integer_readback = integer_output
+        .as_ref()
+        .ok()
+        .map(|text| from_str(text, &schema));
+    let expected_readback = Instance::Scalar(Value::Float(2.0));
+    evidence.record(
+        "INT-TO-FLOAT-OUTPUT",
+        &(
+            &integer,
+            &integer_output,
+            &expected_readback,
+            &integer_readback,
+        ),
+    )?;
+    if !matches!(integer_output, Ok(ref text) if text == "2\n")
+        || !matches!(integer_readback, Some(Ok(ref actual)) if actual == &expected_readback)
+    {
+        mismatches.push("exact typed Int output wire and Float readback differ".into());
     }
     for row in corpus["direct_cases"].as_array().ok_or("direct rows")? {
         let imported = json_schema::import_str(&row["schema"].to_string());
