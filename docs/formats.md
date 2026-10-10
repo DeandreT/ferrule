@@ -69,6 +69,17 @@ layout and dialect details that an extension cannot express.
   compositions, heterogeneous scalar type arrays, exact scalar
   `anyOf` unions, pairwise-disjoint scalar `oneOf`, and identical or
   scalar-domain-subsumed array `anyOf` branches, including local references.
+  Admitted scalar `anyOf` and `oneOf` compositions may carry a redundant
+  `type` sibling. The declaration must be a standard type name or a nonempty
+  array of distinct standard names, and must contain the complete retained
+  scalar domain, including JSON null. `number` contains integer values;
+  `integer` does not contain an unbounded finite-number domain. Finite
+  `const`/`enum` compositions prove containment after exclusive-branch
+  filtering, using mathematical JSON integer semantics for integral values.
+  Broader type declarations do not widen the branch domain. Nullable scalar
+  wrappers prove containment after null-overlap normalization. Restrictive
+  intersections and type siblings on structured nullable or modern `$ref`
+  compositions retain their existing refusal contracts.
   File and in-memory imports share a 64-hop reference-depth limit, a 64-edge
   schema-materialization nesting limit, and a 100,000-step parsing budget.
   Excess returns a typed resource-limit error before stack exhaustion. The

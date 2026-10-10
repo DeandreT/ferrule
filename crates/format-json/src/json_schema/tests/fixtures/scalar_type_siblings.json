@@ -1,0 +1,1538 @@
+{
+  "contract": "Outer type is admitted only when a syntactically valid standard type domain contains the complete scalar composition domain. Finite oneOf filters exact overlaps before subset proof. Broader types never widen imported values. Unsupported intersections and other siblings remain errors.",
+  "fixtures": [
+    {
+      "id": "any",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"green\"",
+          "expected": {
+            "kind": "string",
+            "value": "green"
+          },
+          "output": "\"green\"\n"
+        },
+        {
+          "input": "true",
+          "expected": {
+            "kind": "bool",
+            "value": true
+          },
+          "output": "true\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        },
+        {
+          "input": "null",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "null"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "one",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"violet\"",
+          "expected": {
+            "kind": "string",
+            "value": "violet"
+          },
+          "output": "\"violet\"\n"
+        },
+        {
+          "input": "false",
+          "expected": {
+            "kind": "bool",
+            "value": false
+          },
+          "output": "false\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "nullable",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "nullable": true
+      },
+      "cases": [
+        {
+          "input": "\"maybe\"",
+          "expected": {
+            "kind": "string",
+            "value": "maybe"
+          },
+          "output": "\"maybe\"\n"
+        },
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "true",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "string",
+            "got": "bool"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "nullable_many",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        },
+        "nullable": true
+      },
+      "cases": [
+        {
+          "input": "\"item\"",
+          "expected": {
+            "kind": "string",
+            "value": "item"
+          },
+          "output": "\"item\"\n"
+        },
+        {
+          "input": "true",
+          "expected": {
+            "kind": "bool",
+            "value": true
+          },
+          "output": "true\n"
+        },
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "nullable_one",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        },
+        "nullable": true
+      },
+      "cases": [
+        {
+          "input": "false",
+          "expected": {
+            "kind": "bool",
+            "value": false
+          },
+          "output": "false\n"
+        },
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "broader",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "integer",
+          "number",
+          "object",
+          "array",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"broad\"",
+          "expected": {
+            "kind": "string",
+            "value": "broad"
+          },
+          "output": "\"broad\"\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        },
+        {
+          "input": "null",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "null"
+          }
+        },
+        {
+          "input": "[]",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "array"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "integer_number",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "int"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"id\"",
+          "expected": {
+            "kind": "string",
+            "value": "id"
+          },
+          "output": "\"id\"\n"
+        },
+        {
+          "input": "23",
+          "expected": {
+            "kind": "int",
+            "value": 23
+          },
+          "output": "23\n"
+        },
+        {
+          "input": "3.25",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "float_number",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "number"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "float"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"ratio\"",
+          "expected": {
+            "kind": "string",
+            "value": "ratio"
+          },
+          "output": "\"ratio\"\n"
+        },
+        {
+          "input": "3.25",
+          "expected": {
+            "kind": "float",
+            "value": 3.25
+          },
+          "output": "3.25\n"
+        },
+        {
+          "input": "false",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "bool"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "constrained",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 4
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        },
+        "string_length_range": {
+          "minimum": 2,
+          "maximum": 4
+        }
+      },
+      "cases": [
+        {
+          "input": "\"ab\"",
+          "expected": {
+            "kind": "string",
+            "value": "ab"
+          },
+          "output": "\"ab\"\n"
+        },
+        {
+          "input": "true",
+          "expected": {
+            "kind": "bool",
+            "value": true
+          },
+          "output": "true\n"
+        },
+        {
+          "input": "\"a\"",
+          "error": {
+            "category": "string_length",
+            "name": "Choice",
+            "range": "between 2 and 4 Unicode scalar values",
+            "got": 1
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "finite",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "enum": [
+              "amber",
+              "blue"
+            ]
+          },
+          {
+            "const": true
+          },
+          {
+            "const": null
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        },
+        "nullable": true,
+        "json_allowed_values": [
+          {
+            "type": "json_null"
+          },
+          {
+            "type": "bool",
+            "value": true
+          },
+          {
+            "type": "string",
+            "value": "amber"
+          },
+          {
+            "type": "string",
+            "value": "blue"
+          }
+        ]
+      },
+      "cases": [
+        {
+          "input": "\"amber\"",
+          "expected": {
+            "kind": "string",
+            "value": "amber"
+          },
+          "output": "\"amber\"\n"
+        },
+        {
+          "input": "true",
+          "expected": {
+            "kind": "bool",
+            "value": true
+          },
+          "output": "true\n"
+        },
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "false",
+          "error": {
+            "category": "allowed",
+            "name": "Choice",
+            "got": "Bool(false)"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "finite_one",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "oneOf": [
+          {
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          {
+            "enum": [
+              "b",
+              "c"
+            ]
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "json_allowed_values": [
+          {
+            "type": "string",
+            "value": "a"
+          },
+          {
+            "type": "string",
+            "value": "c"
+          }
+        ]
+      },
+      "cases": [
+        {
+          "input": "\"a\"",
+          "expected": {
+            "kind": "string",
+            "value": "a"
+          },
+          "output": "\"a\"\n"
+        },
+        {
+          "input": "\"c\"",
+          "expected": {
+            "kind": "string",
+            "value": "c"
+          },
+          "output": "\"c\"\n"
+        },
+        {
+          "input": "\"b\"",
+          "error": {
+            "category": "allowed",
+            "name": "Choice",
+            "got": "String(\"b\")"
+          }
+        }
+      ],
+      "compiled": true
+    },
+    {
+      "id": "finite_integer",
+      "schema": {
+        "title": "Choice",
+        "type": "integer",
+        "anyOf": [
+          {
+            "const": 2.0
+          },
+          {
+            "const": 4
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "int"
+        },
+        "json_allowed_values": [
+          {
+            "type": "int",
+            "value": 2
+          },
+          {
+            "type": "int",
+            "value": 4
+          }
+        ]
+      },
+      "cases": [
+        {
+          "input": "2",
+          "expected": {
+            "kind": "int",
+            "value": 2
+          },
+          "output": "2\n"
+        },
+        {
+          "input": "4",
+          "expected": {
+            "kind": "int",
+            "value": 4
+          },
+          "output": "4\n"
+        },
+        {
+          "input": "3",
+          "error": {
+            "category": "allowed",
+            "name": "Choice",
+            "got": "Int(3)"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "local_ref",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "$ref": "#/$defs/text"
+          },
+          {
+            "$ref": "#/$defs/flag"
+          }
+        ],
+        "$defs": {
+          "text": {
+            "type": "string"
+          },
+          "flag": {
+            "type": "boolean"
+          }
+        }
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"ref\"",
+          "expected": {
+            "kind": "string",
+            "value": "ref"
+          },
+          "output": "\"ref\"\n"
+        },
+        {
+          "input": "true",
+          "expected": {
+            "kind": "bool",
+            "value": true
+          },
+          "output": "true\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "nested_nullable",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "integer",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "int"
+          ]
+        },
+        "nullable": true
+      },
+      "cases": [
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "\"nested\"",
+          "expected": {
+            "kind": "string",
+            "value": "nested"
+          },
+          "output": "\"nested\"\n"
+        },
+        {
+          "input": "29",
+          "expected": {
+            "kind": "int",
+            "value": 29
+          },
+          "output": "29\n"
+        },
+        {
+          "input": "true",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "bool"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "legacy_no_type",
+      "schema": {
+        "title": "Choice",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar_union",
+          "types": [
+            "string",
+            "bool"
+          ]
+        }
+      },
+      "cases": [
+        {
+          "input": "\"legacy\"",
+          "expected": {
+            "kind": "string",
+            "value": "legacy"
+          },
+          "output": "\"legacy\"\n"
+        },
+        {
+          "input": "17",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "declared scalar union",
+            "got": "number"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "finite_cancelled",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "oneOf": [
+          {
+            "enum": [
+              "a",
+              true
+            ]
+          },
+          {
+            "enum": [
+              "b",
+              true
+            ]
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "json_allowed_values": [
+          {
+            "type": "string",
+            "value": "a"
+          },
+          {
+            "type": "string",
+            "value": "b"
+          }
+        ]
+      },
+      "cases": [
+        {
+          "input": "\"a\"",
+          "expected": {
+            "kind": "string",
+            "value": "a"
+          },
+          "output": "\"a\"\n"
+        },
+        {
+          "input": "\"b\"",
+          "expected": {
+            "kind": "string",
+            "value": "b"
+          },
+          "output": "\"b\"\n"
+        },
+        {
+          "input": "true",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "string",
+            "got": "bool"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "nullable_one_cancelled",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      },
+      "cases": [
+        {
+          "input": "\"kept\"",
+          "expected": {
+            "kind": "string",
+            "value": "kept"
+          },
+          "output": "\"kept\"\n"
+        },
+        {
+          "input": "null",
+          "error": {
+            "category": "shape",
+            "name": "Choice",
+            "expected": "string",
+            "got": "null"
+          }
+        }
+      ],
+      "compiled": false
+    },
+    {
+      "id": "joint_nullable_signed_bound",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "number",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": 9007199254740993
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Choice",
+        "repeating": false,
+        "kind": {
+          "kind": "scalar",
+          "ty": "float"
+        },
+        "nullable": true,
+        "numeric_range": {
+          "kind": "number",
+          "bounds": {
+            "minimum": {
+              "value": 9007199254740992.0,
+              "exclusive": true
+            }
+          }
+        }
+      },
+      "cases": [
+        {
+          "input": "null",
+          "expected": {
+            "kind": "json_null"
+          },
+          "output": "null\n"
+        },
+        {
+          "input": "9007199254740992",
+          "error": {
+            "category": "range",
+            "name": "Choice",
+            "range": "(9007199254740992, inf)",
+            "got": "9007199254740992"
+          }
+        },
+        {
+          "input": "9007199254740994",
+          "expected": {
+            "kind": "float",
+            "value": 9007199254740994.0
+          },
+          "output": "9007199254740994.0\n"
+        }
+      ],
+      "compiled": false
+    }
+  ],
+  "refusals": [
+    {
+      "id": "restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "nullable_restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "nullable composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "nullable_many_restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "nullable composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "float_is_not_integer",
+      "schema": {
+        "title": "Choice",
+        "type": "integer",
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "finite_restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": "string",
+        "anyOf": [
+          {
+            "const": "a"
+          },
+          {
+            "const": true
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "finite_fraction_restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": "integer",
+        "anyOf": [
+          {
+            "const": 2.5
+          },
+          {
+            "const": 4
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "unbounded_one_overlap",
+      "schema": {
+        "title": "Choice",
+        "type": "number",
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar oneOf branches overlap and are not mutually exclusive"
+      }
+    },
+    {
+      "id": "malformed_empty",
+      "schema": {
+        "title": "Choice",
+        "type": [],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_duplicate",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_unknown",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "flag"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_numeric",
+      "schema": {
+        "title": "Choice",
+        "type": 7,
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_null_type",
+      "schema": {
+        "title": "Choice",
+        "type": null,
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_mixed_array",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          7
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "malformed_object_type",
+      "schema": {
+        "title": "Choice",
+        "type": {},
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "other_sibling",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ],
+        "not": {
+          "type": "null"
+        }
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar composition cannot preserve `not` validation"
+      }
+    },
+    {
+      "id": "finite_mixed",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "string",
+          "boolean"
+        ],
+        "anyOf": [
+          {
+            "const": "a"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "scalar anyOf mixes finite const/enum branches with an unbounded or structured branch"
+      }
+    },
+    {
+      "id": "nullable_float_restrictive",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "integer",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "nullable composition cannot preserve `type` validation"
+      }
+    },
+    {
+      "id": "modern_ref_unchanged",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Choice",
+        "$ref": "#/$defs/base",
+        "type": "string",
+        "$defs": {
+          "base": {
+            "type": "string"
+          }
+        }
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "modern `$ref` sibling `type` requires an unsupported intersection and cannot be ignored"
+      }
+    },
+    {
+      "id": "nullable_structured_type_unchanged",
+      "schema": {
+        "title": "Choice",
+        "type": [
+          "object",
+          "null"
+        ],
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "name": "Choice",
+        "reason": "nullable composition cannot preserve `type` validation"
+      }
+    }
+  ]
+}

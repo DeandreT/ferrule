@@ -33,6 +33,7 @@ mod ref_required;
 mod reference_depth;
 mod required;
 mod resources;
+mod scalar_type_siblings;
 mod string_lengths;
 mod tuple_items;
 mod unconstrained;

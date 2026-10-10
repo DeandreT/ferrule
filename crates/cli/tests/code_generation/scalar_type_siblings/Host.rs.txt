@@ -1,0 +1,70 @@
+use std::{error::Error, fs, path::Path};
+use codegen_runtime::{Instance, JsonBoundaryError, Value, field, group, scalar};
+use serde_json::Value as Json;
+
+fn value(expected: &Json) -> Result<Value, Box<dyn Error>> {
+    Ok(match expected["kind"].as_str() {
+        Some("string") => Value::String(expected["value"].as_str().ok_or("String")?.into()),
+        Some("bool") => Value::Bool(expected["value"].as_bool().ok_or("Bool")?),
+        Some("int") => Value::Int(expected["value"].as_i64().ok_or("Int")?),
+        Some("float") => Value::Float(expected["value"].as_f64().ok_or("Float")?),
+        Some("json_null") => Value::json_null(),
+        _ => return Err("authored kind required".into()),
+    })
+}
+fn wanted(case: &Json) -> Result<Instance, Box<dyn Error>> {
+    Ok(group(case["expected_values"].as_object().ok_or("complete fields")?.iter()
+        .map(|(name, expected)| Ok(field(name, scalar(value(expected)?))))
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?))
+}
+fn error_matches(error: &JsonBoundaryError, expected: &Json) -> bool {
+    matches!(error, JsonBoundaryError::InvalidInput { message }
+        if expected["variant"] == "InvalidInput" && expected["message"] == *message)
+        && error.source().is_none()
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let directory = std::env::args_os().nth(1).ok_or("retained directory required")?;
+    let directory = Path::new(&directory);
+    let corpus: Json = serde_json::from_slice(&fs::read(directory.join("cases.json"))?)?;
+    let descriptor = fs::read_to_string(directory.join("descriptor.json"))?;
+    let cases = corpus["cases"].as_array().ok_or("cases")?;
+    let mut failures = Vec::new();
+    let mut counts = [0_usize; 2];
+    for case in cases {
+        let id = case["id"].as_str().ok_or("id")?;
+        let input = case["input"].as_str().ok_or("literal input")?;
+        for bytes in [false, true] {
+            let parsed = if bytes { codegen_runtime::parse_json_bytes(&descriptor, input.as_bytes()) }
+                else { codegen_runtime::parse_json(&descriptor, input) };
+            let mapped = parsed.as_ref().ok().map(ferrule_generated_mapping::execute);
+            let text = if bytes { ferrule_generated_mapping::execute_json_bytes(input.as_bytes()) }
+                else { ferrule_generated_mapping::execute_json(input).map(String::into_bytes) };
+            let origin = parsed.as_ref().ok().and_then(|value| match value {
+                Instance::Group(fields) => Some(fields.xml_type_origin()), _ => None,
+            });
+            fs::write(directory.join(format!("{id}-{bytes}-COMPLETE-ORIGINAL.txt")),
+                format!("input={input:?}\nparsed={parsed:#?}\nroot-origin={origin:#?}\nmapped={mapped:#?}\nserialized={text:#?}\nexpected={case:#?}\n"))?;
+            let correct = if case.get("expected_values").is_some() {
+                counts[0] += 1;
+                let expected = wanted(case)?;
+                parsed.as_ref().is_ok_and(|actual| actual == &expected)
+                    && origin == Some(None)
+                    && mapped.as_ref().is_some_and(|actual| actual.as_ref().is_ok_and(|actual| actual == &expected))
+                    && text.as_ref().is_ok_and(|actual| serde_json::from_slice::<Json>(actual)
+                        .is_ok_and(|actual| actual == case["expected_json"]))
+            } else {
+                counts[1] += 1;
+                mapped.is_none()
+                    && parsed.as_ref().err().is_some_and(|actual| error_matches(actual, &case["expected_rust_error"]))
+                    && text.as_ref().err().is_some_and(|actual| error_matches(actual, &case["expected_rust_error"]))
+            };
+            if !correct { failures.push(format!("{id}-{bytes}")); }
+        }
+    }
+    fs::write(directory.join("COMPLETE-COMPARISONS.txt"), format!("counts={counts:?}\nfailures={failures:#?}\n"))?;
+    if cases.len() != 34 || counts != [42, 26] || !failures.is_empty() {
+        return Err(format!("full scalar composition Rust outcomes differ: {failures:?}").into());
+    }
+    println!("68 complete typed/serialized/error Rust outcomes passed");
+    Ok(())
+}
