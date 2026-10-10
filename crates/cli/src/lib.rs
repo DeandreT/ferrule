@@ -39,10 +39,10 @@ mod stdio;
 mod trace_json;
 
 pub use code_generation::{
-    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_output,
-    generate_project_with_csv_x12_adapters, generate_project_with_json5_adapters,
-    generate_project_with_static_document_adapters, generate_project_with_x12_adapters,
-    generate_project_with_x12_envelope_profiles,
+    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_json_adapters,
+    generate_project_with_csv_output, generate_project_with_csv_x12_adapters,
+    generate_project_with_json5_adapters, generate_project_with_static_document_adapters,
+    generate_project_with_x12_adapters, generate_project_with_x12_envelope_profiles,
 };
 pub use codegen::X12EnvelopeProfile;
 pub use engine::{

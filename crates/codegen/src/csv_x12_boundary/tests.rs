@@ -3,6 +3,8 @@ use crate::{
     Expression, ExpressionNode, IterationPlan, NamedSourceProgram, NamedTargetProgram,
     ScalarFunction, XmlBoundaryProgram, XmlInputPolicy, XmlOutputPolicy,
 };
+use ir::ScalarType;
+use mapping::FormatOptions;
 use serde_json::{Value as Json, json};
 use std::error::Error;
 use std::path::{Path, PathBuf};

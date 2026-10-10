@@ -101,7 +101,7 @@ fn format_name(format: DocumentBoundaryFormat) -> &'static str {
 
 fn render(profile: &StaticDocumentBoundaryProfile) -> String {
     let mut output = String::from("namespace Ferrule.Generated;\n\n");
-    output.push_str(OUTPUT_TYPES);
+    output.push_str(crate::document_output_types::OUTPUT_TYPES);
     output.push_str("public static partial class GeneratedMapping\n{\n");
     for (name, descriptor) in [
         ("DocumentSourceDescriptor", &profile.source.descriptor),
@@ -330,51 +330,6 @@ fn render_selected_serialize(
     }
     output.push_str("            default:\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.JsonBoundary,\n                    \"generated mapping returned a target that does not match the resolved selection\");\n        }\n    }\n");
 }
-
-const OUTPUT_TYPES: &str = r#"public enum DocumentBoundaryFormat { Json, X12 }
-
-public sealed record NamedDocumentInput(string Name, string Document);
-public sealed record NamedDocumentBytesInput(string Name, byte[] Document);
-public sealed record NamedDocumentOutput(string Name, DocumentBoundaryFormat Format, string Document);
-public sealed record NamedDocumentBytesOutput(string Name, DocumentBoundaryFormat Format, byte[] Document);
-
-public abstract class SelectedDocumentTargetOutput
-{
-    private protected SelectedDocumentTargetOutput() { }
-
-    public sealed class Primary : SelectedDocumentTargetOutput
-    {
-        internal Primary(DocumentBoundaryFormat format, string document) { Format = format; Document = document; }
-        public DocumentBoundaryFormat Format { get; }
-        public string Document { get; }
-    }
-
-    public sealed class Named : SelectedDocumentTargetOutput
-    {
-        internal Named(NamedDocumentOutput output) { Output = output; }
-        public NamedDocumentOutput Output { get; }
-    }
-}
-
-public abstract class SelectedDocumentBytesTargetOutput
-{
-    private protected SelectedDocumentBytesTargetOutput() { }
-
-    public sealed class Primary : SelectedDocumentBytesTargetOutput
-    {
-        internal Primary(DocumentBoundaryFormat format, byte[] document) { Format = format; Document = document; }
-        public DocumentBoundaryFormat Format { get; }
-        public byte[] Document { get; }
-    }
-
-    public sealed class Named : SelectedDocumentBytesTargetOutput
-    {
-        internal Named(NamedDocumentBytesOutput output) { Output = output; }
-        public NamedDocumentBytesOutput Output { get; }
-    }
-}
-
-"#;
 
 #[cfg(test)]
 mod tests;

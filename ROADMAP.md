@@ -156,6 +156,9 @@ an unrestricted publication-parity promise.
 
 - [x] Add bounded flat-primary CSV companions for static named inputs and
   eligible per-driver typed dynamic loaders without changing ordinary APIs.
+- [x] Add opt-in flat-primary CSV input with one strict JSON primary or named
+  output, complete source parsing and ordinary explicit nested row iteration
+  in [#314](https://github.com/DeandreT/ferrule/issues/314).
 - [x] Qualify the bounded strict-imported item-ordered public-host cohort:
   14 cases across ten public routes in each of Rust and C#, with four fresh
   XML success writer oracles.
