@@ -1,0 +1,948 @@
+{
+  "schema": {
+    "name": "Row",
+    "repeating": false,
+    "fields": [
+      {
+        "name": "Label",
+        "type": "String"
+      },
+      {
+        "name": "Count",
+        "type": "Int"
+      },
+      {
+        "name": "Ratio",
+        "type": "Float"
+      },
+      {
+        "name": "Enabled",
+        "type": "Bool"
+      },
+      {
+        "name": "Tail",
+        "type": "String"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "zero-empty",
+      "input": "",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": []
+      }
+    },
+    {
+      "id": "zero-boundaries",
+      "input": "\r\n\n\r",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": []
+      }
+    },
+    {
+      "id": "header-only-foreign-labels",
+      "input": "foreign,names,can,have,any,width\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": true,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": []
+      }
+    },
+    {
+      "id": "header-position-not-names",
+      "input": "foreign,names\nALPHA,2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": true,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "one-row",
+      "input": "ALPHA,2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "all-two-rows",
+      "input": "ALPHA,2,1.5,true,TAIL\r\nBETA,3,4.25,0,END\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ],
+          [
+            {
+              "kind": "string",
+              "value": "BETA"
+            },
+            {
+              "kind": "int",
+              "value": 3
+            },
+            {
+              "kind": "float",
+              "bits": "4011000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": false
+            },
+            {
+              "kind": "string",
+              "value": "END"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "empty-default",
+      "input": ",,,,\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "empty-preserved",
+      "input": ",,,,\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": true
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": ""
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "string",
+              "value": ""
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "missing-is-null",
+      "input": "ALPHA\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": true
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "bool-trims-only",
+      "input": "ALPHA,2,1.5, true ,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sign-and-negative-zero",
+      "input": "ALPHA,+2,-0.0,1,TAIL",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "8000000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "float-exponent",
+      "input": "ALPHA,2,.5E+1,false,TAIL",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "4014000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": false
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "quoted-separator",
+      "input": "\"A,B\",2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "A,B"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "double-quote-escape",
+      "input": "\"A\"\"B\",2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "A\"B"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "quoted-crlf",
+      "input": "\"A\r\nB\",2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "A\r\nB"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "quote-eof-is-data",
+      "input": "\"OPEN",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "OPEN"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "quote-tail-permissive",
+      "input": "\"A\"tail,2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "Atail"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "unquoted-quote-literal",
+      "input": "A\"B,2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "A\"B"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "disabled-quotes",
+      "input": "\"A\",2,1.5,true,\"TAIL\"\n",
+      "options": {
+        "delimiter": ",",
+        "quote": null,
+        "quote_disabled": true,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "\"A\""
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "\"TAIL\""
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "custom-quote-delimiter",
+      "input": "'A;B';2;1.5;false;'Z''Z'\r\n",
+      "options": {
+        "delimiter": ";",
+        "quote": "'",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "A;B"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": false
+            },
+            {
+              "kind": "string",
+              "value": "Z'Z"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "initial-bom",
+      "input": "﻿ALPHA,2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "later-bom-remains",
+      "input": "ALPHA,2,1.5,true,﻿TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "rows": [
+          [
+            {
+              "kind": "string",
+              "value": "ALPHA"
+            },
+            {
+              "kind": "int",
+              "value": 2
+            },
+            {
+              "kind": "float",
+              "bits": "3ff8000000000000"
+            },
+            {
+              "kind": "bool",
+              "value": true
+            },
+            {
+              "kind": "string",
+              "value": "﻿TAIL"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "extra-columns",
+      "input": "ALPHA,2,1.5,true,TAIL,EXTRA\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "ColumnCount",
+          "row": 0,
+          "expected": 5,
+          "got": 6,
+          "display": "row 0: expected 5 column(s), got 6"
+        }
+      }
+    },
+    {
+      "id": "late-row-number",
+      "input": "ALPHA,2,1.5,true,TAIL\nBETA,bad,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 1,
+          "field": "Count",
+          "expected": "Int",
+          "value": "bad",
+          "display": "row 1: column `Count` expected Int, got `bad`"
+        }
+      }
+    },
+    {
+      "id": "int-leading-space",
+      "input": "ALPHA, 2,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Count",
+          "expected": "Int",
+          "value": " 2",
+          "display": "row 0: column `Count` expected Int, got ` 2`"
+        }
+      }
+    },
+    {
+      "id": "int-overflow",
+      "input": "ALPHA,9223372036854775808,1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Count",
+          "expected": "Int",
+          "value": "9223372036854775808",
+          "display": "row 0: column `Count` expected Int, got `9223372036854775808`"
+        }
+      }
+    },
+    {
+      "id": "float-leading-space",
+      "input": "ALPHA,2, 1.5,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Ratio",
+          "expected": "Float",
+          "value": " 1.5",
+          "display": "row 0: column `Ratio` expected Float, got ` 1.5`"
+        }
+      }
+    },
+    {
+      "id": "float-nonfinite",
+      "input": "ALPHA,2,NaN,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Ratio",
+          "expected": "Float",
+          "value": "NaN",
+          "display": "row 0: column `Ratio` expected Float, got `NaN`"
+        }
+      }
+    },
+    {
+      "id": "float-overflow",
+      "input": "ALPHA,2,1e999,true,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Ratio",
+          "expected": "Float",
+          "value": "1e999",
+          "display": "row 0: column `Ratio` expected Float, got `1e999`"
+        }
+      }
+    },
+    {
+      "id": "bool-case",
+      "input": "ALPHA,2,1.5,TRUE,TAIL\n",
+      "options": {
+        "delimiter": ",",
+        "quote": "\"",
+        "quote_disabled": false,
+        "has_headers": false,
+        "preserve_empty_strings": false
+      },
+      "expected": {
+        "error": {
+          "category": "Parse",
+          "row": 0,
+          "field": "Enabled",
+          "expected": "Bool",
+          "value": "TRUE",
+          "display": "row 0: column `Enabled` expected Bool, got `TRUE`"
+        }
+      }
+    }
+  ]
+}
