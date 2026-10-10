@@ -27,8 +27,16 @@ public static partial class FerruleX12
     private sealed record Constraint(uint Minimum, uint Maximum, HashSet<string> Allowed);
     private sealed record LexicalFormat(string Kind, byte MinimumDigits = 0, byte MaximumDigits = 0, byte MaximumChars = 0);
     private sealed record Autocomplete(bool RequestAcknowledgement, string? TransactionSet);
+    private sealed record VersionProfile(string Interchange, string Group)
+    {
+        internal bool Modern => Interchange != "00401";
+    }
     private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
-        char? InactiveRepetition = null, Autocomplete? Autocomplete = null);
+        char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null)
+    {
+        internal VersionProfile SelectedVersion => Version ?? new("00401", "004010");
+        internal Syntax OutputSyntax => Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
+    }
 
     private static Profile ParseProfile(string descriptor, bool input = true)
     {
@@ -39,8 +47,13 @@ public static partial class FerruleX12
             using JsonDocument parsed = JsonDocument.Parse(descriptor, new JsonDocumentOptions { MaxDepth = 127 });
             JsonElement wrapper = parsed.RootElement;
             Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete"]);
-            if (wrapper.GetProperty("version").GetString() != "004010")
-                throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 descriptor version.");
+            VersionProfile version = wrapper.GetProperty("version").GetString() switch
+            {
+                "004010" => new("00401", "004010"),
+                "005010" => new("00501", "005010"),
+                "006040" => new("00604", "006040"),
+                _ => throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 descriptor version."),
+            };
             string schema = wrapper.GetProperty("schema").GetString()
                 ?? throw Failure(FerruleX12Error.Schema, "X12 descriptor requires an embedded schema.");
             var decoded = FerruleEmbeddedSchema.Unwrap(schema, MaximumSchemaBytes);
@@ -59,8 +72,10 @@ public static partial class FerruleX12
                 if (SegmentId(envelopes[index].Name) != ids[index] || envelopes[index].Children.Length != widths[index]
                     || envelopes[index].Children.Any(child => child.Type != "string" || child.Repeating))
                     throw Failure(FerruleX12Error.Schema, "Envelope schemas require exact positional String elements.");
-            if (envelopes[0].Children[11].Fixed != "00401" || envelopes[1].Children[7].Fixed != "004010")
-                throw Failure(FerruleX12Error.UnsupportedProfile, "Envelope schema versions must be fixed to 00401 and 004010.");
+            if (envelopes[0].Children[11].Fixed != version.Interchange || envelopes[1].Children[7].Fixed != version.Group)
+                throw Failure(FerruleX12Error.UnsupportedProfile, version.Modern
+                    ? "Envelope schema versions must agree with the selected X12 profile."
+                    : "Envelope schema versions must be fixed to 00401 and 004010.");
             Syntax? separators = null;
             char? inactiveRepetition = null;
             JsonElement selected = wrapper.GetProperty("separators");
@@ -73,12 +88,22 @@ public static partial class FerruleX12
                 {
                     string? text = repetition.GetString();
                     if (text is null || text.Length != 1)
-                        throw Failure(FerruleX12Error.Schema, "Inactive X12 repetition metadata requires one character.");
+                        throw Failure(FerruleX12Error.Schema, version.Modern
+                            ? "Modern X12 repetition metadata requires one character."
+                            : "Inactive X12 repetition metadata requires one character.");
                     char character = text[0];
                     if (!char.IsAscii(character) || character is < '!' or > '~' || char.IsAsciiLetterOrDigit(character)
                         || character == separators.Value.Element || character == separators.Value.Component || character == separators.Value.Segment)
-                        throw Failure(FerruleX12Error.Syntax, "Inactive X12 repetition metadata must be distinct ASCII punctuation.");
+                        throw Failure(FerruleX12Error.Syntax, version.Modern
+                            ? "Modern X12 repetition metadata must be distinct ASCII punctuation."
+                            : "Inactive X12 repetition metadata must be distinct ASCII punctuation.");
                     inactiveRepetition = character;
+                }
+                if (version.Modern)
+                {
+                    separators = separators.Value with { Repetition = inactiveRepetition };
+                    if (!input && inactiveRepetition is null)
+                        throw Failure(FerruleX12Error.UnsupportedProfile, "Modern X12 output requires a selected repetition separator.");
                 }
             }
             JsonElement constraints = wrapper.GetProperty("constraints");
@@ -112,7 +137,21 @@ public static partial class FerruleX12
             bool lenient = wrapper.TryGetProperty("lenient_segments", out JsonElement leniency) && leniency.GetBoolean();
             ReadProfileMetadata(wrapper, root, input);
             Autocomplete? autocomplete = ReadAutocomplete(wrapper, envelopes[2], input);
-            return new(root, separators, lenient, inactiveRepetition, autocomplete);
+            if (version.Modern && envelopes[0].Children[10].Fixed is { } fixedRepetition)
+            {
+                Syntax? selectedSyntax = separators ?? (!input ? new Syntax('*', ':', '~', '^') : null);
+                if (fixedRepetition.Length != 1 || fixedRepetition[0] is < '!' or > '~' || char.IsAsciiLetterOrDigit(fixedRepetition[0])
+                    || selectedSyntax is { } physical && (fixedRepetition[0] == physical.Element
+                        || fixedRepetition[0] == physical.Component || fixedRepetition[0] == physical.Segment
+                        || physical.Repetition is { } repetition && fixedRepetition[0] != repetition))
+                    throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA11 does not agree with the selected modern repetition syntax.");
+            }
+            if (version.Modern && envelopes[0].Children[15].Fixed is { } fixedComponent
+                && (fixedComponent.Length != 1 || fixedComponent[0] is < '!' or > '~' || char.IsAsciiLetterOrDigit(fixedComponent[0])
+                    || separators is { } physical && fixedComponent != physical.Component.ToString()
+                    || separators is null && !input && fixedComponent != ":"))
+                throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA16 does not agree with the selected modern component syntax.");
+            return new(root, separators, lenient, inactiveRepetition, autocomplete, version);
         }
         catch (FerruleX12Exception) { throw; }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)

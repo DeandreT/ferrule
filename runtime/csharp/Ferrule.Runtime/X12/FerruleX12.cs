@@ -4,7 +4,7 @@ using System.Text;
 namespace Ferrule.Runtime;
 
 /// <summary>
-/// Optional package-free, strict UTF-8 004010 interchange parsing and writing.
+/// Optional package-free, strict UTF-8 single-envelope X12 parsing and writing.
 /// Limits bound documents and traversal; they do not promise a process-memory cap.
 /// </summary>
 public static partial class FerruleX12
@@ -34,11 +34,13 @@ public static partial class FerruleX12
         ArgumentNullException.ThrowIfNull(document);
         RequireUtf8(document, MaximumDocumentBytes, "X12 input");
         Profile profile = ParseProfile(descriptor, input: true);
-        Syntax syntax = DiscoverSyntax(document);
-        if (profile.Separators is { } selected && selected != syntax)
+        Syntax syntax = DiscoverSyntax(document, profile);
+        if (profile.Separators is { } selected && (selected.Element != syntax.Element
+            || selected.Component != syntax.Component || selected.Segment != syntax.Segment
+            || selected.Repetition is { } repetition && repetition != syntax.Repetition))
             throw Failure(FerruleX12Error.Syntax, "Configured separators do not match ISA.");
         List<Segment> segments = Tokenize(document, syntax);
-        ValidateEnvelope(segments);
+        ValidateEnvelope(segments, profile, syntax);
         var cursor = new Cursor(segments, syntax, profile);
         FerruleInstance result = ReadContainer(profile.Root, cursor, [], 0, [], root: true);
         if (cursor.Position != segments.Count)
@@ -65,7 +67,7 @@ public static partial class FerruleX12
     {
         ArgumentNullException.ThrowIfNull(document);
         Profile profile = ParseProfile(descriptor, input: false);
-        Syntax syntax = profile.Separators ?? new('*', ':', '~');
+        Syntax syntax = profile.OutputSyntax;
         FerruleInstance outputView = HasOutputLexical(profile.Root)
             ? FormatOutputView(profile.Root, document, [], new Budget(), 0)
             : document;
@@ -85,7 +87,7 @@ public static partial class FerruleX12
         }
         if (segments[0].Elements[15] != syntax.Component.ToString())
             throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.");
-        ValidateEnvelope(segments);
+        ValidateEnvelope(segments, profile, syntax);
         var output = new StringBuilder();
         long bytes = 0;
         foreach (Segment segment in segments)
@@ -96,7 +98,8 @@ public static partial class FerruleX12
             for (int index = 0; index < last; index++)
             {
                 string text = segment.Elements[index];
-                RequireOutputText(text, syntax, segment.Id == "ISA" && index == 15);
+                RequireOutputText(text, syntax, segment.Id == "ISA" && index == 15,
+                    segment.Id == "ISA" && index == 10);
                 Add(syntax.Element.ToString());
                 Add(text);
             }
@@ -115,10 +118,10 @@ public static partial class FerruleX12
         }
     }
 
-    private readonly record struct Syntax(char Element, char Component, char Segment);
+    private readonly record struct Syntax(char Element, char Component, char Segment, char? Repetition = null);
     private sealed record Segment(string Id, string[] Elements);
 
-    private static Syntax DiscoverSyntax(string text)
+    private static Syntax DiscoverSyntax(string text, Profile profile)
     {
         // Require the fixed-width ISA exactly at the boundary. A BOM or leading whitespace
         // is not silently removed from the caller's document.
@@ -131,7 +134,9 @@ public static partial class FerruleX12
             if (text[offset] != element) throw Failure(FerruleX12Error.Envelope, "ISA element widths are invalid.", 0);
             offset += 1 + IsaWidths[index];
         }
-        var syntax = new Syntax(element, text[104], text[105]);
+        if (profile.SelectedVersion.Modern && text[84..89] != profile.SelectedVersion.Interchange)
+            throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.");
+        var syntax = new Syntax(element, text[104], text[105], profile.SelectedVersion.Modern ? text[82] : null);
         ValidateSyntax(syntax);
         return syntax;
     }
@@ -141,7 +146,9 @@ public static partial class FerruleX12
         static bool Visible(char value) => value is >= '!' and <= '~' && !char.IsAsciiLetterOrDigit(value);
         if (!Visible(syntax.Element) || !Visible(syntax.Component)
             || !(Visible(syntax.Segment) || syntax.Segment == '\n')
-            || syntax.Element == syntax.Component || syntax.Element == syntax.Segment || syntax.Component == syntax.Segment)
+            || syntax.Element == syntax.Component || syntax.Element == syntax.Segment || syntax.Component == syntax.Segment
+            || syntax.Repetition is { } repetition && (!Visible(repetition) || repetition == syntax.Element
+                || repetition == syntax.Component || repetition == syntax.Segment))
             throw Failure(FerruleX12Error.Syntax, "X12 separators must be distinct ASCII punctuation; the segment terminator may be LF.");
     }
 
@@ -178,13 +185,18 @@ public static partial class FerruleX12
             if (id.Length is < 2 or > 3 || !char.IsAsciiLetterUpper(id[0])
                 || id.Any(character => !char.IsAsciiLetterUpper(character) && !char.IsAsciiDigit(character)))
                 throw Failure(FerruleX12Error.Syntax, "X12 segment identifiers must be two or three uppercase alphanumeric characters.", segments.Count);
+            if (syntax.Repetition is { } repetition)
+                for (int index = 1; index < parts.Count; index++)
+                    if (!(id == "ISA" && index == 11) && parts[index].Contains(repetition))
+                        throw Failure(FerruleX12Error.UnsupportedProfile,
+                            "Repeated X12 element values are outside the selected profile.", segments.Count);
             segments.Add(new(id, parts.Skip(1).ToArray()));
             start = end + 1;
         }
         return segments;
     }
 
-    private static void ValidateEnvelope(IReadOnlyList<Segment> segments)
+    private static void ValidateEnvelope(IReadOnlyList<Segment> segments, Profile profile, Syntax syntax)
     {
         string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
         var indexes = new int[6];
@@ -206,8 +218,18 @@ public static partial class FerruleX12
         for (int index = 0; index < 16; index++)
             if (isa.Elements[index].Length != IsaWidths[index] || isa.Elements[index].Any(character => character > 127))
                 throw Failure(FerruleX12Error.Envelope, "ISA requires its declared ASCII widths.", 0);
-        if (isa.Elements[11] != "00401" || gs.Elements[7] != "004010" || isa.Elements[10] != "U")
-            throw Failure(FerruleX12Error.UnsupportedProfile, "Only the 00401/004010 envelope without element repetition is supported.");
+        if (!profile.SelectedVersion.Modern)
+        {
+            if (isa.Elements[11] != "00401" || gs.Elements[7] != "004010" || isa.Elements[10] != "U")
+                throw Failure(FerruleX12Error.UnsupportedProfile, "Only the 00401/004010 envelope without element repetition is supported.");
+        }
+        else
+        {
+            if (isa.Elements[11] != profile.SelectedVersion.Interchange || gs.Elements[7] != profile.SelectedVersion.Group)
+                throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.");
+            if (isa.Elements[10] != syntax.Repetition?.ToString())
+                throw Failure(FerruleX12Error.Syntax, "ISA11 must match the selected repetition separator.");
+        }
         if (!Digits(isa.Elements[12], 9, 9) || !Digits(gs.Elements[5], 1, 9) || !Digits(st.Elements[1], 4, 9))
             throw Failure(FerruleX12Error.Envelope, "X12 control numbers have invalid lexical shapes.");
         if (!Digits(st.Elements[0], 3, 3) || string.IsNullOrWhiteSpace(gs.Elements[0])
@@ -237,10 +259,12 @@ public static partial class FerruleX12
     private static bool Digits(string text, int minimum, int maximum)
         => text.Length >= minimum && text.Length <= maximum && text.All(char.IsAsciiDigit);
 
-    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent)
+    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent, bool isaRepetition)
     {
         if (isaComponent && text == syntax.Component.ToString()) return;
-        if (text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Segment))
+        if (isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString()) return;
+        if (text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Segment
+            || character == syntax.Repetition))
             throw Failure(FerruleX12Error.Value, "X12 output contains an unrepresentable delimiter or control character.");
         // Composite elements have already been built from validated components.
     }

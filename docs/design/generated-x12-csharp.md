@@ -1,7 +1,7 @@
 # Generated C# X12 companions
 
 Generated C# libraries can include an explicit raw X12 boundary around the
-ordinary typed mapping. The supported profile is one 004010 interchange,
+ordinary typed mapping. Each supported version profile contains one interchange,
 functional group and transaction. Source and target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
@@ -21,6 +21,27 @@ The flag defaults to false, requires C#, and conflicts with `--csv-output` and
 `cli::generate_project_with_x12_adapters`; the emitter is
 `codegen_csharp::emit_with_x12`, using a `codegen::X12BoundaryPolicy` with
 explicit source and target choices. At least one side must select X12.
+
+The fixed ISA12 and GS08 schema values select an exact version pair:
+
+| ISA12 | GS08 and descriptor version | ISA11 |
+| --- | --- | --- |
+| `00401` | `004010` | `U`; configured repetition metadata is inactive |
+| `00501` | `005010` | Active repetition delimiter |
+| `00604` | `006040` | Active repetition delimiter |
+
+Each selected side retains its own pair. A saved `x12_interchange_version`
+must agree with its fixed ISA12. Missing, noncanonical or conflicting declarations
+fail generation; the adapter does not derive a GS08 implementation convention
+or convert envelope versions. An explicit mapping can construct another
+supported target pair; the graph must supply its headers. ST has exactly two
+fields, so an implementation reference in ST03 is outside these profiles.
+
+Rust callers constructing `X12BoundaryOptions` can supply the optional
+`interchange_version` constraint or use `..Default::default()` when none was
+retained. This field preserves the saved physical setting through shared
+admission; it does not independently select a version. Exhaustive struct
+literals include this field. Generated C# public method signatures are unchanged.
 
 For the CLI companion request, a retained X12 component family selects that
 side, including an imported component whose stored instance path ends in
@@ -116,12 +137,12 @@ contains `request_acknowledgement` and an optional `transaction_set`. A selected
 transaction set is three ASCII digits and agrees with a nonempty fixed target
 ST01. This check uses the actual transaction segment; positional element and
 composite names do not establish segment ownership. Other autocomplete
-dialects and interchange versions remain refused.
+dialects and version pairs remain refused.
 
 The schema contains exactly one each of ISA, GS, ST, SE, GE and IEA, in that
 order and outside repeating loops. They have exactly 16, 8, 2, 2, 2 and 2
-String fields respectively. ISA12 is fixed to `00401`; GS08 is fixed to
-`004010`. String envelope fields preserve lexical controls and identifiers,
+String fields respectively. ISA12 and GS08 have one of the exact fixed pairs
+above. String envelope fields preserve lexical controls and identifiers,
 including leading zeros. Static qualifiers and fixed values are validated on
 both input and output. Declared fixed literals may materialize from their schema
 metadata. Without selected completion, controls must still be supplied as
@@ -151,12 +172,36 @@ configured separators against it.
 
 Element and component separators are distinct visible ASCII punctuation.
 The segment terminator is a third distinct punctuation character or LF.
-Release syntax is outside this 004010 profile. A configured repetition character
-may be retained as distinct visible ASCII punctuation, but is inactive under
-00401: ISA11 remains `U`, and elements are not split on that character. Formatting
-whitespace is allowed between completed segments; control characters inside a
+Release syntax is outside these profiles. A configured repetition character
+is distinct visible ASCII punctuation. It is inactive under 00401: ISA11 remains
+`U`, and elements are not split on that character. For 00501 and 00604, the reader
+discovers it from ISA11 and verifies an explicitly configured repetition character.
+A configured input separator set with no repetition character permits discovery.
+The active delimiter differs from the element, component and segment delimiters.
+Repeated element content is refused before mapping, including in a segment that
+lenient input would otherwise skip. The native reader has a broader repeated-value
+projection; these scalar-element generated profiles do not discard later values.
+Formatting whitespace is allowed between completed segments; control characters inside a
 segment fail. Data containing an unrepresentable separator cannot be escaped
 or substituted by this adapter.
+
+Modern output with no separator set uses `*`, `:`, `~` and `^`, matching the
+native writer defaults. An explicit modern output separator set includes a
+repetition character. The writer never infers that syntax from a supplied ISA11.
+Missing, Null or empty modern ISA11 materializes the selected delimiter;
+nonempty values remain supplied and must agree. ISA16 retains its supplied or
+fixed component value requirement. Explicit empty fixed ISA11/ISA16 metadata
+fails modern admission; a fixed syntax value is one punctuation character.
+Conflicting fixed values fail admission whenever the selected syntax is known.
+Ordinary values containing the active repetition delimiter cannot be represented
+and fail output validation.
+
+Generated LF input and output use the existing terminator contract. Native
+read discovery can consume LF, while its explicit syntax/writer API refuses LF;
+that native API difference is separate from the generated writer contract.
+The version profiles add raw C# companions only. Generated Rust continues to
+expose its ordinary typed and JSON interfaces; a host can apply the native X12
+boundary separately.
 
 Output uses the configured separators, or `*`, `:` and `~` when none are
 selected. ISA's fixed-width text fields are padded as an encoding operation.

@@ -751,8 +751,14 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   [#265](https://github.com/DeandreT/ferrule/pull/265), with three successful hosted jobs.
   Directional parsing, inactive repetition metadata, Float implied decimals,
   lexical output and supplied-context completion preserve strict defaults and
-  typed/JSON APIs. Other versions, repeated-element syntax, external I/O, durable
+  typed/JSON APIs. Repeated-element syntax, external I/O, durable
   control allocation and trading-partner certification remain excluded.
+- [x] Support canonical generated C# `00501`/`005010` and `00604`/`006040`
+  single-envelope scalar-element profiles in
+  [#272](https://github.com/DeandreT/ferrule/issues/272), with exact declared version
+  agreement and active ISA11 repetition delimiters. Repeated element values,
+  additional transaction envelopes and implementation references require
+  separate contracts.
 - [ ] Grow compile-and-call coverage for applicable mappings and public adapters.
 - [ ] Add other language/backend targets as independent implementations and
   gates; the current emitters are Rust and C#.

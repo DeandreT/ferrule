@@ -54,7 +54,7 @@ pub fn generate_project_with_json5_adapters(
     generate_project_impl(project_path, output_directory, target, Adapter::Json5)
 }
 
-/// Generate explicit raw X12 004010 companions for a singular C# mapping.
+/// Generate supported explicit single-envelope raw X12 companions for a C# mapping.
 /// The stored primary format identities and all retained options must agree
 /// with the selected bounded boundary before any source tree is published.
 pub fn generate_project_with_x12_adapters(

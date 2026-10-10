@@ -154,7 +154,7 @@ enum Command {
         /// Include singular JSON5 text and UTF-8 byte companion methods.
         #[arg(long, conflicts_with = "csv_output")]
         json5_adapters: bool,
-        /// Include singular raw X12 004010 text and strict UTF-8 C# methods.
+        /// Include supported single-envelope raw X12 text and strict UTF-8 C# methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
     },

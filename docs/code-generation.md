@@ -120,8 +120,10 @@ schema-shaped `Instance` for each source-name/logical-path request.
 
 ## Explicit C# X12 Companions
 
-Add `--x12-adapters` to the C# CLI generation command for singular raw 004010
-X12 input/output methods around the ordinary typed mapping. The flag defaults
+Add `--x12-adapters` to the C# CLI generation command for singular raw X12
+input/output methods around the ordinary typed mapping. Fixed ISA12/GS08
+schemas select `00401`/`004010`, `00501`/`005010`, or `00604`/`006040`.
+The flag defaults
 to false and conflicts with `--csv-output` and `--json5-adapters`. The public
 writer is `generate_project_with_x12_adapters`; ordinary generation retains its
 existing typed/JSON APIs and artifact tree. The optional, package-free .NET 10
@@ -129,7 +131,9 @@ boundary embeds its admitted schema and metadata and returns complete text or
 strict UTF-8 bytes. Selected input metadata supports bounded lenient traversal
 and Float implied-decimal scaling; selected output metadata supports compact
 date/time and plain-decimal formatting plus explicit X12 envelope completion.
-Repetition punctuation is inactive metadata under 00401. Contextual output
+Repetition punctuation is inactive metadata under 00401 and active ISA11
+syntax in the modern profiles; repeated element values remain refused.
+Contextual output
 completion uses the host-supplied execution-context dateTime, formats a private
 view, completes permitted fields, and validates final controls and counts.
 The ordinary `x12_dotnet` integration target includes an independently authored
