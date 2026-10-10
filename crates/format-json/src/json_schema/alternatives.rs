@@ -100,7 +100,8 @@ pub(super) fn parse_finite_scalar_composition(
             ),
         ));
     }
-    ensure_annotation_or_format_only(name, schema, keyword)?;
+    let outer_type = scalar_type_sibling(name, schema, false)?;
+    ensure_annotation_or_format_only(name, schema, keyword, outer_type.is_some())?;
     let mut candidates = Vec::new();
     for branch in &branches {
         for value in branch {
@@ -124,6 +125,10 @@ pub(super) fn parse_finite_scalar_composition(
                 .count()
                 == 1
         });
+    }
+    if outer_type.is_some_and(|domain| !candidates.iter().all(|value| domain.contains_value(value)))
+    {
+        return Err(type_sibling_error(name, false));
     }
     let mut node = allowed_values::schema_from_values(name, candidates)?;
     if node.accepts_scalar_type(ScalarType::String) {
@@ -274,7 +279,11 @@ fn parse_scalar_composition(
     let Some(first) = scalar_types.first().copied() else {
         return Ok(None);
     };
-    ensure_annotation_or_format_only(name, schema, keyword)?;
+    let outer_type = scalar_type_sibling(name, schema, false)?;
+    if outer_type.is_some_and(|domain| !domain.contains_types(&scalar_types, nullable)) {
+        return Err(type_sibling_error(name, false));
+    }
+    ensure_annotation_or_format_only(name, schema, keyword, outer_type.is_some())?;
     let mut node = if scalar_types.len() == 1 {
         SchemaNode::scalar(name, first)
     } else {
@@ -709,7 +718,11 @@ pub(super) fn parse_nullable_scalar_alternatives(
     else {
         return Ok(None);
     };
-    ensure_annotation_or_range_only(name, schema, keyword)?;
+    let outer_type = scalar_type_sibling(name, schema, true)?;
+    if outer_type.is_some_and(|domain| !domain.contains_types(&[ty], true)) {
+        return Err(type_sibling_error(name, true));
+    }
+    ensure_annotation_or_range_only_with_type(name, schema, keyword, outer_type.is_some())?;
     let content = without_ignored_scalar_validation(content);
     let mut node = parse(name, &content, doc, active_refs)?;
     if node.repeating || !matches!(node.kind, SchemaKind::Scalar { ty: parsed } if parsed == ty) {
@@ -774,7 +787,8 @@ pub(super) fn parse_nullable_composition(
             "nullable oneOf null branches overlap",
         ));
     }
-    ensure_annotation_or_range_only(name, schema, keyword)?;
+    let outer_type = scalar_type_sibling(name, schema, true)?;
+    ensure_annotation_or_range_only_with_type(name, schema, keyword, outer_type.is_some())?;
     let mut node = if content.len() == 1 {
         parse(name, &content[0], doc, active_refs)?
     } else {
@@ -783,6 +797,12 @@ pub(super) fn parse_nullable_composition(
             unsupported_union(name, "nullable composition must be a schema object")
         })?;
         object.insert(keyword.to_string(), serde_json::Value::Array(content));
+        // Syntax has been checked. Prove the outer assertion against the
+        // complete result after null/oneOf normalization, without narrowing
+        // this intermediate composition.
+        if outer_type.is_some() {
+            object.remove("type");
+        }
         for constraint_keyword in [
             "minimum",
             "maximum",
@@ -803,6 +823,9 @@ pub(super) fn parse_nullable_composition(
         parse(name, &reduced, doc, active_refs)?
     };
     if node.json_any {
+        if outer_type.is_some() {
+            return Err(type_sibling_error(name, true));
+        }
         if keyword == "oneOf" {
             return Err(unsupported_union(
                 name,
@@ -816,6 +839,7 @@ pub(super) fn parse_nullable_composition(
         // null branch makes null match twice. Its non-null domain is unchanged.
         node.nullable = false;
         node.container_nullable = false;
+        check_scalar_type_sibling(name, outer_type, &node, true)?;
         return Ok(Some(node));
     }
     if node.repeating || matches!(node.kind, ir::SchemaKind::Group { .. }) {
@@ -825,6 +849,7 @@ pub(super) fn parse_nullable_composition(
     } else {
         return Ok(None);
     }
+    check_scalar_type_sibling(name, outer_type, &node, true)?;
     Ok(Some(node))
 }
 
@@ -952,7 +977,7 @@ fn classify_exact_scalar_alternative(
         active_refs.pop();
         let classified = classified?;
         if apply_siblings && !matches!(classified, ExactScalarAlternative::Other) {
-            ensure_annotation_or_format_only(union_name, schema, "$ref")?;
+            ensure_annotation_or_format_only(union_name, schema, "$ref", false)?;
             return parse(union_name, schema, doc, active_refs).map(exact_scalar_from_node);
         }
         return Ok(classified);
@@ -1163,10 +1188,114 @@ fn is_scalar_validation_keyword(keyword: &str) -> bool {
     )
 }
 
+/// JSON type assertions are a domain check, independent of Ferrule's runtime
+/// scalar tags. A number declaration contains integers; the converse does not
+/// hold for an unbounded Float domain.
+#[derive(Clone, Copy)]
+struct ScalarTypeSibling(u8);
+
+impl ScalarTypeSibling {
+    fn contains_type(self, ty: ScalarType) -> bool {
+        match ty {
+            ScalarType::String => self.0 & 1 != 0,
+            ScalarType::Bool => self.0 & 2 != 0,
+            ScalarType::Int => self.0 & (4 | 8) != 0,
+            ScalarType::Float => self.0 & 8 != 0,
+        }
+    }
+
+    fn contains_types(self, types: &[ScalarType], nullable: bool) -> bool {
+        (!nullable || self.0 & 16 != 0) && types.iter().all(|ty| self.contains_type(*ty))
+    }
+
+    fn contains_value(self, value: &JsonAllowedValue) -> bool {
+        match value {
+            JsonAllowedValue::JsonNull => self.0 & 16 != 0,
+            JsonAllowedValue::Float(value) if value.get().fract() == 0.0 => self.0 & (4 | 8) != 0,
+            other => other.scalar_type().is_some_and(|ty| self.contains_type(ty)),
+        }
+    }
+}
+
+fn type_sibling_error(name: &str, nullable: bool) -> JsonFormatError {
+    unsupported_union(
+        name,
+        if nullable {
+            "nullable composition cannot preserve `type` validation"
+        } else {
+            "scalar composition cannot preserve `type` validation"
+        },
+    )
+}
+
+/// Validate syntax before any intermediate type omission. This deliberately
+/// does not use schema_type(), whose absent-shape fallback also covers some
+/// malformed declarations.
+fn scalar_type_sibling(
+    name: &str,
+    schema: &serde_json::Value,
+    nullable: bool,
+) -> Result<Option<ScalarTypeSibling>, JsonFormatError> {
+    let Some(value) = schema.get("type") else {
+        return Ok(None);
+    };
+    let values = match value {
+        serde_json::Value::String(_) => core::slice::from_ref(value),
+        serde_json::Value::Array(values) if !values.is_empty() && values.len() <= 7 => {
+            values.as_slice()
+        }
+        _ => return Err(type_sibling_error(name, nullable)),
+    };
+    let mut domain = 0_u8;
+    for value in values {
+        let bit = match value.as_str() {
+            Some("string") => 1,
+            Some("boolean") => 2,
+            Some("integer") => 4,
+            Some("number") => 8,
+            Some("null") => 16,
+            Some("object") => 32,
+            Some("array") => 64,
+            _ => return Err(type_sibling_error(name, nullable)),
+        };
+        if domain & bit != 0 {
+            return Err(type_sibling_error(name, nullable));
+        }
+        domain |= bit;
+    }
+    Ok(Some(ScalarTypeSibling(domain)))
+}
+
+fn check_scalar_type_sibling(
+    name: &str,
+    outer_type: Option<ScalarTypeSibling>,
+    node: &SchemaNode,
+    nullable: bool,
+) -> Result<(), JsonFormatError> {
+    let Some(domain) = outer_type else {
+        return Ok(());
+    };
+    let contained = !node.repeating
+        && !node.json_any
+        && !node.container_nullable
+        && (!node.nullable || domain.0 & 16 != 0)
+        && match node.kind {
+            SchemaKind::Scalar { ty } => domain.contains_type(ty),
+            SchemaKind::ScalarUnion { types } => types.iter().all(|ty| domain.contains_type(ty)),
+            SchemaKind::Group { .. } => false,
+        };
+    if contained {
+        Ok(())
+    } else {
+        Err(type_sibling_error(name, nullable))
+    }
+}
+
 fn ensure_annotation_or_format_only(
     union_name: &str,
     schema: &serde_json::Value,
     shape_keyword: &str,
+    allow_type: bool,
 ) -> Result<(), JsonFormatError> {
     let Some(object) = schema.as_object() else {
         return Err(unsupported_union(
@@ -1176,6 +1305,7 @@ fn ensure_annotation_or_format_only(
     };
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword
+            && !(allow_type && keyword.as_str() == "type")
             && keyword.as_str() != "const"
             && keyword.as_str() != "enum"
             && keyword.as_str() != "format"
@@ -1203,6 +1333,15 @@ fn ensure_annotation_or_range_only(
     schema: &serde_json::Value,
     shape_keyword: &str,
 ) -> Result<(), JsonFormatError> {
+    ensure_annotation_or_range_only_with_type(union_name, schema, shape_keyword, false)
+}
+
+fn ensure_annotation_or_range_only_with_type(
+    union_name: &str,
+    schema: &serde_json::Value,
+    shape_keyword: &str,
+    allow_type: bool,
+) -> Result<(), JsonFormatError> {
     let Some(object) = schema.as_object() else {
         return Err(unsupported_union(
             union_name,
@@ -1211,6 +1350,7 @@ fn ensure_annotation_or_range_only(
     };
     if let Some(keyword) = object.keys().find(|keyword| {
         keyword.as_str() != shape_keyword
+            && !(allow_type && keyword.as_str() == "type")
             && !is_annotation_keyword(keyword.as_str())
             && !matches!(
                 keyword.as_str(),
