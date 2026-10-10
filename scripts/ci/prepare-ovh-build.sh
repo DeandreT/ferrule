@@ -18,7 +18,8 @@ cache_root="$HOME/ci-cache"
 if [[ $(realpath -m "$cache_root") != "$cache_root" ||
       $(realpath -m "$cache_root/workspace-target") != "$cache_root/workspace-target" ||
       $(realpath -m "$cache_root/generated-host-target") != "$cache_root/generated-host-target" ||
-      $(realpath -m "$cache_root/compiler") != "$cache_root/compiler" ]]; then
+      $(realpath -m "$cache_root/compiler") != "$cache_root/compiler" ||
+      $(realpath -m "$HOME/ci-tmp") != "$HOME/ci-tmp" ]]; then
   echo 'Refusing symlinked build-cache paths.' >&2
   exit 1
 fi
@@ -30,12 +31,13 @@ if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < 16 * 1024 * 1024 ));
   exit 1
 fi
 mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" \
-  "$cache_root/compiler" "$HOME/.dotnet"
+  "$cache_root/compiler" "$HOME/.dotnet" "$HOME/ci-tmp"
 
 {
   printf 'CARGO_TARGET_DIR=%s/workspace-target\n' "$cache_root"
   printf 'FERRULE_CODEGEN_HOST_TARGET_DIR=%s/generated-host-target\n' "$cache_root"
   printf 'DOTNET_INSTALL_DIR=%s/.dotnet\n' "$HOME"
+  printf 'TMPDIR=%s/ci-tmp\n' "$HOME"
   printf 'SCCACHE_DIR=%s/compiler\n' "$cache_root"
   printf '%s\n' 'SCCACHE_CACHE_SIZE=2G' 'CARGO_BUILD_JOBS=1' 'RUST_TEST_THREADS=2' \
     'MSBUILDDISABLENODEREUSE=1' 'UseSharedCompilation=false'

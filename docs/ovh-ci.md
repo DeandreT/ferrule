@@ -42,6 +42,10 @@ ambient Wayland handles removed. These limits leave capacity for the existing
 Wareboxes runner and Valheim service; they do not reserve capacity from them.
 The persistent Roslyn compiler process is disabled so C# builds release memory
 before subsequent Rust host builds.
+`TMPDIR=/home/ferrule-runner/ci-tmp` keeps compiler/test temporary files on disk.
+Ubuntu 26.04's `/tmp` is a memory-backed filesystem: native GUI diagnostic
+files reached 2.6 GiB and caused memory-pressure stalls in the first run.
+Private `/tmp` remains enabled for programs that ignore `TMPDIR`.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
 paths, or less than 16 GiB free. The first native build used approximately
@@ -58,6 +62,9 @@ before toolchain setup. Build outputs persist outside the cleaned checkout:
 - `/home/ferrule-runner/ci-cache/compiler` — sccache, capped at 2 GB, reuses
   compatible Rust library compilation across otherwise isolated host builds.
 - `/home/ferrule-runner/.cargo`, `.rustup`, and `.dotnet` — dependency/tool caches.
+- `/home/ferrule-runner/ci-tmp` — temporary test/build outputs and retained
+  failure diagnostics. Inspect these alongside caches; preserve required
+  evidence before removing leftovers while the runner is idle.
 
 GitHub-hosted jobs continue to use the existing Actions Rust cache. OVH skips
 that archive cache to avoid duplicating persistent build outputs. Nightly Rust

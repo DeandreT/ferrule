@@ -79,6 +79,7 @@ class ResourceGuardTests(unittest.TestCase):
         for suffix in ("", "/workspace-target", "/generated-host-target", "/compiler"):
             with self.subTest(suffix=suffix):
                 self.assert_refused(symlink="/home/ferrule-runner/ci-cache" + suffix)
+        self.assert_refused(symlink="/home/ferrule-runner/ci-tmp")
 
     def test_minimum_capacity_publishes_isolated_bounded_caches(self):
         result, output = self.run_guard()
@@ -87,6 +88,7 @@ class ResourceGuardTests(unittest.TestCase):
             "CARGO_TARGET_DIR": "/home/ferrule-runner/ci-cache/workspace-target",
             "FERRULE_CODEGEN_HOST_TARGET_DIR": "/home/ferrule-runner/ci-cache/generated-host-target",
             "DOTNET_INSTALL_DIR": "/home/ferrule-runner/.dotnet",
+            "TMPDIR": "/home/ferrule-runner/ci-tmp",
             "CARGO_BUILD_JOBS": "1",
             "RUST_TEST_THREADS": "2",
             "MSBUILDDISABLENODEREUSE": "1",

@@ -62,7 +62,7 @@ NEEDRESTART_MODE=l DEBIAN_FRONTEND=noninteractive apt-get install -y --no-instal
   libicu-dev xvfb xauth
 
 install -d -o "$runner_user" -g "$runner_user" -m 700 \
-  "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet"
+  "$runner_dir" "$runner_home/ci-cache" "$runner_home/.dotnet" "$runner_home/ci-tmp"
 if [[ ! -f $runner_dir/config.sh ]]; then
   archive=$(mktemp /tmp/ferrule-runner.XXXXXX.tar.gz)
   trap 'rm -f "$archive"' EXIT
@@ -147,6 +147,7 @@ ExecStart=/home/ferrule-runner/actions-runner/runsvc.sh
 Environment=HOME=/home/ferrule-runner
 Environment=PATH=/opt/ferrule-runner-tools:/home/ferrule-runner/.cargo/bin:/home/ferrule-runner/.dotnet:/usr/local/bin:/usr/bin:/bin
 Environment=DOTNET_INSTALL_DIR=/home/ferrule-runner/.dotnet
+Environment=TMPDIR=/home/ferrule-runner/ci-tmp
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
 Environment=DOTNET_NOLOGO=1
 Environment=MSBUILDDISABLENODEREUSE=1
