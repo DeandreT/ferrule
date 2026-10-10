@@ -23,11 +23,13 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
 ## Current Baseline
 
-Status snapshot: 2026-10-10 04:20:16 UTC, against merged main
-[`fef16c3`](https://github.com/DeandreT/ferrule/commit/fef16c329591708d8437ac9d97e27bb7259cb438).
+Status snapshot: 2026-10-10 10:53:09 UTC, against merged main
+[`0c7b2ca`](https://github.com/DeandreT/ferrule/commit/0c7b2ca080ac5855230ae6cc4b7f78c53b628dd2).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#271](https://github.com/DeandreT/ferrule/issues/271). The earlier
+[#299](https://github.com/DeandreT/ferrule/issues/299). The preceding
+[#271](https://github.com/DeandreT/ferrule/issues/271) refresh merged in
+[#280](https://github.com/DeandreT/ferrule/pull/280), with three successful hosted jobs. The earlier
 [#252](https://github.com/DeandreT/ferrule/issues/252) snapshot merged in
 [#255](https://github.com/DeandreT/ferrule/pull/255); its dependency maps remain dated views.
 Memory-study [#249](https://github.com/DeandreT/ferrule/pull/249) and host-policy
@@ -38,7 +40,8 @@ native/Rust/C# calls pass. Bounded generated C# X12 options are merged in
 [#265](https://github.com/DeandreT/ferrule/pull/265). Both later PRs also have three
 successful hosted jobs. The #248 allocation campaign has eight measurements,
 eight independent verifiers and four trace decoders accepted. Its report source and
-one full rendered diagram are independently reviewed; report publication is pending.
+one full rendered diagram are independently reviewed; the bounded report is
+merged in [#279](https://github.com/DeandreT/ferrule/pull/279), with three successful hosted jobs.
 
 #203's fixtures are merged in [#266](https://github.com/DeandreT/ferrule/pull/266),
 with all three hosted jobs successful. The 24 public interpreter comparisons,
@@ -50,18 +53,56 @@ in this main, closing #261. All three hosted jobs and fresh combined-main strict
 warnings and formatting pass. Issue/PR observations were fetched individually;
 they are not a claim that all remote state was observed simultaneously.
 
-#263's 41 simulated controller-policy controls match their independent expectations;
-real native saved-file reopening remains unrun. #268's complete XML-oracle and
-driver source is reviewed; its new 68 helper, 17 policy and 41 compatibility
-controls remain unrun. These are separate from #263's earlier 41 simulated controls.
+#263's earlier 41 simulated controller-policy controls remain separate from
+#268's independently accepted 126 XML-oracle observations: 68 helper, 41 byte
+compatibility and 17 admission checks. After the read-only staging correction
+[#281](https://github.com/DeandreT/ferrule/issues/281), a saved-metadata fixture
+failed before its expected rejection; [#283](https://github.com/DeandreT/ferrule/issues/283)
+corrected it, and the same 41+17 controls passed fresh runs. The unchanged helper's
+68 observations are inherited, not rerun or added to the distinct total.
+The neutral [checkpoint report](docs/conformance/native-saved-design-reopen.md)
+is merged in [#287](https://github.com/DeandreT/ferrule/pull/287), with three successful
+hosted jobs. Read-only preparation passed, but the first native phase timed out at
+180 seconds with a 398-byte XML artifact and no first save or reopen. Later read-only
+#285 diagnostics also timed out; #291's presentation experiment refused its visible-UI
+requirement. All 16 modeled query controls pass. The new read-only observer's
+exception-path closure gap is tracked in [#302](https://github.com/DeandreT/ferrule/issues/302);
+its correction is source-reviewed and all three exception models match in a completed
+root-owned run, now independently accepted. These mocked branches do not
+prove a live helper, thread or cleanup path; fresh observer qualification remains
+pending. Live ownership/query/acknowledgment and native save/reopen
+remain unproved. Source review and proven cleanup do not turn these retained negatives
+into a completed native cycle.
 #253's three tests / 11 internal controls, all 344 engine tests, ordinary engine
-build and corrected workspace strict/format checks pass locally. The test-only
-let-chain prerequisite [#277](https://github.com/DeandreT/ferrule/issues/277) preserves
-the original warning failure and all observations. [#278](https://github.com/DeandreT/ferrule/pull/278)
-is open with hosted jobs pending; #253/#277 publication is pending. The borrowed
-construction marker is not allocator telemetry or public/native parity.
-All 67 planned #201 native calls and desktop duplication checks remain unrun;
-the shared GUI lane still needs disk admission. No faithful new sequence saved
+build and corrected workspace strict/format checks pass. The test-only let-chain
+prerequisite [#277](https://github.com/DeandreT/ferrule/issues/277) preserves the original
+warning failure and all observations. Both are merged in
+[#278](https://github.com/DeandreT/ferrule/pull/278), with three successful hosted jobs.
+The borrowed construction marker is not allocator telemetry or public/native parity.
+#201's accepted corpus contains 28 controls (10 admitted and 18 refused), 87 snapshots
+and 92 canvas tables. Three focused tests plan 29 duplication attempts. After #297
+restored the locked dependency, [#298](https://github.com/DeandreT/ferrule/issues/298)'s
+reviewed test-capture correction compiled and formatting passed. The first focused
+unit then failed at an independent input edit: the Project changed to the new source,
+but the test driver left the old canvas wire. The independently reviewed negative
+retained nine primary local engine previews, zero named previews, two duplication
+actions and 19 state records; 16 of 17 reached snapshot assertions matched before
+the wire failure. [#300](https://github.com/DeandreT/ferrule/issues/300) corrects the
+test driver's wire action and whole-checkpoint restoration;
+[#301](https://github.com/DeandreT/ferrule/issues/301) corrects the frozen named-context
+dispatch. The first paired source successor's type/module-path gaps and a later
+pre-compilation invocation refusal remain separate from the actual wire failure.
+The revised test-only source is independently reviewed, applied and formatted.
+A fresh root-owned selected test now passes all ten admitted cases and all 67 local
+engine previews (61 primary and six named), preserving the unchanged literals.
+Independent review of those complete results is pending in this dated snapshot.
+The refusal and keyboard tests, full GUI suite and two Main/Named physical sessions
+with ten checkpoint pairs remain pending qualification here. Public-codec
+materialization and all 29 modeled policy controls remain independently accepted.
+#288's admitted child output route retained the complete ten-case run; later gates
+still require fresh resource/source admission. These local engine previews do not
+establish physical session or native saved/reopen parity.
+No faithful new sequence saved
 form is admitted. Earlier #173/#175, #182/#187 and #212/#215
 snapshots remain historical records. This refresh preserves all three existing
 Mermaid fence bodies and their earlier rendering/zoom limits; the current table
@@ -519,11 +560,20 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   same-project duplication is #201.
 - [ ] Qualify the accepted atomic sequence-consumer duplication proposal in
   [#201](https://github.com/DeandreT/ferrule/issues/201), assigned to DeandreT. The frozen
-  contract has 28 controls, 87 snapshots and 56 complete canvas tables; all 67
-  planned native calls and desktop checks remain unrun; disk admission for the
-  shared GUI verification lane is pending. Final source adoption
-  preserves #213's Fit hooks and privately remaps owners without changing the
-  original. General clipboard and arbitrary graph copying are excluded.
+  contract has 28 controls (10 admitted and 18 refused), 87 snapshots and 92 canvas
+  tables. Three focused tests plan 29 duplication attempts. #298's accepted capture
+  compiled; the first focused unit retained nine primary previews and two duplication
+  actions before its test driver left a stale canvas wire. #300's wire/checkpoint
+  correction and #301's named dispatch are reviewed, applied and formatted; their
+  source negatives and a later invocation refusal are preserved separately.
+  A fresh root-owned selected test passes all ten admitted cases and 67 local engine
+  previews (61 primary / six named), with independent result review pending as of this
+  snapshot. Refusal, keyboard, full GUI and two Main/Named physical sessions with ten
+  checkpoint pairs remain pending qualification here.
+  Codec materialization and modeled policy 29 pass independently. The source is adopted
+  on a separate feature branch, preserving #213's Fit hooks; #288's admitted child route
+  retains the completed ten-case originals and needs fresh admission for later gates.
+  General clipboard and arbitrary graph copying are excluded.
 - [x] Qualify the test-only GUI frame diagnostic change in
   [#211](https://github.com/DeandreT/ferrule/issues/211), merged in
   [#232](https://github.com/DeandreT/ferrule/pull/232): the same 20 tests retain
@@ -680,22 +730,25 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 - [ ] Qualify one admitted native saved-file reopen/execute/save2 cycle in
   [#263](https://github.com/DeandreT/ferrule/issues/263), after complete independent
   XML oracles from [#268](https://github.com/DeandreT/ferrule/issues/268).
-  #268's source and drivers are reviewed; its new 68 helper, 17 policy and
-  41 compatibility controls, and the real native cycle, remain unrun.
-  A fresh individually admitted design, source/tool/display bindings and complete
-  saved connections/parameter/identity review are still required. No filter/map
-  seed or faithful new saved form is inferred from simulation or XML parsing.
+  #268's original 68 helper, 17 admission and 41 byte-compatibility observations
+  pass independent review. #281's read-only staging and #283's saved-metadata fixture
+  repairs preserve the failed controls; corrected 41+17 reruns pass, with helper 68
+  inherited separately. The [checkpoint report](docs/conformance/native-saved-design-reopen.md)
+  is merged in [#287](https://github.com/DeandreT/ferrule/pull/287). Native execution
+  timed out before first save; #285 diagnostics and #291's presentation experiment
+  retain separate negatives. Exact owned-window proof and the full save/reopen cycle
+  remain pending. No filter/map seed or faithful saved form is inferred from XML parsing.
 - [x] Qualify internal capture/stage/counter observations from #203's frozen fixture
   in [#253](https://github.com/DeandreT/ferrule/issues/253): three tests / 11 controls,
   all 344 engine tests, an ordinary engine build and corrected workspace strict/
   format checks pass locally. Complete original and corrected observations are
   independently accepted. The borrowed test-only sink preserves public APIs and
   budgets; its construction marker establishes code-path reach, not allocator telemetry.
-- [ ] Publish #253 with its single test-helper let-chain prerequisite
+- [x] Publish #253 with its single test-helper let-chain prerequisite
   [#277](https://github.com/DeandreT/ferrule/issues/277) in
-  [#278](https://github.com/DeandreT/ferrule/pull/278). The PR is open and hosted jobs
-  are pending. The original strict-warning failure remains retained; these internal
-  checks do not establish public/native or saved-file parity.
+  [#278](https://github.com/DeandreT/ferrule/pull/278), with three successful hosted jobs.
+  The original strict-warning failure remains retained; these internal checks do not
+  establish public/native or saved-file parity.
 - [x] Measure large captures and eager mapped outputs in
   [#207](https://github.com/DeandreT/ferrule/issues/207): all 72 measured native/Rust/C#
   runs and 72 separate complete verifiers pass. The
@@ -711,7 +764,8 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   merged fixtures: eight measurements, eight independent output verifiers and
   four post-closure trace decoders are independently accepted. Both numeric and
   large-capture repetitions retain complete outputs and sampled allocation stacks.
-- [ ] Publish [#248](https://github.com/DeandreT/ferrule/issues/248)'s bounded report.
+- [x] Publish [#248](https://github.com/DeandreT/ferrule/issues/248)'s bounded report in
+  [#279](https://github.com/DeandreT/ferrule/pull/279), with three successful hosted jobs.
   Report source/data and one full rendered diagram are independently reviewed;
   the 100% viewport requires scrolling. Owned browser-helper cleanup was needed:
   closure is proven, but normal cleanup-free closure is not claimed. Allocation
