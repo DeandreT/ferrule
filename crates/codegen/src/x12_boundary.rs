@@ -5,7 +5,10 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{EdiBoundaryKind, EdiValueConstraint, FormatOptions, X12Separators};
+use mapping::{
+    EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
+    EdiValueConstraint, FormatOptions, X12Autocomplete, X12Separators,
+};
 
 use crate::{EmbeddedSchemaError, Program, ProgramValidationError, serialize_embedded_schema};
 
@@ -14,22 +17,42 @@ pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
 
 /// One explicitly selected raw X12 side. Missing separators mean ISA discovery
-/// on input and `*`, `:`, `~` on output. Controls are always supplied by the host.
+/// on input and `*`, `:`, `~` on output. Completion is explicitly selected.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct X12BoundaryOptions {
     pub separators: Option<X12Separators>,
     pub constraints: Vec<EdiValueConstraint>,
+    pub lenient_segments: bool,
+    pub implied_decimals: Vec<EdiImpliedDecimal>,
+    pub lexical_formats: Vec<EdiLexicalFormat>,
+    pub autocomplete: Option<X12Autocomplete>,
 }
 
 impl X12BoundaryOptions {
     /// Capture supported physical options without inferring or selecting X12.
     /// Every other retained physical setting is refused before emission.
     pub fn from_format_options(options: &FormatOptions) -> Result<Self, X12BoundaryPolicyError> {
+        if [
+            options.edi_value_constraints.len(),
+            options.edi_implied_decimals.len(),
+            options.edi_lexical_formats.len(),
+        ]
+        .into_iter()
+        .any(|count| count > MAX_X12_SCHEMA_NODES)
+        {
+            return Err(X12BoundaryPolicyError::FormatOptions);
+        }
         let accepted = FormatOptions {
+            lenient_segments: options.lenient_segments,
             edi_kind: options
                 .edi_kind
                 .filter(|kind| *kind == EdiBoundaryKind::X12),
             edi_value_constraints: options.edi_value_constraints.clone(),
+            edi_implied_decimals: options.edi_implied_decimals.clone(),
+            edi_lexical_formats: options.edi_lexical_formats.clone(),
+            edi_autocomplete: options.edi_autocomplete.as_ref().and_then(|completion| {
+                matches!(completion, EdiAutocomplete::X12(_)).then(|| completion.clone())
+            }),
             x12_separators: options.x12_separators,
             x12_interchange_version: options
                 .x12_interchange_version
@@ -44,6 +67,15 @@ impl X12BoundaryOptions {
         let result = Self {
             separators: options.x12_separators,
             constraints: options.edi_value_constraints.clone(),
+            lenient_segments: options.lenient_segments,
+            implied_decimals: options.edi_implied_decimals.clone(),
+            lexical_formats: options.edi_lexical_formats.clone(),
+            autocomplete: options.edi_autocomplete.as_ref().and_then(
+                |completion| match completion {
+                    EdiAutocomplete::X12(selected) => Some(selected.clone()),
+                    _ => None,
+                },
+            ),
         };
         result.validate_separators()?;
         Ok(result)
@@ -53,9 +85,9 @@ impl X12BoundaryOptions {
         let Some(syntax) = self.separators else {
             return Ok(());
         };
-        if syntax.release.is_some() || syntax.repetition.is_some() {
+        if syntax.release.is_some() {
             return Err(X12BoundaryPolicyError::Separators {
-                reason: "release and repetition are outside the 004010 profile",
+                reason: "release is outside the 004010 profile",
             });
         }
         let visible =
@@ -63,6 +95,9 @@ impl X12BoundaryOptions {
         if !visible(syntax.element)
             || !visible(syntax.component)
             || !(syntax.segment == '\n' || visible(syntax.segment))
+            || syntax
+                .repetition
+                .is_some_and(|character| !visible(character))
         {
             return Err(X12BoundaryPolicyError::Separators {
                 reason: "element/component require visible ASCII punctuation; terminators also permit LF",
@@ -71,6 +106,9 @@ impl X12BoundaryOptions {
         if syntax.element == syntax.component
             || syntax.element == syntax.segment
             || syntax.component == syntax.segment
+            || syntax.repetition.is_some_and(|character| {
+                [syntax.element, syntax.component, syntax.segment].contains(&character)
+            })
         {
             return Err(X12BoundaryPolicyError::Separators {
                 reason: "separator characters must differ",
@@ -312,6 +350,7 @@ fn descriptor(
         options.validate_separators()?;
         validate_schema(schema, side)?;
         validate_constraints(schema, &options.constraints, side)?;
+        validate_profile_options(schema, options, side)?;
     }
     let schema_descriptor = serialize_embedded_schema(schema, MAX_EMBEDDED_X12_DESCRIPTOR_BYTES)
         .map_err(|error| X12BoundaryPolicyError::EmbeddedSchema { side, error })?;
@@ -319,17 +358,25 @@ fn descriptor(
         return Ok(schema_descriptor);
     };
     let separators = options.separators.map(|syntax| {
-        serde_json::json!({
+        let mut encoded = serde_json::json!({
             "element": syntax.element,
             "component": syntax.component,
             "segment": syntax.segment,
-        })
+        });
+        if let Some(repetition) = syntax.repetition {
+            encoded["repetition"] = serde_json::json!(repetition);
+        }
+        encoded
     });
     let encoded = serde_json::json!({
         "version": "004010",
         "schema": schema_descriptor,
         "separators": separators,
         "constraints": options.constraints,
+        "lenient_segments": options.lenient_segments,
+        "implied_decimals": options.implied_decimals,
+        "lexical_formats": options.lexical_formats,
+        "autocomplete": options.autocomplete,
     })
     .to_string();
     if encoded.len() > MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
@@ -685,6 +732,13 @@ fn validate_constraints(
     constraints: &[EdiValueConstraint],
     side: X12BoundarySide,
 ) -> Result<(), X12BoundaryPolicyError> {
+    if constraints.len() > MAX_X12_SCHEMA_NODES {
+        return Err(X12BoundaryPolicyError::Constraint {
+            side,
+            path: Vec::new(),
+            reason: "constraint collection limit exceeded",
+        });
+    }
     let mut seen = BTreeSet::new();
     for constraint in constraints {
         let path = constraint.path();
@@ -696,6 +750,14 @@ fn validate_constraints(
         if !seen.insert(path) {
             return Err(bad("duplicate constraint path"));
         }
+        if path.is_empty()
+            || path.len() > MAX_X12_SCHEMA_DEPTH
+            || path
+                .iter()
+                .any(|part| part.is_empty() || part.chars().any(char::is_control))
+        {
+            return Err(bad("invalid constraint path"));
+        }
         let mut node = schema;
         for name in path {
             node = node
@@ -704,6 +766,166 @@ fn validate_constraints(
         }
         if !matches!(node.kind, SchemaKind::Scalar { .. }) {
             return Err(bad("constraint path must end at a scalar"));
+        }
+    }
+    Ok(())
+}
+
+fn profile_leaf<'a>(
+    schema: &'a SchemaNode,
+    path: &[String],
+    side: X12BoundarySide,
+) -> Result<&'a SchemaNode, X12BoundaryPolicyError> {
+    let bad = |reason| X12BoundaryPolicyError::Constraint {
+        side,
+        path: path.to_vec(),
+        reason,
+    };
+    if path.is_empty()
+        || path.len() > MAX_X12_SCHEMA_DEPTH
+        || path
+            .iter()
+            .any(|part| part.is_empty() || part.chars().any(char::is_control))
+    {
+        return Err(bad("invalid profile option path"));
+    }
+    let mut node = schema;
+    for name in path {
+        node = node
+            .child(name)
+            .ok_or_else(|| bad("profile option path is absent from the schema"))?;
+    }
+    if !matches!(node.kind, SchemaKind::Scalar { .. }) {
+        return Err(bad("profile option path must end at a scalar"));
+    }
+    Ok(node)
+}
+
+fn validate_profile_options(
+    schema: &SchemaNode,
+    options: &X12BoundaryOptions,
+    side: X12BoundarySide,
+) -> Result<(), X12BoundaryPolicyError> {
+    let bad = |path: &[String], reason| X12BoundaryPolicyError::Constraint {
+        side,
+        path: path.to_vec(),
+        reason,
+    };
+    if options.implied_decimals.len() > MAX_X12_SCHEMA_NODES
+        || options.lexical_formats.len() > MAX_X12_SCHEMA_NODES
+    {
+        return Err(bad(&[], "profile option collection limit exceeded"));
+    }
+    let mut seen = BTreeSet::new();
+    for implied in &options.implied_decimals {
+        let path = implied.path();
+        if !seen.insert(path) {
+            return Err(bad(path, "duplicate implied-decimal path"));
+        }
+        let leaf = profile_leaf(schema, path, side)?;
+        if !(1..=18).contains(&implied.places()) {
+            return Err(bad(path, "implied-decimal places must be within 1..=18"));
+        }
+        let valid = matches!(
+            (side, &leaf.kind),
+            (
+                X12BoundarySide::Source,
+                SchemaKind::Scalar {
+                    ty: ScalarType::Float,
+                },
+            ) | (
+                X12BoundarySide::Target,
+                SchemaKind::Scalar {
+                    ty: ScalarType::Int | ScalarType::Float,
+                },
+            )
+        );
+        if !valid {
+            return Err(bad(
+                path,
+                "source implied decimals require Float; inactive target paths require Int or Float",
+            ));
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for lexical in &options.lexical_formats {
+        let path = lexical.path();
+        if !seen.insert(path) {
+            return Err(bad(path, "duplicate lexical-format path"));
+        }
+        let leaf = profile_leaf(schema, path, side)?;
+        let kind_valid = match lexical.kind() {
+            EdiLexicalKind::CompactDate6 | EdiLexicalKind::CompactDate8 => true,
+            EdiLexicalKind::CompactTime {
+                min_digits,
+                max_digits,
+            } => min_digits >= 4 && min_digits <= max_digits && max_digits <= 8,
+            EdiLexicalKind::Decimal { max_chars } => max_chars > 0,
+        };
+        if !kind_valid {
+            return Err(bad(path, "invalid lexical-format precision or length"));
+        }
+        if side == X12BoundarySide::Target {
+            let valid = matches!(
+                (&leaf.kind, lexical.kind()),
+                (
+                    SchemaKind::Scalar {
+                        ty: ScalarType::String,
+                    },
+                    _,
+                ) | (
+                    SchemaKind::Scalar {
+                        ty: ScalarType::Int | ScalarType::Float,
+                    },
+                    EdiLexicalKind::Decimal { .. },
+                )
+            );
+            if !valid {
+                return Err(bad(
+                    path,
+                    "target date/time lexical formats require String; decimals require String, Int or Float",
+                ));
+            }
+        }
+    }
+    if let Some(transaction_set) = options
+        .autocomplete
+        .as_ref()
+        .and_then(|selected| selected.transaction_set.as_ref())
+    {
+        let path = ["autocomplete".into(), "transaction_set".into()];
+        if transaction_set.len() != 3 || !transaction_set.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(bad(
+                &path,
+                "autocomplete transaction_set requires three ASCII digits",
+            ));
+        }
+        if side == X12BoundarySide::Target {
+            let mut pending = vec![(schema, true)];
+            while let Some((node, root)) = pending.pop() {
+                if !root && let Some(id) = segment_id(&node.name) {
+                    if id == "ST" {
+                        if let SchemaKind::Group { children, .. } = &node.kind
+                            && children[0]
+                                .fixed
+                                .as_deref()
+                                .is_some_and(|fixed| !fixed.is_empty() && fixed != transaction_set)
+                        {
+                            return Err(bad(
+                                &path,
+                                "autocomplete transaction_set conflicts with fixed ST01",
+                            ));
+                        }
+                        break;
+                    }
+                    // Positional element names do not establish segment ownership.
+                    continue;
+                }
+                if let SchemaKind::Group { children, .. } = &node.kind {
+                    pending.extend(children.iter().map(|child| (child, false)));
+                }
+            }
         }
     }
     Ok(())
