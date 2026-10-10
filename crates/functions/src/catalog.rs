@@ -192,6 +192,7 @@ pub(crate) enum BuiltinId {
     Positive,
     Floor,
     CreateGuid,
+    Random,
     FormatNumber,
     Exists,
     Round,
@@ -810,6 +811,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Rounds a number toward negative infinity."
+    ),
+    builtin!(
+        Random,
+        "random",
+        "Random",
+        Numeric,
+        &[],
+        BuiltinArity::fixed(0),
+        Numeric,
+        false,
+        false,
+        Authoring,
+        "Generates a pseudorandom floating-point value from zero inclusive to one exclusive."
     ),
     builtin!(
         CreateGuid,

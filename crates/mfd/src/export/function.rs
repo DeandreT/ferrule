@@ -132,6 +132,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "duration_from_parts"
         | "datetime_add"
         | "create_guid"
+        | "random"
         | "delay_passthrough" => "lang",
         "boolean" | "floor" | "format_date" | "format_datetime" | "format_time" => "xpath2",
         "edifact_to_datetime" => "edifact",

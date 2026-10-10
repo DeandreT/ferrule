@@ -1,0 +1,17 @@
+use codegen_runtime::{Instance, Value};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for _ in 0..64 {
+        let output = random_generated::execute(&Instance::Group(Default::default()))?;
+        let first = output.field("First").and_then(Instance::as_scalar).expect("first scalar");
+        let again = output.field("Again").and_then(Instance::as_scalar).expect("again scalar");
+        for field in [first, again] {
+            let Value::Float(value) = field else { panic!("random output must remain Float") };
+            assert!(value.is_finite() && value.is_sign_positive());
+            assert!((0.0..1.0).contains(value));
+        }
+        assert_eq!(output.as_group().expect("complete output group").len(), 2);
+    }
+    println!("random Rust host passed");
+    Ok(())
+}

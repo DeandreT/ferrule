@@ -1931,6 +1931,7 @@ dependencies = [
  "format-json",
  "ir",
  "mapping",
+ "rand",
  "regex",
  "serde_json",
  "thiserror 2.0.18",
