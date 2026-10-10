@@ -22,28 +22,25 @@ choose a lane and avoid conflicting changes.
 
 ## Next acceptance gates
 
-- [ ] Qualify #201's accepted atomic private-owner proposal: all 67 native calls and
-  alternate-display duplication/save/history checks remain unrun. Its 28-control
-  contract and complete canvas snapshots are frozen; preserve #213's Fit hooks.
-  Disk admission for the sole shared GUI verification lane is still pending.
-- [ ] Qualify #268's source-reviewed complete XML oracles through its new 68 helper,
-  17 controller-policy and 41 compatibility controls, then #263's individually
-  admitted native cycle. All new calls remain unrun; earlier #263 simulated 41
-  evidence stays separate, and no saved-form seed is inferred.
-- [ ] Publish #253 with the single test-helper let-chain prerequisite #277 in open
-  [#278](https://github.com/DeandreT/ferrule/pull/278); hosted jobs remain pending.
-  The original strict-warning failure and both complete focused cohorts are retained;
-  repeated runs do not add distinct cases.
-- [ ] Publish #248's bounded report. Source/data and one full rendered diagram are
-  independently reviewed; the 100% viewport requires scrolling. Browser-helper
-  cleanup was needed; closure is proven, with normal cleanup-free closure false.
-  Samples/stacks are not an exact object ledger, RSS is not allocation attribution,
-  and no exact phase clock or capture cause is inferred.
+- [ ] Qualify #201's accepted atomic private-owner proposal: three focused tests plan
+  29 duplication attempts. Frozen 28 controls / 87 snapshots / 92 canvas tables retain
+  independent oracles. #298's accepted capture compiles; preserve the first focused
+  stale-wire failure after nine primary previews and two duplications, #300/#301's
+  distinct source-review gaps and the later invocation refusal. Their revised source
+  is reviewed, applied and formatted. A fresh root-owned selected test passes all ten
+  admitted cases and 67 local engine previews (61 primary / six named), with independent
+  result review pending in this snapshot. Refusal, keyboard, full GUI and two Main/Named
+  physical sessions / ten checkpoint pairs remain pending qualification here. Preserve
+  #213 Fit hooks and fresh #288 resource admission after #297's locked-cache restoration;
+  all frozen expectations remain unchanged.
+- [ ] Qualify #263's individually admitted native save/reopen/save2 cycle after exact
+  owned-window proof. Native 180-second timeout, #285 diagnostics and #291 presentation refusal
+  remain negatives; modeled 16 query checks and helper source do not prove live ownership.
 - [ ] Settle #241's explicit competing-feed contract before admission and execution.
 - [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
   successful site compilation alone is insufficient.
-- [ ] Independently review and publish #271's main fef16c3 two-doc status refresh.
-  Existing fences stay byte-exact; no new rendering or product qualification is inferred.
+- [ ] Independently review and publish #299's scoped main 0c7b2ca two-doc successor,
+  separately from #201; preserve unrelated lanes and the same historical fences.
 
 ## Dependencies and shared areas
 
