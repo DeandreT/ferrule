@@ -328,9 +328,20 @@ fn parse_scalar_composition(
                 numeric_ranges.as_slice(),
                 [Some(ir::NumericRange::Integer(_))]
             );
+        let exact_string_float_interval = node.is_string_float_union()
+            && string_branches == 1
+            && numeric_types.as_slice() == [ScalarType::Float]
+            && matches!(
+                numeric_ranges.as_slice(),
+                [Some(ir::NumericRange::Number(_))]
+            )
+            && numeric_multiples.iter().all(Option::is_none)
+            && string_lengths.iter().all(Option::is_none)
+            && string_patterns.iter().all(Option::is_none);
         if matches!(node.kind, SchemaKind::ScalarUnion { .. })
             && numeric_ranges.iter().any(Option::is_some)
             && !exact_string_int_interval
+            && !exact_string_float_interval
         {
             return Err(unsupported_union(
                 name,
@@ -371,7 +382,43 @@ fn parse_scalar_composition(
         node.string_length_range = union_string_length_range_set(name, string_lengths)?;
         node.json_patterns = patterns::union(name, string_patterns)?;
     }
+    reject_string_float_interval_siblings(name, schema, &node)?;
     Ok(Some(node))
+}
+
+pub(super) fn reject_string_float_interval_siblings(
+    name: &str,
+    schema: &serde_json::Value,
+    node: &SchemaNode,
+) -> Result<(), JsonFormatError> {
+    if !node.is_string_float_union()
+        || !matches!(node.numeric_range, Some(ir::NumericRange::Number(_)))
+    {
+        return Ok(());
+    }
+    if let Some(keyword) = [
+        "const",
+        "enum",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "multipleOf",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+    ]
+    .into_iter()
+    .find(|keyword| schema.get(*keyword).is_some())
+    {
+        return Err(unsupported_union(
+            name,
+            &format!(
+                "String-or-Float interval composition cannot preserve outer `{keyword}` validation"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn scalar_types_overlap(left: ScalarType, right: ScalarType) -> bool {
@@ -822,6 +869,7 @@ pub(super) fn parse_nullable_composition(
         }
         parse(name, &reduced, doc, active_refs)?
     };
+    reject_string_float_interval_siblings(name, schema, &node)?;
     if node.json_any {
         if outer_type.is_some() {
             return Err(type_sibling_error(name, true));
@@ -850,6 +898,7 @@ pub(super) fn parse_nullable_composition(
         return Ok(None);
     }
     check_scalar_type_sibling(name, outer_type, &node, true)?;
+    reject_string_float_interval_siblings(name, schema, &node)?;
     Ok(Some(node))
 }
 
