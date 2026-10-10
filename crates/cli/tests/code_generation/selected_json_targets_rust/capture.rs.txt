@@ -1,0 +1,236 @@
+use codegen_runtime::{FilterMapBoundary, FilterMapBoundaryKind,
+    FilterMapCancellation, FilterMapCounters, FilterMapLimits, FilterMapPhase,
+    Instance, JsonBoundaryError, RuntimeError, Value, XmlTypeOrigin};
+use serde_json::Value as Json;
+use std::{cell::RefCell, fmt::Write as _, io::Write as _, path::{Path, PathBuf}};
+
+#[derive(Debug)]
+struct Output { name: Option<String>, document: Vec<u8> }
+#[derive(Debug)]
+struct Actual { outcome: Result<Output, JsonBoundaryError>, counters: Option<FilterMapCounters>, inner: bool, native: Option<(Option<String>,Instance)>, wire: Option<Result<Instance,JsonBoundaryError>> }
+
+fn retain(directory: &Path, label: &str, bytes: &[u8]) {
+    let path=directory.join(label);
+    if let Some(parent)=path.parent() { std::fs::create_dir_all(parent).unwrap(); }
+    let mut file=std::fs::OpenOptions::new().create_new(true).write(true).open(path).unwrap();
+    file.write_all(bytes).unwrap();file.flush().unwrap();
+}
+// Preserve the public return before any prospective decoded-wire observation.
+fn public_original(call: &Call<'_>, actual: &Actual) {
+    let mut original=format!("counters={:?};inner={};\n",actual.counters,actual.inner);
+    match &actual.outcome {
+        Ok(output)=> {
+            writeln!(original,"public-variant={};name={:?};bytes={}",
+                if output.name.is_some() {"Named"} else {"Primary"},output.name,output.document.len()).unwrap();
+            retain(call.directory,&format!("{}-PUBLIC-RETURN-DOCUMENT.bin",call.prefix),&output.document);
+        },
+        Err(error)=>error_original(error,&mut original),
+    }
+    retain(call.directory,&format!("{}-COMPLETE-PUBLIC-RETURN.txt",call.prefix),original.as_bytes());
+}
+fn bytes(value: &Json) -> Vec<u8> {
+    if let Some(recipe)=value.get("complete_byte_recipe") { return byte_recipe(recipe); }
+    let hex=value["utf8_hex"].as_str().unwrap();
+    (0..hex.len()).step_by(2).map(|index|u8::from_str_radix(&hex[index..index+2],16).unwrap()).collect()
+}
+fn byte_recipe(recipe: &Json) -> Vec<u8> {
+    if let Some(parts)=recipe["concatenate"].as_array() {
+        return parts.iter().flat_map(byte_recipe).collect();
+    }
+    if let Some(literal)=recipe["literal_utf8"].as_str() { return literal.as_bytes().to_vec(); }
+    recipe["repeat_utf8"].as_str().unwrap().repeat(recipe["count"].as_u64().unwrap() as usize).into_bytes()
+}
+fn scalar(value: &Json) -> Value {
+    if let Some(value)=value.get("String") {
+        Value::String(if let Some(text)=value.as_str() {text.to_owned()} else {
+            let recipe=&value["complete_value_recipe"];
+            recipe["repeat_unicode_scalar"].as_str().unwrap().repeat(recipe["count"].as_u64().unwrap() as usize)
+        })
+    } else if let Some(value)=value["Int"].as_i64() {Value::Int(value)}
+    else if let Some(value)=value["Bool"].as_bool() {Value::Bool(value)}
+    else if value.get("Null").is_some() {Value::Null}
+    else {panic!("unsupported frozen scalar recipe")}
+}
+fn instance(value: &Json) -> Instance {
+    if let Some(value)=value.get("Scalar") {Instance::Scalar(scalar(value))}
+    else if let Some(group)=value.get("Group") {
+        let fields=group["ordered_fields"].as_array().unwrap().iter().map(|row|
+            (row[0].as_str().unwrap().into(),instance(&row[1]))).collect::<Vec<_>>();
+        let origin=&group["origin"];
+        let origin=if origin.get("Unknown").is_some() {XmlTypeOrigin::Unknown}
+            else if origin.get("Absent").is_some() {XmlTypeOrigin::Absent}
+            else if let Some(value)=origin["Explicit"].as_str() {XmlTypeOrigin::Explicit(value)}
+            else {let value=&origin["ExplicitPadded"];XmlTypeOrigin::ExplicitPadded {
+                literal:value["literal"].as_str().unwrap(),resolved_identity:value["resolved_identity"].as_str().unwrap()}};
+        Instance::Group(codegen_runtime::InstanceGroup::from(fields).with_xml_type_origin(origin).unwrap())
+    } else if let Some(items)=value["Repeated"].as_array() {Instance::Repeated(items.iter().map(instance).collect())}
+    else if let Some(items)=value["MappedSequence"].as_array() {Instance::MappedSequence(items.iter().map(instance).collect())}
+    else {panic!("unsupported frozen instance recipe")}
+}
+fn instance_original(value: &Instance, path: &str, output: &mut String) {
+    writeln!(output,"path={path:?};complete-instance={value:#?}").unwrap();
+    match value {
+        Instance::Scalar(Value::Float(value))=>writeln!(output,"path={path:?};binary64={:016x}",value.to_bits()).unwrap(),
+        Instance::Scalar(_)=>{},
+        Instance::Group(fields)=> {
+            writeln!(output,"path={path:?};xml-origin={:?}",fields.xml_type_origin()).unwrap();
+            for (index,(name,child)) in fields.iter().enumerate() {instance_original(child,&format!("{path}/field[{index}]={name:?}"),output);}
+        },
+        Instance::Repeated(items)|Instance::MappedSequence(items)=> {
+            let kind=if matches!(value,Instance::Repeated(_)){"Repeated"}else{"MappedSequence"};
+            for (index,child) in items.iter().enumerate() {instance_original(child,&format!("{path}/{kind}[{index}]"),output);}
+        },
+        Instance::DocumentSet(documents)=>for (index,document) in documents.iter().enumerate() {
+            writeln!(output,"document[{index}].path={:?};source-path={:?}",document.path(),document.source_path()).unwrap();
+            instance_original(document.value(),&format!("{path}/Document[{index}]"),output);
+        },
+    }
+}
+fn runtime_original(error: &RuntimeError, output: &mut String) {
+    writeln!(output,"complete-runtime-error={error:#?};display={error}").unwrap();
+    match error {
+        RuntimeError::FilterMapRuntime{source,..}=>runtime_original(source,output),
+        RuntimeError::FilterMapValueType{found:Value::Float(value),..}=>writeln!(output,"found.binary64={:016x}",value.to_bits()).unwrap(),
+        RuntimeError::FilterMapNonFinite{bits}=>writeln!(output,"binary64={bits:016x}").unwrap(),
+        _=>{},
+    }
+}
+fn error_original(error: &JsonBoundaryError, output: &mut String) {
+    writeln!(output,"complete-json-error={error:#?};display={error}").unwrap();
+    if let JsonBoundaryError::Execution(error)=error {runtime_original(error,output);}
+    let mut source=std::error::Error::source(error);
+    while let Some(error)=source {writeln!(output,"source-debug={error:?};source-display={error}").unwrap();source=error.source();}
+}
+fn boundary(value: &Json) -> FilterMapBoundary {
+    FilterMapBoundary {item:value["item"].as_u64().unwrap() as u32,
+        phase:match value["phase"].as_str().unwrap(){"Source"=>FilterMapPhase::Source,"Capture"=>FilterMapPhase::Capture,"Predicate"=>FilterMapPhase::Predicate,"Mapper"=>FilterMapPhase::Mapper,_=>panic!("phase")},
+        capture_index:value["capture_index"].as_u64().map(|v|v as usize),
+        source_position:value["source_position"].as_u64().map(|v|v as usize),
+        function:value["function"].as_u64(),node:value["node"].as_u64().map(|v|v as u32),
+        kind:match value["kind"].as_str().unwrap(){"SourceReservation"=>FilterMapBoundaryKind::SourceReservation,"NodeEvaluation"=>FilterMapBoundaryKind::NodeEvaluation,"CallEntry"=>FilterMapBoundaryKind::CallEntry,"StageItem"=>FilterMapBoundaryKind::StageItem,"Result"=>FilterMapBoundaryKind::Result,_=>panic!("kind")} }
+}
+pub fn source_name(name: &str) -> &'static str {
+    match name {"alpha"=>"alpha","beta"=>"beta","unused"=>"unused","catalog"=>"catalog","poison"=>"poison",_=>panic!("undeclared frozen source")}
+}
+fn runtime_matches(actual: &RuntimeError, recipe: &Json) -> bool {
+    let fields=&recipe["fields"];
+    match (recipe["kind"].as_str().unwrap(),actual) {
+        ("UnknownTarget",RuntimeError::UnknownTarget{name})=>name==fields["name"].as_str().unwrap() && fields["display"].as_str().is_none_or(|v|actual.to_string()==v),
+        ("MissingNamedSource",RuntimeError::MissingNamedSource{name})|("DuplicateNamedSource",RuntimeError::DuplicateNamedSource{name})=>*name==fields["name"].as_str().unwrap(),
+        ("UnexpectedNamedSource",RuntimeError::UnexpectedNamedSource{name})=>name==fields["name"].as_str().unwrap(),
+        ("MappingException",RuntimeError::MappingException{node,message})=>*node as u64==fields["node"].as_u64().unwrap() && message.as_deref()==fields["message"].as_str(),
+        ("MappingFailure",RuntimeError::MappingFailure{rule,message})=>*rule as u64==fields["rule"].as_u64().unwrap() && message.as_deref()==fields["message"].as_str(),
+        ("MissingRuntimeParameter",RuntimeError::MissingRuntimeParameter{node,name})=>*node as u64==fields["node"].as_u64().unwrap() && name==fields["name"].as_str().unwrap(),
+        ("MissingDynamicSourceLoader",RuntimeError::MissingDynamicSourceLoader{source})=>*source==fields["source"].as_str().unwrap(),
+        ("DynamicSourceLoad",RuntimeError::DynamicSourceLoad{source,path,message})=>*source==fields["source"].as_str().unwrap() && path==fields["path"].as_str().unwrap() && message_matches(message,fields),
+        ("FilterMapRuntime",RuntimeError::FilterMapRuntime{boundary:at,source})=>*at==boundary(&fields["boundary"]) && runtime_matches(source,&fields["source"]),
+        ("FilterMapBudget",RuntimeError::FilterMapBudget{kind,used,requested,max})=>format!("{kind:?}")==fields["kind"].as_str().unwrap() && *used==fields["used"].as_u64().unwrap() as u128 && *requested==fields["requested"].as_u64().unwrap() as u128 && *max==fields["max"].as_u64().unwrap() as u128,
+        ("FilterMapCancelled",RuntimeError::FilterMapCancelled)=>true,
+        _=>false,
+    }
+}
+fn message_matches(message: &str, fields: &Json) -> bool {
+    if let Some(text)=fields["rust_exact_message"].as_str().or_else(||fields["message"].as_str()) {message==text}
+    else if let Some(prefix)=fields["rust_message_prefix"].as_str() {
+        // The complete original is retained. Only the portable family is an oracle.
+        message.starts_with(prefix) && fields["utf8"]["valid_up_to"]==0 && fields["utf8"]["error_len"]==1
+    } else {false}
+}
+fn error_matches(actual: &JsonBoundaryError, expected: &Json) -> bool {
+    let fields=&expected["fields"];
+    match (expected["kind"].as_str().unwrap(),actual) {
+        ("Execution",JsonBoundaryError::Execution(error))=>runtime_matches(error,&fields["cause"]),
+        ("InvalidInput",JsonBoundaryError::InvalidInput{message})|("InvalidOutput",JsonBoundaryError::InvalidOutput{message})=>message_matches(message,fields),
+        ("InputTooLarge",JsonBoundaryError::InputTooLarge{bytes,max})|("OutputTooLarge",JsonBoundaryError::OutputTooLarge{bytes,max})=>*bytes as u64==fields["bytes"].as_u64().unwrap() && *max as u64==fields["max"].as_u64().unwrap() && fields["rust_display"].as_str().is_none_or(|text|actual.to_string()==text),
+        _=>false,
+    }
+}
+struct Checker { specification: Json, originals: RefCell<Vec<FilterMapBoundary>> }
+impl FilterMapCancellation for Checker {
+    fn is_cancelled(&self, at: &FilterMapBoundary) -> bool {
+        self.originals.borrow_mut().push(*at);
+        match self.specification.as_str().unwrap() {
+            "true for every consulted boundary"=>true,
+            "true exactly at SourceReservation; false at every other boundary"=>at.kind==FilterMapBoundaryKind::SourceReservation,
+            _=>panic!("unknown frozen cancellation policy"),
+        }
+    }
+}
+#[derive(Debug)]
+struct LoaderEvent {source:String,path:String,body_file:Option<String>,error:Option<String>}
+type LoaderReply = (String,String,Result<Vec<u8>,String>);
+type WireSchemas = Vec<(String,Vec<(String,String)>)>;
+struct Loader { replies: Vec<LoaderReply>, directory:PathBuf, prefix:String, originals:RefCell<Vec<LoaderEvent>> }
+impl codegen_runtime::DynamicJsonSourceLoader for Loader {
+    fn load(&self, source: &str, path: &str) -> Result<Vec<u8>,String> {
+        let actual=self.replies.iter().find(|(name,logical,_)|name==source && logical==path)
+            .map(|(_,_,result)|result.clone()).unwrap_or_else(||Err("218 unexpected loader request".into()));
+        let ordinal=self.originals.borrow().len();let file=format!("{}-LOADER-{ordinal:02}-COMPLETE-BODY.bin",self.prefix);
+        let (body_file,error)=match &actual {Ok(body)=>{retain(&self.directory,&file,body);(Some(file),None)},Err(error)=>(None,Some(error.clone()))};
+        self.originals.borrow_mut().push(LoaderEvent{source:source.into(),path:path.into(),body_file,error});actual
+    }
+}
+struct Call<'a> { case:&'a Json, api:&'a str, profile:usize, source:&'a [u8], inputs:&'a [(String,Vec<u8>)],
+    parameters:&'a [(String,Value)], mapping_path:&'a Path, main_path:&'a Path, datetime:Option<&'a str>,
+    loader:Option<&'a Loader>, checker:Option<&'a Checker>, limits:FilterMapLimits, directory:&'a Path, prefix:&'a str, wire_schema:&'a str }
+fn cases(corpus: &Json, directory: &Path, schemas:&WireSchemas, require_rust_counters: bool, invoke: impl Fn(&Call<'_>) -> Actual) -> Vec<(String,String,bool)> {
+    let mut comparisons=Vec::new();
+    for case in corpus["cases"].as_array().unwrap() {
+        for api in case["apis"].as_array().unwrap().iter().filter_map(Json::as_str).filter(|api|*api!="csharp_text_only") {
+            let prefix=format!("{:02}",comparisons.len());
+            retain(directory,&format!("{prefix}-COMPLETE-CONTROL.json"),&serde_json::to_vec_pretty(case).unwrap());
+            let source=bytes(&case["primary_input"]);retain(directory,&format!("{prefix}-PRIMARY-INPUT.bin"),&source);
+            let named=case["ordered_named_inputs"].as_array().unwrap().iter().map(|input|
+                (input["name"].as_str().unwrap().to_owned(),bytes(&input["document"]))).collect::<Vec<_>>();
+            for (index,(_,body)) in named.iter().enumerate() {retain(directory,&format!("{prefix}-STATIC-{index:02}-INPUT.bin"),body);}
+            let parameters=case["execution_context"]["parameters"].as_array().map(|rows|rows.iter().map(|row|
+                (row["name"].as_str().unwrap().to_owned(),scalar(&row["value"]))).collect::<Vec<_>>()).unwrap_or_default();
+            let mut parameter_original=String::new();for (name,value) in &parameters {instance_original(&Instance::Scalar(value.clone()),&format!("parameter[{name:?}]"),&mut parameter_original);}
+            retain(directory,&format!("{prefix}-COMPLETE-PARAMETERS.txt"),parameter_original.as_bytes());
+            let loader=Loader {replies:case["loader"]["ordered_responses"].as_array().map(|rows|rows.iter().enumerate().map(|(index,row)|{
+                let result=if let Some(value)=row["result"].get("Ok") {let body=bytes(value);retain(directory,&format!("{prefix}-LOADER-RECIPE-{index:02}.bin"),&body);Ok(body)}else{Err(row["result"]["Err"].as_str().unwrap().to_owned())};
+                (row["source"].as_str().unwrap().into(),row["path"].as_str().unwrap().into(),result)
+            }).collect()).unwrap_or_default(),directory:directory.into(),prefix:prefix.clone(),originals:RefCell::new(Vec::new())};
+            let checker=Checker{specification:case["filter_map_controls"]["cancellation"].clone(),originals:RefCell::new(Vec::new())};
+            let limits=if case["filter_map_controls"].is_null(){FilterMapLimits::default()}else{FilterMapLimits::new(case["filter_map_controls"]["source_items"].as_u64().unwrap() as u128,case["filter_map_controls"]["work"].as_u64().unwrap() as u128).unwrap()};
+            // Materialize complete independent expected bytes and tree BEFORE the call.
+            let expected_instance=if case["expected"]["status"]=="Ok" {Some(instance(&case["expected"]["instance"]))}else{None};
+            let expected_bytes=if case["expected"]["status"]=="Ok" {Some(bytes(&case["expected"]["document"]))}else{None};
+            if let Some(expected)=&expected_bytes {retain(directory,&format!("{prefix}-EXPECTED-DOCUMENT.bin"),expected);let mut original=String::new();instance_original(expected_instance.as_ref().unwrap(),"expected",&mut original);retain(directory,&format!("{prefix}-COMPLETE-EXPECTED-INSTANCE.txt"),original.as_bytes());}
+            let profile=corpus["profiles"].as_array().unwrap().iter().position(|profile|profile["id"]==case["profile"]).unwrap();
+            let wire_schema=case["selection"]["Named"].as_str().map_or(Some(schemas[profile].0.as_str()),|name|schemas[profile].1.iter().find(|(declared,_)|declared==name).map(|(_,schema)|schema.as_str())).unwrap_or("");
+            retain(directory,&format!("{prefix}-FROZEN-SELECTED-WIRE-SCHEMA.json"),wire_schema.as_bytes());
+            let call=Call{case,api,profile,wire_schema,source:&source,inputs:&named,parameters:&parameters,
+                mapping_path:Path::new(case["execution_context"]["mapping_file_path"].as_str().unwrap_or("logical-218.json")),main_path:Path::new(case["execution_context"]["main_mapping_file_path"].as_str().unwrap_or("logical-218.json")),datetime:case["execution_context"]["current_datetime"].as_str(),
+                loader:(!case["loader"].is_null()).then_some(&loader),checker:(!checker.specification.is_null()).then_some(&checker),limits,directory,prefix:&prefix};
+            let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||invoke(&call)));
+            let mut original=match &result {Ok(actual)=>format!("counters={:?};inner={};\n",actual.counters,actual.inner),Err(payload)=>format!("panic-type={:?};panic-text={:?}\n",payload.as_ref().type_id(),payload.downcast_ref::<String>().map(String::as_str).or_else(||payload.downcast_ref::<&str>().copied()))};
+            if let Ok(actual)=&result {if let Some(wire)=&actual.wire {match wire {Ok(value)=>instance_original(value,"wire-observation-not-internal-instance",&mut original),Err(error)=>{writeln!(original,"wire-observation-error:").unwrap();error_original(error,&mut original);}}}
+if let Some((name,value))=&actual.native {instance_original(value,&format!("native-selected[{name:?}]"),&mut original);}match &actual.outcome {Ok(output)=>{writeln!(original,"selected-name={:?};complete-document-bytes={}",output.name,output.document.len()).unwrap();retain(directory,&format!("{prefix}-ACTUAL-DOCUMENT.bin"),&output.document);},Err(error)=>error_original(error,&mut original)}}
+            writeln!(original,"complete-loader-events={:#?};complete-cancellation-boundaries={:#?}",loader.originals.borrow(),checker.originals.borrow()).unwrap();
+            for event in loader.originals.borrow().iter() {writeln!(original,"loader-body-file={:?};loader-error={:?}",event.body_file,event.error).unwrap();}
+            retain(directory,&format!("{prefix}-COMPLETE-ACTUAL.txt"),original.as_bytes());
+            // No comparison occurs before complete actual/error/callback retention.
+            let mut matched=matches!(&result,Ok(actual) if match &actual.outcome {
+                Ok(output)=>case["expected"]["status"]=="Ok" && output.name.as_deref()==case["expected"]["name"].as_str() && Some(&output.document)==expected_bytes.as_ref(),
+                Err(error)=>case["expected"]["status"]=="Error" && error_matches(error,&case["expected"]),
+            });
+            if let Ok(actual)=&result {
+                if let Some(wire)=&actual.wire {matched &= matches!(wire,Ok(value) if Some(value)==expected_instance.as_ref());}
+                if let Some((name,value))=&actual.native {matched &= name.as_deref()==case["expected"]["name"].as_str() && Some(value)==expected_instance.as_ref();}
+                if require_rust_counters {if let Some(counters)=case["expected_rust_control_counters"].as_object() {matched &= actual.counters==Some(FilterMapCounters {source_items:counters["source_items"].as_u64().unwrap() as u128, work:counters["work"].as_u64().unwrap() as u128});}else{matched &= actual.counters.is_none();}}
+                if !case["filter_map_controls"].is_null() {matched &= actual.inner;}
+            }
+            let requests=loader.originals.borrow().iter().map(|event|serde_json::json!({"source":event.source,"path":event.path})).collect::<Vec<_>>();
+            matched &= Json::Array(requests)==case["expected_loader_calls"];
+            let expected=&case["expected_filter_map_cancellation_calls"];
+            if let Some(rows)=expected.as_array() {
+                let expected=rows.iter().map(boundary).collect::<Vec<_>>();
+                matched &= *checker.originals.borrow()==expected;
+            } else {panic!("unrecognized frozen cancellation expectations")}
+            comparisons.push((case["id"].as_str().unwrap().to_owned(),api.to_owned(),matched));
+        }
+    }
+    retain(directory,"COMPLETE76-COMPARISONS.json",&serde_json::to_vec_pretty(&comparisons).unwrap());
+    comparisons
+}

@@ -1,0 +1,424 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private sealed record Input(string Name, string Text, byte[] Bytes);
+    private sealed record Document(string Variant, string? Name, string? Text, byte[]? Bytes);
+    private static void Write(string directory, string leaf, byte[] body)
+    {
+        using var file = new FileStream(Path.Combine(directory, leaf), FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+        file.Write(body); file.Flush(true);
+    }
+    private static void Json(string directory, string leaf, object? value) =>
+        Write(directory, leaf, JsonSerializer.SerializeToUtf8Bytes(value));
+    private static byte[] Utf16(string text)
+    {
+        var bytes = new byte[checked(text.Length * 2)];
+        for (var index = 0; index < text.Length; index++)
+        { bytes[index * 2] = (byte)text[index]; bytes[index * 2 + 1] = (byte)(text[index] >> 8); }
+        return bytes;
+    }
+    private static byte[] RecipeBytes(JsonObject recipe)
+    {
+        byte[] result;
+        if (recipe["utf8_hex"] is JsonValue hex) result = Convert.FromHexString(hex.GetValue<string>());
+        else if (recipe["complete_byte_recipe"] is JsonObject full) result = RecipeBytes(full);
+        else if (recipe["concatenate"] is JsonArray parts)
+        {
+            using var stream = new MemoryStream();
+            foreach (var part in parts) stream.Write(RecipeBytes(part!.AsObject()));
+            result = stream.ToArray();
+        }
+        else if (recipe["literal_utf8"] is JsonValue literal) result = StrictUtf8.GetBytes(literal.GetValue<string>());
+        else if (recipe["repeat_utf8"] is JsonValue repeated)
+        {
+            var unit = StrictUtf8.GetBytes(repeated.GetValue<string>());
+            var count = recipe["count"]!.GetValue<int>();
+            result = new byte[checked(unit.Length * count)];
+            for (var index = 0; index < count; index++) unit.CopyTo(result, index * unit.Length);
+        }
+        else throw new InvalidOperationException("Unknown complete byte recipe.");
+        var length = recipe["exact_bytes"] ?? recipe["bytes"];
+        if (length is not null && result.Length != length.GetValue<int>())
+            throw new InvalidOperationException("Independent byte recipe length differs.");
+        if (recipe["text"] is JsonValue text && !StrictUtf8.GetBytes(text.GetValue<string>()).AsSpan().SequenceEqual(result))
+            throw new InvalidOperationException("Independent text/hex recipe bodies differ.");
+        if (recipe["sha256"] is JsonValue digest && !string.Equals(Convert.ToHexString(SHA256.HashData(result)), digest.GetValue<string>(), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Independent byte recipe digest differs.");
+        return result;
+    }
+    private static string RecipeString(JsonNode value)
+    {
+        if (value is JsonValue text) return text.GetValue<string>();
+        var recipe = value["complete_value_recipe"]!.AsObject();
+        var scalar = recipe["repeat_unicode_scalar"]!.GetValue<string>();
+        var builder = new StringBuilder(checked(scalar.Length * recipe["count"]!.GetValue<int>()));
+        for (var index = 0; index < recipe["count"]!.GetValue<int>(); index++) builder.Append(scalar);
+        return builder.ToString();
+    }
+    private static string InputText(JsonObject recipe) => recipe["utf16_code_units"] is JsonArray units
+        ? new string(units.Select(unit => (char)unit!.GetValue<int>()).ToArray())
+        : StrictUtf8.GetString(RecipeBytes(recipe));
+    private static FerruleValue Scalar(JsonObject spec)
+    {
+        if (spec["String"] is JsonNode text) return FerruleValue.FromString(RecipeString(text));
+        if (spec["Int"] is JsonNode integer) return FerruleValue.FromInt64(integer.GetValue<long>());
+        if (spec["Bool"] is JsonNode boolean) return FerruleValue.FromBoolean(boolean.GetValue<bool>());
+        throw new InvalidOperationException("Unknown independent expected scalar.");
+    }
+    private static FerruleInstance Instance(JsonObject spec)
+    {
+        if (spec["Scalar"] is JsonObject scalar) return new FerruleScalar(Scalar(scalar));
+        if (spec["Group"] is JsonObject group)
+        {
+            if (group["origin"]!.AsObject().Count != 1 || !group["origin"]!.AsObject().ContainsKey("Unknown"))
+                throw new InvalidOperationException("This frozen JSON boundary expects Unknown origins.");
+            return new FerruleGroup(group["ordered_fields"]!.AsArray().Select(field => field!.AsArray())
+                .Select(field => new FerruleField(field[0]!.GetValue<string>(), Instance(field[1]!.AsObject()))));
+        }
+        if (spec["Repeated"] is JsonArray repeated) return new FerruleRepeated(repeated.Select(item => Instance(item!.AsObject())));
+        throw new InvalidOperationException("Unknown independent expected instance.");
+    }
+    private static object Boundary(FerruleFilterMapBoundary at) => new {
+        item = at.Item, phase = at.Phase.ToString(), capture_index = at.CaptureIndex,
+        source_position = at.SourcePosition, function = at.Function, node = at.Node, kind = at.Kind.ToString() };
+    private static FerruleFilterMapBoundary Boundary(JsonObject spec) => new(
+        spec["item"]!.GetValue<uint>(), Enum.Parse<FerruleFilterMapPhase>(spec["phase"]!.GetValue<string>()),
+        spec["capture_index"]?.GetValue<int>(), spec["source_position"]?.GetValue<int>(),
+        spec["function"]?.GetValue<ulong>(), spec["node"]?.GetValue<uint>(),
+        Enum.Parse<FerruleFilterMapBoundaryKind>(spec["kind"]!.GetValue<string>()));
+    private sealed class Cancellation(string specification) : IFerruleFilterMapCancellation
+    {
+        internal readonly List<FerruleFilterMapBoundary> Calls = new();
+        public bool IsCancelled(FerruleFilterMapBoundary at)
+        {
+            Calls.Add(at);
+            return specification switch {
+                "true for every consulted boundary" => true,
+                "true exactly at SourceReservation; false at every other boundary" => at.Kind == FerruleFilterMapBoundaryKind.SourceReservation,
+                _ => throw new InvalidOperationException("Unknown frozen cancellation recipe."),
+            };
+        }
+    }
+    private sealed class Loader(JsonObject specification, string directory, string prefix) : IFerruleDynamicJsonSourceLoader
+    {
+        internal readonly List<object> Calls = new();
+        internal readonly List<Exception> Errors = new();
+        public byte[] Load(string sourceName, string logicalPath)
+        {
+            var index = Calls.Count;
+            var request = new { source = sourceName, path = logicalPath };
+            Calls.Add(request); Json(directory, $"{prefix}-loader{index}-request.original.json", request);
+            var responses = specification["ordered_responses"]!.AsArray();
+            var response = index < responses.Count ? responses[index]!.AsObject() : null;
+            if (response is null || response["source"]!.GetValue<string>() != sourceName || response["path"]!.GetValue<string>() != logicalPath)
+            {
+                var error = new InvalidOperationException("218 unexpected loader request");
+                Errors.Add(error); Capture.Retain(directory, $"{prefix}-loader{index}-error", error); throw error;
+            }
+            if (response["result"]!["Ok"] is JsonObject okay)
+            {
+                var bytes = RecipeBytes(okay);
+                Write(directory, $"{prefix}-loader{index}-reply.original.bytes", bytes);
+                return bytes;
+            }
+            var refusal = new InvalidOperationException(response["result"]!["Err"]!.GetValue<string>());
+            Errors.Add(refusal); Capture.Retain(directory, $"{prefix}-loader{index}-error", refusal); throw refusal;
+        }
+    }
+    private static object InvokeText(int profile, string source, FerruleTargetSelection selection,
+        Input[] inputs, FerruleExecutionContext? context, Loader? loader) => profile switch
+    {
+            0 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case0.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case0.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case0.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            1 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case1.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case1.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case1.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            2 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case2.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case2.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case2.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            3 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case3.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case3.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case3.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            4 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case4.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case4.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case4.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            5 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case5.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case5.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case5.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+            6 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case6.GeneratedMapping.ExecuteJsonSelectedTarget(source, selection)
+                : Ferrule.Generated.Case6.GeneratedMapping.ExecuteJsonSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case6.NamedJsonInput(row.Name, row.Text)).ToArray(), context, loader),
+        _ => throw new InvalidOperationException("Unknown exact profile ordinal."),
+    };
+    private static object InvokeBytes(int profile, byte[] source, FerruleTargetSelection selection,
+        Input[] inputs, FerruleExecutionContext? context, Loader? loader) => profile switch
+    {
+            0 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case0.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case0.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case0.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            1 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case1.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case1.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case1.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            2 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case2.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case2.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case2.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            3 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case3.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case3.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case3.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            4 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case4.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case4.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case4.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            5 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case5.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case5.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case5.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+            6 => inputs.Length == 0 && context is null && loader is null
+                ? Ferrule.Generated.Case6.GeneratedMapping.ExecuteJsonBytesSelectedTarget(source, selection)
+                : Ferrule.Generated.Case6.GeneratedMapping.ExecuteJsonBytesSelectedTargetWithHost(source, selection,
+                    inputs.Select(row => new Ferrule.Generated.Case6.NamedJsonBytesInput(row.Name, row.Bytes)).ToArray(), context, loader),
+        _ => throw new InvalidOperationException("Unknown exact profile ordinal."),
+    };
+    private static Document? Extract(object result) => result switch
+    {
+        Ferrule.Generated.Case0.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case0.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case0.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case0.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case1.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case1.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case1.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case1.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case2.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case2.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case2.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case2.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case3.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case3.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case3.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case3.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case4.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case4.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case4.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case4.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case5.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case5.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case5.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case5.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        Ferrule.Generated.Case6.SelectedJsonTargetOutput.Primary p => new("Primary", null, p.Document, null),
+        Ferrule.Generated.Case6.SelectedJsonTargetOutput.Named n => new("Named", n.Output.Name, n.Output.Document, null),
+        Ferrule.Generated.Case6.SelectedJsonBytesTargetOutput.Primary p => new("Primary", null, null, p.Document),
+        Ferrule.Generated.Case6.SelectedJsonBytesTargetOutput.Named n => new("Named", n.Output.Name, null, n.Output.Document),
+        _ => null,
+    };
+    private static FerruleRuntimeException RuntimeExpected(JsonObject cause)
+    {
+        var fields = cause["fields"]!.AsObject();
+        var kind = cause["kind"]!.GetValue<string>();
+        var name = fields["name"]?.GetValue<string>();
+        var message = fields["message"]?.GetValue<string>();
+        var source = fields["source"]?.GetValue<string>();
+        var path = fields["path"]?.GetValue<string>();
+        return kind switch {
+            "UnknownTarget" => new(FerruleRuntimeError.UnknownTarget, fields["display"]!.GetValue<string>(), detail: name),
+            "MissingNamedSource" => new(FerruleRuntimeError.MissingNamedSource, $"named source {name} is required by this mapping", detail: name),
+            "DuplicateNamedSource" => new(FerruleRuntimeError.DuplicateNamedSource, $"named source '{name}' was supplied more than once", detail: name),
+            "UnexpectedNamedSource" => new(FerruleRuntimeError.UnexpectedNamedSource, $"named source '{name}' is not declared by this mapping", detail: name),
+            "MissingRuntimeParameter" => new(FerruleRuntimeError.MissingRuntimeParameter,
+                $"node {fields["node"]}: execution context does not provide runtime parameter '{name}'", node: fields["node"]!.GetValue<uint>(), runtimeParameter: name),
+            "MappingException" => new(FerruleRuntimeError.MappingException, $"node {fields["node"]}: mapping exception: {message}", node: fields["node"]!.GetValue<uint>(), mappingExceptionMessage: message),
+            "MappingFailure" => new(FerruleRuntimeError.MappingFailure, $"mapping failure rule {fields["rule"]}: {message}", failureRule: fields["rule"]!.GetValue<int>(), mappingFailureMessage: message),
+            "MissingDynamicSourceLoader" => new(FerruleRuntimeError.MissingDynamicSourceLoader, $"dynamic source '{source}' requires a host source loader", sourceField: source),
+            "DynamicSourceLoad" => new(FerruleRuntimeError.DynamicSourceLoad, $"dynamic source '{source}' could not load '{path}': {message}", new InvalidOperationException(message), detail: path, sourceField: source),
+            _ => throw new InvalidOperationException("Unknown frozen runtime error."),
+        };
+    }
+    private static JsonNode FilterExpected(JsonObject cause)
+    {
+        var fields = cause["fields"]!.AsObject(); var boundary = Boundary(fields["boundary"]!.AsObject());
+        var source = fields["source"]!.AsObject(); var budget = source["kind"]!.GetValue<string>() == "FilterMapBudget";
+        var amounts = source["fields"]!.AsObject(); var kind = budget ? "Budget" : "Cancelled";
+        var budgetKind = budget ? amounts["kind"]!.GetValue<string>() : null;
+        var used = budget ? amounts["used"]!.ToJsonString() : null;
+        var requested = budget ? amounts["requested"]!.ToJsonString() : null;
+        var maximum = budget ? amounts["max"]!.ToJsonString() : null;
+        var message = $"filter/map {kind}: expected=; found=; bits=; budget={budgetKind}; used={used}; requested={requested}; maximum={maximum}";
+        var inner = Capture.Json(Capture.Error(new Exception(message)))!.AsObject();
+        inner["type"] = "Ferrule.Runtime.FerruleFilterMapFailure";
+        inner["feature"] = Capture.Json(new { kind, expected = (string?)null, found = (object?)null, bits = (string?)null,
+            budget = budgetKind, used, requested, maximum });
+        var outer = Capture.Json(Capture.Error(new Exception($"filter/map {boundary}: {message}")))!.AsObject();
+        outer["type"] = "Ferrule.Runtime.FerruleFilterMapException"; outer["inner"] = inner;
+        outer["envelope"] = Capture.Json(new { item = boundary.Item, phase = boundary.Phase.ToString(), captureIndex = boundary.CaptureIndex,
+            sourcePosition = boundary.SourcePosition, function = boundary.Function, node = boundary.Node, kind = boundary.Kind.ToString() });
+        return outer;
+    }
+    private static bool ErrorMatches(Exception actual, JsonObject expected)
+    {
+        var kind = expected["kind"]!.GetValue<string>(); var fields = expected["fields"]!.AsObject();
+        if (kind != "Execution")
+        {
+            if (actual is not FerruleRuntimeException boundary || boundary.Error != FerruleRuntimeError.JsonBoundary) return false;
+            var wanted = new FerruleRuntimeException(FerruleRuntimeError.JsonBoundary, fields["csharp_exact_message"]!.GetValue<string>(), detail: fields["csharp_exact_message"]!.GetValue<string>());
+            var fieldsExact = JsonNode.DeepEquals(Capture.Json(Capture.Error(boundary))!["runtime"], Capture.Json(Capture.Error(wanted))!["runtime"]);
+            var innerType = fields["csharp_inner_type"]?.GetValue<string>();
+            return fieldsExact && boundary.Message == wanted.Message && boundary.InnerException?.GetType().FullName == innerType;
+        }
+        var cause = fields["cause"]!.AsObject(); var causeKind = cause["kind"]!.GetValue<string>();
+        if (causeKind == "FilterMapRuntime") return JsonNode.DeepEquals(Capture.Json(Capture.Error(actual)), FilterExpected(cause));
+        if (causeKind == "DynamicSourceLoad" && cause["fields"]!["csharp_captured_decoder_message"] is JsonValue)
+        {
+            var details = cause["fields"]!.AsObject();
+            var wanted = new FerruleRuntimeException(FerruleRuntimeError.DynamicSourceLoad, "unused framework-dependent display",
+                detail: details["path"]!.GetValue<string>(), sourceField: details["source"]!.GetValue<string>());
+            return actual is FerruleRuntimeException found && found.InnerException is DecoderFallbackException &&
+                JsonNode.DeepEquals(Capture.Json(Capture.Error(found))!["runtime"], Capture.Json(Capture.Error(wanted))!["runtime"]) &&
+                found.Message.StartsWith($"dynamic source '{details["source"]!.GetValue<string>()}' could not load '{details["path"]!.GetValue<string>()}': ", StringComparison.Ordinal);
+        }
+        return JsonNode.DeepEquals(Capture.Json(Capture.Error(actual)), Capture.Json(Capture.Error(RuntimeExpected(cause))));
+    }
+    private static FerruleExecutionContext? Context(JsonObject control, Cancellation? checker, List<object> parameterOriginals)
+    {
+        var host = control["execution_context"] as JsonObject;
+        var controls = control["filter_map_controls"] as JsonObject;
+        if (host is null && controls is null) return null;
+        var parameters = host is null ? FerruleRuntimeParameters.Empty : new FerruleRuntimeParameters(
+            host["parameters"]!.AsArray().Select(row => row!.AsObject()).Select(row =>
+                MakeParameter(row, parameterOriginals)));
+
+        var limits = controls is null ? FerruleFilterMapLimits.Default : new FerruleFilterMapLimits(
+            UInt128.Parse(controls["source_items"]!.ToJsonString(), CultureInfo.InvariantCulture),
+            UInt128.Parse(controls["work"]!.ToJsonString(), CultureInfo.InvariantCulture));
+        return new(host?["mapping_file_path"]?.GetValue<string>() ?? "logical-218.json",
+            host?["main_mapping_file_path"]?.GetValue<string>() ?? "logical-218.json",
+            host?["current_datetime"]?.GetValue<string>(), parameters, limits, checker);
+    }
+    private static KeyValuePair<string, FerruleValue> MakeParameter(JsonObject row, List<object> originals)
+    {
+        var name = row["name"]!.GetValue<string>(); var value = Scalar(row["value"]!.AsObject());
+        originals.Add(new { name, value = Capture.Value(value) });
+        return new(name, value);
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length != 4 || args[2] is not ("small" or "size-boundary"))
+            throw new InvalidOperationException("Need frozen catalog, prepared schemas, exact tier, and fresh absolute originals directory.");
+        if (!Path.IsPathFullyQualified(args[3]) || File.Exists(args[3]) || Directory.Exists(args[3]))
+            throw new InvalidOperationException("Originals directory must be fresh and absolute.");
+        Directory.CreateDirectory(args[3]);
+        var raw = File.ReadAllBytes(args[0]); var schemaBytes = File.ReadAllBytes(args[1]);
+        Write(args[3], "COMPLETE-FROZEN-CONTROLS-ORIGINAL.json", raw);
+        Write(args[3], "COMPLETE-PREPARED-SCHEMAS-ORIGINAL.json", schemaBytes);
+        var corpus = JsonNode.Parse(raw)!.AsObject(); var schemas = JsonNode.Parse(schemaBytes)!.AsObject();
+        var profiles = corpus["profiles"]!.AsArray().Select(node => node!["id"]!.GetValue<string>()).ToArray();
+        var checks = new List<object>(); var count = 0; var allMatched = true;
+        foreach (var control in corpus["cases"]!.AsArray().Select(node => node!.AsObject()).Where(row => row["tier"]!.GetValue<string>() == args[2]))
+        foreach (var api in control["apis"]!.AsArray().Select(node => node!.GetValue<string>()))
+        {
+            var prefix = $"{count++:00}-{control["id"]!.GetValue<string>()}-{api}";
+            Write(args[3], prefix + "-COMPLETE-CONTROL-ORIGINAL.json", JsonSerializer.SerializeToUtf8Bytes(control));
+            var profileId = control["profile"]!.GetValue<string>(); var profile = Array.IndexOf(profiles, profileId);
+            var byteApi = api == "utf8_bytes";
+            var primarySpec = control["primary_input"]!.AsObject();
+            var primaryBytes = primarySpec["utf16_code_units"] is JsonArray ? null : RecipeBytes(primarySpec);
+            var primaryText = byteApi ? null : InputText(primarySpec);
+            if (primaryBytes is not null) Write(args[3], prefix + "-primary.original.bytes", primaryBytes);
+            if (primaryText is not null) Write(args[3], prefix + "-primary.original.utf16le", Utf16(primaryText));
+            var inputs = new List<Input>(); var inputIndex = 0;
+            foreach (var node in control["ordered_named_inputs"]!.AsArray())
+            {
+                var row = node!.AsObject(); var bytes = RecipeBytes(row["document"]!.AsObject());
+                // Invalid UTF-8 byte-only controls never decode their static documents in the host.
+                var text = byteApi ? "" : InputText(row["document"]!.AsObject());
+                Write(args[3], $"{prefix}-named{inputIndex}.original.bytes", bytes);
+                if (!byteApi) Write(args[3], $"{prefix}-named{inputIndex}.original.utf16le", Utf16(text));
+                Json(args[3], $"{prefix}-named{inputIndex++}.original.name.json", row["name"]);
+                inputs.Add(new(row["name"]!.GetValue<string>(), text, bytes));
+            }
+            var selected = control["selection"]!["Named"] is JsonValue name
+                ? FerruleTargetSelection.Named(name.GetValue<string>()) : FerruleTargetSelection.Primary();
+            var cancellation = control["filter_map_controls"]?["cancellation"]?.GetValue<string>();
+            var checker = cancellation is null ? null : new Cancellation(cancellation);
+            var parameterOriginals = new List<object>();
+            var context = Context(control, checker, parameterOriginals);
+            Json(args[3], prefix + "-COMPLETE-CONTEXT-ORIGINAL.json", context is null ? null : new {
+                context.MappingFilePath, context.MainMappingFilePath, context.CurrentDateTime,
+                parameters = parameterOriginals,
+                sourceItems = context.FilterMapLimits.SourceItems.ToString(CultureInfo.InvariantCulture),
+                work = context.FilterMapLimits.Work.ToString(CultureInfo.InvariantCulture), checkerPresent = checker is not null });
+            var loader = control["loader"] is JsonObject loaderSpec ? new Loader(loaderSpec, args[3], prefix) : null;
+            var expected = control["expected"]!.AsObject();
+            byte[]? wantedBytes = null; FerruleInstance? wantedInstance = null;
+            if (expected["status"]!.GetValue<string>() == "Ok")
+            {
+                wantedBytes = RecipeBytes(expected["document"]!.AsObject()); wantedInstance = Instance(expected["instance"]!.AsObject());
+                Write(args[3], prefix + "-COMPLETE-EXPECTED-DOCUMENT.bytes", wantedBytes);
+                Capture.Retain(args[3], prefix + "-COMPLETE-EXPECTED-WIRE-INSTANCE", wantedInstance);
+            }
+            var actual = Capture.Attempt(() => byteApi
+                ? InvokeBytes(profile, primaryBytes!, selected, inputs.ToArray(), context, loader)
+                : InvokeText(profile, primaryText!, selected, inputs.ToArray(), context, loader));
+            // Retain every actual public result/error and callback before any status/equality comparison.
+            Capture.Retain(args[3], prefix + "-COMPLETE-ACTUAL-PUBLIC-RESULT", actual);
+            Json(args[3], prefix + "-COMPLETE-LOADER-CALLS-ORIGINAL.json", loader?.Calls ?? new List<object>());
+            Json(args[3], prefix + "-COMPLETE-CANCELLATION-ORIGINAL.json", checker?.Calls.Select(Boundary).ToArray() ?? Array.Empty<object>());
+            var document = Extract(actual); byte[]? actualBytes = null; object? decoded = null;
+            if (document is not null)
+            {
+                Json(args[3], prefix + "-ACTUAL-VARIANT-NAME-ORIGINAL.json", new { document.Variant, document.Name });
+                if (document.Text is not null) Write(args[3], prefix + "-ACTUAL-DOCUMENT.original.utf16le", Utf16(document.Text));
+                var conversion = Capture.Attempt(() => (object)(document.Bytes ?? StrictUtf8.GetBytes(document.Text!)));
+                Capture.Retain(args[3], prefix + "-COMPLETE-ACTUAL-WIRE-CONVERSION", conversion);
+                if (conversion is byte[] bytes)
+                {
+                    actualBytes = bytes;
+                    Write(args[3], prefix + "-ACTUAL-DOCUMENT.original.bytes", actualBytes);
+                    // This is an observation of the returned JSON wire, never a second mapping execution.
+                    decoded = Capture.Attempt(() => {
+                        var descriptor = document.Variant == "Primary" ? schemas[profileId]!["primary"]!.GetValue<string>()
+                            : schemas[profileId]!["named"]![document.Name!]!.GetValue<string>();
+                        return FerruleJson.ParseEmbeddedBytes(descriptor, bytes);
+                    });
+                    Capture.Retain(args[3], prefix + "-COMPLETE-ACTUAL-DECODED-WIRE-INSTANCE", decoded);
+                }
+            }
+            bool matched;
+            if (expected["status"]!.GetValue<string>() == "Ok")
+                matched = document is not null && document.Variant == expected["variant"]!.GetValue<string>() &&
+                    document.Name == expected["name"]?.GetValue<string>() && actualBytes is not null && actualBytes.AsSpan().SequenceEqual(wantedBytes) &&
+                    decoded is FerruleInstance actualInstance && JsonNode.DeepEquals(Capture.Json(Capture.Tree(actualInstance)), Capture.Json(Capture.Tree(wantedInstance!)));
+            else matched = actual is Exception error && document is null && ErrorMatches(error, expected);
+            matched &= JsonNode.DeepEquals(Capture.Json(loader?.Calls ?? new List<object>()), control["expected_loader_calls"]);
+            matched &= JsonNode.DeepEquals(Capture.Json(checker?.Calls.Select(Boundary).ToArray() ?? Array.Empty<object>()), control["expected_filter_map_cancellation_calls"]);
+            if (control["id"]!.GetValue<string>() == "selected-dynamic-host-refusal")
+                matched &= actual is FerruleRuntimeException refusal && loader is not null && loader.Errors.Count == 1 && ReferenceEquals(refusal.InnerException, loader.Errors[0]);
+            allMatched &= matched;
+            var check = new { id = control["id"]!.GetValue<string>(), api, matched, actualType = actual.GetType().FullName,
+                observedWireOnly = true, rawMappingInstanceIsNotPubliclyReturned = true };
+            checks.Add(check); Json(args[3], prefix + "-COMPARISON.json", check);
+            Console.WriteLine($"selected-json218 {count:00} {api} matched={matched}");
+        }
+        Json(args[3], "COMPLETE-COHORT-OUTCOMES.json", checks);
+        var wantedCount = args[2] == "small" ? 65 : 12;
+        return allMatched && count == wantedCount ? 0 : 1;
+    }
+}
