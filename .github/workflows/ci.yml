@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,16 +25,29 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Only branches writable by this repository's contributors reach OVH.
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: CI resource guard tests
+        run: |
+          bash -n scripts/ci/*.sh
+          python3 scripts/ci/test-ovh-build.py
+      - name: OVH build resources
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: workspace-bounded-builds
       - name: virtual display
+        if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
@@ -35,15 +56,23 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
-          xvfb-run -a env -u WAYLAND_DISPLAY LIBGL_ALWAYS_SOFTWARE=1
+          xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1
           cargo test --workspace
           --exclude codegen
           --exclude codegen-runtime
           --exclude codegen-rust
           --exclude codegen-csharp
+      - name: Trim successful workspace build
+        if: success() && runner.environment == 'self-hosted'
+        run: cargo clean --workspace
       - name: runner resources
         if: always()
         run: |
           df -h
           free -h
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
+            /opt/ferrule-runner-tools/sccache --show-stats
+          fi
