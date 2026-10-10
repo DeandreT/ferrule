@@ -1,6 +1,6 @@
 namespace Ferrule.Runtime;
 
-/// <summary>Stable failures at the optional, strict 004010 X12 boundary.</summary>
+/// <summary>Stable failures at the optional, bounded X12 boundary.</summary>
 public enum FerruleX12Error
 {
     UnsupportedProfile,

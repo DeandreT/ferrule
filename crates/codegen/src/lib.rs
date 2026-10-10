@@ -12,6 +12,7 @@ mod join;
 mod json5_boundary;
 mod lower;
 mod model;
+mod static_document_boundary;
 mod validate;
 mod x12_boundary;
 
@@ -47,6 +48,12 @@ pub use model::{
     XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
     XmlOutputPolicy,
 };
+pub use static_document_boundary::{
+    DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
+    NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions, StaticDocumentBoundaryError,
+    StaticDocumentBoundaryOwner, StaticDocumentBoundaryPolicy, StaticDocumentBoundaryProfile,
+    prepare_static_document_boundary, prepare_static_document_project_boundaries,
+};
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,
     SequenceExpressionRole, SequenceOwner, validate_program,
@@ -54,7 +61,8 @@ pub use validate::{
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,
     X12BoundaryOptions, X12BoundaryPolicy, X12BoundaryPolicyError, X12BoundaryProfile,
-    X12BoundarySide, prepare_x12_boundary, validate_x12_boundary, validate_x12_json_format_options,
+    X12BoundarySide, X12EnvelopeProfile, prepare_x12_boundary, validate_x12_boundary,
+    validate_x12_json_format_options,
 };
 
 #[cfg(test)]
