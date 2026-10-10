@@ -539,6 +539,9 @@ fn compact_time(value: &str, min: usize, max: usize) -> Result<String, &'static 
     while compact.len() < min {
         compact.push('0');
     }
+    if compact.len() > max {
+        return Err("converted compact time exceeds the declared maximum width");
+    }
     Ok(compact)
 }
 
@@ -840,6 +843,86 @@ mod tests {
             row.field("DecimalArtifact").and_then(Instance::as_scalar),
             Some(&Value::String("0.18".into()))
         );
+    }
+
+    #[test]
+    fn output_lexical_formats_bound_converted_compact_time_width() {
+        let cases = [
+            ("12:34", 4, 5, None),
+            ("12:34:00", 4, 5, None),
+            ("12:34:01", 4, 5, None),
+            ("12:34:00.0Z", 4, 5, None),
+            ("12:34", 5, 5, None),
+            ("1234", 4, 5, Some("1234")),
+            ("12345", 4, 5, Some("12345")),
+            ("12345", 5, 5, Some("12345")),
+            ("12:34", 4, 4, Some("1234")),
+            ("12:34", 4, 6, Some("123400")),
+            ("12:34:56", 6, 6, Some("123456")),
+            ("12:34", 7, 8, Some("1234000")),
+            ("12:34", 8, 8, Some("12340000")),
+            ("12:34:56.120Z", 4, 8, Some("12345612")),
+        ];
+        let retained = std::env::temp_dir().join(format!(
+            "ferrule_compact_time_width_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&retained).unwrap();
+        eprintln!(
+            "compact-time width outcomes retained at {}",
+            retained.display()
+        );
+
+        for (index, (input, minimum, maximum, expected)) in cases.into_iter().enumerate() {
+            let original = Instance::Group(
+                (vec![("Time".into(), Instance::Scalar(Value::String(input.into())))]).into(),
+            );
+            let expected_instance = Instance::Group(
+                (vec![(
+                    "Time".into(),
+                    Instance::Scalar(Value::String(expected.unwrap_or(input).into())),
+                )])
+                .into(),
+            );
+            let mut actual = original.clone();
+            let format = EdiLexicalFormat::new(
+                vec!["Time".into()],
+                EdiLexicalKind::CompactTime {
+                    min_digits: minimum,
+                    max_digits: maximum,
+                },
+            )
+            .unwrap();
+            let result = apply_output_lexical_formats(&mut actual, &[format]);
+            std::fs::write(
+                retained.join(format!("case-{index:02}.txt")),
+                format!(
+                    "input={original:#?}\nminimum={minimum}\nmaximum={maximum}\nexpected_text={expected:?}\nresult={result:#?}\nactual={actual:#?}\nexpected_instance={expected_instance:#?}\n"
+                ),
+            )
+            .unwrap();
+            if expected.is_some() {
+                assert!(result.is_ok(), "case {index}: original outcome retained");
+            } else {
+                assert!(
+                    matches!(
+                        &result,
+                        Err(EdiFormatError::LexicalFormatValue { path, value, reason })
+                            if path == "Time" && value == input
+                                && *reason == "converted compact time exceeds the declared maximum width"
+                    ),
+                    "case {index}: original outcome retained"
+                );
+            }
+            assert_eq!(
+                actual, expected_instance,
+                "case {index}: full value differs"
+            );
+        }
     }
 
     #[test]
