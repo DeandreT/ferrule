@@ -34,6 +34,7 @@ class ResourceGuardTests(unittest.TestCase):
                 "xauth": "exit 0",
                 "cc": "exit 0",
                 "pkg-config": "exit 0",
+                "sccache": "exit 0",
             }
             for name, body in commands.items():
                 tool = tools / name
@@ -72,7 +73,7 @@ class ResourceGuardTests(unittest.TestCase):
                 self.assert_refused(free_kib=capacity)
 
     def test_symlinked_cache_paths(self):
-        for suffix in ("", "/workspace-target", "/generated-host-target"):
+        for suffix in ("", "/workspace-target", "/generated-host-target", "/compiler"):
             with self.subTest(suffix=suffix):
                 self.assert_refused(symlink="/home/ferrule-runner/ci-cache" + suffix)
 
@@ -86,6 +87,9 @@ class ResourceGuardTests(unittest.TestCase):
             "CARGO_BUILD_JOBS": "1",
             "RUST_TEST_THREADS": "2",
             "MSBUILDDISABLENODEREUSE": "1",
+            "UseSharedCompilation": "false",
+            "SCCACHE_DIR": "/home/ferrule-runner/ci-cache/compiler",
+            "SCCACHE_CACHE_SIZE": "2G",
         })
 
 

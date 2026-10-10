@@ -10,6 +10,8 @@ runner_home=/home/ferrule-runner
 runner_dir="$runner_home/actions-runner"
 service=ferrule-actions-runner.service
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+sccache_version=0.18.0
+sccache_sha256=45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
 
 if [[ ! -f $script_dir/guard-ovh-job.sh ]]; then
   echo 'Copy guard-ovh-job.sh alongside this provisioning script.' >&2
@@ -85,13 +87,16 @@ if [[ ! -f $runner_dir/.runner ]]; then
   (
     cd "$runner_dir"
     runuser -u "$runner_user" -- env HOME="$runner_home" \
-      PATH="$runner_home/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
+      PATH="/opt/ferrule-runner-tools:$runner_home/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
       ./config.sh --unattended --url https://github.com/DeandreT/ferrule \
       --token "$registration_token" --name "ferrule-ovh-$(hostname -s)" \
       --labels ferrule-ovh --work _work
   )
   unset registration_token
 fi
+printf '%s\n' "/opt/ferrule-runner-tools:$runner_home/.cargo/bin:$runner_home/.dotnet:/usr/local/bin:/usr/bin:/bin" \
+  > "$runner_dir/.path"
+chown "$runner_user:$runner_user" "$runner_dir/.path"
 install -o "$runner_user" -g "$runner_user" -m 755 \
   "$runner_dir/bin/runsvc.sh" "$runner_dir/runsvc.sh"
 printf '%s\n' "$service" > "$runner_dir/.service"
@@ -99,6 +104,17 @@ chown "$runner_user:$runner_user" "$runner_dir/.service"
 install -d -o root -g root -m 755 /opt/ferrule-runner-tools
 install -o root -g root -m 755 "$script_dir/guard-ovh-job.sh" \
   /opt/ferrule-runner-tools/guard-ovh-job.sh
+if [[ ! -x /opt/ferrule-runner-tools/sccache ]]; then
+  tool_tmp=$(mktemp -d /tmp/ferrule-sccache.XXXXXX)
+  trap 'rm -f "${archive:-}"; rm -rf "${tool_tmp:-}"' EXIT
+  curl --fail --location --retry 3 --output "$tool_tmp/archive.tar.gz" \
+    "https://github.com/mozilla/sccache/releases/download/v${sccache_version}/sccache-v${sccache_version}-x86_64-unknown-linux-musl.tar.gz"
+  printf '%s  %s\n' "$sccache_sha256" "$tool_tmp/archive.tar.gz" | sha256sum --check --status
+  tar -xzf "$tool_tmp/archive.tar.gz" -C "$tool_tmp" --no-same-owner
+  install -o root -g root -m 755 \
+    "$tool_tmp/sccache-v${sccache_version}-x86_64-unknown-linux-musl/sccache" \
+    /opt/ferrule-runner-tools/sccache
+fi
 
 # Exercise archive extraction and Xvfb inside the actual service sandbox.
 cat > "$runner_home/check-runtime.sh" <<'CHECK'
@@ -111,6 +127,7 @@ printf 'Ferrule runner preflight\n' > "$smoke_dir/source/marker"
 tar -czf "$smoke_dir/check.tar.gz" -C "$smoke_dir/source" .
 tar -xzf "$smoke_dir/check.tar.gz" -C "$smoke_dir/output"
 cmp "$smoke_dir/source/marker" "$smoke_dir/output/marker"
+/opt/ferrule-runner-tools/sccache --version
 xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET true
 CHECK
 chmod 755 "$runner_home/check-runtime.sh"
@@ -128,11 +145,12 @@ WorkingDirectory=/home/ferrule-runner/actions-runner
 ExecStartPre=/home/ferrule-runner/check-runtime.sh
 ExecStart=/home/ferrule-runner/actions-runner/runsvc.sh
 Environment=HOME=/home/ferrule-runner
-Environment=PATH=/home/ferrule-runner/.cargo/bin:/home/ferrule-runner/.dotnet:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/opt/ferrule-runner-tools:/home/ferrule-runner/.cargo/bin:/home/ferrule-runner/.dotnet:/usr/local/bin:/usr/bin:/bin
 Environment=DOTNET_INSTALL_DIR=/home/ferrule-runner/.dotnet
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
 Environment=DOTNET_NOLOGO=1
 Environment=MSBUILDDISABLENODEREUSE=1
+Environment=UseSharedCompilation=false
 Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/ferrule-runner-tools/guard-ovh-job.sh
 Restart=always
 RestartSec=10
