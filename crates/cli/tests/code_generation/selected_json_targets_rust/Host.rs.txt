@@ -1,0 +1,69 @@
+// CAPTURE_SUPPORT is replaced by the complete immutable recorder source.
+use codegen_runtime::{DynamicJsonSourceLoader, ExecutionContext, TargetSelection};
+// FROZEN_SCHEMAS is replaced by independently constructed selected-schema descriptors.
+// CASE_MODULES is replaced by seven public ordinary emitted modules.
+
+macro_rules! route {
+    ($module:ident,$call:expr) => {{
+        let call=$call;
+        let _=(call.directory,call.prefix);
+        let selection=call.case["selection"]["Named"].as_str().map_or(TargetSelection::Primary,TargetSelection::Named);
+        let mut parameters=codegen_runtime::RuntimeParameters::new();
+        for (name,value) in call.parameters {parameters.insert(name,value.clone()).unwrap();}
+        let mut execution=ExecutionContext::with_main_mapping_file_path(call.mapping_path,call.main_path).with_parameters(&parameters);
+        if let Some(datetime)=call.datetime {execution=execution.with_current_datetime(datetime);}
+        let execution=(!call.case["execution_context"].is_null()).then_some(&execution);
+        let loader=call.loader.map(|loader|loader as &dyn DynamicJsonSourceLoader);
+        let checker=call.checker.map(|checker|checker as &dyn FilterMapCancellation);
+        let text=|output|match output {
+            $module::SelectedJsonTargetOutput::Primary(document)=>Output{name:None,document:document.into_bytes()},
+            $module::SelectedJsonTargetOutput::Named(output)=>Output{name:Some(output.name.into()),document:output.document.into_bytes()},
+        };
+        let bytes=|output|match output {
+            $module::SelectedJsonBytesTargetOutput::Primary(document)=>Output{name:None,document},
+            $module::SelectedJsonBytesTargetOutput::Named(output)=>Output{name:Some(output.name.into()),document:output.document},
+        };
+        if call.api=="utf8_bytes" {
+            let inputs=call.inputs.iter().map(|(name,document)|$module::NamedJsonBytesInput{name,document}).collect::<Vec<_>>();
+            if !call.case["filter_map_controls"].is_null() {
+                match $module::execute_json_bytes_selected_target_with_filter_map_controls(call.source,&inputs,execution,loader,selection,call.limits,checker) {
+                    Ok(actual)=>Actual{outcome:actual.outcome.map(bytes),counters:Some(actual.counters),inner:true,native:None,wire:None},
+                    Err(error)=>Actual{outcome:Err(error),counters:None,inner:false,native:None,wire:None},
+                }
+            } else {
+                let outcome=if inputs.is_empty() && execution.is_none() && loader.is_none() {
+                    $module::execute_json_bytes_selected_target(call.source,selection)
+                } else {$module::execute_json_bytes_selected_target_with_host(call.source,&inputs,execution,loader,selection)};
+                Actual{outcome:outcome.map(bytes),counters:None,inner:false,native:None,wire:None}
+            }
+        } else {
+            let source=std::str::from_utf8(call.source).unwrap();
+            let inputs=call.inputs.iter().map(|(name,document)|$module::NamedJsonInput{name,document:std::str::from_utf8(document).unwrap()}).collect::<Vec<_>>();
+            if !call.case["filter_map_controls"].is_null() {
+                match $module::execute_json_selected_target_with_filter_map_controls(source,&inputs,execution,loader,selection,call.limits,checker) {
+                    Ok(actual)=>Actual{outcome:actual.outcome.map(text),counters:Some(actual.counters),inner:true,native:None,wire:None},
+                    Err(error)=>Actual{outcome:Err(error),counters:None,inner:false,native:None,wire:None},
+                }
+            } else {
+                let outcome=if inputs.is_empty() && execution.is_none() && loader.is_none() {
+                    $module::execute_json_selected_target(source,selection)
+                } else {$module::execute_json_selected_target_with_host(source,&inputs,execution,loader,selection)};
+                Actual{outcome:outcome.map(text),counters:None,inner:false,native:None,wire:None}
+            }
+        }
+    }};
+}
+// CASE_DISPATCH is replaced by the fixed seven-arm invocation.
+fn main() {
+    let arguments=std::env::args_os().skip(1).collect::<Vec<_>>();
+    assert_eq!(arguments.len(),2,"frozen controls and fresh absolute evidence directory");
+    let raw=std::fs::read(&arguments[0]).unwrap();
+    let directory=PathBuf::from(&arguments[1]);assert!(directory.is_absolute() && !directory.exists());
+    std::fs::create_dir(&directory).unwrap();retain(&directory,"COMPLETE-FROZEN40-RECIPES.json",&raw);
+    let corpus:Json=serde_json::from_slice(&raw).unwrap();
+    let schemas:WireSchemas=serde_json::from_str(FROZEN_SCHEMAS).unwrap();
+    let comparisons=cases(&corpus,&directory,&schemas,true,invoke);
+    assert_eq!(comparisons.len(),76,"frozen portable call roster");
+    assert!(comparisons.iter().all(|(_,_,matched)|*matched),"complete originals retained; selected JSON Rust differs");
+    println!("SELECTED_JSON218_RUST76_MATCHED");
+}
