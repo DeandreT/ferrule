@@ -88,7 +88,8 @@ internal static partial class Program
             }
             else { throw new InvalidOperationException($"Incomplete literal expectation: {item.Id}"); }
         }
-        Equal((75, 46, 29), (Json5SyntaxCases.Length, successes, refusals));
+        Equal((75, 48, 27), (Json5SyntaxCases.Length, successes, refusals));
+        Json5UnicodeIdentifiers();
     }
 
     private static void Json5SyntaxGrammar()
@@ -159,7 +160,7 @@ internal static partial class Program
         Json5Bad("{n:7}\u00a0[]", FerruleJson5SyntaxKind.TrailingRootValue, 7);
         Json5Bad("{n:7}/*雪", FerruleJson5SyntaxKind.UnterminatedComment, 5);
         Json5Bad(" {n:'a\\1'}", FerruleJson5SyntaxKind.InvalidEscape, 6);
-        Json5Bad("{雪:7}", FerruleJson5SyntaxKind.UnsupportedIdentifier, 1);
+        Json5Good("{雪:7}", "{\"雪\":7}");
         Json5Bad("{'雪':'\\uD800'}", FerruleJson5SyntaxKind.InvalidEscape, 8);
         Json5Bad("{n 7}", FerruleJson5SyntaxKind.UnexpectedToken, 3);
         Json5Bad("'unfinished", FerruleJson5SyntaxKind.UnterminatedString, 0);

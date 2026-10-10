@@ -1,4 +1,5 @@
 mod corpus;
+mod unicode_identifiers;
 
 use super::{
     Json5SyntaxError, Json5SyntaxKind, Json5SyntaxResource, Limits, MAX_CONTAINER_DEPTH,
@@ -44,7 +45,7 @@ fn authored_corpus_distinguishes_syntax_from_later_schema_refusals() {
             _ => panic!("incomplete independent corpus expectation: {}", case.id),
         }
     }
-    assert_eq!((corpus::CASES.len(), successes, refusals), (75, 46, 29));
+    assert_eq!((corpus::CASES.len(), successes, refusals), (75, 48, 27));
 }
 
 #[test]
@@ -175,7 +176,7 @@ fn whitespace_strings_and_offsets_use_original_utf8_bytes() {
     syntax("{n:7}\u{00a0}[]", Json5SyntaxKind::TrailingRootValue, 7);
     syntax("{n:7}/*雪", Json5SyntaxKind::UnterminatedComment, 5);
     syntax(" {n:'a\\1'}", Json5SyntaxKind::InvalidEscape, 6);
-    syntax("{雪:7}", Json5SyntaxKind::UnsupportedIdentifier, 1);
+    success("{雪:7}", "{\"雪\":7}");
     syntax("{'雪':'\\uD800'}", Json5SyntaxKind::InvalidEscape, 8);
     syntax("{n 7}", Json5SyntaxKind::UnexpectedToken, 3);
     syntax("'unfinished", Json5SyntaxKind::UnterminatedString, 0);

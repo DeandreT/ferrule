@@ -3,10 +3,11 @@
 //! This layer accepts one complete value and returns compact strict JSON. It
 //! preserves duplicate properties and decimal lexicals; it does not project a
 //! schema, execute a mapping, or change the existing native JSON5 reader.
-//! Unquoted names use the deliberate ASCII identifier subset. Quoted names
-//! and strings retain Unicode scalar values. Nonfinite numbers always refuse,
+//! Unquoted names use frozen Unicode 17 IdentifierName scalar membership.
+//! Quoted names and strings retain Unicode scalar values. Nonfinite numbers always refuse,
 //! including values later overwritten or ignored by schema projection.
 
+mod identifiers;
 mod numbers;
 mod strings;
 
@@ -179,7 +180,11 @@ impl<'a> Parser<'a> {
                         self.string()?;
                         self.set_state(State::ObjectColon)?;
                     }
-                    Some(c) if c.is_ascii_alphabetic() || matches!(c, '_' | '$' | '\\') => {
+                    Some(c)
+                        if c.is_ascii_alphabetic()
+                            || matches!(c, '_' | '$' | '\\')
+                            || (!c.is_ascii() && identifiers::is_identifier_start(c)) =>
+                    {
                         if after_comma {
                             self.append(",")?;
                         }

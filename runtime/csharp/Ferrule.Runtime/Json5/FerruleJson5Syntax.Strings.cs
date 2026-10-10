@@ -3,8 +3,10 @@ namespace Ferrule.Runtime;
 public static partial class FerruleJson5Syntax
 {
     private static bool IdentifierChar(int scalar, bool first) =>
-        scalar is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_' or '$' ||
-        (!first && scalar is >= '0' and <= '9');
+        scalar <= 0x7f
+            ? scalar is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_' or '$' ||
+                (!first && scalar is >= '0' and <= '9')
+            : first ? Json5Identifiers.IsStart(scalar) : Json5Identifiers.IsContinue(scalar);
 
     private sealed partial class Parser
     {
@@ -48,7 +50,20 @@ public static partial class FerruleJson5Syntax
                     if (Peek() != 'u') { throw Syntax(FerruleJson5SyntaxKind.InvalidEscape, offset); }
                     Take();
                     var decoded = Hex(4, offset);
-                    if (decoded is >= 0xd800 and <= 0xdfff)
+                    if (decoded is >= 0xd800 and <= 0xdbff)
+                    {
+                        if (Peek() != '\\') { throw Syntax(FerruleJson5SyntaxKind.InvalidEscape, offset); }
+                        Take();
+                        if (Peek() != 'u') { throw Syntax(FerruleJson5SyntaxKind.InvalidEscape, offset); }
+                        Take();
+                        var second = Hex(4, offset);
+                        if (second is < 0xdc00 or > 0xdfff)
+                        {
+                            throw Syntax(FerruleJson5SyntaxKind.InvalidEscape, offset);
+                        }
+                        decoded = 0x10000 + ((decoded - 0xd800) << 10) + second - 0xdc00;
+                    }
+                    else if (decoded is >= 0xdc00 and <= 0xdfff)
                     {
                         throw Syntax(FerruleJson5SyntaxKind.InvalidEscape, offset);
                     }

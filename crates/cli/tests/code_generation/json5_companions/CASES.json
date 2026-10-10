@@ -454,11 +454,39 @@
       "fixture": "U",
       "input": "{雪:7}",
       "expected": {
-        "outcome": "refusal",
-        "stage": "Syntax",
-        "kind": "UnsupportedIdentifier",
-        "no_public_result": true,
-        "original_utf8_byte_offset": 1
+        "outcome": "success",
+        "normalized_strict_json": "{\"雪\":7}",
+        "complete_typed_input": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "雪",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "complete_typed_output": {
+          "kind": "Group",
+          "fields": [
+            {
+              "name": "雪",
+              "instance": {
+                "kind": "Scalar",
+                "value": {
+                  "tag": "Int",
+                  "decimal": "7"
+                }
+              }
+            }
+          ]
+        },
+        "output_utf8_text": "{\n  \"雪\": 7\n}\n"
       }
     },
     {

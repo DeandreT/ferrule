@@ -83,11 +83,69 @@ Both complete descriptors are admitted before syntax. Their strict parse errors 
 
 ## Syntax and numeric scope
 
-The shared normalizers accept comments, trailing commas inside objects or arrays, single- or double-quoted Unicode strings, supported escapes and the fixed JSON5 whitespace set. Unquoted identifiers use ASCII letters, `_` or `$` initially, with ASCII digits also allowed afterward; identifier escapes must resolve to that subset. Quoted Unicode property names are supported. Broader unquoted Unicode membership remains [#135](https://github.com/DeandreT/ferrule/issues/135).
+The shared normalizers accept comments, trailing commas inside objects or arrays, single- or double-quoted Unicode strings, supported escapes and the fixed JSON5 whitespace set. Unquoted property names use the pinned Unicode 17.0.0 General_Category rule defined below. Quoted Unicode property names and string parsing retain their existing behavior; this change does not select companions or broaden schema admission.
+
+### Unicode identifiers
+
+Identifier membership follows the JSON5 category rule, rather than the newer Unicode `ID_Start`, `ID_Continue` or `XID` properties:
+
+| Position | Accepted scalars |
+| --- | --- |
+| First | `$`, `_`, or categories `Lu`, `Ll`, `Lt`, `Lm`, `Lo`, `Nl` |
+| Later | Every first-position scalar, plus `Mn`, `Mc`, `Nd`, `Pc`, U+200C ZERO WIDTH NON-JOINER and U+200D ZERO WIDTH JOINER |
+
+ASCII letters, `$`, `_` and continuation digits retain their original rules. Combining marks and join controls are continuation-only. Other categories, surrogate code points, unassigned characters and derived-property exceptions such as U+2118 or U+00B7 are not admitted by this identifier rule. Quoting a name remains available without this membership restriction. Names are not normalized to NFC or NFKC; raw and escaped spellings that decode to the same name retain ordinary duplicate-property behavior.
+
+Raw BMP and supplementary scalars are accepted when eligible in their position. An identifier escape is exactly `\u` followed by four hexadecimal digits. A high-surrogate escape must be immediately followed by a low-surrogate `\u` escape; the pair becomes one supplementary scalar before membership checking. Hex digits are case-insensitive; the `u` marker is lowercase. Identifier escapes do not accept `\x`, `\U` or `\u{...}`. For example, `{雪:0}` and `{\u96EA:0}` both normalize to `{"雪":0}`; `{𐐀:0}` and `{\uD801\uDC00:0}` both use the same U+10400 name.
+
+Malformed identifier escapes and lone or mismatched escaped surrogates retain `InvalidEscape`. A well-formed escaped scalar outside its positional membership retains `UnsupportedIdentifier`; excluded raw non-ASCII scalars also retain that kind. Existing ASCII token/error distinctions remain unchanged. Syntax offsets are original UTF-8 byte positions, not character counts or normalized-output offsets. An invalid escaped pair is reported at its first backslash. For instance, `{"é":0,a😀:1}` reports `UnsupportedIdentifier` at byte 9. C# still validates the complete UTF-16 input before syntax and retains the absolute UTF-16 index, valid-prefix UTF-8 offset and original encoder cause for an unpaired source surrogate.
+
+Both languages use static leaves derived from one canonical ASCII range representation; they do not query the host runtime's Unicode category version. The pinned data has 1,079 coalesced non-ASCII intervals and at most **11 binary interval probes** per lookup. ASCII membership bypasses that table. Generation caps the representation at 4,096 intervals and refuses a larger table; this is a lookup bound, not a parser-work or memory limit.
+
+### Offline identifier data regeneration
+
+The generator uses the [Unicode 17.0.0 UCD](https://www.unicode.org/Public/17.0.0/ucd/) originals and their complete license notice. It checks exact file length, SHA-256 and version, with a 4 MiB bound per input. Inputs must match these pins:
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `extracted/DerivedGeneralCategory.txt` | 277,514 | `d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e` |
+| `UnicodeData.txt` | 2,198,209 | `2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c` |
+| `ReadMe.txt` | 740 | `9fe1a90bd32659d7953616283dc2bffaa165518aae9ace026040c42c559ba606` |
+| `LICENSE` | 1,995 | `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96` |
+
+With those original files already available locally, run from the repository root in Bash. The output parent must exist and the first output directory must be fresh; no network access or extra Python packages are used:
+
+```bash
+JSON5_UCD17='/absolute/path/to/pinned-unicode-17'
+JSON5_IDENTIFIER_OUTPUT='/absolute/path/to/fresh-identifier-output'
+JSON5_IDENTIFIER_INPUTS=(
+  --derived-general-category "$JSON5_UCD17/extracted/DerivedGeneralCategory.txt"
+  --unicode-data "$JSON5_UCD17/UnicodeData.txt"
+  --readme "$JSON5_UCD17/ReadMe.txt"
+  --license "$JSON5_UCD17/LICENSE"
+)
+python3 scripts/generate_json5_identifiers.py \
+  "${JSON5_IDENTIFIER_INPUTS[@]}" --output-root "$JSON5_IDENTIFIER_OUTPUT"
+python3 scripts/generate_json5_identifiers.py \
+  "${JSON5_IDENTIFIER_INPUTS[@]}" --output-root "$JSON5_IDENTIFIER_OUTPUT" --check
+```
+
+`identifier_ranges.txt` is the canonical representation. `identifiers.rs` and `Json5Identifiers.cs` use its same ordered intervals; both retain the complete notice also emitted as `LICENSE-UNICODE.txt`. `generation.json` records the input/output hashes, range count and probe bound. Each generation checks the complete category data against independently decoded `UnicodeData.txt` and the canonical lookup against its projection. `--check` regenerates all five output bodies in memory and requires complete byte equality with an existing output set. Compiled Rust/C# lookup and parser verification remain separate checks.
 
 Duplicate input properties survive normalization and retain last-value-wins typed reading. Every lexical number is checked before projection, including an overwritten or undeclared member. `NaN`, signed infinities and decimal overflow to nonfinite values refuse at Syntax. Exact decimal and hexadecimal integer tokens use checked signed/unsigned 64-bit ranges. Decimal floating tokens keep their spelling, with a leading plus removed and missing decimal-side zeros supplied; they are not rounded and rewritten by the normalizer. Typed projection still applies the declared Int or Float domain, so a syntactically valid unsigned integer or an integer not exactly representable as Float can refuse at Input. Integer `-0` normalizes to `0`; a floating negative-zero lexical retains its sign.
 
-The shared 75-record inventory has **46 pure syntax successes and 29 Syntax refusals**. Six of the syntax successes are later refused at Input, leaving 40 public successes in that inventory. Root arrays, undeclared fields, required presence, null/type adaptation and numeric representability belong to projection. This inventory is distinct from the compiled public-call cohort below. The existing local JSON5 reader is also separate; its nullable/nonfinite verification lane remains [#130](https://github.com/DeandreT/ferrule/issues/130).
+The current shared 75-record syntax fixture declares **48 normalization successes and 27 Syntax refusals**. Its two former Unicode deferrals, raw and escaped `雪`, now declare the same normalized name. The earlier ASCII-only inventory recorded 46 syntax successes and 29 refusals; six of those successes were later refused at Input, leaving 40 public successes in that historical inventory. Syntax fixtures alone do not establish a revised public mapping count. Root arrays, undeclared fields, required presence, null/type adaptation and numeric representability still belong to projection. This inventory is distinct from the compiled public-call cohort below. The existing local JSON5 reader is also separate; its nullable/nonfinite verification lane remains [#130](https://github.com/DeandreT/ferrule/issues/130).
+
+The separate [#135](https://github.com/DeandreT/ferrule/issues/135) regression source freezes these inventories:
+
+| Inventory | Literal expectations |
+| --- | --- |
+| Identifier documents | 75: 32 normalized results and 43 syntax refusals, in each language |
+| C# original UTF-16 encoding | 6 unpaired-surrogate refusals, including failure after a valid multibyte prefix |
+| Membership/domain | 40 rows: Rust checks 37 valid scalars plus 3 invalid `char`-domain integers; C# checks all 40 integer inputs |
+| Scaled budget conservation | 8 exact/one-over controls per language, covering syntax work, original bytes, normalized bytes and container depth |
+
+These are independently authored literal regression expectations, not additional generated mapping calls, physical boundary measurements or native/desktop evidence. They cover start/continuation categories, combining and supplementary scalars, Unicode-version changes, raw/escaped aliases, malformed surrogate escapes, exclusions and original error offsets. On **2026-10-10**, the pinned generator completed two independent output sets and a read-only byte check. Focused Rust verification passed nine syntax/identifier tests, 368 ordinary JSON tests, six runtime adapter tests and three C# emitter tests; all 185 C# smoke groups also passed. The corrected compiled public cohort completed 92 Rust and 92 C# JSON5 calls with no comparison failures. Four successful typed Unicode-name baseline checks in each language are separate from those 184 calls. Formatting and strict warnings passed for the affected Rust packages and CLI test targets. This verification does not rerun or extend the historical 48 physical calls or their memory measurements.
 
 ## Runtime limits and typed causes
 
@@ -138,5 +196,8 @@ The largest observed peaks were about **264 MiB for Rust** and **1.34 GiB for C#
 - [x] Merge explicit CLI selection with verified unchanged defaults and atomic refusal ([PR #156](https://github.com/DeandreT/ferrule/pull/156)).
 - [x] Compile both public hosts and complete all 184 small calls: 17 representation plus six mapping/context cases × four routes × two languages ([#144](https://github.com/DeandreT/ferrule/issues/144)).
 - [x] Qualify all 48 serial physical original/normalized/output exact and one-over calls after all small prerequisites ([PR #159](https://github.com/DeandreT/ferrule/pull/159)).
+- [x] Regenerate and byte-compare the pinned Unicode 17 identifier data and both language leaves ([#135](https://github.com/DeandreT/ferrule/issues/135)).
+- [x] Complete the Unicode regression inventory and full 185-group C# smoke verification without broadening public-call evidence.
+- [x] Complete affected formatting and strict-warning checks for #135.
 
 The local coverage recorded on **2026-10-08** includes the merged language regressions and the complete 184-call compiled cohort: 92 Rust and 92 C# calls with independent results, output bytes and original error causes. Six additional C# null-source/context controls are separate from that total. The 75-record syntax inventory, direct helper controls and compiled calls are separate evidence sets; the public cohort does not execute every inventory record. All 48 physical calls also completed, with normal process closure and passing local formatting and strict-warning checks. None of these checks qualifies broader schemas, native metadata ([#106](https://github.com/DeandreT/ferrule/issues/106)), desktop controls or total process memory.
