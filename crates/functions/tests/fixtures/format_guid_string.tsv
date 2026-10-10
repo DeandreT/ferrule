@@ -1,0 +1,22 @@
+lower	S	0123456789abcdef0123456789abcdef	01234567-89ab-cdef-0123-456789abcdef
+upper	S	ABCDEF0123456789ABCDEF0123456789	ABCDEF01-2345-6789-ABCD-EF0123456789
+mixed	S	01234567aBcDDeF012345678aBcDDeF0	01234567-aBcD-DeF0-1234-5678aBcDDeF0
+zero	S	00000000000000000000000000000000	00000000-0000-0000-0000-000000000000
+all-f	S	FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF	FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+arbitrary-bits	S	11111111111111111111111111111111	11111111-1111-1111-1111-111111111111
+empty	S		invalid
+short	S	0123456789abcdef0123456789abcde	invalid
+long	S	0123456789abcdef0123456789abcdef0	invalid
+already-formatted	S	01234567-89ab-cdef-0123-456789abcdef	invalid
+braces	S	{0123456789abcdef0123456789abcdef}	invalid
+nonhex	S	0123456789abcdef0123456789abcdeg	invalid
+leading-space	S	 123456789abcdef0123456789abcdef	invalid
+trailing-space	S	0123456789abcdef0123456789abcde 	invalid
+unicode	S	0123456789abcdef0123456789abcdeé	invalid
+dash-in-hex	S	0123456789abcdef0123456789abcde-	invalid
+absent	N		type:null
+json-null	J		type:json null
+xml-nil	X		type:xml nil
+boolean	B	true	type:bool
+integer	I	7	type:int
+float	F	0.5	type:float
