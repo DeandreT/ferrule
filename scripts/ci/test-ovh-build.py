@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the resource guard without changing host paths or disk allocation."""
 import os
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -8,6 +9,7 @@ import unittest
 
 
 SCRIPT = Path(__file__).with_name("prepare-ovh-build.sh")
+GUARD = Path(__file__).with_name("guard-ovh-job.sh")
 
 
 class ResourceGuardTests(unittest.TestCase):
@@ -85,6 +87,62 @@ class ResourceGuardTests(unittest.TestCase):
             "RUST_TEST_THREADS": "2",
             "MSBUILDDISABLENODEREUSE": "1",
         })
+
+
+class JobAdmissionTests(unittest.TestCase):
+    def run_guard(self, kind, event, **environment):
+        with tempfile.TemporaryDirectory(prefix="ferrule-ci-event-") as tmp:
+            payload = Path(tmp) / "event.json"
+            payload.write_text(json.dumps(event))
+            variables = os.environ | {
+                "GITHUB_EVENT_PATH": str(payload),
+                "GITHUB_REPOSITORY": "DeandreT/ferrule",
+                "GITHUB_EVENT_NAME": kind,
+                "GITHUB_REF": "refs/heads/main",
+            } | environment
+            return subprocess.run(["bash", str(GUARD)], env=variables,
+                                  text=True, capture_output=True, check=False)
+
+    def test_trusted_repository_jobs(self):
+        repository = {"repository": {"full_name": "DeandreT/ferrule"}}
+        cases = {
+            "push": repository | {"ref": "refs/heads/main"},
+            "workflow_dispatch": repository,
+            "pull_request": repository | {"pull_request": {
+                "head": {"repo": {"full_name": "DeandreT/ferrule"}}}},
+        }
+        for kind, payload in cases.items():
+            with self.subTest(kind=kind):
+                result = self.run_guard(kind, payload)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_fork_cannot_override_workflow_routing(self):
+        for head in ({"full_name": "outsider/ferrule"}, None, {}):
+            with self.subTest(head=head):
+                result = self.run_guard("pull_request", {
+                    "repository": {"full_name": "DeandreT/ferrule"},
+                    "pull_request": {"head": {"repo": head}},
+                })
+                self.assertNotEqual(result.returncode, 0)
+
+    def test_missing_or_inconsistent_identity(self):
+        for payload in ({}, [], {"repository": {"full_name": "outsider/ferrule"}}):
+            with self.subTest(payload=payload):
+                self.assertNotEqual(self.run_guard("push", payload).returncode, 0)
+        self.assertNotEqual(self.run_guard("push", {
+            "repository": {"full_name": "DeandreT/ferrule"},
+            "ref": "refs/heads/main",
+        }, GITHUB_REPOSITORY="outsider/ferrule").returncode, 0)
+
+    def test_unapproved_events_and_refs(self):
+        payload = {"repository": {"full_name": "DeandreT/ferrule"}}
+        for kind in ("pull_request_target", "workflow_run", "issue_comment", ""):
+            with self.subTest(kind=kind):
+                self.assertNotEqual(self.run_guard(kind, payload).returncode, 0)
+        self.assertNotEqual(self.run_guard("push", payload | {
+            "ref": "refs/heads/feature"}).returncode, 0)
+        self.assertNotEqual(self.run_guard("workflow_dispatch", payload,
+                                         GITHUB_REF="refs/tags/v1").returncode, 0)
 
 
 if __name__ == "__main__":
