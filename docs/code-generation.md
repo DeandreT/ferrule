@@ -143,6 +143,19 @@ checks compare complete values, scalar types, bytes and typed failures.
 See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
 for direction selection, rejected metadata and typed boundary failures.
 
+For complete static named JSON/X12 inputs and explicitly selected primary or
+named output, use C# `--static-document-adapters` and
+`generate_project_with_static_document_adapters`. Every endpoint retains its
+own admitted schema and format identity, including unused sources and
+unselected targets. The generated text and UTF-8 byte carriers retain the
+selected target name and format. Name/list preflight precedes primary parsing;
+all supplied documents parse before typed selected execution. The same context
+reaches selected X12 completion. This flag is separate from, and conflicts with,
+the singular `--x12-adapters` flag. The normal `code_generation` integration
+target contains the authored native and compiled static-document contracts;
+it requires `--features codegen-tests` and the .NET 10 SDK. See the
+[static document API and error order](design/generated-x12-csharp.md#static-named-documents-and-selected-output).
+
 ## Explicit JSON5 Companions
 
 Add `--json5-adapters` to either CLI generation command to include singular

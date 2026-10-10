@@ -86,6 +86,8 @@ mod selected_targets;
 mod sequence_context;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
+#[path = "code_generation/static_document_adapters.rs"]
+mod static_document_adapters;
 #[path = "code_generation/static_sources.rs"]
 mod static_sources;
 #[path = "code_generation/string_int_range_boundaries.rs"]

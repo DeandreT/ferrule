@@ -10,6 +10,7 @@ mod json5_output;
 mod literal;
 mod mapping;
 mod runtime;
+mod static_documents;
 mod x12_output;
 
 #[cfg(test)]
@@ -34,6 +35,7 @@ mod xml_input_tests;
 
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
+pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
 use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};
@@ -98,6 +100,18 @@ pub fn emit_with_x12(
     policy: &codegen::X12BoundaryPolicy,
 ) -> Result<ArtifactSet, X12EmitError> {
     x12_output::emit(program, policy)
+}
+
+/// Emit complete static JSON/X12 document input and selected-output companions.
+///
+/// Every declared endpoint retains its own admitted descriptor. Generated text
+/// and byte methods parse all required static inputs and construct only the
+/// explicitly selected target using the ordinary typed host API.
+pub fn emit_with_static_document_adapters(
+    program: &Program,
+    policy: &codegen::StaticDocumentBoundaryPolicy,
+) -> Result<ArtifactSet, StaticDocumentEmitError> {
+    static_documents::emit(program, policy)
 }
 
 fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitError> {

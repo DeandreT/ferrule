@@ -12,6 +12,7 @@ mod join;
 mod json5_boundary;
 mod lower;
 mod model;
+mod static_document_boundary;
 mod validate;
 mod x12_boundary;
 
@@ -46,6 +47,12 @@ pub use model::{
     TargetScope, UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
     XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
     XmlOutputPolicy,
+};
+pub use static_document_boundary::{
+    DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
+    NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions, StaticDocumentBoundaryError,
+    StaticDocumentBoundaryOwner, StaticDocumentBoundaryPolicy, StaticDocumentBoundaryProfile,
+    prepare_static_document_boundary, prepare_static_document_project_boundaries,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,
