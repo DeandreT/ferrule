@@ -17,7 +17,7 @@ fn expected(case: &Json) -> Instance {
 }
 fn wanted_error(case: &Json, input_bounded: bool) -> JsonBoundaryError {
     let field = case["failed_field"].as_str().unwrap();
-    let message = if case["input_only"] == true && !input_bounded {
+    let message = if case["input_only"] == true {
         format!("`{field}`: expected number, got integer outside the exact f64 range")
     } else {
         let got = if input_bounded {
