@@ -60,7 +60,9 @@ before toolchain setup. Build outputs persist outside the cleaned checkout:
 - `/home/ferrule-runner/ci-cache/generated-host-target` — generated host builds
   that support `FERRULE_CODEGEN_HOST_TARGET_DIR`, separate from outer Cargo.
 - `/home/ferrule-runner/ci-cache/compiler` — sccache, capped at 2 GB, reuses
-  compatible Rust library compilation across otherwise isolated host builds.
+  compatible Rust library compilation within stable build paths. Isolated host
+  projects with different working directories still rebuild: the upstream
+  [Rust cache key includes the working directory](https://github.com/mozilla/sccache/blob/v0.18.0/src/compiler/rust.rs#L1524).
 - `/home/ferrule-runner/.cargo`, `.rustup`, and `.dotnet` — dependency/tool caches.
 - `/home/ferrule-runner/ci-tmp` — temporary test/build outputs and retained
   failure diagnostics. Inspect these alongside caches; preserve required
