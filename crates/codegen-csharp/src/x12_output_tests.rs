@@ -112,7 +112,10 @@ fn x12_opt_in_is_deterministic_and_preserves_every_ordinary_runtime_source() {
     evidence.assert_retained("optional", &optional);
     assert_eq!(before, after.unwrap());
     assert_eq!(optional, repeated.unwrap());
-    assert_eq!(optional.files().len(), before.files().len() + 4);
+    assert_eq!(
+        optional.files().len(),
+        before.files().len() + 1 + super::x12_output::X12_SOURCES.len()
+    );
     for original in before.files() {
         let expected = match original.path.as_str() {
             "GeneratedMapping.cs" => String::from_utf8(original.contents.clone())
@@ -221,6 +224,23 @@ fn x12_direction_selection_exposes_only_its_owned_raw_boundaries() {
         assert_eq!(
             source
                 .matches("var target = Execute(input, executionContext);")
+                .count(),
+            2
+        );
+        assert!(
+            source.contains("SerializeEmbedded(X12TargetDescriptor, target, executionContext)")
+        );
+        assert!(
+            source
+                .contains("SerializeEmbeddedBytes(X12TargetDescriptor, target, executionContext)")
+        );
+        assert_eq!(
+            source.matches("public static string SerializeX12(").count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("public static byte[] SerializeX12Bytes(")
                 .count(),
             2
         );

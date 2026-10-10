@@ -126,8 +126,17 @@ to false and conflicts with `--csv-output` and `--json5-adapters`. The public
 writer is `generate_project_with_x12_adapters`; ordinary generation retains its
 existing typed/JSON APIs and artifact tree. The optional, package-free .NET 10
 boundary embeds its admitted schema and metadata and returns complete text or
-strict UTF-8 bytes. It validates envelope controls and counts supplied by the
-host. See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
+strict UTF-8 bytes. Selected input metadata supports bounded lenient traversal
+and Float implied-decimal scaling; selected output metadata supports compact
+date/time and plain-decimal formatting plus explicit X12 envelope completion.
+Repetition punctuation is inactive metadata under 00401. Contextual output
+completion uses the host-supplied execution-context dateTime, formats a private
+view, completes permitted fields, and validates final controls and counts.
+The ordinary `x12_dotnet` integration target includes an independently authored
+saved-profile compiled-host gate and requires the .NET 10 SDK; the additional
+strict companion cohort remains an explicit ignored test. Native and compiled
+checks compare complete values, scalar types, bytes and typed failures.
+See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
 for direction selection, rejected metadata and typed boundary failures.
 
 ## Explicit JSON5 Companions
