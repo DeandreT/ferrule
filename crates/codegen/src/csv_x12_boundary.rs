@@ -11,7 +11,7 @@ use mapping::{FormatOptions, Project, Scope, ScopeIteration, TabularBoundaryKind
 
 use crate::{
     MAX_EMBEDDED_JSON_SCHEMA_BYTES, Program, ProgramValidationError, TargetConstruction,
-    TargetScope, X12BoundaryOptions, X12BoundaryPolicyError, X12BoundarySide,
+    X12BoundaryOptions, X12BoundaryPolicyError, X12BoundarySide,
 };
 
 #[cfg(test)]
