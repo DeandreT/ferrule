@@ -148,7 +148,7 @@ public static partial class FerruleX12
             }
             if (version.Modern && envelopes[0].Children[15].Fixed is { } fixedComponent
                 && (fixedComponent.Length != 1 || fixedComponent[0] is < '!' or > '~' || char.IsAsciiLetterOrDigit(fixedComponent[0])
-                    || separators is { } physical && fixedComponent != physical.Component.ToString()
+                    || separators is { } componentSyntax && fixedComponent != componentSyntax.Component.ToString()
                     || separators is null && !input && fixedComponent != ":"))
                 throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA16 does not agree with the selected modern component syntax.");
             return new(root, separators, lenient, inactiveRepetition, autocomplete, version);
