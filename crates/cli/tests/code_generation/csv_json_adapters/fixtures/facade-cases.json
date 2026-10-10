@@ -1,0 +1,158 @@
+[
+  {
+    "id": "text-unknown-before-null-context",
+    "route": "text",
+    "source": "inputs/later_bad.csv",
+    "selection": "Unlisted",
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "message": "project has no named target `Unlisted`",
+      "Error": "UnknownTarget",
+      "Node": null,
+      "Function": null,
+      "ExpectedArity": null,
+      "ActualArity": null,
+      "FoundKind": null,
+      "AggregateOperation": null,
+      "Detail": "Unlisted",
+      "RequestedItems": null,
+      "MaximumItems": null,
+      "MaximumDepth": null,
+      "RuntimeValue": null,
+      "FailureRule": null,
+      "MappingFailureMessage": null,
+      "MappingExceptionMessage": null,
+      "Join": null,
+      "UserFunction": null,
+      "FunctionParameter": null,
+      "ExpectedScalarType": null,
+      "RuntimeParameter": null,
+      "SourceField": null,
+      "FoundInstance": null,
+      "PrimaryRoot": null
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "text-source-null-before-selection",
+    "route": "text",
+    "source": null,
+    "selection": null,
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "source",
+      "message": "Value cannot be null. (Parameter 'source')"
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "text-selection-null-before-context",
+    "route": "text",
+    "source": "inputs/one.csv",
+    "selection": null,
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "selection",
+      "message": "Value cannot be null. (Parameter 'selection')"
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "text-context-null-before-parse",
+    "route": "text",
+    "source": "inputs/later_bad.csv",
+    "selection": "Primary",
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "executionContext",
+      "message": "Value cannot be null. (Parameter 'executionContext')"
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "bytes-unknown-before-null-context",
+    "route": "bytes",
+    "source": "inputs/later_bad.csv",
+    "selection": "Unlisted",
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "FerruleRuntimeException",
+      "message": "project has no named target `Unlisted`",
+      "Error": "UnknownTarget",
+      "Node": null,
+      "Function": null,
+      "ExpectedArity": null,
+      "ActualArity": null,
+      "FoundKind": null,
+      "AggregateOperation": null,
+      "Detail": "Unlisted",
+      "RequestedItems": null,
+      "MaximumItems": null,
+      "MaximumDepth": null,
+      "RuntimeValue": null,
+      "FailureRule": null,
+      "MappingFailureMessage": null,
+      "MappingExceptionMessage": null,
+      "Join": null,
+      "UserFunction": null,
+      "FunctionParameter": null,
+      "ExpectedScalarType": null,
+      "RuntimeParameter": null,
+      "SourceField": null,
+      "FoundInstance": null,
+      "PrimaryRoot": null
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "bytes-source-null-before-selection",
+    "route": "bytes",
+    "source": null,
+    "selection": null,
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "source",
+      "message": "Value cannot be null. (Parameter 'source')"
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "bytes-selection-null-before-context",
+    "route": "bytes",
+    "source": "inputs/one.csv",
+    "selection": null,
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "selection",
+      "message": "Value cannot be null. (Parameter 'selection')"
+    },
+    "expected_no_output": true
+  },
+  {
+    "id": "bytes-context-null-before-parse",
+    "route": "bytes",
+    "source": "inputs/later_bad.csv",
+    "selection": "Primary",
+    "with_host": true,
+    "context": null,
+    "expected_error": {
+      "type": "ArgumentNullException",
+      "ParamName": "executionContext",
+      "message": "Value cannot be null. (Parameter 'executionContext')"
+    },
+    "expected_no_output": true
+  }
+]

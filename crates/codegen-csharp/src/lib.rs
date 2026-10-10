@@ -2,8 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+mod csv_json;
 mod csv_output;
 mod csv_x12;
+mod document_output_types;
 mod error;
 #[cfg(test)]
 mod filter_map_guard_tests;
@@ -34,6 +36,7 @@ mod raise_tests;
 #[cfg(test)]
 mod xml_input_tests;
 
+pub use csv_json::CsvJsonEmitError;
 pub use csv_x12::CsvX12EmitError;
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
@@ -91,6 +94,14 @@ pub fn emit_with_csv_x12_adapters(
     policy: &codegen::CsvX12BoundaryPolicy,
 ) -> Result<ArtifactSet, CsvX12EmitError> {
     csv_x12::emit(program, policy)
+}
+
+/// Emit full-row CSV input and explicitly selected own strict JSON documents.
+pub fn emit_with_csv_json_adapters(
+    program: &Program,
+    policy: &codegen::CsvJsonBoundaryPolicy,
+) -> Result<ArtifactSet, CsvJsonEmitError> {
+    csv_json::emit(program, policy)
 }
 
 /// Emit an explicitly selected flat primary CSV output adapter.

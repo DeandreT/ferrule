@@ -1,0 +1,12 @@
+{
+  "FirstToken": "cedar",
+  "Items": [
+    {
+      "Token": "cedar",
+      "Units": 3,
+      "Fraction": 1.25,
+      "Active": true,
+      "Note": "mist"
+    }
+  ]
+}

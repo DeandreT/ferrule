@@ -1,0 +1,368 @@
+// Complete authored CSV input and selected JSON document boundary contracts.
+using System.Globalization;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Program
+{
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static string Fixtures = "", Evidence = "";
+    private static JsonElement Project;
+    private static int Failures, PhysicalCalls, ParseCalls, TypedCalls, SerializationCalls;
+
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3) return 2;
+        Fixtures = Path.GetFullPath(args[0]);
+        string family = args[1];
+        Evidence = Path.GetFullPath(args[2]);
+        if (Directory.Exists(Evidence) || File.Exists(Evidence)) return 2;
+        Directory.CreateDirectory(Evidence);
+        try
+        {
+            using var project = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "projects", family + ".json")));
+            Project = project.RootElement.Clone();
+            using var cases = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "cases.json")));
+            foreach (var test in cases.RootElement.EnumerateArray())
+            {
+                if (test.GetProperty("family").GetString() != family) continue;
+                foreach (var route in test.GetProperty("routes").EnumerateArray())
+                {
+                    bool bytes = route.GetString() == "bytes";
+                    CheckIndependent(test, bytes);
+                    CheckPhysical(test, bytes, withHost: true);
+                    if (!test.GetProperty("context").EnumerateObject().Any())
+                        CheckPhysical(test, bytes, withHost: false);
+                }
+            }
+            if (family == "base")
+            {
+                using var facade = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "facade-cases.json")));
+                foreach (var test in facade.RootElement.EnumerateArray()) CheckFacade(test);
+            }
+        }
+        catch (Exception error)
+        {
+            File.WriteAllText(Path.Combine(Evidence, "SETUP-EXCEPTION-ORIGINAL.txt"), error.ToString());
+            Save(Path.Combine(Evidence, "SETUP-ERROR-ORIGINAL.json"), Error(error));
+            return 1;
+        }
+        Save(Path.Combine(Evidence, "FINAL.json"), JsonSerializer.SerializeToNode(new
+        {
+            failures = Failures, physical_calls = PhysicalCalls, parse_calls = ParseCalls,
+            typed_calls = TypedCalls, serialization_calls = SerializationCalls
+        }));
+        return Failures == 0 ? 0 : 1;
+    }
+
+    private static void Save(string path, JsonNode? value) => File.WriteAllText(path, value?.ToJsonString() ?? "null", Utf8);
+    private static JsonNode? Node(JsonElement value) => JsonNode.Parse(value.GetRawText());
+    private static string Sha(byte[] body) => Convert.ToHexString(SHA256.HashData(body)).ToLowerInvariant();
+    private static string Folder(JsonElement test, string suffix)
+    {
+        string path = Path.Combine(Evidence, test.GetProperty("id").GetString()! + "-" + suffix);
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "CASE-ORIGINAL.json"), test.GetRawText(), Utf8);
+        return path;
+    }
+    private static bool Equal(JsonNode? expected, JsonNode? actual) => JsonNode.DeepEquals(expected, actual);
+    private static void Compare(string directory, JsonNode? expected, JsonNode? actual, bool unchanged, bool returned, bool expectedNoOutput)
+    {
+        Save(Path.Combine(directory, "EXPECTED.json"), expected);
+        Save(Path.Combine(directory, "ACTUAL-ORIGINAL.json"), actual);
+        bool equal = Equal(expected, actual), noPartial = !expectedNoOutput || !returned;
+        Save(Path.Combine(directory, "COMPARISON.json"), JsonSerializer.SerializeToNode(new { equal, unchanged, noPartial, returned }));
+        if (!equal || !unchanged || !noPartial) Failures++;
+    }
+    private static void RetainException(string directory, Exception? error)
+    {
+        File.WriteAllText(Path.Combine(directory, "EXCEPTION-ORIGINAL.txt"), error?.ToString() ?? "<success>", Utf8);
+        Save(Path.Combine(directory, "ERROR-ORIGINAL.json"), error is null ? null : Error(error));
+    }
+
+    private static FerruleTargetSelection Selection(JsonElement value) => value.GetString() == "Primary"
+        ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named(value.GetString()!);
+    private static FerruleExecutionContext Context(JsonElement parameters)
+    {
+        var values = parameters.EnumerateObject().Select(p => new KeyValuePair<string, FerruleValue>(p.Name,
+            p.Value.ValueKind switch
+            {
+                JsonValueKind.String => FerruleValue.FromString(p.Value.GetString()!),
+                JsonValueKind.True => FerruleValue.FromBoolean(true),
+                JsonValueKind.False => FerruleValue.FromBoolean(false),
+                _ => throw new InvalidOperationException("Unqualified authored context scalar")
+            }));
+        return new FerruleExecutionContext("authored/rows.mfd", "authored/main.mfd", null, new FerruleRuntimeParameters(values));
+    }
+    private static JsonNode ContextSnapshot(FerruleExecutionContext value, JsonElement parameters) => JsonSerializer.SerializeToNode(new
+    {
+        value.MappingFilePath, value.MainMappingFilePath, value.CurrentDateTime,
+        parameter_count = value.RuntimeParameters.Count, authored_parameters = parameters
+    })!;
+    private static JsonNode? ExpectedError(JsonElement test)
+    {
+        var error = test.GetProperty("expected_error");
+        return error.ValueKind == JsonValueKind.Null ? null : Node(error.GetProperty("csharp"));
+    }
+    private static string? ErrorStage(JsonElement test)
+    {
+        var error = test.GetProperty("expected_error");
+        return error.ValueKind == JsonValueKind.Null ? null : error.GetProperty("stage").GetString();
+    }
+
+    private static void CheckPhysical(JsonElement test, bool bytes, bool withHost)
+    {
+        string directory = Folder(test, (bytes ? "bytes" : "text") + (withHost ? "-WithHost" : "-simple"));
+        byte[] source = File.ReadAllBytes(Path.Combine(Fixtures, test.GetProperty("input").GetString()!));
+        byte[] before = source.ToArray();
+        File.WriteAllBytes(Path.Combine(directory, "INPUT-ORIGINAL.bytes"), before);
+        FerruleExecutionContext context = Context(test.GetProperty("context"));
+        JsonNode contextBefore = ContextSnapshot(context, test.GetProperty("context"));
+        Save(Path.Combine(directory, "CONTEXT-BEFORE.json"), contextBefore);
+        FerruleTargetSelection selection = Selection(test.GetProperty("selection"));
+        JsonNode? actual = null;
+        bool returned = false;
+        Exception? failure = null;
+        try
+        {
+            PhysicalCalls++;
+            if (bytes)
+            {
+                var result = withHost
+                    ? GeneratedMapping.ExecuteCsvJsonBytesSelectedTargetWithHost(source, selection, context)
+                    : GeneratedMapping.ExecuteCsvJsonBytesSelectedTarget(source, selection);
+                returned = true;
+                actual = Document(result, directory);
+            }
+            else
+            {
+                string text = Utf8.GetString(source);
+                var result = withHost
+                    ? GeneratedMapping.ExecuteCsvJsonSelectedTargetWithHost(text, selection, context)
+                    : GeneratedMapping.ExecuteCsvJsonSelectedTarget(text, selection);
+                returned = true;
+                actual = Document(result, directory);
+            }
+        }
+        catch (Exception error) { failure = error; actual = Error(error); }
+        RetainException(directory, failure);
+        File.WriteAllBytes(Path.Combine(directory, "INPUT-AFTER.bytes"), source);
+        JsonNode contextAfter = ContextSnapshot(context, test.GetProperty("context"));
+        Save(Path.Combine(directory, "CONTEXT-AFTER.json"), contextAfter);
+        JsonNode? expected = ExpectedError(test);
+        if (expected is null)
+        {
+            byte[] wire = File.ReadAllBytes(Path.Combine(Fixtures, test.GetProperty("expected_wire").GetString()!));
+            expected = ExpectedDocument(test.GetProperty("selection").GetString()!, wire);
+            File.WriteAllBytes(Path.Combine(directory, "EXPECTED-WIRE.bytes"), wire);
+        }
+        Compare(directory, expected, actual, source.AsSpan().SequenceEqual(before) && Equal(contextBefore, contextAfter),
+            returned, test.GetProperty("expected_no_output").GetBoolean());
+    }
+
+    private static void CheckIndependent(JsonElement test, bool bytes)
+    {
+        string directory = Folder(test, (bytes ? "bytes" : "text") + "-independent");
+        byte[] source = File.ReadAllBytes(Path.Combine(Fixtures, test.GetProperty("input").GetString()!));
+        byte[] before = source.ToArray();
+        File.WriteAllBytes(Path.Combine(directory, "INPUT-ORIGINAL.bytes"), source);
+        FerruleInstance? parsed = null;
+        Exception? parseFailure = null;
+        try
+        {
+            ParseCalls++;
+            parsed = bytes ? GeneratedMapping.ParseCsvBytes(source) : GeneratedMapping.ParseCsv(Utf8.GetString(source));
+        }
+        catch (Exception error) { parseFailure = error; }
+        JsonNode? parsedOriginal = parsed is null ? null : Tags(parsed);
+        Save(Path.Combine(directory, "PARSED-ORIGINAL.json"), parsedOriginal);
+        RetainException(directory, parseFailure);
+        JsonNode? parseActual = parseFailure is null ? parsedOriginal : Error(parseFailure);
+        JsonNode? parseExpected = ErrorStage(test) == "parse" ? ExpectedError(test) : Node(test.GetProperty("expected_parsed"));
+        Compare(directory, parseExpected, parseActual, source.AsSpan().SequenceEqual(before), parsed is not null, ErrorStage(test) == "parse");
+        if (parsed is null) return;
+
+        string typedDirectory = Path.Combine(directory, "typed"); Directory.CreateDirectory(typedDirectory);
+        FerruleExecutionContext context = Context(test.GetProperty("context"));
+        JsonNode contextBefore = ContextSnapshot(context, test.GetProperty("context"));
+        SelectedTargetOutput? selected = null;
+        Exception? typedFailure = null;
+        try
+        {
+            TypedCalls++;
+            selected = GeneratedMapping.ExecuteSelectedTargetWithHost(parsed, Selection(test.GetProperty("selection")), Array.Empty<NamedInput>(), context);
+        }
+        catch (Exception error) { typedFailure = error; }
+        JsonNode? typedActual = selected is null ? typedFailure is null ? null : Error(typedFailure) : SelectedTags(selected);
+        Save(Path.Combine(typedDirectory, "SELECTED-ORIGINAL.json"), typedActual);
+        RetainException(typedDirectory, typedFailure);
+        JsonNode sourceAfter = Tags(parsed);
+        Save(Path.Combine(typedDirectory, "PARSED-AFTER.json"), sourceAfter);
+        bool unchanged = Equal(parsedOriginal, sourceAfter) && source.AsSpan().SequenceEqual(before)
+            && Equal(contextBefore, ContextSnapshot(context, test.GetProperty("context")));
+        JsonNode? typedExpected = ErrorStage(test) == "mapping" ? ExpectedError(test) : Node(test.GetProperty("expected_selected"));
+        Compare(typedDirectory, typedExpected, typedActual, unchanged, selected is not null, ErrorStage(test) == "mapping");
+        if (selected is null) return;
+
+        FerruleInstance instance = selected switch
+        {
+            SelectedTargetOutput.Primary primary => primary.Instance,
+            SelectedTargetOutput.Named named => named.Output.Instance,
+            _ => throw new InvalidOperationException("Unexpected selected carrier; original was retained")
+        };
+        JsonElement schema = selected is SelectedTargetOutput.Primary ? Project.GetProperty("target")
+            : Project.GetProperty("extra_targets").EnumerateArray().Single(t => t.GetProperty("name").GetString() == ((SelectedTargetOutput.Named)selected).Output.Name).GetProperty("schema");
+        foreach (bool byteSerialization in new[] { false, true })
+        {
+            string own = Path.Combine(typedDirectory, byteSerialization ? "serialize-bytes" : "serialize-text"); Directory.CreateDirectory(own);
+            JsonNode instanceBefore = Tags(instance);
+            Save(Path.Combine(own, "INSTANCE-BEFORE.json"), instanceBefore);
+            byte[]? wire = null; Exception? failure = null;
+            try
+            {
+                SerializationCalls++;
+                if (byteSerialization) wire = FerruleJson.SerializeBytes(schema.GetRawText(), instance);
+                else
+                {
+                    string text = FerruleJson.Serialize(schema.GetRawText(), instance);
+                    RetainUtf16(Path.Combine(own, "TEXT-ORIGINAL.utf16le"), text);
+                    wire = Utf8.GetBytes(text);
+                }
+            }
+            catch (Exception error) { failure = error; }
+            if (wire is not null) File.WriteAllBytes(Path.Combine(own, "WIRE-ORIGINAL.bytes"), wire);
+            RetainException(own, failure);
+            JsonNode instanceAfter = Tags(instance); Save(Path.Combine(own, "INSTANCE-AFTER.json"), instanceAfter);
+            JsonNode? actual = failure is null ? wire is null ? null : Wire(wire) : Error(failure);
+            JsonNode? expected = ErrorStage(test) == "serialize" ? ExpectedError(test)
+                : Wire(File.ReadAllBytes(Path.Combine(Fixtures, test.GetProperty("expected_wire").GetString()!)));
+            Compare(own, expected, actual, Equal(instanceBefore, instanceAfter) && unchanged, wire is not null, ErrorStage(test) == "serialize");
+        }
+    }
+
+    private static void CheckFacade(JsonElement test)
+    {
+        string directory = Folder(test, "facade");
+        bool bytes = test.GetProperty("route").GetString() == "bytes";
+        byte[]? source = test.GetProperty("source").ValueKind == JsonValueKind.Null ? null
+            : File.ReadAllBytes(Path.Combine(Fixtures, test.GetProperty("source").GetString()!));
+        byte[]? before = source?.ToArray();
+        if (source is not null) File.WriteAllBytes(Path.Combine(directory, "INPUT-ORIGINAL.bytes"), source);
+        FerruleTargetSelection? selection = test.GetProperty("selection").ValueKind == JsonValueKind.Null ? null : Selection(test.GetProperty("selection"));
+        bool returned = false; JsonNode? actual = null; Exception? failure = null;
+        try
+        {
+            PhysicalCalls++;
+            if (bytes)
+            {
+                var result = GeneratedMapping.ExecuteCsvJsonBytesSelectedTargetWithHost(source!, selection!, null!);
+                returned = true; actual = Document(result, directory);
+            }
+            else
+            {
+                var result = GeneratedMapping.ExecuteCsvJsonSelectedTargetWithHost(source is null ? null! : Utf8.GetString(source), selection!, null!);
+                returned = true; actual = Document(result, directory);
+            }
+        }
+        catch (Exception error) { failure = error; actual = Error(error); }
+        RetainException(directory, failure);
+        if (source is not null) File.WriteAllBytes(Path.Combine(directory, "INPUT-AFTER.bytes"), source);
+        Compare(directory, Node(test.GetProperty("expected_error")), actual,
+            source is null ? before is null : source.AsSpan().SequenceEqual(before), returned, true);
+    }
+
+    private static JsonNode Wire(byte[] wire) => JsonSerializer.SerializeToNode(new { bytes = Convert.ToBase64String(wire), text = Utf8.GetString(wire), sha256 = Sha(wire) })!;
+    private static JsonNode ExpectedDocument(string selection, byte[] wire) => JsonSerializer.SerializeToNode(new
+    {
+        kind = selection == "Primary" ? "Primary" : "Named", name = selection == "Primary" ? null : selection,
+        format = "Json", document = Wire(wire)
+    })!;
+    private static JsonNode Document(SelectedDocumentTargetOutput result, string directory) => result switch
+    {
+        SelectedDocumentTargetOutput.Primary primary => RetainTextDocument("Primary", null, primary.Format.ToString(), primary.Document, directory),
+        SelectedDocumentTargetOutput.Named named => RetainTextDocument("Named", named.Output.Name, named.Output.Format.ToString(), named.Output.Document, directory),
+        _ => JsonSerializer.SerializeToNode(new { kind = result.GetType().FullName, display = result.ToString() })!
+    };
+    private static JsonNode Document(SelectedDocumentBytesTargetOutput result, string directory) => result switch
+    {
+        SelectedDocumentBytesTargetOutput.Primary primary => RetainDocument("Primary", null, primary.Format.ToString(), primary.Document, directory),
+        SelectedDocumentBytesTargetOutput.Named named => RetainDocument("Named", named.Output.Name, named.Output.Format.ToString(), named.Output.Document, directory),
+        _ => JsonSerializer.SerializeToNode(new { kind = result.GetType().FullName, display = result.ToString() })!
+    };
+    private static JsonNode RetainDocument(string kind, string? name, string format, byte[] wire, string directory)
+    {
+        File.WriteAllBytes(Path.Combine(directory, "DOCUMENT-ORIGINAL.bytes"), wire);
+        File.WriteAllText(Path.Combine(directory, "DOCUMENT-ORIGINAL.txt"), Utf8.GetString(wire), Utf8);
+        return JsonSerializer.SerializeToNode(new { kind, name, format, document = Wire(wire) })!;
+    }
+    private static JsonNode RetainTextDocument(string kind, string? name, string format, string text, string directory)
+    {
+        // Retain arbitrary returned UTF-16 units before strict UTF-8 conversion.
+        RetainUtf16(Path.Combine(directory, "DOCUMENT-ORIGINAL.utf16le"), text);
+        Save(Path.Combine(directory, "CARRIER-ORIGINAL.json"), JsonSerializer.SerializeToNode(new { kind, name, format }));
+        return RetainDocument(kind, name, format, Utf8.GetBytes(text), directory);
+    }
+    private static void RetainUtf16(string path, string text)
+    {
+        using var writer = new BinaryWriter(File.Create(path));
+        foreach (char unit in text) writer.Write((ushort)unit);
+    }
+    private static JsonNode SelectedTags(SelectedTargetOutput selected) => selected switch
+    {
+        SelectedTargetOutput.Primary primary => JsonSerializer.SerializeToNode(new { kind = "Primary", instance = Tags(primary.Instance) })!,
+        SelectedTargetOutput.Named named => JsonSerializer.SerializeToNode(new { kind = "Named", name = named.Output.Name, instance = Tags(named.Output.Instance) })!,
+        _ => JsonSerializer.SerializeToNode(new { kind = selected.GetType().FullName, display = selected.ToString() })!
+    };
+    private static JsonNode Tags(FerruleInstance value) => value switch
+    {
+        FerruleScalar scalar => JsonSerializer.SerializeToNode(new { kind = "Scalar", value = Scalar(scalar.Value) })!,
+        FerruleGroup group => JsonSerializer.SerializeToNode(new { kind = "Group", origin = Origin(group.XmlTypeOrigin), fields = group.Fields.Select(f => new { name = f.Name, value = Tags(f.Value) }).ToArray() })!,
+        FerruleRepeated repeated => JsonSerializer.SerializeToNode(new { kind = "Repeated", items = repeated.Items.Select(Tags).ToArray() })!,
+        FerruleMappedSequence sequence => JsonSerializer.SerializeToNode(new { kind = "MappedSequence", items = sequence.Items.Select(Tags).ToArray() })!,
+        FerruleDocumentSet set => JsonSerializer.SerializeToNode(new { kind = "DocumentSet", documents = set.Documents.Select(d => new { path = d.Path, resolved_source_path = d.ResolvedSourcePath, value = Tags(d.Value) }).ToArray() })!,
+        _ => JsonSerializer.SerializeToNode(new { kind = value.GetType().FullName, display = value.ToString() })!
+    };
+    private static JsonNode Origin(FerruleXmlTypeOrigin origin)
+    {
+        var node = new JsonObject { ["kind"] = origin.Kind.ToString() };
+        if (origin.Identity is not null) node["identity"] = JsonSerializer.SerializeToNode(origin.Identity);
+        if (origin.Literal is not null) node["literal"] = origin.Literal;
+        return node;
+    }
+    private static JsonNode Scalar(FerruleValue value) => value.Kind switch
+    {
+        FerruleValueKind.Null => JsonSerializer.SerializeToNode(new { kind = "Null" })!,
+        FerruleValueKind.JsonNull => JsonSerializer.SerializeToNode(new { kind = "JsonNull" })!,
+        FerruleValueKind.XmlNil => JsonSerializer.SerializeToNode(new { kind = "XmlNil" })!,
+        FerruleValueKind.String => JsonSerializer.SerializeToNode(new { kind = "String", value = value.StringValue })!,
+        FerruleValueKind.Int64 => JsonSerializer.SerializeToNode(new { kind = "Int", value = value.Int64Value })!,
+        FerruleValueKind.Double => JsonSerializer.SerializeToNode(new { kind = "Float", bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture) })!,
+        FerruleValueKind.Bool => JsonSerializer.SerializeToNode(new { kind = "Bool", value = value.BooleanValue })!,
+        _ => JsonSerializer.SerializeToNode(new { kind = value.Kind.ToString(), display = value.ToString() })!
+    };
+    private static JsonNode Error(Exception error)
+    {
+        var result = new JsonObject { ["type"] = error.GetType().Name, ["message"] = error.Message };
+        if (error is ArgumentNullException argument) { result["ParamName"] = argument.ParamName; return result; }
+        // Snapshot all declared public fields before any expectation comparison.
+        foreach (var property in error.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).OrderBy(p => p.Name, StringComparer.Ordinal))
+        {
+            if (property.GetIndexParameters().Length != 0) continue;
+            object? value = property.GetValue(error);
+            result[property.Name] = value switch
+            {
+                null => null,
+                Enum enumeration => JsonValue.Create(enumeration.ToString()),
+                char character => JsonValue.Create(character.ToString()),
+                UInt128 number => JsonValue.Create(number.ToString(CultureInfo.InvariantCulture)),
+                _ => JsonSerializer.SerializeToNode(value)
+            };
+        }
+        return result;
+    }
+}

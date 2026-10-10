@@ -18,6 +18,8 @@ mod aggregates;
 mod collection_find;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/csv_json_adapters.rs"]
+mod csv_json_adapters;
 #[path = "code_generation/csv_output.rs"]
 mod csv_output;
 #[path = "code_generation/csv_x12_adapters.rs"]

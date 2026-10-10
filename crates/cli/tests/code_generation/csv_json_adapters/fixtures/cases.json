@@ -1,0 +1,5044 @@
+[
+  {
+    "id": "zero-Primary",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": []
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/zero-Primary.json",
+    "expected_wire_sha256": "88a99b3bdee3bb9ceac542efb953f84fc5b33d5d36b158ae74ab2982d018f04f"
+  },
+  {
+    "id": "zero-Archive",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": []
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/zero-Archive.json",
+    "expected_wire_sha256": "c7252a7a31644ffd3535785433638a10fd209000a96c38b0430f0834a2c2654d"
+  },
+  {
+    "id": "zero-RequiredFirst",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": {
+      "stage": "serialize",
+      "native": {
+        "type": "JsonFormatError",
+        "variant": "MissingRequiredProperty",
+        "fields": {
+          "object": "Required",
+          "property": "TokenName"
+        },
+        "message": "object `Required` requires property `TokenName`"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "JSON object 'Required' requires property 'TokenName'.",
+        "Error": "JsonBoundary",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": "JSON object 'Required' requires property 'TokenName'.",
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": true
+  },
+  {
+    "id": "zero-FirstScalar",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "Null"
+        }
+      }
+    },
+    "expected_error": {
+      "stage": "serialize",
+      "native": {
+        "type": "JsonFormatError",
+        "variant": "Shape",
+        "fields": {
+          "name": "FirstText",
+          "expected": "string",
+          "got": "null"
+        },
+        "message": "`FirstText`: expected string, got null"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "JSON field 'FirstText' expected string, got Null.",
+        "Error": "JsonBoundary",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": "JSON field 'FirstText' expected string, got Null.",
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": true
+  },
+  {
+    "id": "zero-ExplicitNull",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/zero-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "zero-NullObject",
+    "family": "base",
+    "input": "inputs/zero.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": []
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/zero-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "one-Primary",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "cedar"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 3
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3ff4000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "mist"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-Primary.json",
+    "expected_wire_sha256": "44e02e16855acbb07dfc1b7a9a9bb2f4f0080896f529fdaba4ba1d8b4e781c54"
+  },
+  {
+    "id": "one-Archive",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "cedar"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 3
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3ff4000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "mist"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-Archive.json",
+    "expected_wire_sha256": "9a3fb7a1cdfbd4f0d08c7c4ecdb1ba9e3290484694067379b435ee1101f9a049"
+  },
+  {
+    "id": "one-RequiredFirst",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-RequiredFirst.json",
+    "expected_wire_sha256": "8c5693e08d83c135edd9456fa123a0d51e891f4365ee82086c79927cb0119754"
+  },
+  {
+    "id": "one-FirstScalar",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "String",
+          "value": "cedar"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-FirstScalar.json",
+    "expected_wire_sha256": "f45909d088a62ca73f87d9c02e7c991fe6965107a4786dfc832a2b5136e6275d"
+  },
+  {
+    "id": "one-ExplicitNull",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "one-NullObject",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/one-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "multi-Primary",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "cedar"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 3
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3ff4000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "mist"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "spruce"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 7
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "bfe0000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": false
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-Primary.json",
+    "expected_wire_sha256": "4b6efa25176c9da070e8eeaa78ef6d872dfd083a40cffc2beec55d6eeb0a14aa"
+  },
+  {
+    "id": "multi-Archive",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "cedar"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 3
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3ff4000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "mist"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "spruce"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 7
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "bfe0000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": false
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-Archive.json",
+    "expected_wire_sha256": "124a9a8650ca389d512f93ce1fef09c3e4c7a90d34291f7c8cc27739c148534e"
+  },
+  {
+    "id": "multi-RequiredFirst",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-RequiredFirst.json",
+    "expected_wire_sha256": "8c5693e08d83c135edd9456fa123a0d51e891f4365ee82086c79927cb0119754"
+  },
+  {
+    "id": "multi-FirstScalar",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "String",
+          "value": "cedar"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-FirstScalar.json",
+    "expected_wire_sha256": "f45909d088a62ca73f87d9c02e7c991fe6965107a4786dfc832a2b5136e6275d"
+  },
+  {
+    "id": "multi-ExplicitNull",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "multi-NullObject",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/multi-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "missing-Primary",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/missing-Primary.json",
+    "expected_wire_sha256": "4c5612897c6fc36164f4985c27dd77dc97ec670fab5e3182131773b8dfa2feb8"
+  },
+  {
+    "id": "missing-Archive",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/missing-Archive.json",
+    "expected_wire_sha256": "f9fcf965a17a4e84a15dacedd1d2fedf83ede617ba74508b92f60dbb3771d4ca"
+  },
+  {
+    "id": "missing-RequiredFirst",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": {
+      "stage": "serialize",
+      "native": {
+        "type": "JsonFormatError",
+        "variant": "MissingRequiredProperty",
+        "fields": {
+          "object": "Required",
+          "property": "TokenName"
+        },
+        "message": "object `Required` requires property `TokenName`"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "JSON object 'Required' requires property 'TokenName'.",
+        "Error": "JsonBoundary",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": "JSON object 'Required' requires property 'TokenName'.",
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": true
+  },
+  {
+    "id": "missing-FirstScalar",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "Null"
+        }
+      }
+    },
+    "expected_error": {
+      "stage": "serialize",
+      "native": {
+        "type": "JsonFormatError",
+        "variant": "Shape",
+        "fields": {
+          "name": "FirstText",
+          "expected": "string",
+          "got": "null"
+        },
+        "message": "`FirstText`: expected string, got null"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "JSON field 'FirstText' expected string, got Null.",
+        "Error": "JsonBoundary",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": "JSON field 'FirstText' expected string, got Null.",
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": true
+  },
+  {
+    "id": "missing-ExplicitNull",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/missing-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "missing-NullObject",
+    "family": "base",
+    "input": "inputs/missing.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/missing-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "short-Primary",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "fir"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "fir"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 4
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-Primary.json",
+    "expected_wire_sha256": "8816aa943ac9dee68c0a7553d06c77168ecbd0c64280a41d4a8a2443474ee068"
+  },
+  {
+    "id": "short-Archive",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "fir"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 4
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-Archive.json",
+    "expected_wire_sha256": "b22be1402f4e039deda5006385c39b2517298776ef43cdece5973a3e4778af08"
+  },
+  {
+    "id": "short-RequiredFirst",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "fir"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-RequiredFirst.json",
+    "expected_wire_sha256": "b087726ab29662ba404a2724fe6b52c6d5e653a09d269c553cb89429036cd2fa"
+  },
+  {
+    "id": "short-FirstScalar",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "String",
+          "value": "fir"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-FirstScalar.json",
+    "expected_wire_sha256": "a10759cd67d3d35efb8dcf2804f1e0a2ec22594e4fbf42469e406a0376cc9516"
+  },
+  {
+    "id": "short-ExplicitNull",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "short-NullObject",
+    "family": "base",
+    "input": "inputs/short.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "fir"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 4
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/short-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "unicode-Primary",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Primary",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "FirstToken",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "élan"
+              }
+            }
+          },
+          {
+            "name": "Items",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Token",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "élan"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Units",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 11
+                        }
+                      }
+                    },
+                    {
+                      "name": "Fraction",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3fc0000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Active",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Note",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "dusk ☂"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-Primary.json",
+    "expected_wire_sha256": "715afc6370bab43c07de44b9d7eda1ba48e3ace7ae6da34befad8154222896ba"
+  },
+  {
+    "id": "unicode-Archive",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "Archive",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Label",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "AUTHORED-ARCHIVE"
+              }
+            }
+          },
+          {
+            "name": "Entries",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": {
+                    "kind": "Unknown"
+                  },
+                  "fields": [
+                    {
+                      "name": "Name",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "élan"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Amount",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 11
+                        }
+                      }
+                    },
+                    {
+                      "name": "Factor",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "bits": "3fc0000000000000"
+                        }
+                      }
+                    },
+                    {
+                      "name": "Live",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Bool",
+                          "value": true
+                        }
+                      }
+                    },
+                    {
+                      "name": "Memo",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "dusk ☂"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-Archive.json",
+    "expected_wire_sha256": "0b4c82bceeef81606f465c0222057bb6aeaeb3dd0214036d63f3571a8ae128d7"
+  },
+  {
+    "id": "unicode-RequiredFirst",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "RequiredFirst",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "RequiredFirst",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "TokenName",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "élan"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-RequiredFirst.json",
+    "expected_wire_sha256": "40b0b67ed80334251cc0cd8e562d1724514b77def978b5aa81c438fa107bfb53"
+  },
+  {
+    "id": "unicode-FirstScalar",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "FirstScalar",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "String",
+          "value": "élan"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-FirstScalar.json",
+    "expected_wire_sha256": "07a98be6788826d07452fbfb0a5e436e5b4c57d624a65fe0ea439e7551526d67"
+  },
+  {
+    "id": "unicode-ExplicitNull",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "ExplicitNull",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "ExplicitNull",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-ExplicitNull.json",
+    "expected_wire_sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed"
+  },
+  {
+    "id": "unicode-NullObject",
+    "family": "base",
+    "input": "inputs/unicode.csv",
+    "selection": "NullObject",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "élan"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 11
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3fc0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "dusk ☂"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "NullObject",
+      "instance": {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Marker",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "JsonNull"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "expected_error": null,
+    "routes": [
+      "text",
+      "bytes"
+    ],
+    "expected_no_output": false,
+    "expected_wire": "expected/wire/unicode-NullObject.json",
+    "expected_wire_sha256": "e7f2e394af4679cee585ddf7692e33f6d79115a0ca2fa8551ca1bb803361a978"
+  },
+  {
+    "id": "multi-HostValue",
+    "family": "base",
+    "input": "inputs/multi.csv",
+    "selection": "HostValue",
+    "context": {
+      "Caption": "AUTHORED-HOST"
+    },
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "spruce"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "bfe0000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": false
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": {
+      "kind": "Named",
+      "name": "HostValue",
+      "instance": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "String",
+          "value": "AUTHORED-HOST"
+        }
+      }
+    },
+    "expected_wire": "expected/wire/multi-HostValue.json",
+    "expected_wire_sha256": "2ca719a5a7d9d4a30d9f741a111d05e1119431d543554d1289c041a98f809ba1",
+    "expected_error": null,
+    "expected_no_output": false,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "missing-host",
+    "family": "base",
+    "input": "inputs/one.csv",
+    "selection": "HostValue",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "mapping",
+      "native": {
+        "type": "EngineError",
+        "variant": "MissingRuntimeParameter",
+        "fields": {
+          "node": 8,
+          "name": "Caption"
+        },
+        "message": "graph node 8: execution context does not provide runtime parameter `Caption`"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "node 8: execution context does not provide runtime parameter 'Caption'",
+        "Error": "MissingRuntimeParameter",
+        "Node": 8,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": "Caption",
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "later-bad-base-FirstScalar",
+    "family": "base",
+    "input": "inputs/later_bad.csv",
+    "selection": "FirstScalar",
+    "context": {},
+    "expected_parsed": null,
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "parse",
+      "native": {
+        "type": "CsvFormatError",
+        "variant": "Parse",
+        "fields": {
+          "row": 1,
+          "field": "Units",
+          "expected": "Int",
+          "value": "bad"
+        },
+        "message": "row 1: column `Units` expected Int, got `bad`"
+      },
+      "csharp": {
+        "type": "FerruleCsvInputException",
+        "message": "row 1: column `Units` expected Int, got `bad`",
+        "Error": "Parse",
+        "Row": 1,
+        "Record": 1,
+        "Column": 1,
+        "Field": "Units",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "later-bad-base-HostValue",
+    "family": "base",
+    "input": "inputs/later_bad.csv",
+    "selection": "HostValue",
+    "context": {},
+    "expected_parsed": null,
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "parse",
+      "native": {
+        "type": "CsvFormatError",
+        "variant": "Parse",
+        "fields": {
+          "row": 1,
+          "field": "Units",
+          "expected": "Int",
+          "value": "bad"
+        },
+        "message": "row 1: column `Units` expected Int, got `bad`"
+      },
+      "csharp": {
+        "type": "FerruleCsvInputException",
+        "message": "row 1: column `Units` expected Int, got `bad`",
+        "Error": "Parse",
+        "Row": 1,
+        "Record": 1,
+        "Column": 1,
+        "Field": "Units",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "later-bad-failure-Primary",
+    "family": "failure",
+    "input": "inputs/later_bad.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": null,
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "parse",
+      "native": {
+        "type": "CsvFormatError",
+        "variant": "Parse",
+        "fields": {
+          "row": 1,
+          "field": "Units",
+          "expected": "Int",
+          "value": "bad"
+        },
+        "message": "row 1: column `Units` expected Int, got `bad`"
+      },
+      "csharp": {
+        "type": "FerruleCsvInputException",
+        "message": "row 1: column `Units` expected Int, got `bad`",
+        "Error": "Parse",
+        "Row": 1,
+        "Record": 1,
+        "Column": 1,
+        "Field": "Units",
+        "ExpectedType": "Int64",
+        "Cell": "bad",
+        "Character": null,
+        "Maximum": null,
+        "Observed": null,
+        "ExpectedColumns": null,
+        "ActualColumns": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "global-stop-Primary",
+    "family": "failure",
+    "input": "inputs/one.csv",
+    "selection": "Primary",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "mapping",
+      "native": {
+        "type": "EngineError",
+        "variant": "MappingFailure",
+        "fields": {
+          "rule": 1,
+          "message": "AUTHORED-STOP"
+        },
+        "message": "mapping failure rule 1: AUTHORED-STOP"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "mapping failure rule 1: AUTHORED-STOP",
+        "Error": "MappingFailure",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": 1,
+        "MappingFailureMessage": "AUTHORED-STOP",
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "global-stop-Archive",
+    "family": "failure",
+    "input": "inputs/one.csv",
+    "selection": "Archive",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "mapping",
+      "native": {
+        "type": "EngineError",
+        "variant": "MappingFailure",
+        "fields": {
+          "rule": 1,
+          "message": "AUTHORED-STOP"
+        },
+        "message": "mapping failure rule 1: AUTHORED-STOP"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "mapping failure rule 1: AUTHORED-STOP",
+        "Error": "MappingFailure",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": 1,
+        "MappingFailureMessage": "AUTHORED-STOP",
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  },
+  {
+    "id": "global-stop-HostValue",
+    "family": "failure",
+    "input": "inputs/one.csv",
+    "selection": "HostValue",
+    "context": {},
+    "expected_parsed": {
+      "kind": "Repeated",
+      "items": [
+        {
+          "kind": "Group",
+          "origin": {
+            "kind": "Unknown"
+          },
+          "fields": [
+            {
+              "name": "Token",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "cedar"
+                }
+              }
+            },
+            {
+              "name": "Units",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 3
+                }
+              }
+            },
+            {
+              "name": "Fraction",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Float",
+                  "bits": "3ff4000000000000"
+                }
+              }
+            },
+            {
+              "name": "Active",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Bool",
+                  "value": true
+                }
+              }
+            },
+            {
+              "name": "Note",
+              "value": {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "mist"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_selected": null,
+    "expected_error": {
+      "stage": "mapping",
+      "native": {
+        "type": "EngineError",
+        "variant": "MappingFailure",
+        "fields": {
+          "rule": 1,
+          "message": "AUTHORED-STOP"
+        },
+        "message": "mapping failure rule 1: AUTHORED-STOP"
+      },
+      "csharp": {
+        "type": "FerruleRuntimeException",
+        "message": "mapping failure rule 1: AUTHORED-STOP",
+        "Error": "MappingFailure",
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "Detail": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": 1,
+        "MappingFailureMessage": "AUTHORED-STOP",
+        "MappingExceptionMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null
+      }
+    },
+    "expected_no_output": true,
+    "routes": [
+      "text",
+      "bytes"
+    ]
+  }
+]

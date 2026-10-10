@@ -1,0 +1,18 @@
+{
+  "source": {
+    "delimiter": null,
+    "quote": null,
+    "quote_disabled": false,
+    "has_headers": false,
+    "preserve_empty_strings": false,
+    "utf8_bom": false
+  },
+  "extra_target_names": [
+    "Archive",
+    "RequiredFirst",
+    "FirstScalar",
+    "ExplicitNull",
+    "NullObject",
+    "HostValue"
+  ]
+}

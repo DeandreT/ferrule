@@ -1,0 +1,1977 @@
+[
+  {
+    "id": "repair-before-foreign-options-and-delimiter",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "csv_text_repair_dependency": {
+            "causes": [
+              "unsupported_encoding"
+            ]
+          },
+          "json_document": true,
+          "delimiter": "\u0000"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "SourceRepairRequired",
+      "fields": {},
+      "message": "generated CSV input requires repair of the stored text settings",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceRepairRequired",
+          "fields": {},
+          "message": "generated CSV input requires repair of the stored text settings",
+          "source": null
+        }
+      },
+      "message": "generated CSV input requires repair of the stored text settings",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceRepairRequired",
+        "fields": {},
+        "message": "generated CSV input requires repair of the stored text settings",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "SourceRepairRequired",
+      "fields": {},
+      "message": "generated CSV input requires repair of the stored text settings",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "foreign-options-before-delimiter",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "json_document": true,
+          "delimiter": "\u0000"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "SourceFormatOptions",
+      "fields": {},
+      "message": "generated CSV input cannot use conflicting format options",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceFormatOptions",
+          "fields": {},
+          "message": "generated CSV input cannot use conflicting format options",
+          "source": null
+        }
+      },
+      "message": "generated CSV input cannot use conflicting format options",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceFormatOptions",
+        "fields": {},
+        "message": "generated CSV input cannot use conflicting format options",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "SourceFormatOptions",
+      "fields": {},
+      "message": "generated CSV input cannot use conflicting format options",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "bad-delimiter-nul",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "delimiter": "\u0000"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "\u0000"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\0'",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "BadDelimiter",
+          "fields": {
+            "character": "\u0000"
+          },
+          "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\0'",
+          "source": null
+        }
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\0'",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "BadDelimiter",
+        "fields": {
+          "character": "\u0000"
+        },
+        "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\0'",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "\u0000"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\0'",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "bad-delimiter-lf",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "delimiter": "\n"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "\n"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\n'",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "BadDelimiter",
+          "fields": {
+            "character": "\n"
+          },
+          "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\n'",
+          "source": null
+        }
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\n'",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "BadDelimiter",
+        "fields": {
+          "character": "\n"
+        },
+        "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\n'",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "\n"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got '\\n'",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "bad-delimiter-unicode",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "delimiter": "λ"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "λ"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got 'λ'",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "BadDelimiter",
+          "fields": {
+            "character": "λ"
+          },
+          "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got 'λ'",
+          "source": null
+        }
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got 'λ'",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "BadDelimiter",
+        "fields": {
+          "character": "λ"
+        },
+        "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got 'λ'",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "BadDelimiter",
+      "fields": {
+        "character": "λ"
+      },
+      "message": "generated CSV input requires one ASCII delimiter other than NUL, CR or LF, got 'λ'",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "disabled-with-explicit-quote",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "csv_quote_disabled": true,
+          "csv_quote": "'"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "ConflictingQuoteSettings",
+      "fields": {},
+      "message": "generated CSV input cannot combine a quote character with disabled quoting",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "ConflictingQuoteSettings",
+          "fields": {},
+          "message": "generated CSV input cannot combine a quote character with disabled quoting",
+          "source": null
+        }
+      },
+      "message": "generated CSV input cannot combine a quote character with disabled quoting",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "ConflictingQuoteSettings",
+        "fields": {},
+        "message": "generated CSV input cannot combine a quote character with disabled quoting",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "ConflictingQuoteSettings",
+      "fields": {},
+      "message": "generated CSV input cannot combine a quote character with disabled quoting",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "bad-quote-space",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "csv_quote": " "
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "BadQuote",
+      "fields": {
+        "character": " "
+      },
+      "message": "generated CSV input requires one visible ASCII quote, got ' '",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "BadQuote",
+          "fields": {
+            "character": " "
+          },
+          "message": "generated CSV input requires one visible ASCII quote, got ' '",
+          "source": null
+        }
+      },
+      "message": "generated CSV input requires one visible ASCII quote, got ' '",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "BadQuote",
+        "fields": {
+          "character": " "
+        },
+        "message": "generated CSV input requires one visible ASCII quote, got ' '",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "BadQuote",
+      "fields": {
+        "character": " "
+      },
+      "message": "generated CSV input requires one visible ASCII quote, got ' '",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "delimiter-quote-conflict",
+    "entry": "from_input_format_options",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_set": {
+          "delimiter": "\""
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvInputBoundaryError",
+      "variant": "DelimiterQuoteConflict",
+      "fields": {},
+      "message": "generated CSV input delimiter and quote must differ",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "expected_csv_json_conversion": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "DelimiterQuoteConflict",
+          "fields": {},
+          "message": "generated CSV input delimiter and quote must differ",
+          "source": null
+        }
+      },
+      "message": "generated CSV input delimiter and quote must differ",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "DelimiterQuoteConflict",
+        "fields": {},
+        "message": "generated CSV input delimiter and quote must differ",
+        "source": null
+      }
+    },
+    "expected_existing_csv_x12_factory": {
+      "type": "CsvX12BoundaryError",
+      "variant": "DelimiterQuoteConflict",
+      "fields": {},
+      "message": "generated CSV input delimiter and quote must differ",
+      "source": null
+    },
+    "require_old_and_new_source_factory_fields_message_cause_equal": true
+  },
+  {
+    "id": "scalar-source",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_kind_scalar": "string"
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": null,
+            "reason": "a flat group row schema is required"
+          },
+          "message": "generated CSV source schema at column None: a flat group row schema is required",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column None: a flat group row schema is required",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": null,
+          "reason": "a flat group row schema is required"
+        },
+        "message": "generated CSV source schema at column None: a flat group row schema is required",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "repeating-row",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_repeating": true
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": null,
+            "reason": "a closed non-repeating group without alternatives or required fields is required"
+          },
+          "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": null,
+          "reason": "a closed non-repeating group without alternatives or required fields is required"
+        },
+        "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "row-required",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_required": [
+          "Token"
+        ]
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": null,
+            "reason": "a closed non-repeating group without alternatives or required fields is required"
+          },
+          "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": null,
+          "reason": "a closed non-repeating group without alternatives or required fields is required"
+        },
+        "message": "generated CSV source schema at column None: a closed non-repeating group without alternatives or required fields is required",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "columns257",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_flat_columns": 257
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": null,
+            "reason": "CSV row schema exceeds 256 columns"
+          },
+          "message": "generated CSV source schema at column None: CSV row schema exceeds 256 columns",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column None: CSV row schema exceeds 256 columns",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": null,
+          "reason": "CSV row schema exceeds 256 columns"
+        },
+        "message": "generated CSV source schema at column None: CSV row schema exceeds 256 columns",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "row-xml-optional",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_xml_optional": true
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": null,
+            "reason": "row metadata must use canonical defaults"
+          },
+          "message": "generated CSV source schema at column None: row metadata must use canonical defaults",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column None: row metadata must use canonical defaults",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": null,
+          "reason": "row metadata must use canonical defaults"
+        },
+        "message": "generated CSV source schema at column None: row metadata must use canonical defaults",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-group",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_kind_group": 0
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 0,
+            "reason": "each column must have one non-repeating scalar type"
+          },
+          "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 0,
+          "reason": "each column must have one non-repeating scalar type"
+        },
+        "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-repeating",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_repeating": 0
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 0,
+            "reason": "each column must have one non-repeating scalar type"
+          },
+          "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 0,
+          "reason": "each column must have one non-repeating scalar type"
+        },
+        "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-union",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_scalar_union": {
+          "column": 0,
+          "types": [
+            "string",
+            "int"
+          ]
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 0,
+            "reason": "each column must have one non-repeating scalar type"
+          },
+          "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 0,
+          "reason": "each column must have one non-repeating scalar type"
+        },
+        "message": "generated CSV source schema at column Some(0): each column must have one non-repeating scalar type",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-nullability",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_nullable": 0
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 0,
+            "reason": "column metadata must use canonical defaults"
+          },
+          "message": "generated CSV source schema at column Some(0): column metadata must use canonical defaults",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(0): column metadata must use canonical defaults",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 0,
+          "reason": "column metadata must use canonical defaults"
+        },
+        "message": "generated CSV source schema at column Some(0): column metadata must use canonical defaults",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-empty-name",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_name": {
+          "column": 0,
+          "name": ""
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 0,
+            "reason": "column names must be nonempty"
+          },
+          "message": "generated CSV source schema at column Some(0): column names must be nonempty",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(0): column names must be nonempty",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 0,
+          "reason": "column names must be nonempty"
+        },
+        "message": "generated CSV source schema at column Some(0): column names must be nonempty",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "column-duplicate-name",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "column_name": {
+          "column": 1,
+          "name": "Token"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceSchema",
+          "fields": {
+            "field": 1,
+            "reason": "column names must be unique"
+          },
+          "message": "generated CSV source schema at column Some(1): column names must be unique",
+          "source": null
+        }
+      },
+      "message": "generated CSV source schema at column Some(1): column names must be unique",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceSchema",
+        "fields": {
+          "field": 1,
+          "reason": "column names must be unique"
+        },
+        "message": "generated CSV source schema at column Some(1): column names must be unique",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "source-name-budget-conversion",
+    "entry": "source_error_conversion",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "construct_source_error": {
+          "variant": "SourceNameBytes",
+          "maximum": 1048576,
+          "observed": 1048577
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "SourceNameBytes",
+          "fields": {
+            "maximum": 1048576,
+            "observed": 1048577
+          },
+          "message": "generated CSV source names use 1048577 UTF-8 bytes; maximum is 1048576",
+          "source": null
+        }
+      },
+      "message": "generated CSV source names use 1048577 UTF-8 bytes; maximum is 1048576",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "SourceNameBytes",
+        "fields": {
+          "maximum": 1048576,
+          "observed": 1048577
+        },
+        "message": "generated CSV source names use 1048577 UTF-8 bytes; maximum is 1048576",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "also_require_existing_csv_x12_variant_fields_message_source_equal": true
+  },
+  {
+    "id": "policy-missing-name",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "policy_names": [
+          "Archive",
+          "RequiredFirst",
+          "FirstScalar",
+          "ExplicitNull",
+          "NullObject"
+        ]
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "PolicyNames",
+      "fields": {
+        "field": "extra_targets"
+      },
+      "message": "CSV-to-JSON extra_targets policy names must exactly match declaration order",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "policy-wrong-order",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "policy_names": [
+          "RequiredFirst",
+          "Archive",
+          "FirstScalar",
+          "ExplicitNull",
+          "NullObject",
+          "HostValue"
+        ]
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "PolicyNames",
+      "fields": {
+        "field": "extra_targets"
+      },
+      "message": "CSV-to-JSON extra_targets policy names must exactly match declaration order",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "policy-unknown-name",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "policy_names": [
+          "Unlisted",
+          "RequiredFirst",
+          "FirstScalar",
+          "ExplicitNull",
+          "NullObject",
+          "HostValue"
+        ]
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "PolicyNames",
+      "fields": {
+        "field": "extra_targets"
+      },
+      "message": "CSV-to-JSON extra_targets policy names must exactly match declaration order",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "duplicate-declared-and-policy-name",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_target_name": {
+          "index": 1,
+          "name": "Archive"
+        }
+      },
+      {
+        "policy_names": [
+          "Archive",
+          "Archive",
+          "FirstScalar",
+          "ExplicitNull",
+          "NullObject",
+          "HostValue"
+        ]
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "PolicyNames",
+      "fields": {
+        "field": "extra_targets"
+      },
+      "message": "CSV-to-JSON extra_targets policy names must exactly match declaration order",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "named-input",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "add_named_source": "Auxiliary"
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "ProgramField",
+      "fields": {
+        "field": "extra_sources"
+      },
+      "message": "generated CSV-to-JSON program field extra_sources is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "xml-boundary",
+    "entry": "prepare_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "program_xml_boundary": {
+          "input": {
+            "allow_inactive_root_type_members": false,
+            "root_view_policy": false
+          },
+          "extra_inputs": [],
+          "output": {
+            "declaration": true,
+            "indent": true,
+            "default_namespace": null,
+            "schema_hints": null
+          },
+          "extra_outputs": []
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "ProgramField",
+      "fields": {
+        "field": "xml_boundary"
+      },
+      "message": "generated CSV-to-JSON program field xml_boundary is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-repeating-schema",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_schema_repeating": true
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "field": "document_iteration"
+      },
+      "message": "generated CSV-to-JSON Target field document_iteration is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-root-iteration",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_root_source_iteration": []
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "field": "document_iteration"
+      },
+      "message": "generated CSV-to-JSON Target field document_iteration is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-program-root-repeating",
+    "entry": "prepare_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_program_root_repeating": true
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "field": "document_iteration"
+      },
+      "message": "generated CSV-to-JSON Target field document_iteration is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "named-repeating-schema",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_schema_repeating": 0
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "field": "document_iteration"
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } field document_iteration is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "named-root-iteration",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_root_source_iteration": {
+          "index": 0,
+          "source": []
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "field": "document_iteration"
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } field document_iteration is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-dynamic-documents",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "dynamic_document_scope": {
+          "target": "primary",
+          "path": [
+            "Items"
+          ]
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "field": "dynamic_target"
+      },
+      "message": "generated CSV-to-JSON Target field dynamic_target is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "unselected-named-dynamic-documents",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "dynamic_document_scope": {
+          "target_index": 0,
+          "path": [
+            "Entries"
+          ]
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "TargetField",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "field": "dynamic_target"
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } field dynamic_target is unsupported",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "source-depth129-before-invalid-program",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_schema_chain_depth": 129
+      },
+      {
+        "primary_binding_expression": 999
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Source",
+      "fields": {
+        "error": {
+          "type": "CsvInputBoundaryError",
+          "variant": "EmbeddedSourceSchema",
+          "fields": {
+            "error": {
+              "type": "CodecError",
+              "variant": "DepthLimit",
+              "fields": {
+                "depth": 129,
+                "max": 128
+              },
+              "message": "embedded schema depth is 129; maximum is 128",
+              "source": null
+            }
+          },
+          "message": "embedded schema depth is 129; maximum is 128",
+          "source": {
+            "type": "CodecError",
+            "variant": "DepthLimit",
+            "fields": {
+              "depth": 129,
+              "max": 128
+            },
+            "message": "embedded schema depth is 129; maximum is 128",
+            "source": null
+          }
+        }
+      },
+      "message": "embedded schema depth is 129; maximum is 128",
+      "source": {
+        "type": "CsvInputBoundaryError",
+        "variant": "EmbeddedSourceSchema",
+        "fields": {
+          "error": {
+            "type": "CodecError",
+            "variant": "DepthLimit",
+            "fields": {
+              "depth": 129,
+              "max": 128
+            },
+            "message": "embedded schema depth is 129; maximum is 128",
+            "source": null
+          }
+        },
+        "message": "embedded schema depth is 129; maximum is 128",
+        "source": {
+          "type": "CodecError",
+          "variant": "DepthLimit",
+          "fields": {
+            "depth": 129,
+            "max": 128
+          },
+          "message": "embedded schema depth is 129; maximum is 128",
+          "source": null
+        }
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "construction": "Borrowed in-memory typed SchemaNode chain; JSON parsing a deep input is not the preflight control."
+  },
+  {
+    "id": "primary-depth129-before-invalid-program",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_schema_chain_depth": 129
+      },
+      {
+        "primary_binding_expression": 999
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "EmbeddedSchema",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "error": {
+          "type": "CodecError",
+          "variant": "DepthLimit",
+          "fields": {
+            "depth": 129,
+            "max": 128
+          },
+          "message": "embedded schema depth is 129; maximum is 128",
+          "source": null
+        }
+      },
+      "message": "generated CSV-to-JSON Target descriptor: embedded schema depth is 129; maximum is 128",
+      "source": {
+        "type": "CodecError",
+        "variant": "DepthLimit",
+        "fields": {
+          "depth": 129,
+          "max": 128
+        },
+        "message": "embedded schema depth is 129; maximum is 128",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "construction": "Borrowed in-memory typed SchemaNode chain; JSON parsing a deep input is not the preflight control."
+  },
+  {
+    "id": "unselected-depth129-before-invalid-program",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_schema_chain_depth": {
+          "index": 0,
+          "depth": 129
+        }
+      },
+      {
+        "primary_binding_expression": 999
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "EmbeddedSchema",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "error": {
+          "type": "CodecError",
+          "variant": "DepthLimit",
+          "fields": {
+            "depth": 129,
+            "max": 128
+          },
+          "message": "embedded schema depth is 129; maximum is 128",
+          "source": null
+        }
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } descriptor: embedded schema depth is 129; maximum is 128",
+      "source": {
+        "type": "CodecError",
+        "variant": "DepthLimit",
+        "fields": {
+          "depth": 129,
+          "max": 128
+        },
+        "message": "embedded schema depth is 129; maximum is 128",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "construction": "Borrowed in-memory typed SchemaNode chain; JSON parsing a deep input is not the preflight control."
+  },
+  {
+    "id": "unselected-invalid-required-metadata",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_group_required": {
+          "index": 0,
+          "required": [
+            "Undeclared"
+          ]
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "EmbeddedSchema",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "error": {
+          "type": "CodecError",
+          "variant": "Deserialization",
+          "fields": {
+            "message": "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget"
+          },
+          "message": "cannot read embedded schema: schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
+          "source": null
+        }
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } descriptor: cannot read embedded schema: schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
+      "source": {
+        "type": "CodecError",
+        "variant": "Deserialization",
+        "fields": {
+          "message": "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget"
+        },
+        "message": "cannot read embedded schema: schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    },
+    "construction": "Typed mutation after decoding the immutable valid Project; the complete malformed model is retained before invocation."
+  },
+  {
+    "id": "original-program-error-after-descriptors",
+    "entry": "prepare_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_binding_expression": 999
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "Validation",
+      "fields": {
+        "error": {
+          "type": "ProgramValidationError",
+          "variant": "MissingBindingExpression",
+          "fields": {
+            "target_path": [],
+            "target_field": "FirstToken",
+            "expression": 999
+          },
+          "message": "target scope <root> field \"FirstToken\" references missing expression 999",
+          "source": null
+        }
+      },
+      "message": "target scope <root> field \"FirstToken\" references missing expression 999",
+      "source": {
+        "type": "ProgramValidationError",
+        "variant": "MissingBindingExpression",
+        "fields": {
+          "target_path": [],
+          "target_field": "FirstToken",
+          "expression": 999
+        },
+        "message": "target scope <root> field \"FirstToken\" references missing expression 999",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-json-options-foreign",
+    "entry": "cli_policy",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_options_set": {
+          "json_document": true,
+          "has_header_row": true
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "JsonFormatOptions",
+      "fields": {
+        "owner": {
+          "variant": "Target"
+        },
+        "error": {
+          "type": "X12BoundaryPolicyError",
+          "variant": "FormatOptions",
+          "fields": {},
+          "message": "generated X12 cannot use the retained format options",
+          "source": null
+        }
+      },
+      "message": "generated CSV-to-JSON Target requires plain strict JSON format options",
+      "source": {
+        "type": "X12BoundaryPolicyError",
+        "variant": "FormatOptions",
+        "fields": {},
+        "message": "generated X12 cannot use the retained format options",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "unselected-named-json-unresolved",
+    "entry": "cli_policy",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_options_set": {
+          "index": 0,
+          "options": {
+            "json_document": true,
+            "json_schema_unresolved_reference": "authored-absent.schema.json"
+          }
+        }
+      }
+    ],
+    "expected": {
+      "type": "CsvJsonBoundaryError",
+      "variant": "JsonFormatOptions",
+      "fields": {
+        "owner": {
+          "variant": "NamedTarget",
+          "index": 0,
+          "name": "Archive"
+        },
+        "error": {
+          "type": "X12BoundaryPolicyError",
+          "variant": "FormatOptions",
+          "fields": {},
+          "message": "generated X12 cannot use the retained format options",
+          "source": null
+        }
+      },
+      "message": "generated CSV-to-JSON NamedTarget { index: 0, name: \"Archive\" } requires plain strict JSON format options",
+      "source": {
+        "type": "X12BoundaryPolicyError",
+        "variant": "FormatOptions",
+        "fields": {},
+        "message": "generated X12 cannot use the retained format options",
+        "source": null
+      }
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "source-family-missing",
+    "entry": "cli_policy",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_options_replace": {}
+      },
+      {
+        "source_path": "authored.data"
+      }
+    ],
+    "expected": {
+      "type": "CliPolicyError",
+      "message": "generated CSV-to-JSON source requires an explicit CSV format identity",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "primary-json-family-missing",
+    "entry": "cli_policy",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "primary_options_replace": {}
+      },
+      {
+        "target_path": "authored.data"
+      }
+    ],
+    "expected": {
+      "type": "CliPolicyError",
+      "message": "generated CSV-to-JSON primary target requires an explicit strict JSON format identity",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "named-non-json-family",
+    "entry": "cli_policy",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "named_options_set": {
+          "index": 0,
+          "options": {
+            "tabular_kind": "csv"
+          }
+        }
+      },
+      {
+        "named_path": {
+          "index": 0,
+          "path": "authored-output.csv"
+        }
+      }
+    ],
+    "expected": {
+      "type": "CliPolicyError",
+      "message": "generated CSV-to-JSON named target \"Archive\" requires an explicit strict JSON format identity",
+      "source": null
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "exists": false,
+      "files": []
+    }
+  },
+  {
+    "id": "explicit-csv-stored-text",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [
+      {
+        "source_path": "authored-stored.txt"
+      }
+    ],
+    "expected": {
+      "success": true,
+      "complete_profile_schema_descriptors_equal_input": true,
+      "fields": [
+        "Token",
+        "Units",
+        "Fraction",
+        "Active",
+        "Note"
+      ],
+      "primary_json": true,
+      "named_targets": [
+        "Archive",
+        "RequiredFirst",
+        "FirstScalar",
+        "ExplicitNull",
+        "NullObject",
+        "HostValue"
+      ],
+      "mapping_executed": false
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "published": false,
+      "reason": "policy preparation only"
+    }
+  },
+  {
+    "id": "singular-child-row-loop",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [],
+    "expected": {
+      "success": true,
+      "complete_profile_schema_descriptors_equal_input": true,
+      "fields": [
+        "Token",
+        "Units",
+        "Fraction",
+        "Active",
+        "Note"
+      ],
+      "primary_json": true,
+      "named_targets": [
+        "Archive",
+        "RequiredFirst",
+        "FirstScalar",
+        "ExplicitNull",
+        "NullObject",
+        "HostValue"
+      ],
+      "mapping_executed": false
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "published": false,
+      "reason": "policy preparation only"
+    }
+  },
+  {
+    "id": "optional-null-and-explicit-json-null",
+    "entry": "prepare_project_and_program",
+    "base_project": "BASE-PROJECT.original.json",
+    "base_policy": "BASE-POLICY.original.json",
+    "typed_mutations": [],
+    "expected": {
+      "success": true,
+      "complete_profile_schema_descriptors_equal_input": true,
+      "fields": [
+        "Token",
+        "Units",
+        "Fraction",
+        "Active",
+        "Note"
+      ],
+      "primary_json": true,
+      "named_targets": [
+        "Archive",
+        "RequiredFirst",
+        "FirstScalar",
+        "ExplicitNull",
+        "NullObject",
+        "HostValue"
+      ],
+      "mapping_executed": false
+    },
+    "execute_mapping": false,
+    "expected_artifact": {
+      "published": false,
+      "reason": "policy preparation only"
+    }
+  }
+]

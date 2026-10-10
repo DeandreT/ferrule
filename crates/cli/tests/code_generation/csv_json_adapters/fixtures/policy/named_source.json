@@ -1,0 +1,467 @@
+{
+  "source": {
+    "name": "FlatRow",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Token",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "Units",
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        },
+        {
+          "name": "Fraction",
+          "kind": {
+            "kind": "scalar",
+            "ty": "float"
+          }
+        },
+        {
+          "name": "Active",
+          "kind": {
+            "kind": "scalar",
+            "ty": "bool"
+          }
+        },
+        {
+          "name": "Note",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_options": {
+    "tabular_kind": "csv",
+    "has_header_row": false
+  },
+  "target": {
+    "name": "Document",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "FirstToken",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "Items",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Token",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Units",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Fraction",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "float"
+                }
+              },
+              {
+                "name": "Active",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Note",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                },
+                "nullable": true
+              }
+            ]
+          },
+          "repeating": true
+        }
+      ]
+    }
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_targets": [
+    {
+      "name": "Archive",
+      "schema": {
+        "name": "ArchiveDocument",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Label",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "Entries",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "Name",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "Amount",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  },
+                  {
+                    "name": "Factor",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "Live",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "bool"
+                    }
+                  },
+                  {
+                    "name": "Memo",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    },
+                    "nullable": true
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [
+          {
+            "target_field": "Label",
+            "node": 7
+          }
+        ],
+        "children": [
+          {
+            "target_field": "Entries",
+            "bindings": [
+              {
+                "target_field": "Name",
+                "node": 1
+              },
+              {
+                "target_field": "Amount",
+                "node": 2
+              },
+              {
+                "target_field": "Factor",
+                "node": 3
+              },
+              {
+                "target_field": "Live",
+                "node": 4
+              },
+              {
+                "target_field": "Memo",
+                "node": 5
+              }
+            ],
+            "children": [],
+            "source": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "RequiredFirst",
+      "schema": {
+        "name": "Required",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "TokenName",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "nullable": true
+            }
+          ],
+          "required": [
+            "TokenName"
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [
+          {
+            "target_field": "TokenName",
+            "node": 1
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "FirstScalar",
+      "schema": {
+        "name": "FirstText",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "nullable": true
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [],
+        "children": [],
+        "construction": {
+          "scalar": {
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "ExplicitNull",
+      "schema": {
+        "name": "NullText",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "nullable": true
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [],
+        "children": [],
+        "construction": {
+          "scalar": {
+            "value": 6
+          }
+        }
+      }
+    },
+    {
+      "name": "NullObject",
+      "schema": {
+        "name": "NullableRecord",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Marker",
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              },
+              "nullable": true
+            }
+          ],
+          "required": [
+            "Marker"
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [
+          {
+            "target_field": "Marker",
+            "node": 6
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "HostValue",
+      "schema": {
+        "name": "CaptionText",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "bindings": [],
+        "children": [],
+        "construction": {
+          "scalar": {
+            "value": 8
+          }
+        }
+      }
+    }
+  ],
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Token"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "Units"
+        ]
+      },
+      "3": {
+        "kind": "source_field",
+        "path": [
+          "Fraction"
+        ]
+      },
+      "4": {
+        "kind": "source_field",
+        "path": [
+          "Active"
+        ]
+      },
+      "5": {
+        "kind": "source_field",
+        "path": [
+          "Note"
+        ]
+      },
+      "6": {
+        "kind": "const",
+        "value": {
+          "$json_null": true
+        }
+      },
+      "7": {
+        "kind": "const",
+        "value": "AUTHORED-ARCHIVE"
+      },
+      "8": {
+        "kind": "runtime_parameter",
+        "name": "Caption",
+        "ty": "string"
+      },
+      "9": {
+        "kind": "const",
+        "value": "AUTHORED-STOP"
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "bindings": [
+      {
+        "target_field": "FirstToken",
+        "node": 1
+      }
+    ],
+    "children": [
+      {
+        "target_field": "Items",
+        "bindings": [
+          {
+            "target_field": "Token",
+            "node": 1
+          },
+          {
+            "target_field": "Units",
+            "node": 2
+          },
+          {
+            "target_field": "Fraction",
+            "node": 3
+          },
+          {
+            "target_field": "Active",
+            "node": 4
+          },
+          {
+            "target_field": "Note",
+            "node": 5
+          }
+        ],
+        "children": [],
+        "source": []
+      }
+    ]
+  },
+  "extra_sources": [
+    {
+      "name": "Auxiliary",
+      "path": "authored-unused.json",
+      "schema": {
+        "name": "Auxiliary",
+        "kind": {
+          "kind": "group",
+          "children": []
+        }
+      },
+      "options": {
+        "json_document": true
+      }
+    }
+  ]
+}

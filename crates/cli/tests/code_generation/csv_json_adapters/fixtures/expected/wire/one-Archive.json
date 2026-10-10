@@ -1,0 +1,12 @@
+{
+  "Label": "AUTHORED-ARCHIVE",
+  "Entries": [
+    {
+      "Name": "cedar",
+      "Amount": 3,
+      "Factor": 1.25,
+      "Live": true,
+      "Memo": "mist"
+    }
+  ]
+}
