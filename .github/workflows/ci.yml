@@ -65,6 +65,9 @@ jobs:
           --exclude codegen-runtime
           --exclude codegen-rust
           --exclude codegen-csharp
+      - name: Trim successful workspace build
+        if: success() && runner.environment == 'self-hosted'
+        run: cargo clean --workspace
       - name: runner resources
         if: always()
         run: |

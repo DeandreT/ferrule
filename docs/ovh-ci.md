@@ -44,10 +44,15 @@ The persistent Roslyn compiler process is disabled so C# builds release memory
 before subsequent Rust host builds.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
-paths, or less than 4 GiB free. It checks Xvfb and native build prerequisites
+paths, or less than 16 GiB free. The first native build used approximately
+13 GiB, mostly workspace test executables. It checks Xvfb and native build prerequisites
 before toolchain setup. Build outputs persist outside the cleaned checkout:
 
-- `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds.
+- `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds. After a
+  successful job, `cargo clean --workspace` removes workspace outputs while
+  retaining third-party dependencies. Failed jobs retain their build artifacts
+  for diagnosis. This prevents successive source/toolchain builds from retaining
+  multiple complete sets of test executables on the shared disk.
 - `/home/ferrule-runner/ci-cache/generated-host-target` — generated host builds
   that support `FERRULE_CODEGEN_HOST_TARGET_DIR`, separate from outer Cargo.
 - `/home/ferrule-runner/ci-cache/compiler` — sccache, capped at 2 GB, reuses
@@ -87,7 +92,8 @@ Keep shell tracing disabled around the short-lived registration token. The
 installer refuses an active Ferrule service; stop it only after the runner is
 idle before reprovisioning. An existing registration is retained. If replacing
 the machine, remove its old registration through GitHub's runner settings
-first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`.
+first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`. Builds require
+16 GiB free after provisioning, even though installation itself requires less.
 
 ## Check and maintain
 
