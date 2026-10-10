@@ -25,26 +25,25 @@ choose a lane and avoid conflicting changes.
 - [ ] Qualify #201's accepted atomic private-owner proposal: all 67 native calls and
   alternate-display duplication/save/history checks remain unrun. Its 28-control
   contract and complete canvas snapshots are frozen; preserve #213's Fit hooks.
-- [ ] Qualify #203's source-reviewed 24 synthetic recipes through materialization,
-  native controls and save/reopen before narrow importer/exporter implementation.
-  No faithful new saved form is admitted; existing typed refusal remains.
-- [ ] Publish #203's frozen fixture before #253's focused engine unit controls for
-  captures, stages and counters. Public-host observations and internal unit records
-  stay separate; all executable checks are unrun, and no production getter or
-  allocation-attribution claim is introduced.
-- [ ] Use #207's merged fixtures for #248's separate allocation/GC trace analysis,
-  retaining perturbation and complete outputs; RSS alone is not attribution.
-- [ ] Execute #218's reviewed 40-recipe/229-call selected JSON contract after fresh
-  source binding to the merged #207/#217 baseline. Rust/native/C# source review
-  and prepared adoption are separate from these unrun calls.
-  Retain the actual public return before separate decoded-wire observations.
-- [ ] Settle #241's explicit competing-feed contract and #250's bounded generated
-  004010 format/completion contract before their independent execution checks.
+  Disk admission for the sole shared GUI verification lane is still pending.
+- [ ] Qualify #268's source-reviewed complete XML oracles through its new 68 helper,
+  17 controller-policy and 41 compatibility controls, then #263's individually
+  admitted native cycle. All new calls remain unrun; earlier #263 simulated 41
+  evidence stays separate, and no saved-form seed is inferred.
+- [ ] Publish #253 with the single test-helper let-chain prerequisite #277 in open
+  [#278](https://github.com/DeandreT/ferrule/pull/278); hosted jobs remain pending.
+  The original strict-warning failure and both complete focused cohorts are retained;
+  repeated runs do not add distinct cases.
+- [ ] Publish #248's bounded report. Source/data and one full rendered diagram are
+  independently reviewed; the 100% viewport requires scrolling. Browser-helper
+  cleanup was needed; closure is proven, with normal cleanup-free closure false.
+  Samples/stacks are not an exact object ledger, RSS is not allocation attribution,
+  and no exact phase clock or capture cause is inferred.
+- [ ] Settle #241's explicit competing-feed contract before admission and execution.
 - [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
   successful site compilation alone is insufficient.
-- [ ] Complete #252's independent source/link/issue review and render only its
-  changed parallel fences under the existing limits; published main 732d7ab is bound. Publication
-  status is tracked in [#252](https://github.com/DeandreT/ferrule/issues/252).
+- [ ] Independently review and publish #271's main fef16c3 two-doc status refresh.
+  Existing fences stay byte-exact; no new rendering or product qualification is inferred.
 
 ## Dependencies and shared areas
 
