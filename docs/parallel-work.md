@@ -22,17 +22,13 @@ choose a lane and avoid conflicting changes.
 
 ## Next acceptance gates
 
-- [ ] Complete #316's remaining desktop phases. Six main context/resize/reload
-  pairs are independently accepted.
-  Ten named copy/history pairs are locally complete with normal closure;
-  independent review is pending. Named original/context retained seven saved
-  pairs before deadline exit 20 and required cleanup; the phase is incomplete
-  and a fresh run is pending. Preserve #213's Fit hooks,
-  original/copy isolation and history/layout.
-- [ ] Complete worker host #326, ongoing on `feat/pdf-worker-host`. Source review
-  found primary `ResourceSetup` failures misclassified as `Protocol`;
-  local host validation remains unrun.
-- [ ] Complete GUI integration #327 after #326.
+- [ ] Complete worker host #326, ongoing on `feat/pdf-worker-host`. Initial
+  worker/CLI and owned filesystem controls pass; #348 strict-lint correction,
+  affected reruns and remaining host failure controls are pending.
+- [ ] Add borrowed filesystem reader #344 after #326.
+- [ ] Complete GUI filesystem cancellation #327 after #326/#344.
+- [ ] Add explicit preview input acquisition #340 after #326/#344.
+- [ ] Complete GUI preview ownership #341 after #327/#340.
 - [ ] Execute resource qualification #328 after #326: 20 source-only recipes,
   15 exact cases and 82 planned requests; all execution remains unrun.
   This scope does not depend on #327.
