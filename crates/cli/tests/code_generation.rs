@@ -34,6 +34,8 @@ mod filter_map_csharp;
 mod generated_sequences;
 #[path = "code_generation/grouping.rs"]
 mod grouping;
+#[path = "code_generation/host_policy.rs"]
+mod host_policy;
 #[path = "code_generation/iteration_controls.rs"]
 mod iteration_controls;
 #[path = "code_generation/iteration_metadata.rs"]
@@ -72,6 +74,10 @@ mod scalar_algorithms;
 mod scalar_functions;
 #[path = "code_generation/scalar_total_corpus.rs"]
 mod scalar_total_corpus;
+#[path = "code_generation/selected_json_targets_csharp.rs"]
+mod selected_json_targets_csharp;
+#[path = "code_generation/selected_json_targets_rust.rs"]
+mod selected_json_targets_rust;
 #[path = "code_generation/selected_targets.rs"]
 mod selected_targets;
 #[path = "code_generation/sequence_context.rs"]
@@ -140,15 +146,24 @@ impl TempDir {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
+        host_policy::preflight_environment(&path)?;
+        if host_policy::keep_artifacts() {
+            std::fs::create_dir(&path)?;
+        } else {
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path)?;
+        }
         Ok(Self(path))
     }
 }
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if host_policy::keep_artifacts() {
+            eprintln!("retained generated host artifacts at {}", self.0.display());
+        } else {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 }
 
