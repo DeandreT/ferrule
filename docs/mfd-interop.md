@@ -457,6 +457,17 @@ Zero-input `create-guid` generator components execute in the interpreter and
 generated Rust/C# mappings and round-trip as native `lang` components. Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database
 inputs.
+The standard `lang` `format-guid-string` component maps to the pure,
+deterministic `format_guid_string` scalar operation. It takes one String of
+exactly 32 ASCII hexadecimal characters and preserves case while inserting
+hyphens in the `8-4-4-4-12` grouping. For example,
+`0123456789abcdef0123456789abcdef` becomes
+`01234567-89ab-cdef-0123-456789abcdef`. Ferrule's selected lexical contract
+rejects whitespace, braces, already formatted strings, nonhexadecimal text,
+and other scalar kinds; it does not enforce UUID version or variant bits.
+Arity errors precede type and lexical errors in native and generated calls.
+Import/export retain the standard function spelling and `lang` library;
+unrelated namespaces do not acquire this function by name alone.
 The exact decimal divide/one-place round UDF pattern fed only by implicit
 Protobuf `float` fields exports with native arithmetic wires. Its internal
 numeric conversions are identities for the finite float32 values accepted by

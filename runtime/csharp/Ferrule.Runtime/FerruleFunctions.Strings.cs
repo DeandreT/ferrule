@@ -4,6 +4,18 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleFunctions
 {
+    private static FerruleValue FormatGuidString(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("format_guid_string", arguments, 1);
+        var text = RequireString(arguments[0], "format_guid_string");
+        if (text.Length != 32 || text.Any(character =>
+            character is not (>= '0' and <= '9') and not (>= 'A' and <= 'F') and not (>= 'a' and <= 'f')))
+        {
+            throw InvalidArgument("format_guid_string", "requires exactly 32 ASCII hexadecimal characters");
+        }
+        return FerruleValue.FromString(text[..8] + "-" + text[8..12] + "-" + text[12..16] + "-" + text[16..20] + "-" + text[20..]);
+    }
+
     // Match the bundled SQLite LIKE pattern cap before NUL truncation.
     private const int MaxSqlLikePatternUtf8Bytes = 50_000;
     // Shared with Rust: cap value-rune by pattern-rune DP cell updates.

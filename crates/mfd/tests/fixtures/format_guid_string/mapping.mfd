@@ -1,0 +1,19 @@
+<mapping version="26">
+  <component name="main"><structure><children>
+    <component name="Input" library="xml" uid="1" kind="14"><data>
+      <root><entry name="Input"><entry name="Hex" outkey="11"/></entry></root>
+      <document schema="source.xsd" instanceroot="{}Input"/>
+    </data></component>
+    <component name="format-guid-string" library="lang" uid="2" kind="5">
+      <sources><datapoint pos="0" key="20"/></sources>
+      <targets><datapoint pos="0" key="21"/></targets>
+    </component>
+    <component name="Output" library="xml" uid="3" kind="14"><data>
+      <root><entry name="Output"><entry name="Formatted" inpkey="31"/></entry></root>
+      <document schema="target.xsd" instanceroot="{}Output"/>
+    </data></component>
+  </children><graph><vertices>
+    <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+    <vertex vertexkey="21"><edges><edge vertexkey="31"/></edges></vertex>
+  </vertices></graph></structure></component>
+</mapping>
