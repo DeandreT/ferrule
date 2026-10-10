@@ -17,9 +17,13 @@ pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
 
 /// One explicitly selected raw X12 side. Missing separators mean ISA discovery
-/// on input and `*`, `:`, `~` on output. Completion is explicitly selected.
+/// on input and `*`, `:`, `~` on output, with `^` repetition for modern
+/// profiles. Completion is explicitly selected.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct X12BoundaryOptions {
+    /// Explicit five-digit ISA12 metadata, when retained by the source design.
+    /// The fixed ISA12/GS08 schema pair always determines the selected profile.
+    pub interchange_version: Option<String>,
     pub separators: Option<X12Separators>,
     pub constraints: Vec<EdiValueConstraint>,
     pub lenient_segments: bool,
@@ -57,7 +61,7 @@ impl X12BoundaryOptions {
             x12_interchange_version: options
                 .x12_interchange_version
                 .as_ref()
-                .filter(|version| version.as_str() == "00401")
+                .filter(|version| matches!(version.as_str(), "00401" | "00501" | "00604"))
                 .cloned(),
             ..FormatOptions::default()
         };
@@ -65,6 +69,7 @@ impl X12BoundaryOptions {
             return Err(X12BoundaryPolicyError::FormatOptions);
         }
         let result = Self {
+            interchange_version: options.x12_interchange_version.clone(),
             separators: options.x12_separators,
             constraints: options.edi_value_constraints.clone(),
             lenient_segments: options.lenient_segments,
@@ -346,9 +351,10 @@ fn descriptor(
     options: Option<&X12BoundaryOptions>,
     side: X12BoundarySide,
 ) -> Result<String, X12BoundaryPolicyError> {
+    let mut version = None;
     if let Some(options) = options {
         options.validate_separators()?;
-        validate_schema(schema, side)?;
+        version = Some(validate_schema(schema, options, side)?);
         validate_constraints(schema, &options.constraints, side)?;
         validate_profile_options(schema, options, side)?;
     }
@@ -369,7 +375,7 @@ fn descriptor(
         encoded
     });
     let encoded = serde_json::json!({
-        "version": "004010",
+        "version": version.expect("selected X12 schema has a proved version"),
         "schema": schema_descriptor,
         "separators": separators,
         "constraints": options.constraints,
@@ -422,8 +428,9 @@ fn segment_id(name: &str) -> Option<&str> {
 
 fn validate_schema(
     schema: &SchemaNode,
+    options: &X12BoundaryOptions,
     side: X12BoundarySide,
-) -> Result<(), X12BoundaryPolicyError> {
+) -> Result<&'static str, X12BoundaryPolicyError> {
     if schema.repeating {
         return Err(schema_error(
             side,
@@ -484,20 +491,6 @@ fn validate_schema(
                 "envelope elements require their exact width and String type",
             ));
         }
-        let version = match id {
-            "ISA" => Some((11, "00401")),
-            "GS" => Some((7, "004010")),
-            _ => None,
-        };
-        if let Some((index, value)) = version
-            && children[index].fixed.as_deref() != Some(value)
-        {
-            return Err(schema_error(
-                side,
-                path,
-                "ISA12 and GS08 require fixed 00401 and 004010 values",
-            ));
-        }
     }
     if envelopes.iter().map(|(id, _, _)| *id).collect::<Vec<_>>()
         != ["ISA", "GS", "ST", "SE", "GE", "IEA"]
@@ -508,7 +501,104 @@ fn validate_schema(
             "envelope schemas must occur in ISA/GS/ST/SE/GE/IEA order",
         ));
     }
-    Ok(())
+    // Exact canonical schema declarations select a profile. Saved metadata may
+    // constrain it, but never supplies a missing version or converts a group.
+    let isa = envelopes[0].1;
+    let gs = envelopes[1].1;
+    let SchemaKind::Group {
+        children: isa_fields,
+        ..
+    } = &isa.kind
+    else {
+        unreachable!()
+    };
+    let SchemaKind::Group {
+        children: gs_fields,
+        ..
+    } = &gs.kind
+    else {
+        unreachable!()
+    };
+    let interchange = isa_fields[11].fixed.as_deref();
+    let group = gs_fields[7].fixed.as_deref();
+    let version = match (interchange, group) {
+        (Some("00401"), Some("004010")) => "004010",
+        (Some("00501"), Some("005010")) => "005010",
+        (Some("00604"), Some("006040")) => "006040",
+        _ => {
+            return Err(schema_error(
+                side,
+                &[],
+                "ISA12 and GS08 require an exact supported fixed version pair",
+            ));
+        }
+    };
+    if options
+        .interchange_version
+        .as_deref()
+        .is_some_and(|selected| Some(selected) != interchange)
+    {
+        return Err(schema_error(
+            side,
+            &[],
+            "retained interchange version must agree with fixed ISA12",
+        ));
+    }
+    if version != "004010" {
+        let syntax = options.separators.unwrap_or(X12Separators {
+            element: '*',
+            component: ':',
+            segment: '~',
+            repetition: Some('^'),
+            release: None,
+        });
+        if side == X12BoundarySide::Target && syntax.repetition.is_none() {
+            return Err(X12BoundaryPolicyError::Separators {
+                reason: "modern output requires a selected repetition separator",
+            });
+        }
+        if let Some(fixed) = isa_fields[10].fixed.as_deref() {
+            let mut characters = fixed.chars();
+            let repetition = characters
+                .next()
+                .filter(|character| character.is_ascii_punctuation());
+            if repetition.is_none()
+                || characters.next().is_some()
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && repetition.is_some_and(|character| {
+                        [syntax.element, syntax.component, syntax.segment].contains(&character)
+                    })
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && syntax
+                        .repetition
+                        .is_some_and(|selected| Some(selected) != repetition)
+            {
+                return Err(schema_error(
+                    side,
+                    &envelopes[0].2,
+                    "modern fixed ISA11 must agree with the distinct selected repetition separator",
+                ));
+            }
+        }
+        if let Some(fixed) = isa_fields[15].fixed.as_deref() {
+            let mut characters = fixed.chars();
+            let component = characters
+                .next()
+                .filter(|character| character.is_ascii_punctuation());
+            if component.is_none()
+                || characters.next().is_some()
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && fixed != syntax.component.to_string()
+            {
+                return Err(schema_error(
+                    side,
+                    &envelopes[0].2,
+                    "modern fixed ISA16 must agree with the selected component separator",
+                ));
+            }
+        }
+    }
+    Ok(version)
 }
 
 #[allow(clippy::too_many_arguments)]

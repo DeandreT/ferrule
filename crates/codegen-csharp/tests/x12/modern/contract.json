@@ -1,0 +1,225 @@
+{
+  "scope": "Selected generated C# single-envelope scalar-element profiles; native positive wire/value contract only. Native repeat/ST03 policies are broader and not claimed as negative parity.",
+  "profiles": [
+    {
+      "id": "005010-default",
+      "interchange_version": "00501",
+      "group_version": "005010",
+      "syntax": {
+        "element": "*",
+        "component": ":",
+        "segment": "~",
+        "repetition": "^"
+      },
+      "wire": "005010-default.x12",
+      "values": "005010-default-values.json",
+      "schema": "005010-schema.json"
+    },
+    {
+      "id": "005010-custom",
+      "interchange_version": "00501",
+      "group_version": "005010",
+      "syntax": {
+        "element": "|",
+        "component": ">",
+        "segment": "!",
+        "repetition": "+"
+      },
+      "wire": "005010-custom.x12",
+      "values": "005010-custom-values.json",
+      "schema": "005010-schema.json"
+    },
+    {
+      "id": "005010-lf",
+      "interchange_version": "00501",
+      "group_version": "005010",
+      "syntax": {
+        "element": "*",
+        "component": ":",
+        "segment": "\n",
+        "repetition": "^"
+      },
+      "wire": "005010-lf.x12",
+      "values": "005010-lf-values.json",
+      "schema": "005010-schema.json"
+    },
+    {
+      "id": "006040-default",
+      "interchange_version": "00604",
+      "group_version": "006040",
+      "syntax": {
+        "element": "*",
+        "component": ":",
+        "segment": "~",
+        "repetition": "^"
+      },
+      "wire": "006040-default.x12",
+      "values": "006040-default-values.json",
+      "schema": "006040-schema.json"
+    },
+    {
+      "id": "006040-custom",
+      "interchange_version": "00604",
+      "group_version": "006040",
+      "syntax": {
+        "element": "|",
+        "component": ">",
+        "segment": "!",
+        "repetition": "+"
+      },
+      "wire": "006040-custom.x12",
+      "values": "006040-custom-values.json",
+      "schema": "006040-schema.json"
+    },
+    {
+      "id": "006040-lf",
+      "interchange_version": "00604",
+      "group_version": "006040",
+      "syntax": {
+        "element": "*",
+        "component": ":",
+        "segment": "\n",
+        "repetition": "^"
+      },
+      "wire": "006040-lf.x12",
+      "values": "006040-lf-values.json",
+      "schema": "006040-schema.json"
+    }
+  ],
+  "versions": [
+    [
+      "00401",
+      "004010"
+    ],
+    [
+      "00501",
+      "005010"
+    ],
+    [
+      "00604",
+      "006040"
+    ]
+  ],
+  "errors": {
+    "version_wire": {
+      "error": "UnsupportedProfile",
+      "message": "X12 envelope versions do not match the selected profile.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "repetition_wire": {
+      "error": "UnsupportedProfile",
+      "message": "Repeated X12 element values are outside the selected profile.",
+      "segment_index": 3,
+      "field_path": null
+    },
+    "repetition_unknown_wire": {
+      "error": "UnsupportedProfile",
+      "message": "Repeated X12 element values are outside the selected profile.",
+      "segment_index": 4,
+      "field_path": null
+    },
+    "configured_syntax": {
+      "error": "Syntax",
+      "message": "Configured separators do not match ISA.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "bad_isa11": {
+      "error": "Syntax",
+      "message": "X12 separators must be distinct ASCII punctuation; the segment terminator may be LF.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "output_isa11": {
+      "error": "Syntax",
+      "message": "ISA11 must match the selected repetition separator.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "output_repetition": {
+      "error": "Value",
+      "message": "X12 scalar contains an unrepresentable delimiter.",
+      "segment_index": null,
+      "field_path": "W05/W0502"
+    },
+    "st03": {
+      "error": "Envelope",
+      "message": "X12 envelope element counts are invalid.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "controls": {
+      "error": "Envelope",
+      "message": "X12 trailer counts or controls do not match the interchange.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "output_rep_missing": {
+      "error": "UnsupportedProfile",
+      "message": "Modern X12 output requires a selected repetition separator.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_schema_version": {
+      "error": "UnsupportedProfile",
+      "message": "Envelope schema versions must agree with the selected X12 profile.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_rep_width": {
+      "error": "Schema",
+      "message": "Modern X12 repetition metadata requires one character.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_rep_delimiter": {
+      "error": "Syntax",
+      "message": "Modern X12 repetition metadata must be distinct ASCII punctuation.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_fixed_isa11": {
+      "error": "UnsupportedProfile",
+      "message": "Fixed ISA11 does not agree with the selected modern repetition syntax.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_fixed_isa16": {
+      "error": "UnsupportedProfile",
+      "message": "Fixed ISA16 does not agree with the selected modern component syntax.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "legacy_rep_width": {
+      "error": "Schema",
+      "message": "Inactive X12 repetition metadata requires one character.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "legacy_version_wire": {
+      "error": "UnsupportedProfile",
+      "message": "Only the 00401/004010 envelope without element repetition is supported.",
+      "segment_index": null,
+      "field_path": null
+    }
+  },
+  "policy_errors": {
+    "option-version": { "variant": "Schema", "side": "Target", "path": [], "reason": "retained interchange version must agree with fixed ISA12" },
+    "missing-target-repetition": { "variant": "Separators", "reason": "modern output requires a selected repetition separator" },
+    "noncanonical-group": { "variant": "Schema", "side": "Target", "path": [], "reason": "ISA12 and GS08 require an exact supported fixed version pair" },
+    "missing-schema-version": { "variant": "Schema", "side": "Target", "path": [], "reason": "ISA12 and GS08 require an exact supported fixed version pair" },
+    "st03": { "variant": "Schema", "side": "Target", "path": ["ST"], "reason": "envelope elements require their exact width and String type" },
+    "repeating-element": { "variant": "Schema", "side": "Target", "path": ["W05", "W0502"], "reason": "004010 elements and components cannot repeat" },
+    "fixed-isa11-conflict": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA11 must agree with the distinct selected repetition separator" },
+    "fixed-isa11-empty": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA11 must agree with the distinct selected repetition separator" },
+    "fixed-isa16-conflict": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA16 must agree with the selected component separator" },
+    "fixed-isa16-empty": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA16 must agree with the selected component separator" }
+  },
+  "ordering": "Descriptor and schema admission before syntax; modern ISA12 agreement and physical delimiter qualification before tokenization; repeated wire content before envelope/schema/mapping; mapping before output lexical/completion; final output controls/counts retained.",
+  "native_lf_policy": "LF source qualification uses auto-discovery only; the native explicit syntax/writer API refuses LF. Generated LF writing retains its established contract.",
+  "output_defaults": "For modern output only, missing/null/empty ISA11 materializes selected repetition (default ^ when the separator set is absent). ISA16 retains the supplied/fixed requirement. Nonempty values are never overwritten.",
+  "fixed_syntax": "Explicit fixed ISA11/ISA16, including empty literals, must agree with the selected modern physical syntax before generation/runtime admission. This differs from a missing or empty caller ISA11 value.",
+  "version_selection": "Each selected side independently requires its declared fixed canonical pair. Adapters do not convert or rewrite versions; an explicit graph may construct another admitted target version.",
+  "rust_api": "Existing generated Rust typed/JSON APIs are unchanged; its authored compiled host uses the native X12 boundary externally. No generated Rust raw-X12 companion is selected."
+}
