@@ -1,7 +1,7 @@
 # Development and Verification
 
-Use [Architecture](architecture.md) to find the responsible layer and
-[ROADMAP](../ROADMAP.md) to choose a bounded next change. Detailed format and
+Use [Architecture](architecture.md) to find the responsible layer and the
+[issue tracker](https://github.com/DeandreT/ferrule/issues) to choose a change. Detailed format and
 compatibility contracts live in [Supported formats](formats.md),
 [`.mfd` interoperability](mfd-interop.md), and [Code generation](code-generation.md).
 
@@ -140,6 +140,13 @@ status and errors, produced artifacts including partial failures, and the
 original input. Compare against independent typed values, literal bytes, or
 schema-valid trees. Preserve a failed run when a later correction succeeds.
 Keep source review, local testing, and external qualification distinct.
+
+For a saved-design round trip, freeze the independent expected output and
+comparison rules before the first run. Execute and save to a fresh file,
+close the application, then reopen that exact file, execute again and save
+separately. Check both complete outputs, schema validity, saved structures and
+referenced files. A first-phase timeout or a comparison of output alone cannot
+establish that the design was saved and reopened.
 
 The [conformance inventory](../conformance/README.md) records capability and
 backend cells separately. Its overall inventory is incomplete. Do not turn
