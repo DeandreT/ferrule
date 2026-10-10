@@ -99,6 +99,69 @@ mod tests {
     }
 
     #[test]
+    fn retained_00401_options_reach_the_selected_boundary_without_affecting_json() {
+        let options = FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::X12),
+            x12_interchange_version: Some("00401".into()),
+            lenient_segments: true,
+            edi_implied_decimals: vec![
+                mapping::EdiImpliedDecimal::new(vec!["Value".into()], 2).unwrap(),
+            ],
+            edi_lexical_formats: vec![
+                mapping::EdiLexicalFormat::new(
+                    vec!["Value".into()],
+                    mapping::EdiLexicalKind::Decimal { max_chars: 8 },
+                )
+                .unwrap(),
+            ],
+            edi_autocomplete: Some(mapping::EdiAutocomplete::X12(mapping::X12Autocomplete {
+                request_acknowledgement: true,
+                transaction_set: Some("940".into()),
+            })),
+            x12_separators: Some(mapping::X12Separators {
+                element: '*',
+                component: ':',
+                segment: '~',
+                repetition: Some('^'),
+                release: None,
+            }),
+            ..Default::default()
+        };
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-x12-cli-profile-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
+        std::fs::write(root.join("SCHEMA.original.txt"), format!("{:#?}", schema())).unwrap();
+        let result = boundary(&schema(), Some("input.txt"), &options, "source");
+        std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
+        let captured = result.unwrap().unwrap();
+        assert!(captured.lenient_segments);
+        assert_eq!(captured.implied_decimals, options.edi_implied_decimals);
+        assert_eq!(captured.lexical_formats, options.edi_lexical_formats);
+        assert_eq!(captured.separators, options.x12_separators);
+        assert!(captured.autocomplete.unwrap().request_acknowledgement);
+        let json = FormatOptions {
+            json_document: true,
+            lenient_segments: true,
+            ..Default::default()
+        };
+        std::fs::write(root.join("JSON-OPTIONS.original.txt"), format!("{json:#?}")).unwrap();
+        let refused = boundary(&schema(), Some("input.json"), &json, "target");
+        std::fs::write(
+            root.join("JSON-OUTCOME.original.txt"),
+            format!("{refused:#?}"),
+        )
+        .unwrap();
+        assert!(refused.is_err());
+    }
+
+    #[test]
     fn stored_physical_paths_win_over_schema_shape_without_edi_identity() {
         for path in ["input.edi", "input.X12"] {
             assert!(
