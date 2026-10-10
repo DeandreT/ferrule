@@ -86,6 +86,10 @@ if [[ ! -f $runner_dir/.runner ]]; then
   )
   unset registration_token
 fi
+install -o "$runner_user" -g "$runner_user" -m 755 \
+  "$runner_dir/bin/runsvc.sh" "$runner_dir/runsvc.sh"
+printf '%s\n' "$service" > "$runner_dir/.service"
+chown "$runner_user:$runner_user" "$runner_dir/.service"
 
 cat > "/etc/systemd/system/$service" <<'UNIT'
 [Unit]
@@ -130,5 +134,7 @@ WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
 systemctl enable --now "$service"
+# Catch immediate launcher failures before reporting a successful installation.
+sleep 2
 systemctl is-active "$service"
 df -h "$runner_home"
