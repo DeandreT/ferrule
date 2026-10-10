@@ -121,6 +121,9 @@ enum Command {
         /// Evaluate and write only the primary target or one named target.
         #[arg(long, value_name = "primary|NAME")]
         target: Option<String>,
+        /// Extract configured filesystem PDF sources in the packaged Linux worker.
+        #[arg(long)]
+        pdf_worker: bool,
         /// Write a deterministic, versioned JSON Lines execution trace.
         #[arg(long, value_name = "PATH")]
         trace_json: Option<PathBuf>,
@@ -475,12 +478,21 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             target,
             trace_json,
             parameters,
+            pdf_worker,
         } => {
             let project = project
                 .or(project_positional)
                 .context("missing project path")?;
             let input = input.or(input_positional);
             let output = output.or(output_positional);
+            if pdf_worker
+                && (input.as_deref() == Some(std::path::Path::new("-"))
+                    || output.as_deref() == Some(std::path::Path::new("-")))
+            {
+                bail!(
+                    "--pdf-worker requires filesystem input and output; standard-stream payloads remain in-process"
+                );
+            }
             let parameters = parse_runtime_parameters(&parameters)?;
             let trace = trace_json
                 .as_deref()
@@ -529,19 +541,26 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 if input.as_deref() == Some(std::path::Path::new("-")) {
                     bail!("`--input -` requires `--output -`");
                 }
-                let outcome = cli::run_project_with_options(
-                    &project,
-                    &cli::RunOptions {
-                        input_path: input.as_deref(),
-                        output_path: output.as_deref(),
-                        target,
-                        runtime_parameters: Some(&parameters),
-                        trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
-                        debug_hook: None,
-                        before_publish: None,
-                        protected_output_paths: &protected_output_paths,
-                    },
-                )?;
+                let run_options = cli::RunOptions {
+                    input_path: input.as_deref(),
+                    output_path: output.as_deref(),
+                    target,
+                    runtime_parameters: Some(&parameters),
+                    trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                    debug_hook: None,
+                    before_publish: None,
+                    protected_output_paths: &protected_output_paths,
+                };
+                let outcome = if pdf_worker {
+                    let policy = cli::FilesystemRunPolicy::new();
+                    cli::run_project_with_options_and_filesystem_policy(
+                        &project,
+                        &run_options,
+                        &policy,
+                    )?
+                } else {
+                    cli::run_project_with_options(&project, &run_options)?
+                };
                 if let Some(trace) = trace {
                     trace.finish(&outcome.artifacts)?;
                 }

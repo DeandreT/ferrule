@@ -1,0 +1,138 @@
+{
+  "status": "FROZEN326_ADDITIVE_TWO_OWNED_WAIT4_CONTROLS_ALL_ACTUALS_UNRUN",
+  "original40_sha256": "8f0681e4c2a6fb7b9f5356c2ce4bd9a115869fda386ba46eb8ccaf9d148f067e",
+  "decision18_sha256": "66d7ff8fdc4416784b69352f7159ee93cc2e12326a1bce5d92374b2e1d8b812b",
+  "count": 2,
+  "controls": [
+    {
+      "id": "D19",
+      "scope": "Deterministic injected wait boundary only; no kernel evidence",
+      "input": {
+        "owned_pid": 201,
+        "poll_wait_results": [
+          {
+            "return": -1,
+            "errno": "EINTR"
+          },
+          {
+            "return": 0
+          },
+          {
+            "return": 201,
+            "raw_status": 0,
+            "raw_usage": {
+              "ru_utime": {
+                "seconds": 1,
+                "microseconds": 234567
+              },
+              "ru_stime": {
+                "seconds": 0,
+                "microseconds": 890123
+              },
+              "ru_maxrss": 1234,
+              "ru_ixrss": 0,
+              "ru_idrss": 0,
+              "ru_isrss": 0,
+              "ru_minflt": 12,
+              "ru_majflt": 2,
+              "ru_nswap": 0,
+              "ru_inblock": 3,
+              "ru_oublock": 4,
+              "ru_msgsnd": 0,
+              "ru_msgrcv": 0,
+              "ru_nsignals": 0,
+              "ru_nvcsw": 5,
+              "ru_nivcsw": 6
+            }
+          }
+        ],
+        "next_poll_after_closed": true
+      },
+      "expected": {
+        "wait4_calls": 3,
+        "std_child_wait_calls": 0,
+        "waitpid_waitid_other_reaper_calls": 0,
+        "per_poll_max_wait_calls": 1,
+        "first_two_progress": [
+          "Pending",
+          "Pending"
+        ],
+        "successful_own_reaps": 1,
+        "after_closed_wait_calls": 0,
+        "retained_raw_status": 0,
+        "usage_equal_complete_input": true
+      }
+    },
+    {
+      "id": "D20",
+      "scope": "Deterministic injected raw own-reap receipt only; no measured peak/allocator claim",
+      "input": {
+        "owned_pid": 202,
+        "return": 202,
+        "raw_status": 1792,
+        "raw_usage": {
+          "ru_utime": {
+            "seconds": 1,
+            "microseconds": 234567
+          },
+          "ru_stime": {
+            "seconds": 0,
+            "microseconds": 890123
+          },
+          "ru_maxrss": 1234,
+          "ru_ixrss": 0,
+          "ru_idrss": 0,
+          "ru_isrss": 0,
+          "ru_minflt": 12,
+          "ru_majflt": 2,
+          "ru_nswap": 0,
+          "ru_inblock": 3,
+          "ru_oublock": 4,
+          "ru_msgsnd": 0,
+          "ru_msgrcv": 0,
+          "ru_nsignals": 0,
+          "ru_nvcsw": 5,
+          "ru_nivcsw": 6
+        }
+      },
+      "expected": {
+        "own_reap": true,
+        "actual_exit_code": 7,
+        "normal_success": false,
+        "progress": "FailedClosed",
+        "raw_status": 1792,
+        "owned_reap_usage": {
+          "ru_utime": {
+            "seconds": 1,
+            "microseconds": 234567
+          },
+          "ru_stime": {
+            "seconds": 0,
+            "microseconds": 890123
+          },
+          "ru_maxrss": 1234,
+          "ru_ixrss": 0,
+          "ru_idrss": 0,
+          "ru_isrss": 0,
+          "ru_minflt": 12,
+          "ru_majflt": 2,
+          "ru_nswap": 0,
+          "ru_inblock": 3,
+          "ru_oublock": 4,
+          "ru_msgsnd": 0,
+          "ru_msgrcv": 0,
+          "ru_nsignals": 0,
+          "ru_nvcsw": 5,
+          "ru_nivcsw": 6
+        },
+        "maxrss_unit": "Linux_KiB",
+        "usage_source": "exact_owned_wait4_reap",
+        "getrusage_RUSAGE_CHILDREN_calls": 0,
+        "external_wrapper_calls": 0,
+        "second_wait_calls": 0,
+        "extra_portable_wire_fields": 0,
+        "resource_qualification_pass": false
+      }
+    }
+  ]
+}

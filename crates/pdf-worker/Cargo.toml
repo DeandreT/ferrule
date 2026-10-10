@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Bounded pure PDF worker wire protocol"
+description = "Bounded PDF worker wire protocol and opt-in filesystem host"
 
 [dependencies]
 ir = { workspace = true }
@@ -14,3 +14,14 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["unbounded_depth"] }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+libc = "=0.2.186"
+
+[features]
+host-tests = []
+
+[[bin]]
+name = "pdf-worker-fixture"
+path = "tests/support/worker_fixture.rs"
+required-features = ["host-tests"]
