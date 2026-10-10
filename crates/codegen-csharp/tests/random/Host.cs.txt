@@ -1,0 +1,27 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+for (var i = 0; i < 64; i++)
+{
+    var output = (FerruleGroup)GeneratedMapping.Execute(new FerruleGroup(Array.Empty<FerruleField>()));
+    if (!output.Fields.Select(field => field.Name).SequenceEqual(new[] { "First", "Again" }))
+        throw new Exception("complete output field sequence differs");
+    var first = ((FerruleScalar)output.Fields[0].Value).Value;
+    var again = ((FerruleScalar)output.Fields[1].Value).Value;
+    if (first.Kind != FerruleValueKind.Double || again.Kind != FerruleValueKind.Double)
+        throw new Exception("random result must remain a Double");
+    foreach (var value in new[] { first.DoubleValue, again.DoubleValue })
+        if (!double.IsFinite(value) || double.IsNegative(value) || value < 0.0 || value >= 1.0)
+            throw new Exception("random result outside positive half-open unit interval");
+}
+foreach (var arguments in new[] { new[] { FerruleValue.Null }, new[] { FerruleValue.FromInt64(1), FerruleValue.FromBoolean(false) } })
+{
+    try { FerruleFunctions.Call("random", arguments); throw new Exception("arity error absent"); }
+    catch (FerruleRuntimeException error)
+    {
+        if (error.Error != FerruleRuntimeError.FunctionArity || error.Function != "random"
+            || error.ExpectedArity != 0 || error.ActualArity != arguments.Length)
+            throw new Exception("structured arity error differs");
+    }
+}
+Console.WriteLine("random host passed");
