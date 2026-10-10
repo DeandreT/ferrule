@@ -272,6 +272,50 @@ checking UTF-8 byte size. A parsing or mapping failure returns no partial
 result. Mapped target trees and completed output remain materialized, so these
 limits establish no total process memory bound.
 
+## Flat CSV Input to JSON
+
+Select `--csv-json-adapters` with `--language csharp`, or call
+`generate_project_with_csv_json_adapters`, to add CSV text and UTF-8 byte input
+with selected JSON document output. This profile requires one explicitly
+identified flat CSV primary source and strict JSON primary and named targets.
+Each target retains its own admitted schema and format options. Named physical
+inputs, dynamic document boundaries and repeating or iterating document roots
+are refused. Other optional adapter flags are mutually exclusive.
+
+The flat source proof, positional dialect, absence rules, parser errors and
+resource budgets are the same as [CSV input to X12](#flat-csv-input-to-x12).
+All borrowed endpoint schemas are bounded and encoded before ordinary lowering
+and whole-program validation, including unselected targets.
+
+`ParseCsv` and `ParseCsvBytes` return the complete ordered row collection.
+`ExecuteCsvJsonSelectedTarget` and `ExecuteCsvJsonBytesSelectedTarget`, with
+corresponding `WithHost` methods, parse the entire source, execute the ordinary
+typed selected-target mapping once, then serialize the selected target using
+its own JSON schema. The result carries either the primary document or the
+exact named target identity, JSON format, and complete text or UTF-8 bytes.
+`WithHost` accepts an explicit execution context. The generated library exposes
+typed mapping methods and CSV input companions.
+
+One singular JSON root can contain repeated children driven by an explicit
+`source: []` scope. An uniterated scalar source lookup follows ordinary Ferrule
+semantics: it reads the first row or yields Null when the row collection is
+empty. The adapter adds no implicit output iteration or row selection. A later
+malformed row fails complete parsing even if the selected mapping would read
+only the first row.
+
+Missing CSV fields and empty scalar lookups retain the ordinary Null tag.
+An optional JSON property holding Null is omitted; required properties and
+scalar document roots retain their existing writer errors. Explicit JsonNull
+requires nullable schema metadata and serializes as JSON null. Typed tags,
+Float values and JSON serialization constraints remain distinct.
+
+Calls check source and selection nulls, resolve the exact target name, then
+check an explicit `WithHost` context before parsing. Complete CSV parsing
+precedes ordinary mapping and selected-target JSON serialization. Unselected
+runtime target failures are not evaluated; global failure rules still apply.
+Parsing, mapping and writer failures return no partial document. Input rows,
+mapped target trees and output Strings remain materialized.
+
 ## Dynamic Source Host Boundary
 
 Dynamic source paths remain graph expressions evaluated once for every item in

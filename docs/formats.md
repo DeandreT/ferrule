@@ -445,6 +445,15 @@ Invalid pending edits block Add/Save while retaining the saved boundary; they
 can be abandoned. Opening the editor preserves existing defaults and native
 repair dependencies.
 
+Generated C# [CSV input to JSON companions](code-generation.md#flat-csv-input-to-json)
+use the same flat positional CSV input contract with explicit source format
+identity. They parse all rows before one ordinary selected-target execution,
+then write one strict JSON primary or named document using that owner's
+schema. Repeated nested output scopes require an explicit graph iteration;
+CSV absence remains Null rather than becoming JSON null. A scalar lookup
+without iteration retains ordinary Ferrule first-row or empty-collection
+semantics. These scope rules describe Ferrule's own execution contract.
+
 The new-mapping form offers fixed-width setup after importing a flat XSD or
 JSON Schema for either side. Source and target retain independent layouts and
 optional data paths; configuration does not open the data file. Named inputs

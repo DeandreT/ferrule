@@ -1,0 +1,57 @@
+// Independently authored Program structure. It is not obtained by lowering.
+// Schema copies below come from the immutable authored input, not runtime output.
+use codegen::{Binding, Expression, ExpressionNode, IterationPlan, NamedTargetProgram,
+    Program, ScalarTargetDomain, TargetConstruction, TargetScope};
+use ir::{JsonNull, ScalarType, Value};
+
+fn binding(name: &str, node: u32, ty: ScalarType) -> Binding {
+    Binding { target_field: name.into(), expression: node,
+        target_domain: ScalarTargetDomain::Single(ty), repeating: false }
+}
+
+fn group(field: &str, iteration: bool, bindings: Vec<Binding>, children: Vec<TargetScope>) -> TargetScope {
+    TargetScope { target_field: field.into(), repeating: iteration,
+        iteration: iteration.then(|| IterationPlan::source(vec![])),
+        construction: TargetConstruction::Group, bindings, children }
+}
+
+fn scalar(node: u32) -> TargetScope {
+    TargetScope { target_field: String::new(), repeating: false, iteration: None,
+        construction: TargetConstruction::Scalar { expression: node,
+            target_domain: ScalarTargetDomain::Single(ScalarType::String) },
+        bindings: vec![], children: vec![] }
+}
+
+pub fn expected_program(project: &mapping::Project, family: &str) -> Program {
+    let rows = |field: &str, names: [&str; 5]| group(field, true, vec![
+        binding(names[0],1,ScalarType::String),binding(names[1],2,ScalarType::Int),
+        binding(names[2],3,ScalarType::Float),binding(names[3],4,ScalarType::Bool),
+        binding(names[4],5,ScalarType::String)], vec![]);
+    let root = group("",false,vec![binding("FirstToken",1,ScalarType::String)],
+        vec![rows("Items",["Token","Units","Fraction","Active","Note"])]);
+    let named_roots = vec![
+        group("",false,vec![binding("Label",7,ScalarType::String)],
+            vec![rows("Entries",["Name","Amount","Factor","Live","Memo"])]),
+        group("",false,vec![binding("TokenName",1,ScalarType::String)],vec![]),
+        scalar(1),scalar(6),
+        group("",false,vec![binding("Marker",6,ScalarType::String)],vec![]),
+        scalar(8),
+    ];
+    let mut expressions: Vec<_> = ["Token","Units","Fraction","Active","Note"]
+        .into_iter().enumerate().map(|(i,name)| ExpressionNode { id: i as u32 + 1,
+            expression: Expression::SourceField { frame: None,path:vec![name.into()] } }).collect();
+    expressions.extend([
+        ExpressionNode { id:6, expression:Expression::Const { value:Value::JsonNull(JsonNull) } },
+        ExpressionNode { id:7, expression:Expression::Const { value:Value::String("AUTHORED-ARCHIVE".into()) } },
+        ExpressionNode { id:8, expression:Expression::RuntimeParameter { name:"Caption".into(),ty:ScalarType::String } },
+    ]);
+    let failure_rules = if family == "failure" {
+        expressions.push(ExpressionNode { id:9,expression:Expression::Const { value:Value::String("AUTHORED-STOP".into()) } });
+        vec![codegen::FailureRule { iteration:codegen::FailureIteration::Source(codegen::SourceIteration::new(vec![])),
+            selection:codegen::FailureSelection::All,message:Some(9) }]
+    } else { vec![] };
+    Program { xml_boundary:None, source:project.source.clone(),extra_sources:vec![],
+        target:project.target.clone(),expressions,user_functions:vec![],failure_rules,root,
+        extra_targets:project.extra_targets.iter().zip(named_roots).map(|(target,root)|
+            NamedTargetProgram {name:target.name.clone(),target:target.schema.clone(),root}).collect() }
+}

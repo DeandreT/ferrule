@@ -1,0 +1,370 @@
+{
+  "zero": {
+    "kind": "Repeated",
+    "items": []
+  },
+  "one": {
+    "kind": "Repeated",
+    "items": [
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Int",
+                "value": 3
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Float",
+                "bits": "3ff4000000000000"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "mist"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "multi": {
+    "kind": "Repeated",
+    "items": [
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "cedar"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Int",
+                "value": 3
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Float",
+                "bits": "3ff4000000000000"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "mist"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "spruce"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Int",
+                "value": 7
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Float",
+                "bits": "bfe0000000000000"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Bool",
+                "value": false
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "missing": {
+    "kind": "Repeated",
+    "items": [
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "short": {
+    "kind": "Repeated",
+    "items": [
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "fir"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Int",
+                "value": 4
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "unicode": {
+    "kind": "Repeated",
+    "items": [
+      {
+        "kind": "Group",
+        "origin": {
+          "kind": "Unknown"
+        },
+        "fields": [
+          {
+            "name": "Token",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "élan"
+              }
+            }
+          },
+          {
+            "name": "Units",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Int",
+                "value": 11
+              }
+            }
+          },
+          {
+            "name": "Fraction",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Float",
+                "bits": "3fc0000000000000"
+              }
+            }
+          },
+          {
+            "name": "Active",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          },
+          {
+            "name": "Note",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "String",
+                "value": "dusk ☂"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
