@@ -1,0 +1,47 @@
+{
+  "name": "Row",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "Label",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "xml_namespace": {
+          "kind": "qualified",
+          "uri": "urn:authored"
+        }
+      },
+      {
+        "name": "Count",
+        "kind": {
+          "kind": "scalar",
+          "ty": "int"
+        }
+      },
+      {
+        "name": "Ratio",
+        "kind": {
+          "kind": "scalar",
+          "ty": "float"
+        }
+      },
+      {
+        "name": "Enabled",
+        "kind": {
+          "kind": "scalar",
+          "ty": "bool"
+        }
+      },
+      {
+        "name": "Tail",
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      }
+    ]
+  }
+}

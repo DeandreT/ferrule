@@ -6,6 +6,7 @@
 
 mod artifact;
 mod csv_output;
+mod csv_x12_boundary;
 mod diagnostic;
 mod embedded_schema;
 mod join;
@@ -21,6 +22,10 @@ pub use artifact::{
     GeneratedFile,
 };
 pub use csv_output::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
+pub use csv_x12_boundary::{
+    CsvInputField, CsvInputPolicy, CsvX12BoundaryError, CsvX12BoundaryPolicy,
+    CsvX12BoundaryProfile, prepare_csv_x12_boundary, prepare_csv_x12_project_boundary,
+};
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
