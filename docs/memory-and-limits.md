@@ -110,5 +110,8 @@ Byte limits and document-count limits measure different resources. Neither limit
   debug/release, warm/cold, setup/publication, and measurement-phase limits.
 - [ ] Check disk space for inputs, artifacts, compilation, and retained results.
 
+Whole-process peaks for bounded filter/map workloads do not attribute individual
+allocations or bound RAM for arbitrary large files.
+
 This page describes source contracts and measurement practice. It supplies no
 universal improvement claim or total-RAM cap.
