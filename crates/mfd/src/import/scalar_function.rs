@@ -161,17 +161,21 @@ impl GraphBuilder<'_> {
                             "function `{name}` has no ferrule equivalent; imported \
                              as-is and will fail at run time until replaced"
                         ));
-                        name.to_string()
+                        if name == "random" {
+                            format!("unsupported:{}:{}:random", fc.library, fc.kind)
+                        } else {
+                            name.to_string()
+                        }
                     }
                 };
                 // The reference application declares the function's full optional pin set even
                 // when callers leave its trailing optional arguments unwired.
                 // Keep interior pin positions, but do not turn unused trailing
                 // pins into ferrule arguments.
-                let arity = input_ids
-                    .iter()
-                    .rposition(Option::is_some)
-                    .map_or(usize::from(function != "create_guid"), |last| last + 1);
+                let arity = input_ids.iter().rposition(Option::is_some).map_or(
+                    usize::from(!matches!(function.as_str(), "create_guid" | "random")),
+                    |last| last + 1,
+                );
                 let args = (0..arity)
                     .map(|i| {
                         input_ids.get(i).copied().flatten().unwrap_or_else(|| {

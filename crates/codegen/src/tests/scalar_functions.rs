@@ -22,6 +22,7 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ("is_numeric", ScalarFunction::IsNumeric, vec![20]),
         ("to_number", ScalarFunction::ToNumber, vec![20]),
         ("create_guid", ScalarFunction::CreateGuid, vec![]),
+        ("random", ScalarFunction::Random, vec![]),
         (
             "json_parse_field",
             ScalarFunction::JsonParseField,
@@ -88,6 +89,7 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
         ("create_guid", ScalarFunction::CreateGuid),
+        ("random", ScalarFunction::Random),
         ("json_parse_field", ScalarFunction::JsonParseField),
         ("json_serialize_object", ScalarFunction::JsonSerializeObject),
         ("format_number", ScalarFunction::FormatNumber),

@@ -592,6 +592,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "positive",
         "floor",
         "create_guid",
+        "random",
         "json_parse_field",
         "json_serialize_object",
         "format_number",
