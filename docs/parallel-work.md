@@ -22,23 +22,29 @@ choose a lane and avoid conflicting changes.
 
 ## Next acceptance gates
 
-- [ ] Execute #198's frozen 90 native/Rust/C# typed-selection calls after #205's
-  shared C# test-source release and fresh source binding; preserve its complete
-  artifact/error evidence when rebasing `crates/codegen-csharp/src/json5_output_tests.rs`.
-  Check full static input admission, global rules once, lazy selected loaders and
-  counters. Its accepted 15-role source changes no ordinary all-output API.
-- [ ] Agree #201's atomic private-owner remapping contract before same-project
-  duplication; shared GUI adoption follows #194's release. Keep general copying out.
-- [ ] Review #203's faithful saved-design representation and complete synthetic
-  observations before creating narrow importer/exporter implementation issues.
-- [ ] Execute #205's three test-only roles and failing-comparison retention controls,
-  then compare identical focused log and retained-file sizes. Source is accepted;
-  no measured log reduction, memory saving or semantic change is claimed.
-- [ ] After #194 releases its frame helper, qualify #211's test-only diagnostic
-  summary against the same controls and complete outcomes; log bytes are not RAM use.
-- [ ] On the released #194 GUI baseline, qualify #213's desktop Fit on complete
-  rectangles at 900 × 700 / 1200 × 900, including load/resize/canvas changes and
-  finite empty/single views; preserve Project/wires/positions/sidecars.
+- [ ] Qualify #201's accepted atomic private-owner proposal: all 67 native calls and
+  alternate-display duplication/save/history checks remain unrun. Its 28-control
+  contract and complete canvas snapshots are frozen; preserve #213's Fit hooks.
+- [ ] Qualify #203's source-reviewed 24 synthetic recipes through materialization,
+  native controls and save/reopen before narrow importer/exporter implementation.
+  No faithful new saved form is admitted; existing typed refusal remains.
+- [ ] Publish #203's frozen fixture before #253's focused engine unit controls for
+  captures, stages and counters. Public-host observations and internal unit records
+  stay separate; all executable checks are unrun, and no production getter or
+  allocation-attribution claim is introduced.
+- [ ] Use #207's merged fixtures for #248's separate allocation/GC trace analysis,
+  retaining perturbation and complete outputs; RSS alone is not attribution.
+- [ ] Execute #218's reviewed 40-recipe/229-call selected JSON contract after fresh
+  source binding to the merged #207/#217 baseline. Rust/native/C# source review
+  and prepared adoption are separate from these unrun calls.
+  Retain the actual public return before separate decoded-wire observations.
+- [ ] Settle #241's explicit competing-feed contract and #250's bounded generated
+  004010 format/completion contract before their independent execution checks.
+- [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
+  successful site compilation alone is insufficient.
+- [ ] Complete #252's independent source/link/issue review and render only its
+  changed parallel fences under the existing limits; published main 732d7ab is bound. Publication
+  status is tracked in [#252](https://github.com/DeandreT/ferrule/issues/252).
 
 ## Dependencies and shared areas
 
