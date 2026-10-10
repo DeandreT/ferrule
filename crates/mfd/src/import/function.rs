@@ -494,6 +494,9 @@ pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
         return (component.library == "lang" && component.kind == 5)
             .then_some("format_guid_string");
     }
+    if component.name == "random" {
+        return (component.kind == 5 && component.library == "lang").then_some("random");
+    }
     if component.library == "ferrule"
         && component.kind == 5
         && canonical_function::is_internal(&component.name)
@@ -664,6 +667,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "positive" => "positive",
         "floor" => "floor",
         "create-guid" => "create_guid",
+        "random" => "random",
         "format-guid-string" => "format_guid_string",
         "format-number" => "format_number",
         "format-date" => "format_date",
