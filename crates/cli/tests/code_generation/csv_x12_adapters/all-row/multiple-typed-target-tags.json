@@ -1,0 +1,386 @@
+{
+  "kind": "Group",
+  "xml_type_origin": {
+    "kind": "Unknown",
+    "identity": null,
+    "literal": null
+  },
+  "fields": [
+    {
+      "name": "ISA",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": [
+          {
+            "name": "ISA01",
+            "value": {
+              "kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA02",
+            "value": {
+              "kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA03",
+            "value": {
+              "kind": "String",
+              "value": "00"
+            }
+          },
+          {
+            "name": "ISA04",
+            "value": {
+              "kind": "String",
+              "value": "          "
+            }
+          },
+          {
+            "name": "ISA05",
+            "value": {
+              "kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA06",
+            "value": {
+              "kind": "String",
+              "value": "AUTHOR-SENDER  "
+            }
+          },
+          {
+            "name": "ISA07",
+            "value": {
+              "kind": "String",
+              "value": "ZZ"
+            }
+          },
+          {
+            "name": "ISA08",
+            "value": {
+              "kind": "String",
+              "value": "AUTHOR-RECEIVER"
+            }
+          },
+          {
+            "name": "ISA09",
+            "value": {
+              "kind": "String",
+              "value": "260102"
+            }
+          },
+          {
+            "name": "ISA10",
+            "value": {
+              "kind": "String",
+              "value": "0304"
+            }
+          },
+          {
+            "name": "ISA11",
+            "value": {
+              "kind": "String",
+              "value": "U"
+            }
+          },
+          {
+            "name": "ISA12",
+            "value": {
+              "kind": "String",
+              "value": "00401"
+            }
+          },
+          {
+            "name": "ISA13",
+            "value": {
+              "kind": "String",
+              "value": "000000007"
+            }
+          },
+          {
+            "name": "ISA14",
+            "value": {
+              "kind": "String",
+              "value": "0"
+            }
+          },
+          {
+            "name": "ISA15",
+            "value": {
+              "kind": "String",
+              "value": "T"
+            }
+          },
+          {
+            "name": "ISA16",
+            "value": {
+              "kind": "String",
+              "value": ":"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "GS",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": [
+          {
+            "name": "GS01",
+            "value": {
+              "kind": "String",
+              "value": "OW"
+            }
+          },
+          {
+            "name": "GS02",
+            "value": {
+              "kind": "String",
+              "value": "AUTHOR-SENDER"
+            }
+          },
+          {
+            "name": "GS03",
+            "value": {
+              "kind": "String",
+              "value": "AUTHOR-RECEIVER"
+            }
+          },
+          {
+            "name": "GS04",
+            "value": {
+              "kind": "String",
+              "value": "20260102"
+            }
+          },
+          {
+            "name": "GS05",
+            "value": {
+              "kind": "String",
+              "value": "030405"
+            }
+          },
+          {
+            "name": "GS06",
+            "value": {
+              "kind": "String",
+              "value": "0007"
+            }
+          },
+          {
+            "name": "GS07",
+            "value": {
+              "kind": "String",
+              "value": "X"
+            }
+          },
+          {
+            "name": "GS08",
+            "value": {
+              "kind": "String",
+              "value": "004010"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ST",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": [
+          {
+            "name": "ST01",
+            "value": {
+              "kind": "String",
+              "value": "940"
+            }
+          },
+          {
+            "name": "ST02",
+            "value": {
+              "kind": "String",
+              "value": "0011"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Notes",
+      "value": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE",
+                "value": {
+                  "kind": "Group",
+                  "xml_type_origin": {
+                    "kind": "Unknown",
+                    "identity": null,
+                    "literal": null
+                  },
+                  "fields": [
+                    {
+                      "name": "NTE01",
+                      "value": {
+                        "kind": "String",
+                        "value": "GEN"
+                      }
+                    },
+                    {
+                      "name": "NTE02",
+                      "value": {
+                        "kind": "String",
+                        "value": "ROW,A"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE",
+                "value": {
+                  "kind": "Group",
+                  "xml_type_origin": {
+                    "kind": "Unknown",
+                    "identity": null,
+                    "literal": null
+                  },
+                  "fields": [
+                    {
+                      "name": "NTE01",
+                      "value": {
+                        "kind": "String",
+                        "value": "GEN"
+                      }
+                    },
+                    {
+                      "name": "NTE02",
+                      "value": {
+                        "kind": "String",
+                        "value": "ROW-B"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "xml_type_origin": {
+              "kind": "Unknown",
+              "identity": null,
+              "literal": null
+            },
+            "fields": [
+              {
+                "name": "NTE",
+                "value": {
+                  "kind": "Group",
+                  "xml_type_origin": {
+                    "kind": "Unknown",
+                    "identity": null,
+                    "literal": null
+                  },
+                  "fields": [
+                    {
+                      "name": "NTE01",
+                      "value": {
+                        "kind": "String",
+                        "value": "GEN"
+                      }
+                    },
+                    {
+                      "name": "NTE02",
+                      "value": {
+                        "kind": "String",
+                        "value": "ROW-C"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SE",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": []
+      }
+    },
+    {
+      "name": "GE",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": []
+      }
+    },
+    {
+      "name": "IEA",
+      "value": {
+        "kind": "Group",
+        "xml_type_origin": {
+          "kind": "Unknown",
+          "identity": null,
+          "literal": null
+        },
+        "fields": []
+      }
+    }
+  ]
+}
