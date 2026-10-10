@@ -1,0 +1,2844 @@
+{
+  "schema": "independent203-public-root-shell-and-exposed-observations-v1",
+  "recipe_sha256": "db1cfadcf7829ce9ec8cd6ad583448c0bb5b7e205d7245c07741b6787fbaefe4",
+  "cases": [
+    {
+      "index": 0,
+      "id": "legacy-explicit-range-rows",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 4
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 5
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": []
+    },
+    {
+      "index": 1,
+      "id": "legacy-default-lower-one",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": []
+    },
+    {
+      "index": 2,
+      "id": "legacy-reversed-range-empty",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": []
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": []
+    },
+    {
+      "index": 3,
+      "id": "legacy-exists-filtered-generated",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Result",
+              {
+                "kind": "scalar",
+                "value": {
+                  "tag": "Bool",
+                  "value": true
+                }
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": []
+    },
+    {
+      "index": 4,
+      "id": "legacy-item-at-third",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Result",
+              {
+                "kind": "scalar",
+                "value": {
+                  "tag": "Int",
+                  "value": 5
+                }
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": []
+    },
+    {
+      "index": 5,
+      "id": "legacy-sum-filtered-computed",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Result",
+              {
+                "kind": "scalar",
+                "value": {
+                  "tag": "Int",
+                  "value": 180
+                }
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": []
+    },
+    {
+      "index": 6,
+      "id": "legacy-computed-row-values",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 30
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 40
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 50
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 60
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 4
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 70
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 5
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {},
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": []
+    },
+    {
+      "index": 7,
+      "id": "filter-map-total-identity-rows",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 4
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 5
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "3",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "4",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "5",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 8,
+      "id": "filter-map-source-parent-dense-positions",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Parents",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Rows",
+                        {
+                          "kind": "repeated",
+                          "items": [
+                            {
+                              "kind": "group",
+                              "origin": {
+                                "tag": "Unknown",
+                                "identity": null,
+                                "literal": null
+                              },
+                              "fields": [
+                                [
+                                  "Value",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 60
+                                    }
+                                  }
+                                ],
+                                [
+                                  "Position",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 1
+                                    }
+                                  }
+                                ]
+                              ]
+                            },
+                            {
+                              "kind": "group",
+                              "origin": {
+                                "tag": "Unknown",
+                                "identity": null,
+                                "literal": null
+                              },
+                              "fields": [
+                                [
+                                  "Value",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 71
+                                    }
+                                  }
+                                ],
+                                [
+                                  "Position",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 2
+                                    }
+                                  }
+                                ]
+                              ]
+                            },
+                            {
+                              "kind": "group",
+                              "origin": {
+                                "tag": "Unknown",
+                                "identity": null,
+                                "literal": null
+                              },
+                              "fields": [
+                                [
+                                  "Value",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 82
+                                    }
+                                  }
+                                ],
+                                [
+                                  "Position",
+                                  {
+                                    "kind": "scalar",
+                                    "value": {
+                                      "tag": "Int",
+                                      "value": 3
+                                    }
+                                  }
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 5,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 5,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 5,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 7,
+            "value_type": "int",
+            "preview": "60",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 4
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 5,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 4
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 7,
+            "value_type": "int",
+            "preview": "71",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 5
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 5,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 5
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 7,
+            "value_type": "int",
+            "preview": "82",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [
+        {
+          "node": 120,
+          "value_type": "int",
+          "preview": "7",
+          "truncated": false
+        }
+      ],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [
+          120
+        ],
+        "capture_parent_position": {
+          "collection": [
+            "Parents"
+          ],
+          "index": 7,
+          "grouped": false,
+          "join": null,
+          "join_position": null,
+          "document_path": null
+        }
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Parents repeated singleton wraps the frozen Rows group; seven ordinary source Parents rows, filter Position401==7",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 9,
+      "id": "filter-map-ordered-string-captures",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "String",
+                            "value": "LR"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "String",
+                            "value": "LR"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 5,
+            "value_type": "string",
+            "preview": "LR",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 5,
+            "value_type": "string",
+            "preview": "LR",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [
+        {
+          "node": 120,
+          "value_type": "string",
+          "preview": "L",
+          "truncated": false
+        },
+        {
+          "node": 122,
+          "value_type": "string",
+          "preview": "R",
+          "truncated": false
+        }
+      ],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [
+          120,
+          122
+        ]
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 10,
+      "id": "filter-map-false-suppresses-mapper-raise",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": []
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 11,
+      "id": "filter-map-eager-before-exists",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 3,
+              "function": 7002,
+              "node": 7,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 7,
+                "message": "later"
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 8,
+            "value_type": "int",
+            "preview": "3",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 8,
+            "value_type": "int",
+            "preview": "4",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [],
+        "suppressed_parent_node": 130
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 12,
+      "id": "filter-map-eager-before-item-at-one",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 3,
+              "function": 7002,
+              "node": 7,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 7,
+                "message": "later"
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 8,
+            "value_type": "int",
+            "preview": "3",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 8,
+            "value_type": "int",
+            "preview": "4",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [],
+        "suppressed_parent_node": 131
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 13,
+      "id": "filter-map-empty-range-still-raises-capture",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Capture",
+              "capture_index": 0,
+              "source_position": null,
+              "function": null,
+              "node": 120,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 120,
+                "message": null
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [
+          120
+        ]
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 14,
+      "id": "filter-map-empty-first-capture-tag-before-next",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Capture",
+              "capture_index": 0,
+              "source_position": null,
+              "function": null,
+              "node": 120,
+              "kind": "Result"
+            },
+            "source": {
+              "FilterMapValueType": {
+                "expected": "Int",
+                "found": {
+                  "Bool": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [
+        {
+          "node": 120,
+          "value_type": "bool",
+          "preview": "false",
+          "truncated": false
+        }
+      ],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [
+          120
+        ]
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 15,
+      "id": "filter-map-bool-output",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Bool",
+                            "value": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Bool",
+                            "value": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Bool",
+                            "value": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "false",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 16,
+      "id": "filter-map-unicode-string-output",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "String",
+                            "value": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "String",
+                            "value": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "String",
+                            "value": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "string",
+            "preview": "λ😀",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "string",
+            "preview": "λ😀",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "string",
+            "preview": "λ😀",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 17,
+      "id": "filter-map-finite-float-output",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Float",
+                            "value": 1.25,
+                            "binary64_bits": "3ff4000000000000"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Float",
+                            "value": 1.25,
+                            "binary64_bits": "3ff4000000000000"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": {
+                      "tag": "Unknown",
+                      "identity": null,
+                      "literal": null
+                    },
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Float",
+                            "value": 1.25,
+                            "binary64_bits": "3ff4000000000000"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "tag": "Int",
+                            "value": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "float",
+            "preview": "1.25",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "float",
+            "preview": "1.25",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "float",
+            "preview": "1.25",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 18,
+      "id": "filter-map-null-mapper-strict-refusal",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 1,
+              "function": 7002,
+              "node": 10,
+              "kind": "Result"
+            },
+            "source": {
+              "FilterMapValueType": {
+                "expected": "Int",
+                "found": {
+                  "Null": null
+                }
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 10,
+            "value_type": "null",
+            "preview": "null",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 19,
+      "id": "filter-map-upper-expression-before-lower-coercion",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": 102,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 102,
+                "message": "upper"
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102,
+          103
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 20,
+      "id": "filter-map-atomic-source-items-refusal",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": null,
+              "kind": "SourceReservation"
+            },
+            "source": {
+              "FilterMapBudget": {
+                "kind": "SourceItems",
+                "used": 0,
+                "requested": 3,
+                "max": 2
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [],
+        "reservation_attempts": 1
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [
+        "expected_counters",
+        "allocated_source_items"
+      ],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 21,
+      "id": "filter-map-cancel-before-reservation",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": null,
+              "kind": "SourceReservation"
+            },
+            "source": {
+              "FilterMapCancelled": {}
+            }
+          }
+        }
+      },
+      "stage_public_observation": [],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [],
+        "reservation_attempts": 1
+      },
+      "cancellation": {
+        "phase": "Source",
+        "kind": "SourceReservation"
+      },
+      "unqualified_internal_fields": [
+        "expected_counters",
+        "allocated_source_items"
+      ],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 22,
+      "id": "filter-map-nested-later-argument-before-adaptation",
+      "expected_root_outcome": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 1,
+              "function": 7002,
+              "node": 12,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 12,
+                "message": "latearg"
+              }
+            }
+          }
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": [],
+        "suppressed_function": 7003,
+        "nested_false_argument": {
+          "function": 7002,
+          "node": 10,
+          "value_type": "bool",
+          "preview": "false",
+          "truncated": false
+        }
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "frozen complete Rows group unchanged",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    },
+    {
+      "index": 23,
+      "id": "filter-map-sum-all-output-items",
+      "expected_root_outcome": {
+        "Ok": {
+          "kind": "group",
+          "origin": {
+            "tag": "Unknown",
+            "identity": null,
+            "literal": null
+          },
+          "fields": [
+            [
+              "Result",
+              {
+                "kind": "scalar",
+                "value": {
+                  "tag": "Int",
+                  "value": 12
+                }
+              }
+            ]
+          ]
+        }
+      },
+      "stage_public_observation": [
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 1
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "3",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 2
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "4",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Predicate",
+            "function": 7001,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7001,
+            "node": 10,
+            "value_type": "bool",
+            "preview": "true",
+            "truncated": false
+          }
+        },
+        {
+          "entry": {
+            "phase": "Mapper",
+            "function": 7002,
+            "source_position": 3
+          }
+        },
+        {
+          "output_preview": {
+            "function": 7002,
+            "node": 1,
+            "value_type": "int",
+            "preview": "5",
+            "truncated": false
+          }
+        }
+      ],
+      "capture_success_previews": [],
+      "additional_public_observations": {
+        "source_node_attempts": [
+          101,
+          102
+        ],
+        "capture_node_attempts": []
+      },
+      "cancellation": null,
+      "unqualified_internal_fields": [],
+      "root_shell": "Output group Result singleton wraps the frozen reducer scalar",
+      "mfd_controls": [
+        "preflight",
+        "ferrule_extensions_export",
+        "native_mfd_export"
+      ]
+    }
+  ],
+  "observation_limits": [
+    "TraceValue previews are bounded; these frozen scalar previews fit those bounds. They do not expose full raw unused function parameters.",
+    "No public getter for internal run counters, allocation count, or complete pre-error sequence. Those frozen logical assertions remain unqualified and are assigned to a disjoint engine unit-test follow-up.",
+    "Stage entries are observed by FilterMapCancellation CallEntry; output previews by FunctionNodeValue at the declared function output node. This does not prove ordinary return adaptation or strict result by itself; the full final typed result/error does.",
+    "Legacy MFD export/native save/reopen have no frozen outcome here and remain unrun; only the 17 FilterMap global refusals have 51 prospective MFD control calls."
+  ],
+  "planned_counts": {
+    "native_runs": 24,
+    "mfd_preflight": 17,
+    "mfd_extensions_export": 17,
+    "mfd_native_export": 17,
+    "project_codec_encode": 24,
+    "project_codec_decode": 24,
+    "input_json_read": 24,
+    "external_save_reopen": 0
+  }
+}

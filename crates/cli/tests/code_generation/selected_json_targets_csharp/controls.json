@@ -1,0 +1,4490 @@
+{
+  "issue": 218,
+  "status": "INDEPENDENT_TYPED_CONSTRUCTOR_AND_LITERAL_BOUNDARY_RECIPES_ALL_EXECUTION_UNRUN",
+  "representation": "Complete public typed-constructor recipes; not current Project serialized wire, no product parser/runtime called. Scope and Project members explicit; SchemaNode constructor defaults pinned in retained source. Complete large values/documents use exact finite concatenation/repetition recipes, not omissions. Future materializer retains them in full before comparisons.",
+  "profile_count": 7,
+  "case_count": 40,
+  "portable_case_count": 39,
+  "portable_calls_per_language": 76,
+  "csharp_only_host_calls": 1,
+  "planned_native_calls": 76,
+  "planned_rust_calls": 76,
+  "planned_csharp_calls": 77,
+  "planned_total": 229,
+  "profiles": [
+    {
+      "id": "unicode-and-lazy-raise-root-rows",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [
+            "message"
+          ],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "résumé📦",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Résumé",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "text",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                },
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "n",
+                  "ty": "Int",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "text",
+                  "node": 1
+                },
+                {
+                  "target_field": "n",
+                  "node": 2
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "boom",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Boom",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "message",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "message",
+                  "node": 3
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "rows",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Rows",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "n",
+                  "ty": "Int",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": true,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "Sequence": {
+                  "Generate": {
+                    "from": 30,
+                    "to": 31,
+                    "item": 32
+                  }
+                }
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "n",
+                  "node": 32
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "SourceField": {
+                "path": [
+                  "message"
+                ],
+                "frame": null
+              }
+            },
+            "2": {
+              "Const": {
+                "value": {
+                  "Int": 7
+                }
+              }
+            },
+            "3": {
+              "Raise": {
+                "message": 4
+              }
+            },
+            "4": {
+              "Const": {
+                "value": {
+                  "String": "218 selected boom"
+                }
+              }
+            },
+            "30": {
+              "Const": {
+                "value": {
+                  "Int": 1
+                }
+              }
+            },
+            "31": {
+              "Const": {
+                "value": {
+                  "Int": 2
+                }
+              }
+            },
+            "32": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "message",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "complete-static-admission-and-supplied-parse-order",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [
+            "message"
+          ],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "value",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [
+          {
+            "name": "alpha",
+            "path": "alpha.json",
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Alpha",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "code",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [
+                "code"
+              ],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": null
+          },
+          {
+            "name": "beta",
+            "path": "beta.json",
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Beta",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "code",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [
+                "code"
+              ],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": null
+          }
+        ],
+        "extra_targets": [
+          {
+            "name": "ref",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Ref",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "code",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "code",
+                  "node": 2
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "value": {
+                  "String": "静"
+                }
+              }
+            },
+            "2": {
+              "SourceField": {
+                "path": [
+                  "alpha",
+                  "code"
+                ],
+                "frame": null
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "value",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "dynamic-selected-host-loader",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "Files",
+              "ty": "String",
+              "repeating": true,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [
+            "Files"
+          ],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [
+          {
+            "name": "unused",
+            "path": "unused.json",
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Unused",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "code",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [
+                "code"
+              ],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": null
+          },
+          {
+            "name": "catalog",
+            "path": "",
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "catalog",
+              "children": [
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "Rows",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "value",
+                      "ty": "String",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": {
+              "node": 5,
+              "iteration": [
+                "Files"
+              ]
+            }
+          },
+          {
+            "name": "poison",
+            "path": "",
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "poison",
+              "children": [
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "Rows",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "value",
+                      "ty": "String",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "dynamic_path": {
+              "node": 5,
+              "iteration": [
+                "Files"
+              ]
+            }
+          }
+        ],
+        "extra_targets": [
+          {
+            "name": "loaded",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Loaded",
+              "children": [
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "rows",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "value",
+                      "ty": "String",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "rows",
+                  "iteration": {
+                    "Source": [
+                      "catalog",
+                      "Rows"
+                    ]
+                  },
+                  "construction": {
+                    "Constructed": null
+                  },
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "value",
+                      "node": 6
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "poisoned",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Poisoned",
+              "children": [
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "rows",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "value",
+                      "ty": "String",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "rows",
+                  "iteration": {
+                    "Source": [
+                      "poison",
+                      "Rows"
+                    ]
+                  },
+                  "construction": {
+                    "Constructed": null
+                  },
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "value",
+                      "node": 7
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "value": {
+                  "String": "skip dynamic"
+                }
+              }
+            },
+            "5": {
+              "SourceField": {
+                "path": [],
+                "frame": [
+                  "Files"
+                ]
+              }
+            },
+            "6": {
+              "SourceField": {
+                "path": [
+                  "value"
+                ],
+                "frame": [
+                  "catalog",
+                  "Rows"
+                ]
+              }
+            },
+            "7": {
+              "SourceField": {
+                "path": [
+                  "value"
+                ],
+                "frame": [
+                  "poison",
+                  "Rows"
+                ]
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "message",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "global-failure-order",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "blocked",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Blocked",
+              "children": [
+                {
+                  "constructor": "SchemaNode::scalar",
+                  "name": "message",
+                  "ty": "String",
+                  "repeating": false,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [
+                {
+                  "target_field": "message",
+                  "node": 2
+                }
+              ],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [
+          {
+            "iteration": {
+              "Source": {
+                "collection": []
+              }
+            },
+            "selection": {
+              "WhenTrue": {
+                "predicate": 80
+              }
+            },
+            "message": 81
+          }
+        ],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "value": {
+                  "String": "primary untouched"
+                }
+              }
+            },
+            "2": {
+              "Const": {
+                "value": {
+                  "String": "named untouched"
+                }
+              }
+            },
+            "80": {
+              "Const": {
+                "value": {
+                  "Bool": true
+                }
+              }
+            },
+            "81": {
+              "Const": {
+                "value": {
+                  "String": "218 global failure"
+                }
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "message",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "runtime-parameter-and-output-byte-limit",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::scalar",
+          "name": "PrimaryText",
+          "ty": "String",
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "parameter",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::scalar",
+              "name": "ParameterText",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Scalar": {
+                  "value": 1
+                }
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "expanded",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::scalar",
+              "name": "ExpandedText",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Scalar": {
+                  "value": 5
+                }
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          },
+          {
+            "name": "expanded-over",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::scalar",
+              "name": "ExpandedText",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Scalar": {
+                  "value": 6
+                }
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "RuntimeParameter": {
+                "name": "greeting",
+                "ty": "String",
+                "preview": null
+              }
+            },
+            "2": {
+              "Const": {
+                "value": {
+                  "String": "ok"
+                }
+              }
+            },
+            "3": {
+              "Const": {
+                "value": {
+                  "String": "xxxxx"
+                }
+              }
+            },
+            "4": {
+              "Const": {
+                "value": {
+                  "String": "xxxxxx"
+                }
+              }
+            },
+            "5": {
+              "Call": {
+                "function": "concat",
+                "args": [
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  3
+                ]
+              }
+            },
+            "6": {
+              "Call": {
+                "function": "concat",
+                "args": [
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  4
+                ]
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Scalar": {
+              "value": 2
+            }
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "selected-shared-filter-map-controls",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "filtered",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::group",
+              "name": "Filtered",
+              "children": [
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "A",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "n",
+                      "ty": "Int",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                },
+                {
+                  "constructor": "SchemaNode::group",
+                  "name": "B",
+                  "children": [
+                    {
+                      "constructor": "SchemaNode::scalar",
+                      "name": "n",
+                      "ty": "Int",
+                      "repeating": false,
+                      "overrides": {},
+                      "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+                    }
+                  ],
+                  "required": [],
+                  "repeating": true,
+                  "overrides": {},
+                  "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+                }
+              ],
+              "required": [],
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Constructed": null
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [
+                {
+                  "target_field": "A",
+                  "iteration": {
+                    "Sequence": {
+                      "FilterMapV1": {
+                        "source": {
+                          "Generate": {
+                            "from": 1,
+                            "to": 2,
+                            "item": 10
+                          }
+                        },
+                        "item": 11,
+                        "predicate": 100,
+                        "mapper": 101,
+                        "output_type": "Int",
+                        "captures": []
+                      }
+                    }
+                  },
+                  "construction": {
+                    "Constructed": null
+                  },
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "n",
+                      "node": 11
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                },
+                {
+                  "target_field": "B",
+                  "iteration": {
+                    "Sequence": {
+                      "FilterMapV1": {
+                        "source": {
+                          "Generate": {
+                            "from": 1,
+                            "to": 2,
+                            "item": 20
+                          }
+                        },
+                        "item": 21,
+                        "predicate": 100,
+                        "mapper": 101,
+                        "output_type": "Int",
+                        "captures": []
+                      }
+                    }
+                  },
+                  "construction": {
+                    "Constructed": null
+                  },
+                  "filter": null,
+                  "post_group_filter": null,
+                  "group_by": null,
+                  "group_adjacent_by": null,
+                  "group_starting_with": null,
+                  "group_ending_with": null,
+                  "group_into_blocks": null,
+                  "sort_by": null,
+                  "sort_descending": false,
+                  "sort_then_by": [],
+                  "sort_filter_order": "SortThenFilter",
+                  "windows": [],
+                  "iteration_output": "Repeated",
+                  "bindings": [
+                    {
+                      "target_field": "n",
+                      "node": 21
+                    }
+                  ],
+                  "dynamic_bindings": [],
+                  "children": [],
+                  "dynamic_children": [],
+                  "merge_dynamic_fields": false
+                }
+              ],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {
+          "100": {
+            "library": "selected-json218",
+            "name": "keep",
+            "description": null,
+            "parameters": [
+              {
+                "id": 1,
+                "name": "item",
+                "ty": "Int"
+              },
+              {
+                "id": 2,
+                "name": "position",
+                "ty": "Int"
+              }
+            ],
+            "output_name": "result",
+            "output_type": "Bool",
+            "body": {
+              "nodes": {
+                "3": {
+                  "Const": {
+                    "value": {
+                      "Bool": true
+                    }
+                  }
+                }
+              }
+            },
+            "output": 3
+          },
+          "101": {
+            "library": "selected-json218",
+            "name": "identity",
+            "description": null,
+            "parameters": [
+              {
+                "id": 1,
+                "name": "item",
+                "ty": "Int"
+              },
+              {
+                "id": 2,
+                "name": "position",
+                "ty": "Int"
+              }
+            ],
+            "output_name": "result",
+            "output_type": "Int",
+            "body": {
+              "nodes": {
+                "1": {
+                  "FunctionParameter": {
+                    "parameter": 1
+                  }
+                }
+              }
+            },
+            "output": 1
+          }
+        },
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "value": {
+                  "Int": 1
+                }
+              }
+            },
+            "2": {
+              "Const": {
+                "value": {
+                  "Int": 2
+                }
+              }
+            },
+            "3": {
+              "Const": {
+                "value": {
+                  "String": "no stages"
+                }
+              }
+            },
+            "10": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "11": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "20": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            },
+            "21": {
+              "SourceField": {
+                "path": [],
+                "frame": null
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "message",
+              "node": 3
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    },
+    {
+      "id": "selected-output-schema-only",
+      "project": {
+        "source": {
+          "constructor": "SchemaNode::group",
+          "name": "Input",
+          "children": [],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "target": {
+          "constructor": "SchemaNode::group",
+          "name": "Primary",
+          "children": [
+            {
+              "constructor": "SchemaNode::scalar",
+              "name": "message",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {},
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            }
+          ],
+          "required": [],
+          "repeating": false,
+          "overrides": {},
+          "all_other_metadata": "exact pinned public group constructor defaults; no overrides"
+        },
+        "source_path": null,
+        "target_path": null,
+        "source_options": "FormatOptions::default()",
+        "target_options": "FormatOptions::default()",
+        "extra_sources": [],
+        "extra_targets": [
+          {
+            "name": "one-scalar",
+            "path": null,
+            "schema": {
+              "constructor": "SchemaNode::scalar",
+              "name": "OneScalar",
+              "ty": "String",
+              "repeating": false,
+              "overrides": {
+                "with_string_length_range": {
+                  "StringLengthRange::new": [
+                    1,
+                    1
+                  ]
+                }
+              },
+              "all_other_metadata": "exact pinned public scalar constructor defaults; no overrides"
+            },
+            "options": "FormatOptions::default()",
+            "root": {
+              "target_field": "",
+              "iteration": {
+                "None": null
+              },
+              "construction": {
+                "Scalar": {
+                  "value": 2
+                }
+              },
+              "filter": null,
+              "post_group_filter": null,
+              "group_by": null,
+              "group_adjacent_by": null,
+              "group_starting_with": null,
+              "group_ending_with": null,
+              "group_into_blocks": null,
+              "sort_by": null,
+              "sort_descending": false,
+              "sort_then_by": [],
+              "sort_filter_order": "SortThenFilter",
+              "windows": [],
+              "iteration_output": "Repeated",
+              "bindings": [],
+              "dynamic_bindings": [],
+              "children": [],
+              "dynamic_children": [],
+              "merge_dynamic_fields": false
+            }
+          }
+        ],
+        "failure_rules": [],
+        "user_functions": {},
+        "graph": {
+          "nodes": {
+            "1": {
+              "Const": {
+                "value": {
+                  "String": "safe"
+                }
+              }
+            },
+            "2": {
+              "Const": {
+                "value": {
+                  "String": "é"
+                }
+              }
+            }
+          }
+        },
+        "root": {
+          "target_field": "",
+          "iteration": {
+            "None": null
+          },
+          "construction": {
+            "Constructed": null
+          },
+          "filter": null,
+          "post_group_filter": null,
+          "group_by": null,
+          "group_adjacent_by": null,
+          "group_starting_with": null,
+          "group_ending_with": null,
+          "group_into_blocks": null,
+          "sort_by": null,
+          "sort_descending": false,
+          "sort_then_by": [],
+          "sort_filter_order": "SortThenFilter",
+          "windows": [],
+          "iteration_output": "Repeated",
+          "bindings": [
+            {
+              "target_field": "message",
+              "node": 1
+            }
+          ],
+          "dynamic_bindings": [],
+          "children": [],
+          "dynamic_children": [],
+          "merge_dynamic_fields": false
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "primary-unicode",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "message",
+                {
+                  "Scalar": {
+                    "String": "雪📦"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"message\": \"雪📦\"\n}\n",
+          "utf8_hex": "7b0a2020226d657373616765223a2022e99baaf09f93a6220a7d0a",
+          "bytes": 27,
+          "sha256": "305b713c97bf8a89afe1846b0a49d9208d6021428419164f7d1e0d40f1ca69e0"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "named-exact-unicode-name-and-schema",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Named": "résumé📦"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "résumé📦",
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "text",
+                {
+                  "Scalar": {
+                    "String": "雪📦"
+                  }
+                }
+              ],
+              [
+                "n",
+                {
+                  "Scalar": {
+                    "Int": 7
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"text\": \"雪📦\",\n  \"n\": 7\n}\n",
+          "utf8_hex": "7b0a20202274657874223a2022e99baaf09f93a6222c0a2020226e223a20370a7d0a",
+          "bytes": 34,
+          "sha256": "4360f6ce44b7e98003eac6b994762d3be77933db60d97e9c7f9ae6574691795a"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "named-root-rows",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Named": "rows"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "rows",
+        "instance": {
+          "Repeated": [
+            {
+              "Group": {
+                "origin": {
+                  "Unknown": null
+                },
+                "ordered_fields": [
+                  [
+                    "n",
+                    {
+                      "Scalar": {
+                        "Int": 1
+                      }
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "Group": {
+                "origin": {
+                  "Unknown": null
+                },
+                "ordered_fields": [
+                  [
+                    "n",
+                    {
+                      "Scalar": {
+                        "Int": 2
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "document": {
+          "text": "[\n  {\n    \"n\": 1\n  },\n  {\n    \"n\": 2\n  }\n]\n",
+          "utf8_hex": "5b0a20207b0a20202020226e223a20310a20207d2c0a20207b0a20202020226e223a20320a20207d0a5d0a",
+          "bytes": 43,
+          "sha256": "afb9d8a48c62cb5543b9c40c82a12e66792adaa739623f41d430e254beaec07d"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-raise",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Named": "boom"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "MappingException",
+            "fields": {
+              "node": 3,
+              "message": "218 selected boom"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unknown-exact-case-before-invalid-primary",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Named": "RÉSUMÉ📦"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "UnknownTarget",
+            "fields": {
+              "name": "RÉSUMÉ📦",
+              "display": "project has no named target `RÉSUMÉ📦`"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "invalid-utf8-primary",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "utf8_hex": "ff",
+        "bytes": 1,
+        "text": null
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "primary",
+          "utf8": {
+            "valid_up_to": 0,
+            "error_len": 1
+          },
+          "rust_message_prefix": "document is not UTF-8:",
+          "csharp_exact_message": "JSON input is not UTF-8.",
+          "csharp_inner_type": "System.Text.DecoderFallbackException"
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "all-static-validated-even-unselected",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{\"code\":\"B📦\"}",
+            "utf8_hex": "7b22636f6465223a2242f09f93a6227d",
+            "bytes": 16,
+            "sha256": "197652fd596777abbd91594d497d8c72a5d7279fe000bfae3cc083a82f5ba378"
+          }
+        },
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{\"code\":\"A雪\"}",
+            "utf8_hex": "7b22636f6465223a2241e99baa227d",
+            "bytes": 15,
+            "sha256": "f042ac64a0194d67b92a849397a2dc08d2d73b9d5936057c726484785cc64043"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "value",
+                {
+                  "Scalar": {
+                    "String": "静"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"value\": \"静\"\n}\n",
+          "utf8_hex": "7b0a20202276616c7565223a2022e99d99220a7d0a",
+          "bytes": 21,
+          "sha256": "0860e404d5cdcdb87736246e79fccb77201284c36c5597e7b0ec965c03b9fd62"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "named-static-source",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Named": "ref"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{\"code\":\"B📦\"}",
+            "utf8_hex": "7b22636f6465223a2242f09f93a6227d",
+            "bytes": 16,
+            "sha256": "197652fd596777abbd91594d497d8c72a5d7279fe000bfae3cc083a82f5ba378"
+          }
+        },
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{\"code\":\"A雪\"}",
+            "utf8_hex": "7b22636f6465223a2241e99baa227d",
+            "bytes": 15,
+            "sha256": "f042ac64a0194d67b92a849397a2dc08d2d73b9d5936057c726484785cc64043"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "ref",
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "code",
+                {
+                  "Scalar": {
+                    "String": "A雪"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"code\": \"A雪\"\n}\n",
+          "utf8_hex": "7b0a202022636f6465223a202241e99baa220a7d0a",
+          "bytes": 21,
+          "sha256": "9114aefbdb1db142e25fbe4317c4eeb6da8b6cf59c381a9a7292cb3f98d42710"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "missing-static-before-primary-parse",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{\"code\":\"B📦\"}",
+            "utf8_hex": "7b22636f6465223a2242f09f93a6227d",
+            "bytes": 16,
+            "sha256": "197652fd596777abbd91594d497d8c72a5d7279fe000bfae3cc083a82f5ba378"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "MissingNamedSource",
+            "fields": {
+              "name": "alpha"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "duplicate-before-later-missing-and-input",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{\"code\":\"B📦\"}",
+            "utf8_hex": "7b22636f6465223a2242f09f93a6227d",
+            "bytes": 16,
+            "sha256": "197652fd596777abbd91594d497d8c72a5d7279fe000bfae3cc083a82f5ba378"
+          }
+        },
+        {
+          "name": "beta",
+          "document": {
+            "text": "{\"code\":\"B📦\"}",
+            "utf8_hex": "7b22636f6465223a2242f09f93a6227d",
+            "bytes": 16,
+            "sha256": "197652fd596777abbd91594d497d8c72a5d7279fe000bfae3cc083a82f5ba378"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "DuplicateNamedSource",
+            "fields": {
+              "name": "beta"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unexpected-before-missing-and-input",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "gamma",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "UnexpectedNamedSource",
+            "fields": {
+              "name": "gamma"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "primary-parse-before-static-documents",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        },
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "primary",
+          "schema_name": "Input",
+          "required": "message",
+          "rust_exact_message": "object `Input` requires property `message`",
+          "csharp_exact_message": "JSON object 'Input' requires property 'message'."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "supplied-static-parse-order-beta-first",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "beta",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        },
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "named:beta",
+          "schema_name": "Beta",
+          "required": "code",
+          "rust_exact_message": "object `Beta` requires property `code`",
+          "csharp_exact_message": "JSON object 'Beta' requires property 'code'."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "supplied-static-parse-order-alpha-first",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        },
+        {
+          "name": "beta",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "named:alpha",
+          "schema_name": "Alpha",
+          "required": "code",
+          "rust_exact_message": "object `Alpha` requires property `code`",
+          "csharp_exact_message": "JSON object 'Alpha' requires property 'code'."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "invalid-utf8-static-unselected-document",
+      "profile": "complete-static-admission-and-supplied-parse-order",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"message\":\"雪📦\"}",
+        "utf8_hex": "7b226d657373616765223a22e99baaf09f93a6227d",
+        "bytes": 21,
+        "sha256": "67c0104e229610858574743992c1f77761da6151189940920afa9234c48d84c2"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "alpha",
+          "document": {
+            "text": "{\"code\":\"A雪\"}",
+            "utf8_hex": "7b22636f6465223a2241e99baa227d",
+            "bytes": 15,
+            "sha256": "f042ac64a0194d67b92a849397a2dc08d2d73b9d5936057c726484785cc64043"
+          }
+        },
+        {
+          "name": "beta",
+          "document": {
+            "utf8_hex": "ff",
+            "bytes": 1,
+            "text": null
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "named:beta",
+          "utf8": {
+            "valid_up_to": 0,
+            "error_len": 1
+          },
+          "rust_message_prefix": "document is not UTF-8:",
+          "csharp_exact_message": "JSON input is not UTF-8.",
+          "csharp_inner_type": "System.Text.DecoderFallbackException"
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unselected-dynamic-no-loader",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "message",
+                {
+                  "Scalar": {
+                    "String": "skip dynamic"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"message\": \"skip dynamic\"\n}\n",
+          "utf8_hex": "7b0a2020226d657373616765223a2022736b69702064796e616d6963220a7d0a",
+          "bytes": 32,
+          "sha256": "edba4f441e1b2c70262d3f0fc99f1277d4b5c1fc488e44b056bf17a53912ffbd"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-dynamic-two-documents-unicode",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": {
+        "ordered_responses": [
+          {
+            "source": "catalog",
+            "path": "雪.json",
+            "result": {
+              "Ok": {
+                "text": "{\"Rows\":[{\"value\":\"α\"}]}",
+                "utf8_hex": "7b22526f7773223a5b7b2276616c7565223a22ceb1227d5d7d",
+                "bytes": 25,
+                "sha256": "61d11be5366a6eae25ba031ae9850c17a5aa3a1c8b30f2f375a9fec50cea5471"
+              }
+            }
+          },
+          {
+            "source": "catalog",
+            "path": "b.json",
+            "result": {
+              "Ok": {
+                "text": "{\"Rows\":[{\"value\":\"📦\"}]}",
+                "utf8_hex": "7b22526f7773223a5b7b2276616c7565223a22f09f93a6227d5d7d",
+                "bytes": 27,
+                "sha256": "c071d6412b7a820c0932de020485d48026e03e6d11e0c27690f3317d1ef31199"
+              }
+            }
+          }
+        ],
+        "unexpected_request": "return Err(\"218 unexpected loader request\") after recording full request"
+      },
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "loaded",
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "rows",
+                {
+                  "Repeated": [
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "value",
+                            {
+                              "Scalar": {
+                                "String": "α"
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    },
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "value",
+                            {
+                              "Scalar": {
+                                "String": "📦"
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"rows\": [\n    {\n      \"value\": \"α\"\n    },\n    {\n      \"value\": \"📦\"\n    }\n  ]\n}\n",
+          "utf8_hex": "7b0a202022726f7773223a205b0a202020207b0a2020202020202276616c7565223a2022ceb1220a202020207d2c0a202020207b0a2020202020202276616c7565223a2022f09f93a6220a202020207d0a20205d0a7d0a",
+          "bytes": 87,
+          "sha256": "b8c20a8bb186f2a64295a400b0f65e5ceee35d0376882d24b8b7347679534e52"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [
+        {
+          "source": "catalog",
+          "path": "雪.json"
+        },
+        {
+          "source": "catalog",
+          "path": "b.json"
+        }
+      ],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-dynamic-missing-loader",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "MissingDynamicSourceLoader",
+            "fields": {
+              "source": "catalog"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-dynamic-host-refusal",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": {
+        "ordered_responses": [
+          {
+            "source": "catalog",
+            "path": "雪.json",
+            "result": {
+              "Err": "218 host refused"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "DynamicSourceLoad",
+            "fields": {
+              "source": "catalog",
+              "path": "雪.json",
+              "message": "218 host refused"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [
+        {
+          "source": "catalog",
+          "path": "雪.json"
+        }
+      ],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-dynamic-invalid-utf8",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": {
+        "ordered_responses": [
+          {
+            "source": "catalog",
+            "path": "雪.json",
+            "result": {
+              "Ok": {
+                "utf8_hex": "ff",
+                "bytes": 1,
+                "text": null
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "DynamicSourceLoad",
+            "fields": {
+              "source": "catalog",
+              "path": "雪.json",
+              "cause_family": "invalid UTF-8",
+              "utf8": {
+                "valid_up_to": 0,
+                "error_len": 1
+              },
+              "rust_message_prefix": "document is not UTF-8:",
+              "csharp_captured_decoder_message": true
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [
+        {
+          "source": "catalog",
+          "path": "雪.json"
+        }
+      ],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "dynamic-declaration-is-not-static-input",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        },
+        {
+          "name": "catalog",
+          "document": {
+            "text": "{}",
+            "utf8_hex": "7b7d",
+            "bytes": 2,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "UnexpectedNamedSource",
+            "fields": {
+              "name": "catalog"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "global-failure-before-selected-output",
+      "profile": "global-failure-order",
+      "selection": {
+        "Named": "blocked"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "MappingFailure",
+            "fields": {
+              "rule": 1,
+              "message": "218 global failure"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unknown-target-before-global-failure",
+      "profile": "global-failure-order",
+      "selection": {
+        "Named": "missing"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "UnknownTarget",
+            "fields": {
+              "name": "missing",
+              "display": "project has no named target `missing`"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-runtime-parameter",
+      "profile": "runtime-parameter-and-output-byte-limit",
+      "selection": {
+        "Named": "parameter"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": {
+        "mapping_file_path": "logical-218.json",
+        "main_mapping_file_path": "logical-218.json",
+        "current_datetime": null,
+        "parameters": [
+          {
+            "name": "greeting",
+            "value": {
+              "String": "雪📦"
+            }
+          }
+        ]
+      },
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "parameter",
+        "instance": {
+          "Scalar": {
+            "String": "雪📦"
+          }
+        },
+        "document": {
+          "text": "\"雪📦\"\n",
+          "utf8_hex": "22e99baaf09f93a6220a",
+          "bytes": 10,
+          "sha256": "2709ab443aaca8e9b3dbed17afe6bcebc0a5677b9366130b89d82441e5eaaff6"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-missing-runtime-parameter",
+      "profile": "runtime-parameter-and-output-byte-limit",
+      "selection": {
+        "Named": "parameter"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "MissingRuntimeParameter",
+            "fields": {
+              "node": 1,
+              "name": "greeting"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unselected-filter-map-zero-budgets-no-cancellation",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 0,
+        "work": 0,
+        "cancellation": "true for every consulted boundary"
+      },
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "message",
+                {
+                  "Scalar": {
+                    "String": "no stages"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"message\": \"no stages\"\n}\n",
+          "utf8_hex": "7b0a2020226d657373616765223a20226e6f20737461676573220a7d0a",
+          "bytes": 29,
+          "sha256": "01ad2db9f59458fed565d749dcd0148e61a949c7102479bbc68e2cf5b016deba"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": {
+        "source_items": 0,
+        "work": 0
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-filter-map-source-reservation-refusal",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Named": "filtered"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 0,
+        "work": 10000000,
+        "cancellation": null
+      },
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "FilterMapRuntime",
+            "fields": {
+              "boundary": {
+                "item": 11,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "source": {
+                "kind": "FilterMapBudget",
+                "fields": {
+                  "kind": "SourceItems",
+                  "used": 0,
+                  "requested": 2,
+                  "max": 0
+                }
+              }
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": {
+        "source_items": 0,
+        "work": 2
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-filter-map-work-node-refusal",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Named": "filtered"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 1000000,
+        "work": 0,
+        "cancellation": null
+      },
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "FilterMapRuntime",
+            "fields": {
+              "boundary": {
+                "item": 11,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": 1,
+                "kind": "NodeEvaluation"
+              },
+              "source": {
+                "kind": "FilterMapBudget",
+                "fields": {
+                  "kind": "Work",
+                  "used": 0,
+                  "requested": 1,
+                  "max": 0
+                }
+              }
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": {
+        "source_items": 0,
+        "work": 0
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-shared-second-sequence-reservation-refusal",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Named": "filtered"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 3,
+        "work": 10000000,
+        "cancellation": null
+      },
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "FilterMapRuntime",
+            "fields": {
+              "boundary": {
+                "item": 21,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "source": {
+                "kind": "FilterMapBudget",
+                "fields": {
+                  "kind": "SourceItems",
+                  "used": 2,
+                  "requested": 2,
+                  "max": 3
+                }
+              }
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": {
+        "source_items": 2,
+        "work": 14
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-filter-map-both-sequences-complete",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Named": "filtered"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 1000000,
+        "work": 10000000,
+        "cancellation": null
+      },
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "filtered",
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "A",
+                {
+                  "Repeated": [
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "n",
+                            {
+                              "Scalar": {
+                                "Int": 1
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    },
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "n",
+                            {
+                              "Scalar": {
+                                "Int": 2
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              [
+                "B",
+                {
+                  "Repeated": [
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "n",
+                            {
+                              "Scalar": {
+                                "Int": 1
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    },
+                    {
+                      "Group": {
+                        "origin": {
+                          "Unknown": null
+                        },
+                        "ordered_fields": [
+                          [
+                            "n",
+                            {
+                              "Scalar": {
+                                "Int": 2
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"A\": [\n    {\n      \"n\": 1\n    },\n    {\n      \"n\": 2\n    }\n  ],\n  \"B\": [\n    {\n      \"n\": 1\n    },\n    {\n      \"n\": 2\n    }\n  ]\n}\n",
+          "utf8_hex": "7b0a20202241223a205b0a202020207b0a202020202020226e223a20310a202020207d2c0a202020207b0a202020202020226e223a20320a202020207d0a20205d2c0a20202242223a205b0a202020207b0a202020202020226e223a20310a202020207d2c0a202020207b0a202020202020226e223a20320a202020207d0a20205d0a7d0a",
+          "bytes": 133,
+          "sha256": "999569302fe8ed4484f438d2360bb3abedef7a85b81e21f76e9cfc2eba79c3ae"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": {
+        "source_items": 4,
+        "work": 24
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-cancellation-before-reservation-budgets",
+      "profile": "selected-shared-filter-map-controls",
+      "selection": {
+        "Named": "filtered"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": {
+        "source_items": 0,
+        "work": 10000000,
+        "cancellation": "true exactly at SourceReservation; false at every other boundary"
+      },
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "FilterMapRuntime",
+            "fields": {
+              "boundary": {
+                "item": 11,
+                "phase": "Source",
+                "capture_index": null,
+                "source_position": null,
+                "function": null,
+                "node": null,
+                "kind": "SourceReservation"
+              },
+              "source": {
+                "kind": "FilterMapCancelled",
+                "fields": {}
+              }
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [
+        {
+          "item": 11,
+          "phase": "Source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 1,
+          "kind": "NodeEvaluation"
+        },
+        {
+          "item": 11,
+          "phase": "Source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": 2,
+          "kind": "NodeEvaluation"
+        },
+        {
+          "item": 11,
+          "phase": "Source",
+          "capture_index": null,
+          "source_position": null,
+          "function": null,
+          "node": null,
+          "kind": "SourceReservation"
+        }
+      ],
+      "expected_rust_control_counters": {
+        "source_items": 0,
+        "work": 2
+      },
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "unselected-output-constraint-skipped",
+      "profile": "selected-output-schema-only",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "message",
+                {
+                  "Scalar": {
+                    "String": "safe"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"message\": \"safe\"\n}\n",
+          "utf8_hex": "7b0a2020226d657373616765223a202273616665220a7d0a",
+          "bytes": 24,
+          "sha256": "d3e501e1d57155a6e49300adf9b082e15333c01e6e0f0d79570ccf6f58670d77"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-output-unicode-length-enforced",
+      "profile": "selected-output-schema-only",
+      "selection": {
+        "Named": "one-scalar"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidOutput",
+        "fields": {
+          "schema_name": "OneScalar",
+          "unicode_scalar_length": 2,
+          "range": {
+            "minimum": 1,
+            "maximum": 1
+          },
+          "rust_exact_message": "`OneScalar` requires string length exactly 1 Unicode scalar values, got 2 Unicode scalar values",
+          "csharp_exact_message": "JSON string 'OneScalar' is outside its declared string-length range."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "primary-document-exact-byte-limit",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "complete_byte_recipe": {
+          "concatenate": [
+            {
+              "literal_utf8": "{\"message\":\"x\"}"
+            },
+            {
+              "repeat_utf8": " ",
+              "count": 67108849
+            }
+          ],
+          "exact_bytes": 67108864,
+          "note": "The 15-byte prefix is independently counted, then spaces complete the exact accepted document limit."
+        }
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Primary",
+        "name": null,
+        "instance": {
+          "Group": {
+            "origin": {
+              "Unknown": null
+            },
+            "ordered_fields": [
+              [
+                "message",
+                {
+                  "Scalar": {
+                    "String": "x"
+                  }
+                }
+              ]
+            ]
+          }
+        },
+        "document": {
+          "text": "{\n  \"message\": \"x\"\n}\n",
+          "utf8_hex": "7b0a2020226d657373616765223a202278220a7d0a",
+          "bytes": 21,
+          "sha256": "c5d47181dcfe54066a3e83721901c82a55bfc0164b5367339f4c20b1c0342588"
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "primary-document-one-byte-over-limit",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "complete_byte_recipe": {
+          "repeat_utf8": " ",
+          "count": 67108865,
+          "exact_bytes": 67108865
+        }
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InputTooLarge",
+        "fields": {
+          "phase": "primary",
+          "bytes": 67108865,
+          "max": 67108864,
+          "rust_display": "JSON input is 67108865 bytes; maximum is 67108864",
+          "csharp_exact_message": "JSON input is 67108865 bytes; maximum is 67108864."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "dynamic-document-one-byte-over-limit",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"雪.json\",\"b.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22e99baa2e6a736f6e222c22622e6a736f6e225d7d",
+        "bytes": 31,
+        "sha256": "b06187edce0696d709f07827b844b2062d2dc6a9a9d766290a1f950c6bf4a59b"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": {
+        "ordered_responses": [
+          {
+            "source": "catalog",
+            "path": "雪.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "repeat_utf8": " ",
+                  "count": 67108865,
+                  "exact_bytes": 67108865
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "DynamicSourceLoad",
+            "fields": {
+              "source": "catalog",
+              "path": "雪.json",
+              "message": "document exceeds the 67108864-byte dynamic-source limit"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [
+        {
+          "source": "catalog",
+          "path": "雪.json"
+        }
+      ],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "dynamic-combined-run-one-document-over-limit",
+      "profile": "dynamic-selected-host-loader",
+      "selection": {
+        "Named": "loaded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{\"Files\":[\"a.json\",\"b.json\",\"c.json\",\"d.json\",\"e.json\"]}",
+        "utf8_hex": "7b2246696c6573223a5b22612e6a736f6e222c22622e6a736f6e222c22632e6a736f6e222c22642e6a736f6e222c22652e6a736f6e225d7d",
+        "bytes": 56,
+        "sha256": "db19f3d579995e8379342f7c394dd0876aef80481db62e095e70cffd4b90e502"
+      },
+      "ordered_named_inputs": [
+        {
+          "name": "unused",
+          "document": {
+            "text": "{\"code\":\"ok\"}",
+            "utf8_hex": "7b22636f6465223a226f6b227d",
+            "bytes": 13,
+            "sha256": "aa3d21398252adb9f16b5208884b4da22eec9f2019a0139b114a61f178396794"
+          }
+        }
+      ],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": {
+        "ordered_responses": [
+          {
+            "source": "catalog",
+            "path": "a.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "concatenate": [
+                    {
+                      "literal_utf8": "{\"Rows\":[{\"value\":\"a\"}]}"
+                    },
+                    {
+                      "repeat_utf8": " ",
+                      "count": 67108840
+                    }
+                  ],
+                  "exact_bytes": 67108864
+                }
+              }
+            }
+          },
+          {
+            "source": "catalog",
+            "path": "b.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "concatenate": [
+                    {
+                      "literal_utf8": "{\"Rows\":[{\"value\":\"b\"}]}"
+                    },
+                    {
+                      "repeat_utf8": " ",
+                      "count": 67108840
+                    }
+                  ],
+                  "exact_bytes": 67108864
+                }
+              }
+            }
+          },
+          {
+            "source": "catalog",
+            "path": "c.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "concatenate": [
+                    {
+                      "literal_utf8": "{\"Rows\":[{\"value\":\"c\"}]}"
+                    },
+                    {
+                      "repeat_utf8": " ",
+                      "count": 67108840
+                    }
+                  ],
+                  "exact_bytes": 67108864
+                }
+              }
+            }
+          },
+          {
+            "source": "catalog",
+            "path": "d.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "concatenate": [
+                    {
+                      "literal_utf8": "{\"Rows\":[{\"value\":\"d\"}]}"
+                    },
+                    {
+                      "repeat_utf8": " ",
+                      "count": 67108840
+                    }
+                  ],
+                  "exact_bytes": 67108864
+                }
+              }
+            }
+          },
+          {
+            "source": "catalog",
+            "path": "e.json",
+            "result": {
+              "Ok": {
+                "complete_byte_recipe": {
+                  "concatenate": [
+                    {
+                      "literal_utf8": "{\"Rows\":[{\"value\":\"e\"}]}"
+                    },
+                    {
+                      "repeat_utf8": " ",
+                      "count": 67108840
+                    }
+                  ],
+                  "exact_bytes": 67108864
+                }
+              }
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "Error",
+        "kind": "Execution",
+        "fields": {
+          "cause": {
+            "kind": "DynamicSourceLoad",
+            "fields": {
+              "source": "catalog",
+              "path": "e.json",
+              "message": "documents exceed the 268435456-byte combined dynamic-source limit"
+            }
+          }
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [
+        {
+          "source": "catalog",
+          "path": "a.json"
+        },
+        {
+          "source": "catalog",
+          "path": "b.json"
+        },
+        {
+          "source": "catalog",
+          "path": "c.json"
+        },
+        {
+          "source": "catalog",
+          "path": "d.json"
+        },
+        {
+          "source": "catalog",
+          "path": "e.json"
+        }
+      ],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN"
+    },
+    {
+      "id": "selected-output-exact-byte-limit",
+      "profile": "runtime-parameter-and-output-byte-limit",
+      "selection": {
+        "Named": "expanded"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": {
+        "mapping_file_path": "logical-218.json",
+        "main_mapping_file_path": "logical-218.json",
+        "current_datetime": null,
+        "parameters": [
+          {
+            "name": "greeting",
+            "value": {
+              "String": {
+                "complete_value_recipe": {
+                  "repeat_unicode_scalar": "x",
+                  "count": 8388607
+                }
+              }
+            }
+          }
+        ]
+      },
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Ok",
+        "variant": "Named",
+        "name": "expanded",
+        "instance": {
+          "Scalar": {
+            "String": {
+              "complete_value_recipe": {
+                "repeat_unicode_scalar": "x",
+                "count": 67108861
+              }
+            }
+          }
+        },
+        "document": {
+          "complete_byte_recipe": {
+            "concatenate": [
+              {
+                "literal_utf8": "\""
+              },
+              {
+                "repeat_utf8": "x",
+                "count": 67108861
+              },
+              {
+                "literal_utf8": "\"\n"
+              }
+            ],
+            "exact_bytes": 67108864
+          }
+        },
+        "error": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN",
+      "independent_byte_equation": "8 * 8388607 + 5 + 2 quotes + LF = 67108864; 6-character suffix gives 67108865. Each parameter remains below the existing 8388608-byte host-value cap."
+    },
+    {
+      "id": "selected-output-one-byte-over-limit",
+      "profile": "runtime-parameter-and-output-byte-limit",
+      "selection": {
+        "Named": "expanded-over"
+      },
+      "apis": [
+        "text",
+        "utf8_bytes"
+      ],
+      "primary_input": {
+        "text": "{}",
+        "utf8_hex": "7b7d",
+        "bytes": 2,
+        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "ordered_named_inputs": [],
+      "execution_context": {
+        "mapping_file_path": "logical-218.json",
+        "main_mapping_file_path": "logical-218.json",
+        "current_datetime": null,
+        "parameters": [
+          {
+            "name": "greeting",
+            "value": {
+              "String": {
+                "complete_value_recipe": {
+                  "repeat_unicode_scalar": "x",
+                  "count": 8388607
+                }
+              }
+            }
+          }
+        ]
+      },
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "OutputTooLarge",
+        "fields": {
+          "bytes": 67108865,
+          "max": 67108864,
+          "rust_display": "JSON output is 67108865 bytes; maximum is 67108864",
+          "csharp_exact_message": "JSON output is 67108865 bytes; maximum is 67108864."
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "size-boundary",
+      "runtime_status": "UNRUN",
+      "independent_byte_equation": "8 * 8388607 + 5 + 2 quotes + LF = 67108864; 6-character suffix gives 67108865. Each parameter remains below the existing 8388608-byte host-value cap."
+    },
+    {
+      "id": "csharp-unpaired-utf16-host-document",
+      "profile": "unicode-and-lazy-raise-root-rows",
+      "selection": {
+        "Primary": null
+      },
+      "apis": [
+        "csharp_text_only"
+      ],
+      "primary_input": {
+        "utf16_code_units": [
+          55296
+        ],
+        "text": null,
+        "utf8_hex": null
+      },
+      "ordered_named_inputs": [],
+      "execution_context": null,
+      "filter_map_controls": null,
+      "loader": null,
+      "expected": {
+        "status": "Error",
+        "kind": "InvalidInput",
+        "fields": {
+          "phase": "primary",
+          "csharp_exact_message": "JSON input contains an unpaired UTF-16 surrogate.",
+          "csharp_inner_type": "System.Text.EncoderFallbackException"
+        },
+        "output": null,
+        "partial_document_exposed": false
+      },
+      "expected_loader_calls": [],
+      "expected_filter_map_cancellation_calls": [],
+      "expected_rust_control_counters": null,
+      "tier": "small",
+      "runtime_status": "UNRUN"
+    }
+  ],
+  "all_oracles": "independently literal; no existing product output supplied values",
+  "error_contract": "All source-defined typed fields and fixed messages compare exactly. Framework/parser UTF8 exception messages are retained completely but not equated across languages or versions; manual invalid-byte index/length is a byte-sequence semantic witness, not a new production error field.",
+  "capture_protocol": "Complete Project/schema/graph/UDF/options, source/named raw docs, runtime host values, loader returned bodies/errors and ordered calls, selected output whole Instance origins and every binary64 Value/error payload bit, complete document bytes+EOF, every error/inner chain/source-defined field and control counter where public, before first comparison. All unexpected Primary/Named/error shapes recorded exhaustively; no Debug-only fallback. No production observation sink."
+}

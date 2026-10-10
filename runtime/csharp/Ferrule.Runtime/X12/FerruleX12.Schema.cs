@@ -16,6 +16,8 @@ public static partial class FerruleX12
         internal Range? Length { get; init; }
         internal Range? Count { get; init; }
         internal Constraint? Constraint { get; set; }
+        internal byte? ImpliedPlaces { get; set; }
+        internal LexicalFormat? Lexical { get; set; }
     }
 
     private readonly record struct Range(ulong Minimum, ulong? Maximum)
@@ -23,9 +25,12 @@ public static partial class FerruleX12
         internal bool Contains(ulong count) => count >= Minimum && (Maximum is null || count <= Maximum);
     }
     private sealed record Constraint(uint Minimum, uint Maximum, HashSet<string> Allowed);
-    private sealed record Profile(Node Root, Syntax? Separators);
+    private sealed record LexicalFormat(string Kind, byte MinimumDigits = 0, byte MaximumDigits = 0, byte MaximumChars = 0);
+    private sealed record Autocomplete(bool RequestAcknowledgement, string? TransactionSet);
+    private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
+        char? InactiveRepetition = null, Autocomplete? Autocomplete = null);
 
-    private static Profile ParseProfile(string descriptor)
+    private static Profile ParseProfile(string descriptor, bool input = true)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         RequireUtf8(descriptor, MaximumSchemaBytes, "X12 descriptor");
@@ -33,7 +38,7 @@ public static partial class FerruleX12
         {
             using JsonDocument parsed = JsonDocument.Parse(descriptor, new JsonDocumentOptions { MaxDepth = 127 });
             JsonElement wrapper = parsed.RootElement;
-            Fields(wrapper, ["version", "schema", "separators", "constraints"]);
+            Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete"]);
             if (wrapper.GetProperty("version").GetString() != "004010")
                 throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 descriptor version.");
             string schema = wrapper.GetProperty("schema").GetString()
@@ -57,15 +62,28 @@ public static partial class FerruleX12
             if (envelopes[0].Children[11].Fixed != "00401" || envelopes[1].Children[7].Fixed != "004010")
                 throw Failure(FerruleX12Error.UnsupportedProfile, "Envelope schema versions must be fixed to 00401 and 004010.");
             Syntax? separators = null;
+            char? inactiveRepetition = null;
             JsonElement selected = wrapper.GetProperty("separators");
             if (selected.ValueKind != JsonValueKind.Null)
             {
-                Fields(selected, ["element", "component", "segment"]);
+                Fields(selected, ["element", "component", "segment", "repetition"]);
                 separators = new(Character(selected, "element"), Character(selected, "component"), Character(selected, "segment"));
                 ValidateSyntax(separators.Value);
+                if (selected.TryGetProperty("repetition", out JsonElement repetition) && repetition.ValueKind != JsonValueKind.Null)
+                {
+                    string? text = repetition.GetString();
+                    if (text is null || text.Length != 1)
+                        throw Failure(FerruleX12Error.Schema, "Inactive X12 repetition metadata requires one character.");
+                    char character = text[0];
+                    if (!char.IsAscii(character) || character is < '!' or > '~' || char.IsAsciiLetterOrDigit(character)
+                        || character == separators.Value.Element || character == separators.Value.Component || character == separators.Value.Segment)
+                        throw Failure(FerruleX12Error.Syntax, "Inactive X12 repetition metadata must be distinct ASCII punctuation.");
+                    inactiveRepetition = character;
+                }
             }
             JsonElement constraints = wrapper.GetProperty("constraints");
-            if (constraints.ValueKind != JsonValueKind.Array) throw Failure(FerruleX12Error.Schema, "X12 constraints require an array.");
+            if (constraints.ValueKind != JsonValueKind.Array || constraints.GetArrayLength() > 10_000)
+                throw Failure(FerruleX12Error.Schema, "X12 constraints require a bounded array.");
             foreach (JsonElement constraint in constraints.EnumerateArray())
             {
                 Fields(constraint, ["path", "min_chars", "max_chars", "allowed_values"]);
@@ -83,20 +101,118 @@ public static partial class FerruleX12
                 var allowed = new HashSet<string>(StringComparer.Ordinal);
                 if (constraint.TryGetProperty("allowed_values", out JsonElement values))
                 {
-                    if (values.ValueKind != JsonValueKind.Array) throw Failure(FerruleX12Error.Schema, "X12 code lists require an array.");
+                    if (values.ValueKind != JsonValueKind.Array || values.GetArrayLength() > 4_096)
+                        throw Failure(FerruleX12Error.Schema, "X12 code lists require a bounded array.");
                     foreach (JsonElement value in values.EnumerateArray())
                         if (!allowed.Add(value.GetString() ?? throw Failure(FerruleX12Error.Schema, "X12 code values require strings.")))
                             throw Failure(FerruleX12Error.Schema, "Duplicate X12 code-list value.");
                 }
                 leaf.Constraint = new(minimum, maximum, allowed);
             }
-            return new(root, separators);
+            bool lenient = wrapper.TryGetProperty("lenient_segments", out JsonElement leniency) && leniency.GetBoolean();
+            ReadProfileMetadata(wrapper, root, input);
+            Autocomplete? autocomplete = ReadAutocomplete(wrapper, envelopes[2], input);
+            return new(root, separators, lenient, inactiveRepetition, autocomplete);
         }
         catch (FerruleX12Exception) { throw; }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
         {
             throw Failure(FerruleX12Error.Schema, "Invalid embedded X12 descriptor.");
         }
+    }
+
+    private static Node ProfileLeaf(Node root, JsonElement path)
+    {
+        if (path.ValueKind != JsonValueKind.Array || path.GetArrayLength() is < 1 or > MaximumDepth)
+            throw Failure(FerruleX12Error.Schema, "Invalid X12 profile option path.");
+        Node leaf = root;
+        foreach (JsonElement part in path.EnumerateArray())
+        {
+            string? name = part.GetString();
+            if (string.IsNullOrEmpty(name) || name.Any(char.IsControl) || !FerruleUnicode.IsWellFormed(name))
+                throw Failure(FerruleX12Error.Schema, "Invalid X12 profile option path component.");
+            leaf = leaf.Children.SingleOrDefault(child => child.Name == name)
+                ?? throw Failure(FerruleX12Error.Schema, "X12 profile option path does not resolve.");
+        }
+        if (leaf.Type is null) throw Failure(FerruleX12Error.Schema, "X12 profile options require scalar leaves.");
+        return leaf;
+    }
+
+    private static JsonElement? ProfileArray(JsonElement wrapper, string name)
+    {
+        if (!wrapper.TryGetProperty(name, out JsonElement selected)) return null;
+        if (selected.ValueKind != JsonValueKind.Array || selected.GetArrayLength() > 10_000)
+            throw Failure(FerruleX12Error.Schema, "X12 profile options require bounded arrays.");
+        return selected;
+    }
+
+    private static void ReadProfileMetadata(JsonElement wrapper, Node root, bool input)
+    {
+        if (ProfileArray(wrapper, "implied_decimals") is { } implied)
+            foreach (JsonElement selected in implied.EnumerateArray())
+            {
+                Fields(selected, ["path", "places"]);
+                Node leaf = ProfileLeaf(root, selected.GetProperty("path"));
+                byte places = selected.GetProperty("places").GetByte();
+                if (leaf.ImpliedPlaces is not null || places is < 1 or > 18
+                    || input && leaf.Type != "float" || !input && leaf.Type is not ("int" or "float"))
+                    throw Failure(FerruleX12Error.Schema, "Invalid or duplicate X12 implied-decimal metadata.");
+                leaf.ImpliedPlaces = places;
+            }
+        if (ProfileArray(wrapper, "lexical_formats") is { } lexical)
+            foreach (JsonElement selected in lexical.EnumerateArray())
+            {
+                Fields(selected, ["path", "kind"]);
+                Node leaf = ProfileLeaf(root, selected.GetProperty("path"));
+                if (leaf.Lexical is not null) throw Failure(FerruleX12Error.Schema, "Duplicate X12 lexical-format metadata.");
+                JsonElement kind = selected.GetProperty("kind");
+                LexicalFormat format;
+                if (kind.ValueKind == JsonValueKind.String)
+                {
+                    string? value = kind.GetString();
+                    if (value is not ("compact_date6" or "compact_date8"))
+                        throw Failure(FerruleX12Error.Schema, "Unsupported X12 lexical-format kind.");
+                    format = new(value);
+                }
+                else
+                {
+                    Fields(kind, ["compact_time", "decimal"]);
+                    if (kind.EnumerateObject().Count() != 1)
+                        throw Failure(FerruleX12Error.Schema, "X12 lexical-format metadata requires one kind.");
+                    if (kind.TryGetProperty("compact_time", out JsonElement time))
+                    {
+                        Fields(time, ["min_digits", "max_digits"]);
+                        byte minimum = time.GetProperty("min_digits").GetByte(), maximum = time.GetProperty("max_digits").GetByte();
+                        if (minimum < 4 || minimum > maximum || maximum > 8)
+                            throw Failure(FerruleX12Error.Schema, "Invalid X12 compact-time widths.");
+                        format = new("compact_time", minimum, maximum);
+                    }
+                    else
+                    {
+                        JsonElement number = kind.GetProperty("decimal");
+                        Fields(number, ["max_chars"]);
+                        byte maximum = number.GetProperty("max_chars").GetByte();
+                        if (maximum == 0) throw Failure(FerruleX12Error.Schema, "Invalid X12 decimal maximum length.");
+                        format = new("decimal", MaximumChars: maximum);
+                    }
+                }
+                if (!input && format.Kind != "decimal" && leaf.Type != "string")
+                    throw Failure(FerruleX12Error.Schema, "X12 output date/time formats require String leaves.");
+                leaf.Lexical = format;
+            }
+    }
+
+    private static Autocomplete? ReadAutocomplete(JsonElement wrapper, Node transaction, bool input)
+    {
+        if (!wrapper.TryGetProperty("autocomplete", out JsonElement selected) || selected.ValueKind == JsonValueKind.Null) return null;
+        Fields(selected, ["request_acknowledgement", "transaction_set"]);
+        bool acknowledgement = selected.TryGetProperty("request_acknowledgement", out JsonElement ack) && ack.GetBoolean();
+        string? transactionSet = selected.TryGetProperty("transaction_set", out JsonElement configured) ? configured.GetString() : null;
+        if (transactionSet is not null && (transactionSet.Length != 3 || !transactionSet.All(char.IsAsciiDigit)))
+            throw Failure(FerruleX12Error.Schema, "X12 completion transaction_set requires three ASCII digits.");
+        if (!input && transactionSet is not null && transaction.Children[0].Fixed is { Length: > 0 } fixedSet && fixedSet != transactionSet)
+            throw Failure(FerruleX12Error.Schema, "X12 completion transaction_set conflicts with fixed ST01.");
+        return new(acknowledgement, transactionSet);
     }
 
     private static Node ParseNode(JsonElement json, int depth, ref int count)
@@ -212,116 +328,6 @@ public static partial class FerruleX12
         foreach (Node child in node.Children) CollectEnvelopes(child, result, false);
     }
 
-    private sealed class Cursor(List<Segment> segments, Syntax syntax, Profile profile)
-    {
-        internal List<Segment> Segments { get; } = segments;
-        internal Syntax Syntax { get; } = syntax;
-        internal Profile Profile { get; } = profile;
-        internal int Position { get; set; }
-        internal int Loops { get; set; }
-        internal Budget Budget { get; } = new();
-    }
-
-    private static IEnumerable<Node> Triggers(Node node)
-    {
-        if (SegmentId(node.Name) is not null) { yield return node; yield break; }
-        foreach (Node child in node.Children)
-        {
-            foreach (Node trigger in Triggers(child)) yield return trigger;
-            if (!child.Repeating) break;
-        }
-    }
-
-    private static bool Matches(Node node, Segment segment, Syntax syntax)
-    {
-        if (SegmentId(node.Name) != segment.Id) return false;
-        for (int index = 0; index < node.Children.Length; index++)
-        {
-            Node element = node.Children[index];
-            string raw = index < segment.Elements.Length ? segment.Elements[index] : "";
-            if (element.Type is not null)
-            {
-                if (element.Fixed is not null && raw != element.Fixed) return false;
-            }
-            else
-            {
-                string[] components = raw.Split(syntax.Component);
-                for (int at = 0; at < element.Children.Length; at++)
-                    if (element.Children[at].Fixed is { } fixedValue
-                        && (at < components.Length ? components[at] : "") != fixedValue) return false;
-            }
-        }
-        return true;
-    }
-
-    private static FerruleInstance ReadContainer(Node node, Cursor cursor, string[] path, int depth, bool root = false)
-    {
-        cursor.Budget.Visit(depth);
-        if (!root && SegmentId(node.Name) is not null)
-        {
-            if (cursor.Position >= cursor.Segments.Count) throw Failure(FerruleX12Error.Schema, "Missing required X12 segment.", cursor.Position);
-            Segment segment = cursor.Segments[cursor.Position];
-            if (!Matches(node, segment, cursor.Syntax)) throw Failure(FerruleX12Error.Schema, "X12 segment or fixed qualifier does not match the schema.", cursor.Position);
-            if (segment.Elements.Length > node.Children.Length) throw Failure(FerruleX12Error.Schema, "X12 segment contains undeclared elements.", cursor.Position);
-            var fields = new List<FerruleField>();
-            for (int index = 0; index < node.Children.Length; index++)
-                fields.Add(new(node.Children[index].Name, ReadElement(node.Children[index],
-                    index < segment.Elements.Length ? segment.Elements[index] : "", cursor, [.. path, node.Children[index].Name], depth + 1,
-                    segment.Id == "ISA" && index == 15)));
-            cursor.Position++;
-            return new FerruleGroup(fields);
-        }
-        var children = new List<FerruleField>();
-        foreach (Node child in node.Children)
-        {
-            Node[] triggers = Triggers(child).ToArray();
-            string[] childPath = [.. path, child.Name];
-            if (child.Repeating)
-            {
-                var items = new List<FerruleInstance>();
-                while (cursor.Position < cursor.Segments.Count && triggers.Any(trigger => Matches(trigger, cursor.Segments[cursor.Position], cursor.Syntax)))
-                {
-                    if (++cursor.Loops > MaximumLoopInstances) throw Limit("X12 loop instance limit exceeded.");
-                    int before = cursor.Position;
-                    items.Add(ReadContainer(child, cursor, childPath, depth + 1));
-                    if (before == cursor.Position) throw Failure(FerruleX12Error.Schema, "An X12 loop failed to consume a segment.", cursor.Position);
-                }
-                ValidateCount(child, items.Count, childPath);
-                children.Add(new(child.Name, new FerruleRepeated(items)));
-            }
-            else children.Add(new(child.Name, ReadContainer(child, cursor, childPath, depth + 1)));
-        }
-        return new FerruleGroup(children);
-    }
-
-    private static FerruleInstance ReadElement(Node node, string raw, Cursor cursor, string[] path, int depth, bool isaComponent = false)
-    {
-        cursor.Budget.Visit(depth);
-        if (node.Type is not null)
-        {
-            if (!isaComponent && raw.Contains(cursor.Syntax.Component))
-                throw Failure(FerruleX12Error.Schema, "X12 scalar contains undeclared composite syntax.", cursor.Position, string.Join('/', path));
-            return new FerruleScalar(ReadScalar(node, raw, path));
-        }
-        if (raw.Count(character => character == cursor.Syntax.Component) >= node.Children.Length)
-            throw Failure(FerruleX12Error.Schema, "X12 composite contains undeclared components.", cursor.Position, string.Join('/', path));
-        string[] components = raw.Split(cursor.Syntax.Component);
-        return new FerruleGroup(node.Children.Select((child, index) => new FerruleField(child.Name,
-            ReadElement(child, index < components.Length ? components[index] : "", cursor, [.. path, child.Name], depth + 1))));
-    }
-
-    private static FerruleValue ReadScalar(Node node, string raw, string[] path)
-    {
-        ValidateText(node, raw, path);
-        if (raw.Length == 0) return FerruleValue.Null;
-        if (node.Type == "string") return FerruleValue.FromString(raw);
-        if (node.Type == "int" && long.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long integer))
-            return FerruleValue.FromInt64(integer);
-        if (node.Type == "float" && raw == raw.Trim() && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) && double.IsFinite(number))
-            return FerruleValue.FromDouble(number);
-        throw Failure(FerruleX12Error.Value, "X12 scalar has an invalid numeric representation.", path: string.Join('/', path));
-    }
-
     private static void ValidateText(Node node, string text, string[] path)
     {
         if (node.Fixed is not null && text != node.Fixed)
@@ -340,124 +346,4 @@ public static partial class FerruleX12
             throw Failure(FerruleX12Error.Value, "X12 loop cardinality is outside its declared interval.", path: string.Join('/', path));
     }
 
-    private static void WriteContainer(Node node, FerruleInstance instance, Profile profile, string[] path,
-        List<Segment> segments, Budget budget, int depth, bool root = false)
-    {
-        budget.Visit(depth);
-        if (instance is not FerruleGroup group) throw Failure(FerruleX12Error.Value, "X12 requires a group instance.", path: string.Join('/', path));
-        if (group.Fields.Any(field => !node.Children.Any(child => child.Name == field.Name)))
-            throw Failure(FerruleX12Error.Value, "X12 instance contains an undeclared field.", path: string.Join('/', path));
-        string? id = root ? null : SegmentId(node.Name);
-        if (id is not null)
-        {
-            if (segments.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
-            Syntax syntax = profile.Separators ?? new('*', ':', '~');
-            int control = id switch { "ISA" => 12, "GS" => 5, "ST" or "SE" or "GE" or "IEA" => 1, _ => -1 };
-            if (control >= 0 && (!group.TryGetField(node.Children[control].Name, out FerruleInstance? supplied)
-                || supplied is not FerruleScalar { Value.Kind: FerruleValueKind.String } scalar || scalar.Value.StringValue.Length == 0))
-                throw Failure(FerruleX12Error.Envelope, "X12 control numbers must be supplied explicitly.", path: string.Join('/', path));
-            var elements = new string[node.Children.Length];
-            long textBytes = 0;
-            long wireBytes = id.Length + 1 + (syntax.Segment == '\n' ? 0 : 1);
-            for (int index = 0; index < elements.Length; index++)
-            {
-                Node child = node.Children[index];
-                string text = WriteElement(child,
-                    group.TryGetField(child.Name, out FerruleInstance? value) ? value : null,
-                    syntax, [.. path, child.Name], budget, depth + 1, id == "ISA" && index == 15,
-                    Math.Max(0, budget.RemainingOutput - id.Length - 1 - (syntax.Segment == '\n' ? 0 : 1)
-                        - textBytes - index - 1));
-                elements[index] = text;
-                textBytes += StrictUtf8.GetByteCount(text);
-                if (id == "ISA" && index is 1 or 3 or 5 or 7)
-                    textBytes += Math.Max(0, IsaWidths[index] - text.Length);
-                // Trailing empty body elements are omitted, but internal empty
-                // positions and every ISA delimiter still occupy wire bytes.
-                if (id == "ISA" || text.Length > 0)
-                    wireBytes = id.Length + 1 + (syntax.Segment == '\n' ? 0 : 1) + textBytes + index + 1;
-                budget.CheckOutput(wireBytes);
-            }
-            budget.AddOutput(wireBytes);
-            segments.Add(new(id, elements));
-            return;
-        }
-        foreach (Node child in node.Children)
-        {
-            group.TryGetField(child.Name, out FerruleInstance? value);
-            string[] childPath = [.. path, child.Name];
-            if (child.Repeating)
-            {
-                IReadOnlyList<FerruleInstance> items = value switch
-                {
-                    null => [],
-                    FerruleRepeated repeated => repeated.Items,
-                    FerruleMappedSequence sequence => sequence.Items,
-                    _ => throw Failure(FerruleX12Error.Value, "X12 repeating fields require an ordered collection.", path: string.Join('/', childPath)),
-                };
-                if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
-                ValidateCount(child, items.Count, childPath);
-                foreach (FerruleInstance item in items)
-                {
-                    budget.Loop();
-                    WriteContainer(child, item, profile, childPath, segments, budget, depth + 1);
-                }
-            }
-            else WriteContainer(child, value ?? throw Failure(FerruleX12Error.Value, "X12 output is missing a required group.", path: string.Join('/', childPath)),
-                profile, childPath, segments, budget, depth + 1);
-        }
-    }
-
-    private static string WriteElement(Node node, FerruleInstance? instance, Syntax syntax, string[] path,
-        Budget budget, int depth, bool isaComponent = false, long maximumBytes = MaximumDocumentBytes)
-    {
-        budget.Visit(depth);
-        if (node.Type is null)
-        {
-            if (instance is not null && instance is not FerruleGroup) throw Failure(FerruleX12Error.Value, "X12 composite requires a group.", path: string.Join('/', path));
-            var group = instance as FerruleGroup;
-            if (group is not null && group.Fields.Any(field => !node.Children.Any(child => child.Name == field.Name)))
-                throw Failure(FerruleX12Error.Value, "X12 composite contains an undeclared field.", path: string.Join('/', path));
-            var components = node.Children.Select(child => WriteElement(child,
-                group is not null && group.TryGetField(child.Name, out FerruleInstance? value) ? value : null,
-                syntax, [.. path, child.Name], budget, depth + 1)).ToList();
-            while (components.Count > 0 && components[^1].Length == 0) components.RemoveAt(components.Count - 1);
-            long bytes = Math.Max(0, components.Count - 1);
-            foreach (string component in components)
-            {
-                bytes += StrictUtf8.GetByteCount(component);
-                if (bytes > maximumBytes) throw Limit("X12 composite byte limit exceeded.");
-            }
-            return string.Join(syntax.Component, components);
-        }
-        if (instance is not null && instance is not FerruleScalar) throw Failure(FerruleX12Error.Value, "X12 leaf requires a scalar.", path: string.Join('/', path));
-        FerruleValue scalar = instance is FerruleScalar leaf ? leaf.Value : FerruleValue.Null;
-        string text;
-        if (scalar.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
-            || scalar.Kind == FerruleValueKind.String && scalar.StringValue.Length == 0 && node.Fixed is not null) text = node.Fixed ?? "";
-        else if (node.Type == "string" && scalar.Kind == FerruleValueKind.String) text = scalar.StringValue;
-        else if (node.Type == "int" && scalar.Kind == FerruleValueKind.Int64) text = scalar.Int64Value.ToString(CultureInfo.InvariantCulture);
-        else if (node.Type == "float" && scalar.Kind is FerruleValueKind.Double or FerruleValueKind.Int64)
-        {
-            double number = scalar.Kind == FerruleValueKind.Double ? scalar.DoubleValue : scalar.Int64Value;
-            if (!double.IsFinite(number)) throw Failure(FerruleX12Error.Value, "X12 numbers must be finite.", path: string.Join('/', path));
-            text = FerruleValueMaps.RustFloatText(number);
-        }
-        else throw Failure(FerruleX12Error.Value, "X12 scalar type does not match the schema.", path: string.Join('/', path));
-        if (node.Fixed is { } fixedText && text != fixedText && node.Type is not null and not "string")
-        {
-            FerruleValue fixedValue = ReadScalar(node, fixedText, path);
-            bool same = node.Type == "int"
-                ? long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long integer)
-                    && fixedValue.Kind == FerruleValueKind.Int64 && fixedValue.Int64Value == integer
-                : double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
-                    && fixedValue.Kind == FerruleValueKind.Double && fixedValue.DoubleValue == number;
-            if (same) text = fixedText;
-        }
-        RequireUtf8(text, MaximumDocumentBytes, "X12 field");
-        ValidateText(node, text, path);
-        if (!(isaComponent && text == syntax.Component.ToString())
-            && text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Component || character == syntax.Segment))
-            throw Failure(FerruleX12Error.Value, "X12 scalar contains an unrepresentable delimiter.", path: string.Join('/', path));
-        return text;
-    }
 }
