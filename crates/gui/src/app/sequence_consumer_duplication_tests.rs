@@ -896,16 +896,36 @@ fn document(value: &Json) -> MappingDocument {
     }
 }
 
-fn explicit_binding(app: &mut FerruleApp, copied: NodeId, document: MappingDocument) {
-    let root = match document {
-        MappingDocument::Main => &mut app.project.root,
-        MappingDocument::Target(index) => &mut app.project.extra_targets[index].root,
+fn explicit_binding(
+    app: &mut FerruleApp,
+    copied: NodeId,
+    document: MappingDocument,
+) -> Result<(), String> {
+    let context = app.project.clone();
+    let target = match document {
+        MappingDocument::Main => &context.target,
+        MappingDocument::Target(index) => &context.extra_targets[index].schema,
         MappingDocument::Function(_) => unreachable!(),
     };
-    root.bindings.push(Binding {
-        target_field: "Copy".into(),
-        node: copied,
-    });
+    let source_blocks = source_blocks(&context.source);
+    let target_blocks = target_blocks(target);
+    let source_paths = SourcePathCatalog::new(&context.source, &context.extra_sources)
+        .with_primary_source_options(&context.source_options);
+    let inactive = match document {
+        MappingDocument::Main => Vec::new(),
+        MappingDocument::Target(index) => {
+            let (before, current_and_after) = context.extra_targets.split_at(index);
+            let (_, after) = current_and_after.split_first().unwrap();
+            crate::graph_viewer::inactive_target_scopes(&context.root, before, after)
+        }
+        MappingDocument::Function(_) => unreachable!(),
+    };
+    let function_names = app.function_names();
+    let function_inputs = app.function_inputs();
+    let primary_root_authoring = matches!(document, MappingDocument::Main)
+        && crate::primary_root_authoring::available(&app.project);
+    let colors = app.appearance.resolved_colors(app.palette);
+    let wire_color_mode = app.appearance.wire().color_mode();
     let canvas = match document {
         MappingDocument::Main => &mut app.main_canvas,
         MappingDocument::Target(index) => app
@@ -925,14 +945,65 @@ fn explicit_binding(app: &mut FerruleApp, copied: NodeId, document: MappingDocum
         .node_ids()
         .find_map(|(id, node)| (*node == CanvasNode::TargetBlock(0)).then_some(id))
         .unwrap();
-    canvas.snarl.connect(
-        OutPinId {
-            node: from,
-            output: 0,
-        },
-        InPinId { node: to, input: 1 },
-    );
+    let from = canvas.snarl.out_pin(OutPinId {
+        node: from,
+        output: 0,
+    });
+    let to = canvas.snarl.in_pin(InPinId { node: to, input: 1 });
+    let root = match document {
+        MappingDocument::Main => &mut app.project.root,
+        MappingDocument::Target(index) => &mut app.project.extra_targets[index].root,
+        MappingDocument::Function(_) => unreachable!(),
+    };
+    let error = {
+        let mut viewer = GraphViewer {
+            graph: &mut app.project.graph,
+            root_scope: root,
+            primary_root_authoring,
+            extra_targets: if matches!(document, MappingDocument::Main) {
+                &context.extra_targets
+            } else {
+                &[]
+            },
+            inactive_target_scopes: &inactive,
+            project_references: crate::graph_viewer::ProjectGraphReferences::new(
+                &context.failure_rules,
+                &context.extra_sources,
+            )
+            .with_user_functions(&context.user_functions),
+            source_blocks: &source_blocks,
+            target_blocks: &target_blocks,
+            source_x12: false,
+            target_x12: false,
+            source_paths: &source_paths,
+            function_names,
+            function_inputs,
+            parameter_names: Default::default(),
+            protected_output: None,
+            function_output: None,
+            requested_function_open: None,
+            colors,
+            wire_color_mode,
+            endpoint_scroll: &mut canvas.endpoint_scroll,
+            value_map_wheel: None,
+            endpoint_search_match: None,
+            node_sizes: Some(&mut canvas.node_sizes),
+            hovered_node: None,
+            hovered_node_this_frame: None,
+            camera_pan: egui::Vec2::ZERO,
+            camera_focus: None,
+            canvas_transform: None,
+            pin_interaction_ids: Vec::new(),
+            error: None,
+        };
+        viewer.connect(&from, &to, &mut canvas.snarl);
+        viewer.error.take()
+    };
     app.observe_editor_history(std::time::Instant::now(), false);
+    match error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 fn connect_argument(
@@ -1159,7 +1230,12 @@ fn all_ten_complete_literal_copies_edits_history_saved_reopen_and_native_outcome
             &app,
             &case["native_preview"]["after_duplicate"],
         );
-        explicit_binding(&mut app, plan.duplicate, context);
+        let binding = explicit_binding(&mut app, plan.duplicate, context);
+        originals.debug(
+            &format!("{name}.complete-binding-action.original.txt"),
+            &binding,
+        );
+        assert_eq!(binding, Ok(()), "{name}");
         assert_snapshot(
             &originals,
             &format!("{name}.after_explicit_copy_binding"),
@@ -1310,6 +1386,54 @@ fn all_ten_complete_literal_copies_edits_history_saved_reopen_and_native_outcome
             &app,
             &case["native_preview"]["after_independent_original_edit"],
         );
+    }
+}
+
+#[test]
+fn real_target_binding_keeps_raw_and_transitive_stage_inputs_private() {
+    let originals = Originals::new();
+    let corpus = literals(&originals);
+    let case = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| text(&case["id"]) == "filter-map-item-at-stage-choice")
+        .unwrap();
+    let expected = Err::<(), _>(
+        "Stage input values are private. Connect the mapped output in its owning context instead."
+            .to_string(),
+    );
+    originals.debug(
+        "private-target-binding.independent-error.original.txt",
+        &expected,
+    );
+    for (name, from) in [("raw-stage-input", 21), ("transitive-stage-input", 90)] {
+        let mut app = prepared(&case["snapshots"]["after_duplicate"], false);
+        if from == 90 {
+            app.project.graph.nodes.insert(
+                90,
+                Node::Call {
+                    function: "add".into(),
+                    args: vec![21, 4],
+                },
+            );
+        }
+        app.main_canvas
+            .snarl
+            .insert_node(egui::pos2(300.0, 300.0), CanvasNode::Graph(from));
+        let setup = editor_snapshot(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
+        app.history = SnapshotHistory::new(setup.clone(), DocumentOrigin::Saved);
+        app.observed_editor = setup;
+        app.pending_history = None;
+        let before = retain_state(&originals, &format!("{name}.before"), &app);
+        let result = explicit_binding(&mut app, from, MappingDocument::Main);
+        originals.debug(
+            &format!("{name}.complete-binding-action.original.txt"),
+            &result,
+        );
+        let after = retain_state(&originals, &format!("{name}.after"), &app);
+        assert_eq!(result, expected, "{name}");
+        assert_eq!(before, after, "{name}");
     }
 }
 

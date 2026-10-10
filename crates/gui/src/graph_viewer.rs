@@ -908,7 +908,9 @@ impl GraphViewer<'_> {
             if seen.insert(id)
                 && let Some(node) = self.graph.nodes.get(&id)
             {
-                pending.extend(node.dependencies());
+                // Owned item identities belong to the reducer, not its parent inputs.
+                // Actual input edges still reach and refuse raw stage inputs above.
+                pending.extend(node_inputs(node));
             }
         }
         if let Some((id, index)) = to
