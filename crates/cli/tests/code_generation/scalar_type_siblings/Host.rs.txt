@@ -1,5 +1,5 @@
 use std::{error::Error, fs, path::Path};
-use codegen_runtime::{Instance, JsonBoundaryError, Value, field, group, scalar};
+use codegen_runtime::{Instance, JsonBoundaryError, Value, XmlTypeOrigin, field, group, scalar};
 use serde_json::Value as Json;
 
 fn value(expected: &Json) -> Result<Value, Box<dyn Error>> {
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 counts[0] += 1;
                 let expected = wanted(case)?;
                 parsed.as_ref().is_ok_and(|actual| actual == &expected)
-                    && origin == Some(None)
+                    && origin == Some(XmlTypeOrigin::Unknown)
                     && mapped.as_ref().is_some_and(|actual| actual.as_ref().is_ok_and(|actual| actual == &expected))
                     && text.as_ref().is_ok_and(|actual| serde_json::from_slice::<Json>(actual)
                         .is_ok_and(|actual| actual == case["expected_json"]))
