@@ -1,0 +1,5644 @@
+{
+  "schema": "clean-room-saved-design203-complete-descriptor-recipes-v1",
+  "authorship": "Independent synthetic literals frozen before saved-design candidate construction or any implementation comparison. No external design content was accessed.",
+  "scope": "Complete descriptors, parent/body node tables, ordered typed stage parameters, consumer recipes and full normalized native logical expectations. IDs are exact recipe IDs, not claims that a saved application preserves numeric IDs.",
+  "all_product_codec_parser_engine_exporter_and_save_reopen_execution": "UNRUN",
+  "cases": [
+    {
+      "id": "legacy-explicit-range-rows",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 110
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 4
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 5
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "legacy-default-lower-one",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 3
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "generate",
+              "to": 102,
+              "item": 110
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 110
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "legacy-reversed-range-empty",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 5
+          },
+          "102": {
+            "kind": "const",
+            "value": 3
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 110
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": []
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "legacy-exists-filtered-generated",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 7
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "call",
+            "function": "greater_than",
+            "args": [
+              110,
+              140
+            ]
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "140": {
+            "kind": "const",
+            "value": 4
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "exists",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_exists",
+          "sequence": {
+            "kind": "generate",
+            "from": 101,
+            "to": 102,
+            "item": 110
+          },
+          "predicate": 130
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "scalar",
+          "value": {
+            "Bool": true
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_downstream_predicate_source_positions": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "legacy-item-at-third",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 3
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "item_at",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_item_at",
+          "sequence": {
+            "kind": "generate",
+            "from": 101,
+            "to": 102,
+            "item": 110
+          },
+          "index": 131
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "scalar",
+          "value": {
+            "Int": 5
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "legacy-sum-filtered-computed",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 7
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "call",
+            "function": "greater_than",
+            "args": [
+              110,
+              140
+            ]
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "140": {
+            "kind": "const",
+            "value": 4
+          },
+          "141": {
+            "kind": "const",
+            "value": 10
+          },
+          "142": {
+            "kind": "call",
+            "function": "multiply",
+            "args": [
+              110,
+              141
+            ]
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "sum",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_aggregate",
+          "function": "sum",
+          "sequence": {
+            "kind": "generate",
+            "from": 101,
+            "to": 102,
+            "item": 110
+          },
+          "predicate": 130,
+          "expression": 142,
+          "arg": null
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "scalar",
+          "value": {
+            "Int": 180
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "legacy-computed-row-values",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 7
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "140": {
+            "kind": "const",
+            "value": 10
+          },
+          "142": {
+            "kind": "call",
+            "function": "multiply",
+            "args": [
+              110,
+              140
+            ]
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "generate",
+        "from": 101,
+        "to": 102,
+        "item": 110
+      },
+      "user_functions": {},
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 142
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 30
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 40
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 50
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 60
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 4
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 70
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 5
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "status": "legacy_source_path_exists; actual import/export/save/reopen UNRUN"
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "filter-map-total-identity-rows",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 4
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 5
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Int": 3
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Int": 4
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Int": 5
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "filter-map-source-parent-dense-positions",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 7
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "120": {
+            "kind": "position",
+            "collection": [
+              "Parents"
+            ]
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 120,
+            "ty": "int"
+          }
+        ]
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9103,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              },
+              "4": {
+                "kind": "const",
+                "value": 4
+              },
+              "5": {
+                "kind": "call",
+                "function": "greater_than",
+                "args": [
+                  1,
+                  4
+                ]
+              }
+            }
+          },
+          "output": 5
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9203,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "3": {
+                "kind": "function_parameter",
+                "parameter": 9203
+              },
+              "4": {
+                "kind": "const",
+                "value": 10
+              },
+              "5": {
+                "kind": "call",
+                "function": "multiply",
+                "args": [
+                  1,
+                  4
+                ]
+              },
+              "6": {
+                "kind": "call",
+                "function": "add",
+                "args": [
+                  5,
+                  2
+                ]
+              },
+              "7": {
+                "kind": "call",
+                "function": "add",
+                "args": [
+                  6,
+                  3
+                ]
+              }
+            }
+          },
+          "output": 7
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": [
+                {
+                  "node": 120,
+                  "ty": "int"
+                }
+              ]
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {
+          "Parent": {
+            "Int": 7
+          }
+        },
+        "frames": [
+          {
+            "document": "primary",
+            "collection": [
+              "Parents"
+            ],
+            "position": 7,
+            "kind": "ordinary_source"
+          }
+        ]
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 60
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 71
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 82
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Int": 60
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 6,
+          "source_position": 4,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 6,
+          "source_position": 4,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Int": 71
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 7,
+          "source_position": 5,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 7,
+          "source_position": 5,
+          "captures": [
+            {
+              "Int": 7
+            }
+          ],
+          "result": {
+            "Int": 82
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_capture_evaluations": [
+        {
+          "index": 0,
+          "node": 120,
+          "value": {
+            "Int": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "filter-map-ordered-string-captures",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 4
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "120": {
+            "kind": "const",
+            "value": "L"
+          },
+          "122": {
+            "kind": "const",
+            "value": "R"
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "string",
+        "captures": [
+          {
+            "node": 120,
+            "ty": "string"
+          },
+          {
+            "node": 122,
+            "ty": "string"
+          }
+        ]
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9103,
+              "name": "capture_0",
+              "ty": "string"
+            },
+            {
+              "id": 9104,
+              "name": "capture_1",
+              "ty": "string"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9203,
+              "name": "capture_0",
+              "ty": "string"
+            },
+            {
+              "id": 9204,
+              "name": "capture_1",
+              "ty": "string"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "string",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "3": {
+                "kind": "function_parameter",
+                "parameter": 9203
+              },
+              "4": {
+                "kind": "function_parameter",
+                "parameter": 9204
+              },
+              "5": {
+                "kind": "call",
+                "function": "concat",
+                "args": [
+                  3,
+                  4
+                ]
+              }
+            }
+          },
+          "output": 5
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "string",
+              "captures": [
+                {
+                  "node": 120,
+                  "ty": "string"
+                },
+                {
+                  "node": 122,
+                  "ty": "string"
+                }
+              ]
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "String": "LR"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "String": "LR"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [
+            {
+              "String": "L"
+            },
+            {
+              "String": "R"
+            }
+          ],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [
+            {
+              "String": "L"
+            },
+            {
+              "String": "R"
+            }
+          ],
+          "result": {
+            "String": "LR"
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [
+            {
+              "String": "L"
+            },
+            {
+              "String": "R"
+            }
+          ],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [
+            {
+              "String": "L"
+            },
+            {
+              "String": "R"
+            }
+          ],
+          "result": {
+            "String": "LR"
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_capture_evaluations": [
+        {
+          "index": 0,
+          "node": 120,
+          "value": {
+            "String": "L"
+          }
+        },
+        {
+          "index": 1,
+          "node": 122,
+          "value": {
+            "String": "R"
+          }
+        }
+      ]
+    },
+    {
+      "id": "filter-map-false-suppresses-mapper-raise",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": false
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "7": {
+                "kind": "raise"
+              }
+            }
+          },
+          "output": 7
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": []
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "mapper_calls": 0
+    },
+    {
+      "id": "filter-map-eager-before-exists",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "4": {
+                "kind": "const",
+                "value": 5
+              },
+              "5": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  4
+                ]
+              },
+              "6": {
+                "kind": "const",
+                "value": "later"
+              },
+              "7": {
+                "kind": "raise",
+                "message": 6
+              },
+              "8": {
+                "kind": "if",
+                "condition": 5,
+                "then": 7,
+                "else": 1
+              }
+            }
+          },
+          "output": 8
+        }
+      },
+      "consumer": {
+        "site": "exists",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_exists",
+          "sequence": {
+            "kind": "filter_map_v1",
+            "source": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            },
+            "item": 111,
+            "predicate": 7001,
+            "mapper": 7002,
+            "output_type": "int",
+            "captures": []
+          },
+          "predicate": 130
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 3,
+              "function": 7002,
+              "node": 7,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 7,
+                "message": "later"
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Int": 3
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Int": 4
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "error": {
+            "MappingException": {
+              "node": 7,
+              "message": "later"
+            }
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "retained_prefix_not_success": [
+        {
+          "Int": 3
+        },
+        {
+          "Int": 4
+        }
+      ],
+      "downstream_predicate_calls": 0
+    },
+    {
+      "id": "filter-map-eager-before-item-at-one",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "4": {
+                "kind": "const",
+                "value": 5
+              },
+              "5": {
+                "kind": "call",
+                "function": "equal",
+                "args": [
+                  1,
+                  4
+                ]
+              },
+              "6": {
+                "kind": "const",
+                "value": "later"
+              },
+              "7": {
+                "kind": "raise",
+                "message": 6
+              },
+              "8": {
+                "kind": "if",
+                "condition": 5,
+                "then": 7,
+                "else": 1
+              }
+            }
+          },
+          "output": 8
+        }
+      },
+      "consumer": {
+        "site": "item_at",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_item_at",
+          "sequence": {
+            "kind": "filter_map_v1",
+            "source": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            },
+            "item": 111,
+            "predicate": 7001,
+            "mapper": 7002,
+            "output_type": "int",
+            "captures": []
+          },
+          "index": 131
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 3,
+              "function": 7002,
+              "node": 7,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 7,
+                "message": "later"
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Int": 3
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Int": 4
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "error": {
+            "MappingException": {
+              "node": 7,
+              "message": "later"
+            }
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "retained_prefix_not_success": [
+        {
+          "Int": 3
+        },
+        {
+          "Int": 4
+        }
+      ],
+      "index_evaluations": 0
+    },
+    {
+      "id": "filter-map-empty-range-still-raises-capture",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 4
+          },
+          "102": {
+            "kind": "const",
+            "value": 3
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "120": {
+            "kind": "raise"
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 120,
+            "ty": "int"
+          }
+        ]
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9103,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9203,
+              "name": "capture_0",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": [
+                {
+                  "node": 120,
+                  "ty": "int"
+                }
+              ]
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Capture",
+              "capture_index": 0,
+              "source_position": null,
+              "function": null,
+              "node": 120,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 120,
+                "message": null
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_capture_evaluations": [
+        {
+          "index": 0,
+          "node": 120,
+          "error": {
+            "MappingException": {
+              "node": 120,
+              "message": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "filter-map-empty-first-capture-tag-before-next",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 4
+          },
+          "102": {
+            "kind": "const",
+            "value": 3
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "120": {
+            "kind": "const",
+            "value": false
+          },
+          "122": {
+            "kind": "raise",
+            "message": 123
+          },
+          "123": {
+            "kind": "const",
+            "value": "unused"
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": [
+          {
+            "node": 120,
+            "ty": "int"
+          },
+          {
+            "node": 122,
+            "ty": "int"
+          }
+        ]
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9103,
+              "name": "capture_0",
+              "ty": "int"
+            },
+            {
+              "id": 9104,
+              "name": "capture_1",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            },
+            {
+              "id": 9203,
+              "name": "capture_0",
+              "ty": "int"
+            },
+            {
+              "id": 9204,
+              "name": "capture_1",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": [
+                {
+                  "node": 120,
+                  "ty": "int"
+                },
+                {
+                  "node": 122,
+                  "ty": "int"
+                }
+              ]
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Capture",
+              "capture_index": 0,
+              "source_position": null,
+              "function": null,
+              "node": 120,
+              "kind": "Result"
+            },
+            "source": {
+              "FilterMapValueType": {
+                "expected": "Int",
+                "found": {
+                  "Bool": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_capture_evaluations": [
+        {
+          "index": 0,
+          "node": 120,
+          "value": {
+            "Bool": false
+          }
+        }
+      ],
+      "second_capture_evaluations": 0
+    },
+    {
+      "id": "filter-map-bool-output",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "bool",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "10": {
+                "kind": "const",
+                "value": false
+              }
+            }
+          },
+          "output": 10
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "bool",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Bool": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Bool": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Bool": false
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": false
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "filter-map-unicode-string-output",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "string",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "string",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "10": {
+                "kind": "const",
+                "value": "λ😀"
+              }
+            }
+          },
+          "output": 10
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "string",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "String": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "String": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "String": "λ😀"
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "String": "λ😀"
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "String": "λ😀"
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "String": "λ😀"
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "filter-map-finite-float-output",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "float",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "float",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "10": {
+                "kind": "const",
+                "value": 1.25
+              }
+            }
+          },
+          "output": 10
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "float",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "group",
+          "origin": "Unknown",
+          "fields": [
+            [
+              "Rows",
+              {
+                "kind": "repeated",
+                "items": [
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Float": 1.25
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 1
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Float": 1.25
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 2
+                          }
+                        }
+                      ]
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "origin": "Unknown",
+                    "fields": [
+                      [
+                        "Value",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Float": 1.25
+                          }
+                        }
+                      ],
+                      [
+                        "Position",
+                        {
+                          "kind": "scalar",
+                          "value": {
+                            "Int": 3
+                          }
+                        }
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Float": 1.25
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Float": 1.25
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Float": 1.25
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_float_bits": [
+        "3ff4000000000000",
+        "3ff4000000000000",
+        "3ff4000000000000"
+      ]
+    },
+    {
+      "id": "filter-map-null-mapper-strict-refusal",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "10": {
+                "kind": "const",
+                "value": null
+              }
+            }
+          },
+          "output": 10
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 1,
+              "function": 7002,
+              "node": 10,
+              "kind": "Result"
+            },
+            "source": {
+              "FilterMapValueType": {
+                "expected": "Int",
+                "found": {
+                  "Null": null
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result_before_strict_check": {
+            "Null": null
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    },
+    {
+      "id": "filter-map-upper-expression-before-lower-coercion",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": false
+          },
+          "102": {
+            "kind": "raise",
+            "message": 103
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          },
+          "103": {
+            "kind": "const",
+            "value": "upper"
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": 102,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 102,
+                "message": "upper"
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "expected_source_evaluations": [
+        {
+          "node": 101,
+          "value": {
+            "Bool": false
+          }
+        },
+        {
+          "node": 102,
+          "error": {
+            "MappingException": {
+              "node": 102,
+              "message": "upper"
+            }
+          }
+        }
+      ],
+      "lower_coercions": 0
+    },
+    {
+      "id": "filter-map-atomic-source-items-refusal",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": null,
+              "kind": "SourceReservation"
+            },
+            "source": {
+              "FilterMapBudget": {
+                "kind": "SourceItems",
+                "used": 0,
+                "requested": 3,
+                "max": 2
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "host_controls": {
+        "limits": {
+          "source_items": 2,
+          "work": 100
+        },
+        "cancellation": null
+      },
+      "expected_counters": {
+        "source_items": 0,
+        "work": 2
+      },
+      "allocated_source_items": 0
+    },
+    {
+      "id": "filter-map-cancel-before-reservation",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Source",
+              "capture_index": null,
+              "source_position": null,
+              "function": null,
+              "node": null,
+              "kind": "SourceReservation"
+            },
+            "source": {
+              "FilterMapCancelled": {}
+            }
+          }
+        }
+      },
+      "expected_stage_events": [],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "host_controls": {
+        "limits": {
+          "source_items": 1000000,
+          "work": 10000000
+        },
+        "cancellation": {
+          "true_exactly_at": {
+            "phase": "Source",
+            "kind": "SourceReservation"
+          }
+        }
+      },
+      "expected_counters": {
+        "source_items": 0,
+        "work": 2
+      },
+      "allocated_source_items": 0
+    },
+    {
+      "id": "filter-map-nested-later-argument-before-adaptation",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              },
+              "10": {
+                "kind": "const",
+                "value": false
+              },
+              "11": {
+                "kind": "const",
+                "value": "latearg"
+              },
+              "12": {
+                "kind": "raise",
+                "message": 11
+              },
+              "13": {
+                "kind": "user_function_call",
+                "function": 7003,
+                "args": [
+                  10,
+                  12
+                ]
+              }
+            }
+          },
+          "output": 13
+        },
+        "7003": {
+          "library": "synthetic203",
+          "name": "Nested",
+          "parameters": [
+            {
+              "id": 9301,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9302,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9301
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9302
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "generated_scope",
+        "scope_recipe": {
+          "target_field": "Rows",
+          "iteration": {
+            "Sequence": {
+              "kind": "filter_map_v1",
+              "source": {
+                "kind": "generate",
+                "from": 101,
+                "to": 102,
+                "item": 110
+              },
+              "item": 111,
+              "predicate": 7001,
+              "mapper": 7002,
+              "output_type": "int",
+              "captures": []
+            }
+          },
+          "iteration_output": "Repeated",
+          "construction": "Constructed",
+          "bindings": [
+            {
+              "target_field": "Value",
+              "node": 111
+            },
+            {
+              "target_field": "Position",
+              "node": 121
+            }
+          ],
+          "children": [],
+          "filter": null,
+          "sort": null,
+          "window": null
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Err": {
+          "FilterMapRuntime": {
+            "boundary": {
+              "item": 111,
+              "phase": "Mapper",
+              "capture_index": null,
+              "source_position": 1,
+              "function": 7002,
+              "node": 12,
+              "kind": "NodeEvaluation"
+            },
+            "source": {
+              "MappingException": {
+                "node": 12,
+                "message": "latearg"
+              }
+            }
+          }
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "nested_arguments": [
+            {
+              "Bool": false
+            },
+            {
+              "error": {
+                "MappingException": {
+                  "node": 12,
+                  "message": "latearg"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN",
+      "nested_call_entries": 0,
+      "nested_parameter_adaptations": 0
+    },
+    {
+      "id": "filter-map-sum-all-output-items",
+      "parent_graph": {
+        "nodes": {
+          "101": {
+            "kind": "const",
+            "value": 3
+          },
+          "102": {
+            "kind": "const",
+            "value": 5
+          },
+          "110": {
+            "kind": "source_field",
+            "path": []
+          },
+          "111": {
+            "kind": "source_field",
+            "path": []
+          },
+          "121": {
+            "kind": "position",
+            "collection": []
+          },
+          "130": {
+            "kind": "const",
+            "value": true
+          },
+          "131": {
+            "kind": "const",
+            "value": 1
+          }
+        }
+      },
+      "sequence_descriptor": {
+        "kind": "filter_map_v1",
+        "source": {
+          "kind": "generate",
+          "from": 101,
+          "to": 102,
+          "item": 110
+        },
+        "item": 111,
+        "predicate": 7001,
+        "mapper": 7002,
+        "output_type": "int",
+        "captures": []
+      },
+      "user_functions": {
+        "7001": {
+          "library": "synthetic203",
+          "name": "Keep",
+          "parameters": [
+            {
+              "id": 9101,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9102,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "bool",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9101
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9102
+              },
+              "10": {
+                "kind": "const",
+                "value": true
+              }
+            }
+          },
+          "output": 10
+        },
+        "7002": {
+          "library": "synthetic203",
+          "name": "Map",
+          "parameters": [
+            {
+              "id": 9201,
+              "name": "item",
+              "ty": "int"
+            },
+            {
+              "id": 9202,
+              "name": "source_position",
+              "ty": "int"
+            }
+          ],
+          "output_name": "Result",
+          "output_type": "int",
+          "body": {
+            "nodes": {
+              "1": {
+                "kind": "function_parameter",
+                "parameter": 9201
+              },
+              "2": {
+                "kind": "function_parameter",
+                "parameter": 9202
+              }
+            }
+          },
+          "output": 1
+        }
+      },
+      "consumer": {
+        "site": "sum",
+        "node_id": 300,
+        "node": {
+          "kind": "sequence_aggregate",
+          "function": "sum",
+          "sequence": {
+            "kind": "filter_map_v1",
+            "source": {
+              "kind": "generate",
+              "from": 101,
+              "to": 102,
+              "item": 110
+            },
+            "item": 111,
+            "predicate": 7001,
+            "mapper": 7002,
+            "output_type": "int",
+            "captures": []
+          },
+          "predicate": null,
+          "expression": null,
+          "arg": null
+        },
+        "target_recipe": {
+          "singleton_field": "Result",
+          "binding_node": 300
+        }
+      },
+      "invocation_parent": {
+        "source_scalar_fields": {},
+        "frames": []
+      },
+      "expected_native_logical": {
+        "Ok": {
+          "kind": "scalar",
+          "value": {
+            "Int": 12
+          }
+        }
+      },
+      "expected_stage_events": [
+        {
+          "phase": "Predicate",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 3,
+          "source_position": 1,
+          "captures": [],
+          "result": {
+            "Int": 3
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 4,
+          "source_position": 2,
+          "captures": [],
+          "result": {
+            "Int": 4
+          }
+        },
+        {
+          "phase": "Predicate",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Bool": true
+          }
+        },
+        {
+          "phase": "Mapper",
+          "item": 5,
+          "source_position": 3,
+          "captures": [],
+          "result": {
+            "Int": 5
+          }
+        }
+      ],
+      "expected_current_mfd": {
+        "Err": {
+          "UnsupportedSequenceComposition": {
+            "item": 111
+          }
+        },
+        "display": "cannot export filter/map sequence item 111: capability is unsupported",
+        "prepared_or_published_artifacts": 0
+      },
+      "materialization_status": "UNRUN; these are complete descriptor recipes, not serialized Project or MFD files",
+      "save_reopen_status": "UNRUN"
+    }
+  ],
+  "fixture_count": 24,
+  "comparison_contract": {
+    "owner_remap": "Compare exact source/output owner relation and references under an explicit whole graph/function/pin alpha map; never equate the two owners or derive identities from coincident scalar values.",
+    "unexpected_outputs": "Retain complete Project/descriptor/UDF/signature/input/output/errors/source chains/Float bits/origins before comparison, including unexpected success; no normalization that removes filter/map/order/captures/positions/errors.",
+    "trace": "Stage entry/result events frozen; they do not assert every internal node debug-hook event. Native logical errors name their first specific envelope, full error implementation/formatter originals must be retained later.",
+    "materializer": "Prospective and UNRUN. Build exactly one descriptor site per recipe, inserting the consumer node once; descriptive duplicate descriptor literals in this JSON are not separate Project owners."
+  }
+}
