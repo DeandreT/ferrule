@@ -5126,6 +5126,7 @@ dependencies = [
  "format-json",
  "format-xbrl",
  "format-xml",
+ "getrandom 0.4.3",
  "ir",
  "js-sys",
  "mapping",
