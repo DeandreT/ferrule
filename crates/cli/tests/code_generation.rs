@@ -74,6 +74,10 @@ mod scalar_algorithms;
 mod scalar_functions;
 #[path = "code_generation/scalar_total_corpus.rs"]
 mod scalar_total_corpus;
+#[path = "code_generation/selected_json_targets_csharp.rs"]
+mod selected_json_targets_csharp;
+#[path = "code_generation/selected_json_targets_rust.rs"]
+mod selected_json_targets_rust;
 #[path = "code_generation/selected_targets.rs"]
 mod selected_targets;
 #[path = "code_generation/sequence_context.rs"]
