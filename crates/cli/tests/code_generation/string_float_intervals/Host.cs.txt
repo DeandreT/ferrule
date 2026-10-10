@@ -1,0 +1,168 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleValue ExpectedScalar(JsonElement value) => value.GetProperty("kind").GetString() switch {
+    "string" => FerruleValue.FromString(value.GetProperty("value").GetString()!),
+    "float" => FerruleValue.FromDouble(value.GetProperty("value").GetDouble()),
+    "int" => FerruleValue.FromInt64(value.GetProperty("value").GetInt64()),
+    "bool" => FerruleValue.FromBoolean(value.GetProperty("value").GetBoolean()),
+    "json_null" => FerruleValue.JsonNull,
+    _ => throw new InvalidOperationException("Authored scalar tag required"),
+};
+static FerruleInstance ExpectedValue(JsonElement value) => value.ValueKind == JsonValueKind.Array
+    ? new FerruleRepeated(value.EnumerateArray().Select(ExpectedValue).ToArray())
+    : new FerruleScalar(ExpectedScalar(value));
+static FerruleInstance ExpectedGroup(JsonElement row) => new FerruleGroup(row.GetProperty("expected_values")
+    .EnumerateObject().Select(property => new FerruleField(property.Name, ExpectedValue(property.Value))).ToArray());
+static object RawValue(FerruleValue value) => new { kind = value.Kind.ToString(), payload = value.Kind switch {
+    FerruleValueKind.Double => (object)new { bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture), text = value.DoubleValue.ToString("R", CultureInfo.InvariantCulture) },
+    FerruleValueKind.String => value.StringValue, FerruleValueKind.Int64 => value.Int64Value,
+    FerruleValueKind.Bool => value.BooleanValue, _ => (object?)null,
+}};
+static object RawInstance(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", value = RawValue(scalar.Value) },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = RawInstance(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() },
+    FerruleMappedSequence mapped => new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() },
+    FerruleDocumentSet documents => new { kind = "DocumentSet", documents = documents.Documents.Select(document => new { document.Path, document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() },
+    _ => new { unexpected = value.GetType().FullName, original = value.ToString() },
+};
+static object RawError(FerruleRuntimeException error) => new {
+    type = error.GetType().FullName, error.Message, error.HResult, inner = error.InnerException?.ToString(),
+    data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+    error.Error, error.Node, error.Function, error.ExpectedArity, error.ActualArity, error.FoundKind,
+    error.AggregateOperation, error.Detail, error.RequestedItems, error.MaximumItems, error.MaximumDepth,
+    error.RuntimeValue, error.FailureRule, error.MappingFailureMessage, error.MappingExceptionMessage,
+    error.Join, error.UserFunction, error.FunctionParameter, error.ExpectedScalarType,
+    error.RuntimeParameter, error.SourceField, error.FoundInstance, error.PrimaryRoot,
+};
+static object Raw(object outcome) => outcome switch {
+    FerruleInstance value => RawInstance(value), FerruleRuntimeException error => RawError(error),
+    string text => new { text }, byte[] bytes => new { bytes = Convert.ToBase64String(bytes) },
+    Exception error => new { unexpected = error.GetType().FullName, original = error.ToString() },
+    _ => throw new InvalidOperationException("Complete outcome class required"),
+};
+static object Capture(Func<object> action) { try { return action(); } catch (Exception error) { return error; } }
+static bool CompleteInstance(object actual, FerruleInstance expected) => actual is FerruleInstance
+    && JsonSerializer.Serialize(Raw(actual)) == JsonSerializer.Serialize(Raw(expected));
+static bool CompleteJson(JsonElement actual, JsonElement expected) {
+    if (actual.ValueKind != expected.ValueKind) return false;
+    return expected.ValueKind switch {
+        JsonValueKind.Number => BitConverter.DoubleToInt64Bits(actual.GetDouble()) == BitConverter.DoubleToInt64Bits(expected.GetDouble()),
+        JsonValueKind.String => actual.GetString() == expected.GetString(),
+        JsonValueKind.True or JsonValueKind.False => actual.GetBoolean() == expected.GetBoolean(),
+        JsonValueKind.Null => true,
+        JsonValueKind.Array => actual.GetArrayLength() == expected.GetArrayLength() && actual.EnumerateArray().Zip(expected.EnumerateArray()).All(pair => CompleteJson(pair.First, pair.Second)),
+        JsonValueKind.Object => actual.EnumerateObject().Count() == expected.EnumerateObject().Count() && actual.EnumerateObject().Zip(expected.EnumerateObject()).All(pair => pair.First.Name == pair.Second.Name && CompleteJson(pair.First.Value, pair.Second.Value)),
+        _ => false,
+    };
+}
+static bool CompleteDocument(object actual, JsonElement expected) {
+    try {
+        var text = actual switch { string value => value, byte[] bytes => new UTF8Encoding(false, true).GetString(bytes), _ => null };
+        if (text is null || !text.EndsWith('\n')) return false;
+        using var document = JsonDocument.Parse(text);
+        return CompleteJson(document.RootElement, expected);
+    } catch { return false; }
+}
+static bool SameTextBytes(object text, object bytes) => text is string value && bytes is byte[] raw && Encoding.UTF8.GetBytes(value).SequenceEqual(raw);
+static FerruleRuntimeException ExpectedError(string message) => new(FerruleRuntimeError.JsonBoundary, message, detail: message);
+static bool CompleteError(object actual, FerruleRuntimeException expected) => actual is FerruleRuntimeException
+    && JsonSerializer.Serialize(Raw(actual)) == JsonSerializer.Serialize(Raw(expected));
+static string CompiledMessage(JsonElement row, bool inputBounded) {
+    var name = row.GetProperty("failed_field").GetString();
+    return row.GetProperty("error").GetString() switch {
+        "precision" => $"JSON field '{name}' expected number, got {row.GetProperty("csharp_shape_got").GetString()}.",
+        "shape" => $"JSON field '{name}' expected declared scalar union, got {row.GetProperty("csharp_shape_got").GetString()}.",
+        "range" => RangeMessage(row, name!, inputBounded),
+        _ => throw new InvalidOperationException("Authored boundary error required"),
+    };
+}
+static string RangeMessage(JsonElement row, string name, bool inputBounded) {
+    using var input = JsonDocument.Parse(row.GetProperty("input").GetString()!);
+    var got = inputBounded ? input.RootElement.GetProperty(name).GetRawText()
+        : row.GetProperty("expected_values").GetProperty(name).GetProperty("value").GetDouble().ToString("R", CultureInfo.InvariantCulture);
+    return $"JSON scalar '{name}' is outside its numeric range: {got}.";
+}
+
+if (args.Length != 2 || (args[1] != "input" && args[1] != "output")) throw new InvalidOperationException("Need retained directory and input/output boundary side");
+var root = args[0];
+var inputBounded = args[1] == "input";
+using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "cases.json")));
+var rows = corpus.RootElement.GetProperty("compiled").GetProperty("cases").EnumerateArray().ToArray();
+var direct = corpus.RootElement.GetProperty("direct_cases").EnumerateArray().ToArray();
+var malformed = corpus.RootElement.GetProperty("malformed_ir_cases").EnumerateArray().ToArray();
+var mismatches = new List<string>();
+
+foreach (var row in rows) {
+    var id = row.GetProperty("id").GetString()!;
+    var input = row.GetProperty("input").GetString()!;
+    var expected = row.TryGetProperty("input_only", out var inputOnly) && inputOnly.GetBoolean() ? null : ExpectedGroup(row);
+    var typed = expected is null ? null : Capture(() => GeneratedMapping.Execute(expected));
+    var text = Capture(() => GeneratedMapping.ExecuteJson(input));
+    var bytes = Capture(() => GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input)));
+    File.WriteAllText(Path.Combine(root, $"{id}-COMPILED-COMPLETE-ORIGINAL.json"), JsonSerializer.Serialize(new {
+        row, input, expected = expected is null ? null : Raw(expected), typed = typed is null ? null : Raw(typed), text = Raw(text), bytes = Raw(bytes),
+        typedException = (typed as Exception)?.ToString(), textException = (text as Exception)?.ToString(), bytesException = (bytes as Exception)?.ToString(),
+    }));
+    if (expected is not null && (typed is null || !CompleteInstance(typed, expected))) mismatches.Add($"{id}: complete typed mapping/origin differs");
+    if (row.GetProperty("accepted").GetBoolean()) {
+        if (!CompleteDocument(text, row.GetProperty("serialized_json")) || !CompleteDocument(bytes, row.GetProperty("serialized_json")) || !SameTextBytes(text, bytes))
+            mismatches.Add($"{id}: complete generated text/bytes differ");
+    } else {
+        var wanted = ExpectedError(CompiledMessage(row, inputBounded));
+        File.WriteAllText(Path.Combine(root, $"{id}-COMPILED-EXPECTED-ERROR.json"), JsonSerializer.Serialize(Raw(wanted)));
+        if (!CompleteError(text, wanted) || !CompleteError(bytes, wanted)) mismatches.Add($"{id}: complete generated errors differ");
+    }
+}
+
+foreach (var row in direct) {
+    var id = row.GetProperty("id").GetString()!;
+    var schema = row.GetProperty("ir_schema").GetRawText();
+    var input = row.GetProperty("input").GetString()!;
+    var expected = ExpectedValue(row.GetProperty("expected"));
+    var parsed = Capture(() => FerruleJson.Parse(schema, input));
+    var parsedBytes = Capture(() => FerruleJson.ParseBytes(schema, Encoding.UTF8.GetBytes(input)));
+    var text = Capture(() => FerruleJson.Serialize(schema, expected));
+    var bytes = Capture(() => FerruleJson.SerializeBytes(schema, expected));
+    File.WriteAllText(Path.Combine(root, $"{id}-DIRECT-COMPLETE-ORIGINAL.json"), JsonSerializer.Serialize(new {
+        row, schema, input, expected = Raw(expected), parsed = Raw(parsed), parsedBytes = Raw(parsedBytes), text = Raw(text), bytes = Raw(bytes),
+        parsedException = (parsed as Exception)?.ToString(), parsedBytesException = (parsedBytes as Exception)?.ToString(), textException = (text as Exception)?.ToString(), bytesException = (bytes as Exception)?.ToString(),
+    }));
+    if (row.GetProperty("accepted").GetBoolean()) {
+        using var wanted = JsonDocument.Parse(row.GetProperty("serialized").GetString()!);
+        if (!CompleteInstance(parsed, expected) || !CompleteInstance(parsedBytes, expected)
+            || !CompleteDocument(text, wanted.RootElement) || !CompleteDocument(bytes, wanted.RootElement) || !SameTextBytes(text, bytes))
+            mismatches.Add($"{id}: complete direct typed/text/bytes differ");
+    } else {
+        var wanted = ExpectedError($"JSON scalar '{row.GetProperty("error_name").GetString()}' is outside its numeric range: {row.GetProperty("got").GetString()}.");
+        File.WriteAllText(Path.Combine(root, $"{id}-DIRECT-EXPECTED-ERROR.json"), JsonSerializer.Serialize(Raw(wanted)));
+        if (!CompleteError(parsed, wanted) || !CompleteError(parsedBytes, wanted) || !CompleteError(text, wanted) || !CompleteError(bytes, wanted))
+            mismatches.Add($"{id}: complete direct range errors differ");
+    }
+}
+
+foreach (var row in malformed) {
+    var id = row.GetProperty("id").GetString()!;
+    var schema = row.GetProperty("schema").GetRawText();
+    var expected = new FerruleScalar(FerruleValue.FromDouble(2.0));
+    var parsed = Capture(() => FerruleJson.Parse(schema, "2"));
+    var parsedBytes = Capture(() => FerruleJson.ParseBytes(schema, Encoding.UTF8.GetBytes("2")));
+    var text = Capture(() => FerruleJson.Serialize(schema, expected));
+    var bytes = Capture(() => FerruleJson.SerializeBytes(schema, expected));
+    File.WriteAllText(Path.Combine(root, $"{id}-MALFORMED-COMPLETE-ORIGINAL.json"), JsonSerializer.Serialize(new {
+        row, schema, expected = Raw(expected), parsed = Raw(parsed), parsedBytes = Raw(parsedBytes), text = Raw(text), bytes = Raw(bytes),
+        parsedException = (parsed as Exception)?.ToString(), parsedBytesException = (parsedBytes as Exception)?.ToString(), textException = (text as Exception)?.ToString(), bytesException = (bytes as Exception)?.ToString(),
+    }));
+    var wanted = ExpectedError(row.GetProperty("csharp_message").GetString()!);
+    File.WriteAllText(Path.Combine(root, $"{id}-MALFORMED-EXPECTED-ERROR.json"), JsonSerializer.Serialize(Raw(wanted)));
+    if (!CompleteError(parsed, wanted) || !CompleteError(parsedBytes, wanted) || !CompleteError(text, wanted) || !CompleteError(bytes, wanted))
+        mismatches.Add($"{id}: complete malformed descriptor errors differ");
+}
+File.WriteAllText(Path.Combine(root, "COMPLETE-COMPARISONS.json"), JsonSerializer.Serialize(new { compiled = rows.Length, direct = direct.Length, malformed = malformed.Length, mismatches }));
+if (rows.Length != 16 || direct.Length != 12 || malformed.Length != 4 || mismatches.Count != 0)
+    throw new InvalidOperationException("Complete authored String-or-Float interval cohort differs");
+Console.WriteLine("16 compiled, 12 direct and 4 malformed complete interval outcomes passed");

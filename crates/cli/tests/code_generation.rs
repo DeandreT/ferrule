@@ -92,6 +92,8 @@ mod sequence_reducers;
 mod signed_integer_float_bounds;
 #[path = "code_generation/static_sources.rs"]
 mod static_sources;
+#[path = "code_generation/string_float_intervals.rs"]
+mod string_float_intervals;
 #[path = "code_generation/string_int_range_boundaries.rs"]
 mod string_int_range_boundaries;
 #[path = "code_generation/structured_xml_public.rs"]
