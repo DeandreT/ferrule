@@ -91,6 +91,21 @@ install -o "$runner_user" -g "$runner_user" -m 755 \
 printf '%s\n' "$service" > "$runner_dir/.service"
 chown "$runner_user:$runner_user" "$runner_dir/.service"
 
+# Exercise archive extraction and Xvfb inside the actual service sandbox.
+cat > "$runner_home/check-runtime.sh" <<'CHECK'
+#!/usr/bin/env bash
+set -euo pipefail
+smoke_dir=$(mktemp -d)
+trap 'rm -rf "$smoke_dir"' EXIT
+mkdir "$smoke_dir/source" "$smoke_dir/output"
+printf 'Ferrule runner preflight\n' > "$smoke_dir/source/marker"
+tar -czf "$smoke_dir/check.tar.gz" -C "$smoke_dir/source" .
+tar -xzf "$smoke_dir/check.tar.gz" -C "$smoke_dir/output"
+cmp "$smoke_dir/source/marker" "$smoke_dir/output/marker"
+xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET true
+CHECK
+chmod 755 "$runner_home/check-runtime.sh"
+
 cat > "/etc/systemd/system/$service" <<'UNIT'
 [Unit]
 Description=Ferrule GitHub Actions runner on OVHcloud
@@ -101,6 +116,7 @@ Wants=network-online.target
 User=ferrule-runner
 Group=ferrule-runner
 WorkingDirectory=/home/ferrule-runner/actions-runner
+ExecStartPre=/home/ferrule-runner/check-runtime.sh
 ExecStart=/home/ferrule-runner/actions-runner/runsvc.sh
 Environment=HOME=/home/ferrule-runner
 Environment=PATH=/home/ferrule-runner/.cargo/bin:/home/ferrule-runner/.dotnet:/usr/local/bin:/usr/bin:/bin
@@ -127,7 +143,10 @@ InaccessiblePaths=-/home/ubuntu -/home/wareboxes-runner -/opt/valheim -/opt/stea
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+# Ubuntu 26.04 tar needs openat2, which RestrictSUIDSGID blocks.
+# NoNewPrivileges already prevents privilege gains through SUID executables.
+RestrictSUIDSGID=no
 
 [Install]
 WantedBy=multi-user.target

@@ -22,7 +22,8 @@ class ResourceGuardTests(unittest.TestCase):
             commands = {
                 "id": 'printf "%s\\n" "$FIXTURE_USER"',
                 "mkdir": "exit 0",
-                "realpath": ('if [ "$1" = "$FIXTURE_SYMLINK" ]; then '
+                "realpath": ('if [ "$1" = -m ]; then shift; fi; '
+                             'if [ "$1" = "$FIXTURE_SYMLINK" ]; then '
                              'echo /elsewhere; else printf "%s\\n" "$1"; fi'),
                 "df": ('printf "Filesystem 1024-blocks Used Available Capacity Mounted\\n"; '
                        'printf "fixture 99999999 1 %s 1%% /\\n" "$FIXTURE_FREE_KIB"'),
