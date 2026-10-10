@@ -7,6 +7,7 @@ use super::{
     scalar::text as scalar_text,
 };
 
+mod guid;
 mod isbn;
 mod regex_match;
 
@@ -44,6 +45,7 @@ pub(super) fn call_builtin(
         BuiltinId::SqlLike => binary_string(args, "sql_like", sql_like),
         BuiltinId::PadStringLeft => pad_string(args, "pad_string_left", true),
         BuiltinId::PadStringRight => pad_string(args, "pad_string_right", false),
+        BuiltinId::FormatGuidString => guid::format_guid_string(args),
         BuiltinId::Add => numeric(args, "add", i64::checked_add, |a, b| a + b),
         BuiltinId::Subtract => numeric(args, "subtract", i64::checked_sub, |a, b| a - b),
         BuiltinId::Multiply => multiply(args),
