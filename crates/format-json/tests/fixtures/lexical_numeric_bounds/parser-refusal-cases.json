@@ -1,0 +1,52 @@
+[
+  {
+    "id": "earlier-overflow-duplicate-bound",
+    "raw_schema": "{\"type\":\"integer\",\"minimum\":1e9999,\"minimum\":1.0}",
+    "expected_error_variant": "Json",
+    "expected_error_category": "number out of range"
+  },
+  {
+    "id": "earlier-overflow-opaque-duplicate",
+    "raw_schema": "{\"type\":\"integer\",\"default\":1e9999,\"default\":1.0}",
+    "expected_error_variant": "Json",
+    "expected_error_category": "number out of range"
+  },
+  {
+    "id": "malformed-plus",
+    "raw_schema": "{\"type\":\"integer\",\"minimum\":+1.0}",
+    "expected_error_variant": "Json"
+  },
+  {
+    "id": "malformed-leading-zero",
+    "raw_schema": "{\"type\":\"integer\",\"minimum\":01.0}",
+    "expected_error_variant": "Json"
+  },
+  {
+    "id": "malformed-no-leading-integer",
+    "raw_schema": "{\"type\":\"integer\",\"minimum\":.1}",
+    "expected_error_variant": "Json"
+  },
+  {
+    "id": "legacy-exclusive-boolean",
+    "raw_schema": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":1.0,\"exclusiveMinimum\":true}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 2
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 2
+    }
+  }
+]

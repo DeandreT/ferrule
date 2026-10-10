@@ -231,6 +231,14 @@ layout and dialect details that an extension cannot express.
   endpoints beyond binary64's contiguous integer precision and both signed
   extremes; an exact endpoint retains its original inclusion flag. Instance
   and constant precision checks remain separate from boundary normalization.
+  Schema resources preserve the raw numeric spelling of these four bound
+  keywords before ordinary JSON number decoding. Decimal and exponent forms
+  that prove an exact integer in the signed or unsigned 64-bit token domain
+  normalize to that integer token, including negative zero. Fractional and
+  out-of-domain forms retain the existing finite-number admission rules.
+  This normalization follows schema-valued keyword positions and authorized
+  reference resources; `const`, `enum`, `default`, examples, and `multipleOf`
+  keep their ordinary number semantics.
   Decimal endpoints and unsigned endpoints outside the signed domain retain
   their finite-number admission rules. Import accepts both modern numeric
   exclusive bounds and Draft 4

@@ -78,7 +78,6 @@ fn integer_ranges_preserve_large_i64_endpoints_and_reject_inexact_fractional_bou
         r#"{"title":"UnitCliff","type":"integer","minimum":4503599627370496.5}"#,
         r#"{"title":"RoundedAbove","type":"integer","minimum":1.00000000000000001}"#,
         r#"{"title":"RoundedBelow","type":"integer","maximum":0.99999999999999999}"#,
-        r#"{"title":"IntegralFloat","type":"integer","exclusiveMinimum":1.0}"#,
     ] {
         assert!(matches!(
             import_str_result(schema),
@@ -86,6 +85,24 @@ fn integer_ranges_preserve_large_i64_endpoints_and_reject_inexact_fractional_bou
                 if reason.contains("exactly normalizable")
         ));
     }
+    let integral =
+        import_str_result(r#"{"title":"IntegralFloat","type":"integer","exclusiveMinimum":1.0}"#);
+    let expected = SchemaNode::scalar("IntegralFloat", ScalarType::Int)
+        .with_numeric_range(NumericRange::Integer(
+            ir::IntegerRange::new(Some(2), None).unwrap(),
+        ))
+        .unwrap();
+    let exported = integral.as_ref().ok().map(super::super::export);
+    let reimported = exported
+        .as_ref()
+        .and_then(|value| value.as_ref().ok())
+        .map(|text| import_str_result(text));
+    let input = crate::from_str("2", &expected);
+    let output = crate::to_string(&expected, &Instance::Scalar(Value::Int(2)));
+    assert!(matches!(integral, Ok(ref actual) if actual == &expected));
+    assert!(matches!(reimported, Some(Ok(ref actual)) if actual == &expected));
+    assert_eq!(input.unwrap(), Instance::Scalar(Value::Int(2)));
+    assert_eq!(output.unwrap(), "2\n");
 }
 
 #[test]

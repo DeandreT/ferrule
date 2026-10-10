@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use crate::JsonFormatError;
 
+mod numeric_lexemes;
+
 const MAX_DOCUMENTS: usize = 256;
 const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
 pub(super) const MAX_REFERENCE_DEPTH: usize = 64;
@@ -173,7 +175,7 @@ pub(super) fn load_inline(text: &str) -> Result<serde_json::Value, JsonFormatErr
             limit: MAX_TOTAL_BYTES,
         });
     }
-    let mut value = serde_json::from_str(text)?;
+    let mut value = numeric_lexemes::decode(text.as_bytes())?;
     let dialect = validation_dialect_for_document(&value);
     let mut loader = Loader {
         package_root: PathBuf::new(),
@@ -243,7 +245,7 @@ impl Loader {
                 limit: MAX_TOTAL_BYTES,
             });
         }
-        let mut value = serde_json::from_slice(&bytes)?;
+        let mut value = numeric_lexemes::decode(&bytes)?;
         let dialect = validation_dialect_for_document(&value);
         let ignore_ref_siblings = matches!(
             dialect,
