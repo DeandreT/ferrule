@@ -23,6 +23,8 @@ const SHIPMENT_EXPECTED: &str = include_str!("x12/shipment-945-expected.x12");
 const IDENTITY_EXPECTED: &str = include_str!("x12/identity-940-expected.x12");
 const DEEP: &str = include_str!("x12/deep-940.x12");
 
+#[path = "x12/grouped.rs"]
+mod grouped;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/saved_profile.rs"]

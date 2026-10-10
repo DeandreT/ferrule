@@ -67,10 +67,12 @@ public static partial class FerruleX12
                 };
                 if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
                 ValidateCount(child, items.Count, childPath);
-                foreach (FerruleInstance item in items)
+                for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
                 {
                     budget.Loop();
-                    WriteContainer(child, item, profile, childPath, segments, budget, depth + 1);
+                    string[] itemPath = profile.Grouped is not null
+                        ? [.. path, child.Name + "[" + itemIndex.ToString(CultureInfo.InvariantCulture) + "]"] : childPath;
+                    WriteContainer(child, items[itemIndex], profile, itemPath, segments, budget, depth + 1);
                 }
             }
             else WriteContainer(child, value ?? throw Failure(FerruleX12Error.Value, "X12 output is missing a required group.", path: string.Join('/', childPath)),
