@@ -110,11 +110,49 @@ pub trait FilterMapCancellation {
     fn is_cancelled(&self, boundary: &FilterMapBoundary) -> bool;
 }
 
+// Synchronous borrowed observations exist only in engine unit-test builds.
+// SourceVectorConstruction is a code-point marker, not allocator telemetry.
+#[cfg(test)]
+pub(crate) enum FilterMapTestObservation<'a> {
+    ReservationRequested {
+        boundary: FilterMapBoundary,
+        requested: u128,
+        counters: (u128, u128),
+    },
+    SourceVectorConstruction {
+        boundary: FilterMapBoundary,
+        requested: u128,
+        counters: (u128, u128),
+    },
+    CaptureEntered {
+        boundary: FilterMapBoundary,
+    },
+    CaptureValue {
+        boundary: FilterMapBoundary,
+        value: &'a Value,
+    },
+    StageEntered {
+        boundary: FilterMapBoundary,
+        arguments: &'a [Value],
+    },
+    StageValueBeforeStrict {
+        boundary: FilterMapBoundary,
+        value: &'a Value,
+    },
+}
+
+#[cfg(test)]
+pub(crate) trait FilterMapTestSink {
+    fn observe(&self, observation: FilterMapTestObservation<'_>);
+}
+
 pub(crate) struct FilterMapRunState<'a> {
     limits: FilterMapLimits,
     source_items: Cell<u128>,
     work: Cell<u128>,
     cancellation: Option<&'a dyn FilterMapCancellation>,
+    #[cfg(test)]
+    test_sink: Option<&'a dyn FilterMapTestSink>,
 }
 
 impl<'a> FilterMapRunState<'a> {
@@ -127,12 +165,27 @@ impl<'a> FilterMapRunState<'a> {
             source_items: Cell::new(0),
             work: Cell::new(0),
             cancellation,
+            #[cfg(test)]
+            test_sink: None,
         }
     }
 
     #[cfg(test)]
     pub(crate) fn counters(&self) -> (u128, u128) {
         (self.source_items.get(), self.work.get())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_sink(mut self, sink: &'a dyn FilterMapTestSink) -> Self {
+        self.test_sink = Some(sink);
+        self
+    }
+
+    #[cfg(test)]
+    fn test_record(&self, observation: FilterMapTestObservation<'_>) {
+        if let Some(sink) = self.test_sink {
+            sink.observe(observation);
+        }
     }
 
     fn check(&self, boundary: FilterMapBoundary) -> Result<(), EngineError> {
@@ -164,6 +217,12 @@ impl<'a> FilterMapRunState<'a> {
     }
 
     fn reserve(&self, boundary: FilterMapBoundary, requested: u128) -> Result<(), EngineError> {
+        #[cfg(test)]
+        self.test_record(FilterMapTestObservation::ReservationRequested {
+            boundary,
+            requested,
+            counters: self.counters(),
+        });
         self.check(boundary)?;
         if requested > MAX_GENERATED_SEQUENCE_ITEMS {
             return Err(wrap(
@@ -324,6 +383,8 @@ fn evaluate_with_state<'a>(
             state,
             boundary: at,
         };
+        #[cfg(test)]
+        state.test_record(FilterMapTestObservation::CaptureEntered { boundary: at });
         let value = match consumer {
             Some(consumer) => crate::eval_expr::eval_node_input(
                 program.with_filter_map_work(work),
@@ -342,6 +403,11 @@ fn evaluate_with_state<'a>(
                 in_progress,
             ),
         }?;
+        #[cfg(test)]
+        state.test_record(FilterMapTestObservation::CaptureValue {
+            boundary: at,
+            value: &value,
+        });
         require_value(work, &value, capture.ty)?;
         captures.push(value);
     }
@@ -446,6 +512,13 @@ fn source_values(
     let mut at = work.boundary;
     at.kind = FilterMapBoundaryKind::SourceReservation;
     work.state.reserve(at, requested)?;
+    #[cfg(test)]
+    work.state
+        .test_record(FilterMapTestObservation::SourceVectorConstruction {
+            boundary: at,
+            requested,
+            counters: work.state.counters(),
+        });
     let mut values = Vec::with_capacity(requested as usize);
     if requested != 0 {
         values.extend((lower..=upper).map(Value::Int));
@@ -474,6 +547,12 @@ fn stage(
         .ok_or(EngineError::MissingUserFunction { function })
         .map_err(|error| work.wrap(error))?;
     work.boundary.node = Some(definition.output);
+    #[cfg(test)]
+    work.state
+        .test_record(FilterMapTestObservation::StageEntered {
+            boundary: work.boundary,
+            arguments: &arguments,
+        });
     let value = user_function::evaluate(
         program.user_functions,
         function,
@@ -487,6 +566,12 @@ fn stage(
         Some(work),
     )
     .map_err(|error| work.wrap(error))?;
+    #[cfg(test)]
+    work.state
+        .test_record(FilterMapTestObservation::StageValueBeforeStrict {
+            boundary: work.boundary,
+            value: &value,
+        });
     require_value(work, &value, definition.output_type)?;
     Ok(value)
 }

@@ -884,6 +884,9 @@ mod repeated_scalar_tests;
 #[path = "tests/runtime_parameters.rs"]
 mod runtime_parameter_tests;
 #[cfg(test)]
+#[path = "tests/scalar_sequence_saved_design203_internal.rs"]
+mod scalar_sequence_saved_design203_internal_tests;
+#[cfg(test)]
 #[path = "tests/scalar_union.rs"]
 mod scalar_union_tests;
 #[cfg(test)]

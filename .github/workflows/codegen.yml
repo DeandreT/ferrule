@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,14 +28,21 @@ env:
 jobs:
   generated-backends:
     name: generated-backends (${{ matrix.suite }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         suite: [crates, mappings]
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: OVH build resources
+        if: runner.environment == 'self-hosted'
+        env:
+          FERRULE_CI_SUITE: codegen
+        run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
@@ -42,6 +50,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: codegen-${{ matrix.suite }}-bounded-builds
       - name: clippy
@@ -50,20 +59,30 @@ jobs:
           --features codegen-tests -- -D warnings
       - name: codegen crate tests
         if: matrix.suite == 'crates'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo test
           -p codegen
           -p codegen-runtime
           -p codegen-rust
           -p codegen-csharp
-          -- --test-threads=2
+          -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
       - name: generated Rust and C# parity tests
         if: matrix.suite == 'mappings'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo test -p cli --test code_generation
-          --features codegen-tests -- --test-threads=2
+          --features codegen-tests -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+      - name: Trim successful workspace build
+        if: success() && runner.environment == 'self-hosted'
+        run: cargo clean --workspace
       - name: runner resources
         if: always()
         run: |
           df -h
           free -h
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
+            /opt/ferrule-runner-tools/sccache --show-stats
+          fi
