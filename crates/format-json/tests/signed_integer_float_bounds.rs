@@ -52,7 +52,8 @@ fn expected_schema(row: &Json) -> TestResult<SchemaNode> {
     )
     .ok_or("authored range must contain a Float")?;
     Ok(SchemaNode::scalar("Boundary", ScalarType::Float)
-        .with_numeric_range(NumericRange::Number(range)))
+        .with_numeric_range(NumericRange::Number(range))
+        .ok_or("authored Float range must attach")?)
 }
 
 fn range_error_matches(error: &JsonFormatError, row: &Json, got: &str) -> bool {
