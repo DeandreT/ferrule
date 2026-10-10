@@ -1,0 +1,48 @@
+use std::{fs, path::Path};
+use codegen_runtime::{Instance, Value, RuntimeError, FunctionError, field, group, scalar};
+
+fn argument(row: &[&str]) -> Value {
+    match row[1] {
+        "S" => Value::String(row[2].into()), "N" => Value::Null,
+        "J" => Value::json_null(), "X" => Value::xml_nil(),
+        "B" => Value::Bool(true), "I" => Value::Int(7), "F" => Value::Float(0.5),
+        _ => panic!("unknown authored scalar kind"),
+    }
+}
+fn expected(text: &str) -> Result<Instance, RuntimeError> {
+    let error = match text {
+        "invalid" => Some(FunctionError::InvalidArgument { function: "format_guid_string", message: "requires exactly 32 ASCII hexadecimal characters" }),
+        "type:null" | "type:json null" | "type:xml nil" | "type:bool" | "type:int" | "type:float" => Some(FunctionError::TypeMismatch {
+            function: "format_guid_string", got: match text { "type:null" => "null", "type:json null" => "json null", "type:xml nil" => "xml nil", "type:bool" => "bool", "type:int" => "int", _ => "float" },
+        }),
+        _ => None,
+    };
+    match error {
+        Some(error) => Err(RuntimeError::Function(error)),
+        None => Ok(group([field("Formatted", scalar(Value::String(text.into())))])),
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::args_os().nth(1).ok_or("need retained directory")?;
+    let directory = Path::new(&directory);
+    let text = fs::read_to_string(directory.join("cases.tsv"))?;
+    let rows = text.lines().map(|line| line.split('\t').collect::<Vec<_>>()).collect::<Vec<_>>();
+    let inputs = rows.iter().map(|row| group([field("Hex", scalar(argument(row)))])).collect::<Vec<_>>();
+    let actual = inputs.iter().map(ferrule_generated_mapping::execute).collect::<Vec<_>>();
+    let wanted = rows.iter().map(|row| expected(row[3])).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-INPUTS-OUTCOMES-EXPECTED.txt"), format!("{rows:#?}\n{inputs:#?}\n{actual:#?}\n{wanted:#?}\n"))?;
+    let direct = [0,2,3].map(|count| {
+        let arguments = vec![Value::Null; count];
+        let actual = codegen_runtime::call("format_guid_string", &arguments);
+        let wanted = Err(RuntimeError::Function(FunctionError::ArityMismatch { function: "format_guid_string", expected: 1, got: count }));
+        (arguments, actual, wanted)
+    });
+    fs::write(directory.join("COMPLETE-DIRECT-ARITY-CONTROLS.txt"), format!("{direct:#?}\n"))?;
+    let mismatches = rows.iter().zip(actual.iter().zip(&wanted)).filter(|(_, (actual, wanted))| actual != wanted).collect::<Vec<_>>();
+    fs::write(directory.join("COMPLETE-COMPARISONS.txt"), format!("calls={}\n{mismatches:#?}\n", rows.len()))?;
+    if rows.len()!=22 || !mismatches.is_empty() || direct.iter().any(|(_, actual, wanted)| actual != wanted) {
+        return Err("complete GUID formatter cohort differs".into());
+    }
+    println!("22 complete generated GUID calls and 3 direct arity controls passed");
+    Ok(())
+}
