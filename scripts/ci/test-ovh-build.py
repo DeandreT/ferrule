@@ -16,7 +16,7 @@ GUARD = Path(__file__).with_name("guard-ovh-job.sh")
 
 
 class ResourceGuardTests(unittest.TestCase):
-    def run_guard(self, *, free_kib="4194304", user="ferrule-runner",
+    def run_guard(self, *, free_kib="16777216", user="ferrule-runner",
                   runner="self-hosted", home="/home/ferrule-runner",
                   symlink="", env_file=True):
         with tempfile.TemporaryDirectory(prefix="ferrule-ci-guard-") as tmp:
@@ -71,7 +71,7 @@ class ResourceGuardTests(unittest.TestCase):
                 self.assert_refused(**options)
 
     def test_disk_failure_before_build(self):
-        for capacity in ("4194303", "0", "unknown", ""):
+        for capacity in ("16777215", "4194304", "0", "unknown", ""):
             with self.subTest(free_kib=capacity):
                 self.assert_refused(free_kib=capacity)
 

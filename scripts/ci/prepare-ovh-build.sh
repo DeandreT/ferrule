@@ -24,8 +24,8 @@ if [[ $(realpath -m "$cache_root") != "$cache_root" ||
 fi
 
 available_kib=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
-if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < 4 * 1024 * 1024 )); then
-  echo 'OVH needs at least 4 GiB free before starting a build; inspect Ferrule caches.' >&2
+if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < 16 * 1024 * 1024 )); then
+  echo 'OVH needs at least 16 GiB free before starting a build; inspect Ferrule caches.' >&2
   df -h "$HOME" >&2
   exit 1
 fi
