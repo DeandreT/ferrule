@@ -1,0 +1,170 @@
+{
+  "status": "ROOT_FROZEN_ADDITIVE_INDEPENDENT_EXPECTATIONS_ALL_EXECUTION_UNRUN",
+  "created_ns": 1791659551896673696,
+  "issue": 325,
+  "prior72_catalog_unchanged": true,
+  "rows": [
+    {
+      "id": "A01",
+      "operation": "decode_verified_instance",
+      "input_utf8": "{\"kind\":\"null\"}",
+      "expected_descriptor": {
+        "byte_len": 16,
+        "sha256": "f1c0649d0d3ab26a3841bff912e8a70af069512bd632f5c19f87b10439a44f24"
+      },
+      "independent_expected": {
+        "error": "LengthMismatch",
+        "no_instance": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A02",
+      "operation": "decode_verified_instance",
+      "input_hex": "7b226b696e64223a22737472696e67222c2276616c7565223a22ff227d",
+      "descriptor_recipe": "Complete original input length and SHA256, independently computed before decode",
+      "independent_expected": {
+        "error": "Syntax",
+        "no_instance": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A03",
+      "operation": "encode_instance_and_decode_verified_instance_separately",
+      "typed_ir_constructor": "ir::Instance::Scalar(ir::Value::Bool(true))",
+      "input_utf8": "{\"kind\":\"bool\",\"value\":true}",
+      "descriptor_recipe": "Complete independent wire length and SHA256 before decode",
+      "independent_expected": {
+        "encode_error": "UnsupportedInstanceKind",
+        "decode_error": "UnsupportedInstanceKind",
+        "no_instance": true,
+        "no_encoded_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A04",
+      "operation": "encode_instance_and_decode_verified_instance_separately",
+      "typed_ir_constructor": "ir::Instance::Scalar(ir::Value::Int(1))",
+      "input_utf8": "{\"kind\":\"int\",\"value\":1}",
+      "descriptor_recipe": "Complete independent wire length and SHA256 before decode",
+      "independent_expected": {
+        "encode_error": "UnsupportedInstanceKind",
+        "decode_error": "UnsupportedInstanceKind",
+        "no_instance": true,
+        "no_encoded_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A05",
+      "operation": "encode_instance_and_decode_verified_instance_separately",
+      "typed_ir_constructor": "ir::Instance::Scalar(ir::Value::Float(1.25))",
+      "input_utf8": "{\"kind\":\"float\",\"value\":1.25}",
+      "descriptor_recipe": "Complete independent wire length and SHA256 before decode",
+      "independent_expected": {
+        "encode_error": "UnsupportedInstanceKind",
+        "decode_error": "UnsupportedInstanceKind",
+        "no_instance": true,
+        "no_encoded_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A06",
+      "operation": "encode_instance_and_decode_verified_instance_separately",
+      "typed_ir_constructor": "ir::Instance::Scalar(ir::Value::xml_nil())",
+      "input_utf8": "{\"kind\":\"xml_nil\"}",
+      "descriptor_recipe": "Complete independent wire length and SHA256 before decode",
+      "independent_expected": {
+        "encode_error": "UnsupportedInstanceKind",
+        "decode_error": "UnsupportedInstanceKind",
+        "no_instance": true,
+        "no_encoded_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A07",
+      "operation": "encode_instance_and_decode_verified_instance_separately",
+      "typed_ir_constructor": "ir::Instance::Scalar(ir::Value::json_null())",
+      "input_utf8": "{\"kind\":\"json_null\"}",
+      "descriptor_recipe": "Complete independent wire length and SHA256 before decode",
+      "independent_expected": {
+        "encode_error": "UnsupportedInstanceKind",
+        "decode_error": "UnsupportedInstanceKind",
+        "no_instance": true,
+        "no_encoded_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A08",
+      "operation": "decode_verified_instance",
+      "input_utf8": "{\"kind\":\"null\",\"k\\u0069nd\":\"null\"}",
+      "descriptor_recipe": "Complete independent original wire length and SHA256 before decode",
+      "independent_expected": {
+        "error": "DuplicateField",
+        "decoded_key": "kind",
+        "no_instance": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "A09",
+      "operation": "crate_private_diagnostics_capture_unit_test",
+      "clarifies_existing_id": "E16",
+      "input_recipe": "Hand-authored Error has Display exactly C0 and source chain nine distinct finite Error nodes with Display exactly C1 through C9, each source to next, C9.source=None. No IO wrapper or PdfError wrapper in this capture-only test.",
+      "independent_expected": {
+        "display": {
+          "text": "C0",
+          "truncated": false
+        },
+        "causes": [
+          {
+            "text": "C1",
+            "truncated": false
+          },
+          {
+            "text": "C2",
+            "truncated": false
+          },
+          {
+            "text": "C3",
+            "truncated": false
+          },
+          {
+            "text": "C4",
+            "truncated": false
+          },
+          {
+            "text": "C5",
+            "truncated": false
+          },
+          {
+            "text": "C6",
+            "truncated": false
+          },
+          {
+            "text": "C7",
+            "truncated": false
+          },
+          {
+            "text": "C8",
+            "truncated": false
+          }
+        ],
+        "cause_chain_truncated": true,
+        "aggregate_retained_utf8_bytes": 18
+      },
+      "no_public_error_API_added": true,
+      "actual": "UNRUN"
+    }
+  ],
+  "row_count": 9,
+  "approved_new_fixture_role": "crates/pdf-worker/tests/fixtures/wire-vectors-supplement.json",
+  "approved_diagnostics_test_location": "crates/pdf-worker/src/error.rs cfg(test) unit tests using crate-private borrowed capture",
+  "root_future_test_command_addition": "cargo test --offline --locked --jobs 1 -p pdf-worker --lib",
+  "limits": "These are finite codec/capture coverage additions, not a worker/RSS/OS/GUI qualification. No observed candidate result is an expected oracle."
+}
