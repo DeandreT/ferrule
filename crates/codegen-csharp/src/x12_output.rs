@@ -90,7 +90,7 @@ pub(crate) fn emit(
         .map_err(X12EmitError::from)
 }
 
-pub(crate) const X12_SOURCES: [(&str, &str); 3] = [
+pub(crate) const X12_SOURCES: [(&str, &str); 8] = [
     (
         "Runtime/X12/FerruleX12.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.cs"),
@@ -98,6 +98,26 @@ pub(crate) const X12_SOURCES: [(&str, &str); 3] = [
     (
         "Runtime/X12/FerruleX12.Schema.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Schema.cs"),
+    ),
+    (
+        "Runtime/X12/FerruleX12.Reader.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Reader.cs"),
+    ),
+    (
+        "Runtime/X12/FerruleX12.Numeric.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Numeric.cs"),
+    ),
+    (
+        "Runtime/X12/FerruleX12.Writer.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Writer.cs"),
+    ),
+    (
+        "Runtime/X12/FerruleX12.Completion.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Completion.cs"),
+    ),
+    (
+        "Runtime/X12/FerruleX12.Lexical.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Lexical.cs"),
     ),
     (
         "Runtime/X12/FerruleX12Exception.cs",
@@ -152,8 +172,13 @@ fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> Str
         } else {
             "        var target = Execute(input);\n"
         });
+        let context = if contextual && target_x12 {
+            ", executionContext"
+        } else {
+            ""
+        };
         output.push_str(&format!(
-            "        return global::Ferrule.Runtime.{serialize}.SerializeEmbedded{suffix}(X12TargetDescriptor, target);\n    }}\n"
+            "        return global::Ferrule.Runtime.{serialize}.SerializeEmbedded{suffix}(X12TargetDescriptor, target{context});\n    }}\n"
         ));
     }
     output.push_str("}\n");
@@ -181,5 +206,19 @@ const SERIALIZE: &str = r#"
     public static byte[] SerializeX12Bytes(global::Ferrule.Runtime.FerruleInstance target)
     {
         return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedBytes(X12TargetDescriptor, target);
+    }
+
+    public static string SerializeX12(
+        global::Ferrule.Runtime.FerruleInstance target,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbedded(X12TargetDescriptor, target, executionContext);
+    }
+
+    public static byte[] SerializeX12Bytes(
+        global::Ferrule.Runtime.FerruleInstance target,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedBytes(X12TargetDescriptor, target, executionContext);
     }
 "#;

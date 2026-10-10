@@ -33,14 +33,14 @@ public static partial class FerruleX12
     {
         ArgumentNullException.ThrowIfNull(document);
         RequireUtf8(document, MaximumDocumentBytes, "X12 input");
-        Profile profile = ParseProfile(descriptor);
+        Profile profile = ParseProfile(descriptor, input: true);
         Syntax syntax = DiscoverSyntax(document);
         if (profile.Separators is { } selected && selected != syntax)
             throw Failure(FerruleX12Error.Syntax, "Configured separators do not match ISA.");
         List<Segment> segments = Tokenize(document, syntax);
         ValidateEnvelope(segments);
         var cursor = new Cursor(segments, syntax, profile);
-        FerruleInstance result = ReadContainer(profile.Root, cursor, [], 0, root: true);
+        FerruleInstance result = ReadContainer(profile.Root, cursor, [], 0, [], root: true);
         if (cursor.Position != segments.Count)
             throw Failure(FerruleX12Error.Schema, "The schema did not consume the complete interchange.", cursor.Position);
         return result;
@@ -49,14 +49,31 @@ public static partial class FerruleX12
     public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance document)
         => StrictUtf8.GetBytes(SerializeEmbedded(descriptor, document));
 
+    public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance document, FerruleExecutionContext executionContext)
+        => StrictUtf8.GetBytes(SerializeEmbedded(descriptor, document, executionContext));
+
     public static string SerializeEmbedded(string descriptor, FerruleInstance document)
+        => SerializeOutput(descriptor, document, null);
+
+    public static string SerializeEmbedded(string descriptor, FerruleInstance document, FerruleExecutionContext executionContext)
+    {
+        ArgumentNullException.ThrowIfNull(executionContext);
+        return SerializeOutput(descriptor, document, executionContext);
+    }
+
+    private static string SerializeOutput(string descriptor, FerruleInstance document, FerruleExecutionContext? executionContext)
     {
         ArgumentNullException.ThrowIfNull(document);
-        Profile profile = ParseProfile(descriptor);
+        Profile profile = ParseProfile(descriptor, input: false);
         Syntax syntax = profile.Separators ?? new('*', ':', '~');
+        FerruleInstance outputView = HasOutputLexical(profile.Root)
+            ? FormatOutputView(profile.Root, document, [], new Budget(), 0)
+            : document;
+        if (profile.Autocomplete is not null)
+            outputView = CompleteOutputView(profile, outputView, executionContext);
         var segments = new List<Segment>();
         var budget = new Budget();
-        WriteContainer(profile.Root, document, profile, [], segments, budget, 0, root: true);
+        WriteContainer(profile.Root, outputView, profile, [], segments, budget, 0, root: true);
         // ISA padding is a fixed-width encoding operation, never control allocation.
         if (segments.Count == 0 || segments[0].Id != "ISA" || segments[0].Elements.Length != 16)
             throw Failure(FerruleX12Error.Envelope, "X12 output requires a complete ISA.");
