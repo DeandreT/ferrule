@@ -43,6 +43,10 @@ For GUI changes, exercise the real controls in addition to state methods:
 
 ## Run the appropriate checks
 
+Native and generated-backend CI can use the dedicated OVHcloud build runner.
+See [OVHcloud CI operations](ovh-ci.md) for provisioning, isolation, resource
+limits, and the GitHub-hosted fallback switch.
+
 Install nightly Rust and its formatting/lint components. The repository CI
 uses nightly; dependencies and generated API contracts should be checked
 against the actual toolchain used for the run.
