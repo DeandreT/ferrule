@@ -331,8 +331,8 @@ fn unselected_x12_options_and_versions_are_not_discarded() -> TestResult<()> {
     record("unselected-version", &(&program, &selected, &original))?;
     assert!(matches!(original,Err(StaticDocumentBoundaryError::X12 {
         owner:StaticDocumentBoundaryOwner::NamedTarget {index:0,name},
-        error:X12BoundaryPolicyError::Schema {..},
-    }) if name == "Advice"));
+        error,
+    }) if name == "Advice" && matches!(error.as_ref(), X12BoundaryPolicyError::Schema {..})));
     Ok(())
 }
 
