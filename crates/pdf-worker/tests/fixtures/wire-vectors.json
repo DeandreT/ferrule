@@ -1,0 +1,1648 @@
+{
+  "status": "FROZEN_SOURCE_PLAN_LITERAL_INPUTS_AND_EXPECTATIONS_BEFORE_IMPLEMENTATION_ALL_ACTUALS_UNRUN",
+  "identity": {
+    "protocol": "ferrule.pdf-worker/1",
+    "request_id": "0123456789abcdef0123456789abcdef",
+    "profile": "linux-x86_64-v1"
+  },
+  "layout": {
+    "root_name": "Document",
+    "page_selection": {
+      "kind": "first"
+    },
+    "commands": [
+      {
+        "kind": "capture",
+        "name": "Value",
+        "region": {
+          "left": {
+            "reference": {
+              "kind": "left"
+            },
+            "offset": 0.0
+          },
+          "top": {
+            "reference": {
+              "kind": "top"
+            },
+            "offset": 0.0
+          },
+          "right": {
+            "reference": {
+              "kind": "right"
+            },
+            "offset": 0.0
+          },
+          "bottom": {
+            "reference": {
+              "kind": "bottom"
+            },
+            "offset": 0.0
+          }
+        },
+        "algorithm": {
+          "kind": "basic_visual",
+          "separate_words": "insert_space",
+          "whitespace": "default"
+        }
+      }
+    ]
+  },
+  "canonical_order": "Explicit JSON-object field order shown in literals; Group pair/item order remains data order. Decoders accept object member reordering but never duplicate closed wire-object keys.",
+  "case_count": 72,
+  "group_counts": {
+    "diagnostics": 2,
+    "handshake": 4,
+    "instance": 18,
+    "library_parity": 4,
+    "pdf_error": 14,
+    "request": 17,
+    "result": 7,
+    "scan": 4,
+    "writer": 2
+  },
+  "planned_public_PDF_calls": 4,
+  "literal_rows": [
+    {
+      "id": "R01",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "accept": true,
+        "identity": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1"
+        },
+        "layout": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        },
+        "input": {
+          "name": "input.pdf",
+          "byte_len": 578,
+          "sha256": "a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a"
+        }
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R02",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/2\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "UnknownVersion"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R03",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"ABCDEF0123456789abcdef0123456789ab\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidRequestId"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R04",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"windows-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "UnknownProfile"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R05",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"},\"protocol\":\"ferrule.pdf-worker/1\"}"
+      },
+      "independent_expected": {
+        "error": "DuplicateField",
+        "field": "protocol"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R06",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"},\"extra\":true}"
+      },
+      "independent_expected": {
+        "error": "UnknownField",
+        "field": "extra"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R07",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"../input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidFixedName"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R08",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":8388609,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InputTooLarge"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R09",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":-1,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidLength"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R10",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":1.0,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidLength"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R11",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"000000000000000000000000000000000000000000000000000000000000000G\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidSha256"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R12",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}],\"repair_dependency\":{\"kind\":\"object_find\"}},\"input\":{\"name\":\"input.pdf\",\"byte_len\":8388609,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "RepairDependency",
+        "kind": "object_find",
+        "priority_before_declared_input_size": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R13",
+      "group": "request",
+      "input": {
+        "recipe": "R01 bytes plus ASCII spaces to exactly 4194304 bytes"
+      },
+      "independent_expected": {
+        "accept": true,
+        "identity": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1"
+        }
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R14",
+      "group": "request",
+      "input": {
+        "recipe": "R01 bytes plus ASCII spaces to exactly 4194305 bytes"
+      },
+      "independent_expected": {
+        "error": "RequestTooLarge",
+        "observed_bytes": 4194305
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R15",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}} {}"
+      },
+      "independent_expected": {
+        "error": "TrailingData"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R16",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[{\"kind\":\"capture\",\"name\":\"Value\",\"region\":{\"left\":{\"reference\":{\"kind\":\"left\"},\"offset\":0.0},\"top\":{\"reference\":{\"kind\":\"top\"},\"offset\":0.0},\"right\":{\"reference\":{\"kind\":\"right\"},\"offset\":0.0},\"bottom\":{\"reference\":{\"kind\":\"bottom\"},\"offset\":0.0}},\"algorithm\":{\"kind\":\"basic_visual\",\"separate_words\":\"insert_space\",\"whitespace\":\"default\"}}]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}"
+      },
+      "independent_expected": {
+        "error": "Syntax"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "R17",
+      "group": "request",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"layout\":{\"root_name\":\"Document\",\"page_selection\":{\"kind\":\"first\"},\"commands\":[]},\"input\":{\"name\":\"input.pdf\",\"byte_len\":578,\"sha256\":\"a0e1d43d4b6c4a36c9ebd8c87996fc002af01877a57be8e4a41a4a018e20031a\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidLayout",
+        "mapping_error_variant": "NoOutput"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T01",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"group\",\"fields\":[[\"Empty\",{\"kind\":\"string\",\"value\":\"\"}],[\"Null\",{\"kind\":\"null\"}],[\"Unicode\",{\"kind\":\"string\",\"value\":\"雪\\u0000😀é\"}],[\"Rows\",{\"kind\":\"repeated\",\"items\":[{\"kind\":\"string\",\"value\":\"second\"},{\"kind\":\"string\",\"value\":\"first\"}]}]]}"
+      },
+      "independent_expected": {
+        "typed_ir": [
+          "Group",
+          [
+            [
+              "Empty",
+              [
+                "String",
+                ""
+              ]
+            ],
+            [
+              "Null",
+              [
+                "Null"
+              ]
+            ],
+            [
+              "Unicode",
+              [
+                "String",
+                "雪\u0000😀é"
+              ]
+            ],
+            [
+              "Rows",
+              [
+                "Repeated",
+                [
+                  [
+                    "String",
+                    "second"
+                  ],
+                  [
+                    "String",
+                    "first"
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        "nodes": 7,
+        "depth_edges": 2,
+        "value_utf8_bytes": 22,
+        "origin": "Unknown at every Group"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T02",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"group\",\"fields\":[[\"A\",{\"kind\":\"null\"}],[\"A\",{\"kind\":\"string\",\"value\":\"v\"}]]}"
+      },
+      "independent_expected": {
+        "accept": true,
+        "ordered_field_names": [
+          "A",
+          "A"
+        ],
+        "duplicate_data_names_not_duplicate_JSON_keys": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T03",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"int\",\"value\":1}"
+      },
+      "independent_expected": {
+        "error": "UnsupportedInstanceKind"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T04",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"document_set\",\"items\":[]}"
+      },
+      "independent_expected": {
+        "error": "UnsupportedInstanceKind"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T05",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"mapped_sequence\",\"items\":[]}"
+      },
+      "independent_expected": {
+        "error": "UnsupportedInstanceKind"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T06",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"null\",\"kind\":\"null\"}"
+      },
+      "independent_expected": {
+        "error": "DuplicateField"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T07",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"null\",\"value\":null}"
+      },
+      "independent_expected": {
+        "error": "UnknownField"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T08",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"string\",\"value\":\"\\uD800\"}"
+      },
+      "independent_expected": {
+        "error": "Syntax"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T09",
+      "group": "instance",
+      "input": {
+        "utf8": "{\"kind\":\"group\",\"fields\":[[\"A\"]]}"
+      },
+      "independent_expected": {
+        "error": "InvalidPairArity"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T10",
+      "group": "instance",
+      "input": {
+        "typed_ir_constructor": "Create Vec<(String,ir::Instance)>::new(); convert using ir::InstanceGroup::from; attach ir::XmlTypeOrigin::Absent using with_xml_type_origin, independently require its Result Ok, then wrap the returned group in ir::Instance::Group. Do not treat Result<InstanceGroup,XmlTypeOriginError> as an InstanceGroup."
+      },
+      "independent_expected": {
+        "error": "UnsupportedXmlOrigin",
+        "no_silent_loss": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T11",
+      "group": "instance",
+      "input": {
+        "recipe": "64 nested Group nodes each with one A pair, then Null leaf (root edge depth0)"
+      },
+      "independent_expected": {
+        "accept": true,
+        "nodes": 65,
+        "depth_edges": 64,
+        "value_utf8_bytes": 0
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T12",
+      "group": "instance",
+      "input": {
+        "recipe": "65 nested Group nodes each with one A pair, then Null leaf"
+      },
+      "independent_expected": {
+        "error": "InstanceDepth",
+        "maximum_depth_edges": 64
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T13",
+      "group": "instance",
+      "input": {
+        "recipe": "Repeated containing 999999 Null children"
+      },
+      "independent_expected": {
+        "accept": true,
+        "nodes": 1000000,
+        "depth_edges": 1
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T14",
+      "group": "instance",
+      "input": {
+        "recipe": "Repeated containing 1000000 Null children"
+      },
+      "independent_expected": {
+        "error": "InstanceNodes",
+        "maximum": 1000000
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T15",
+      "group": "instance",
+      "input": {
+        "recipe": "String value A repeated 1048576 UTF-8 bytes"
+      },
+      "independent_expected": {
+        "accept": true,
+        "value_utf8_bytes": 1048576
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T16",
+      "group": "instance",
+      "input": {
+        "recipe": "String value A repeated 1048577 UTF-8 bytes"
+      },
+      "independent_expected": {
+        "error": "InstanceValueBytes",
+        "maximum": 1048576
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T17",
+      "group": "instance",
+      "input": {
+        "recipe": "T01 bytes plus ASCII spaces to exactly 67108864 bytes"
+      },
+      "independent_expected": {
+        "accept": true,
+        "original_byte_len": 67108864
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "T18",
+      "group": "instance",
+      "input": {
+        "recipe": "T01 bytes plus ASCII spaces to exactly 67108865 bytes"
+      },
+      "independent_expected": {
+        "error": "InstanceTooLarge",
+        "observed_bytes": 67108865
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "S01",
+      "group": "scan",
+      "input": {
+        "recipe": "256 opening [, scalar0, 256 closing ]"
+      },
+      "independent_expected": {
+        "scan_accept": true,
+        "container_depth": 256,
+        "bytes": 513,
+        "typed_decode_still_refuses_wrong_shape": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "S02",
+      "group": "scan",
+      "input": {
+        "recipe": "257 opening [, scalar0, 257 closing ]"
+      },
+      "independent_expected": {
+        "error": "TransportDepth",
+        "maximum": 256,
+        "bytes": 515
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "S03",
+      "group": "scan",
+      "input": {
+        "utf8": "{\"x\":\"[\\\"}雪]\"}"
+      },
+      "independent_expected": {
+        "scan_accept": true,
+        "container_depth": 1,
+        "strings_do_not_add_container_depth": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "S04",
+      "group": "scan",
+      "input": {
+        "hex": "7b2278223a22ff227d"
+      },
+      "independent_expected": {
+        "error": "Syntax",
+        "reason": "invalid UTF-8"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O01",
+      "group": "result",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"ok\",\"name\":\"instance.json\",\"byte_len\":256,\"sha256\":\"968311df7bf0753cd9427e42c551fe9efc7e80cfc78c6316552412c5edb26b96\"}}"
+      },
+      "independent_expected": {
+        "accept": true,
+        "required_exit_code": 0,
+        "result": {
+          "kind": "ok",
+          "name": "instance.json",
+          "byte_len": 256,
+          "sha256": "968311df7bf0753cd9427e42c551fe9efc7e80cfc78c6316552412c5edb26b96"
+        }
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O02",
+      "group": "result",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"ffffffffffffffffffffffffffffffff\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"ok\",\"name\":\"instance.json\",\"byte_len\":256,\"sha256\":\"968311df7bf0753cd9427e42c551fe9efc7e80cfc78c6316552412c5edb26b96\"}}",
+        "expected_identity": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1"
+        }
+      },
+      "independent_expected": {
+        "error": "IdentityMismatch"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O03",
+      "group": "result",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"ok\",\"name\":\"instance.part\",\"byte_len\":256,\"sha256\":\"968311df7bf0753cd9427e42c551fe9efc7e80cfc78c6316552412c5edb26b96\"}}"
+      },
+      "independent_expected": {
+        "error": "InvalidFixedName"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O04",
+      "group": "result",
+      "input": {
+        "recipe": "O01 bytes plus ASCII spaces to exactly 65536 bytes"
+      },
+      "independent_expected": {
+        "accept": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O05",
+      "group": "result",
+      "input": {
+        "recipe": "O01 bytes plus ASCII spaces to exactly 65537 bytes"
+      },
+      "independent_expected": {
+        "error": "ResultTooLarge",
+        "observed_bytes": 65537
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O06",
+      "group": "result",
+      "input": {
+        "utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"ok\",\"name\":\"instance.json\",\"byte_len\":256,\"sha256\":\"968311df7bf0753cd9427e42c551fe9efc7e80cfc78c6316552412c5edb26b96\"},\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"input_too_large\"},\"diagnostics\":{\"display\":{\"text\":\"x\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}"
+      },
+      "independent_expected": {
+        "error": "DuplicateField",
+        "field": "outcome"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "O07",
+      "group": "result",
+      "input": {
+        "instance_utf8": "{\"kind\":\"group\",\"fields\":[[\"Empty\",{\"kind\":\"string\",\"value\":\"\"}],[\"Null\",{\"kind\":\"null\"}],[\"Unicode\",{\"kind\":\"string\",\"value\":\"雪\\u0000😀é\"}],[\"Rows\",{\"kind\":\"repeated\",\"items\":[{\"kind\":\"string\",\"value\":\"second\"},{\"kind\":\"string\",\"value\":\"first\"}]}]]}",
+        "descriptor": {
+          "kind": "ok",
+          "name": "instance.json",
+          "byte_len": 256,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "independent_expected": {
+        "error": "DigestMismatch",
+        "no_instance_return": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E01",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "repair_dependency",
+        "structured": {
+          "kind": "object_find"
+        },
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "repair_dependency",
+        "structured": {
+          "kind": "object_find"
+        },
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "repair_dependency",
+              "kind": "object_find"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF extraction blocked: unsupported native PDF ObjectFind detection; the stored extraction layout is a repair draft",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"repair_dependency\",\"kind\":\"object_find\"},\"diagnostics\":{\"display\":{\"text\":\"PDF extraction blocked: unsupported native PDF ObjectFind detection; the stored extraction layout is a repair draft\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E02",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "io",
+        "structured": {
+          "kind": "NotFound",
+          "raw_os_error": null
+        },
+        "io_constructor_if_needed": "std::io::Error::new(NotFound, hand-written cause Display=missing/source=None)"
+      },
+      "independent_expected": {
+        "wire_variant": "io",
+        "structured": {
+          "kind": "NotFound",
+          "raw_os_error": null
+        },
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "io",
+              "kind": "NotFound",
+              "raw_os_error": null
+            },
+            "diagnostics": {
+              "display": {
+                "text": "io error: missing",
+                "truncated": false
+              },
+              "causes": [
+                {
+                  "text": "missing",
+                  "truncated": false
+                }
+              ],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"io\",\"kind\":\"NotFound\",\"raw_os_error\":null},\"diagnostics\":{\"display\":{\"text\":\"io error: missing\",\"truncated\":false},\"causes\":[{\"text\":\"missing\",\"truncated\":false}],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E03",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "input_too_large",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "input_too_large",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "input_too_large"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF input exceeds the 8388608-byte limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"input_too_large\"},\"diagnostics\":{\"display\":{\"text\":\"PDF input exceeds the 8388608-byte limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E04",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "too_many_pages",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "too_many_pages",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "too_many_pages"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF document exceeds the 256-page limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"too_many_pages\"},\"diagnostics\":{\"display\":{\"text\":\"PDF document exceeds the 256-page limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E05",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "too_many_events",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "too_many_events",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "too_many_events"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF document exceeds the 1000000-event limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"too_many_events\"},\"diagnostics\":{\"display\":{\"text\":\"PDF document exceeds the 1000000-event limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E06",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "decoded_text_too_large",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "decoded_text_too_large",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "decoded_text_too_large"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF decoded text exceeds the 1048576-byte limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"decoded_text_too_large\"},\"diagnostics\":{\"display\":{\"text\":\"PDF decoded text exceeds the 1048576-byte limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E07",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "too_many_output_nodes",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "too_many_output_nodes",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "too_many_output_nodes"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF output exceeds the 1000000-node limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"too_many_output_nodes\"},\"diagnostics\":{\"display\":{\"text\":\"PDF output exceeds the 1000000-node limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E08",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "value_too_large",
+        "structured": {
+          "path": "Rows/Value"
+        },
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "value_too_large",
+        "structured": {
+          "path": "Rows/Value"
+        },
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "value_too_large",
+              "path": "Rows/Value"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF output value exceeds the 1048576-byte limit at `Rows/Value`",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"value_too_large\",\"path\":\"Rows/Value\"},\"diagnostics\":{\"display\":{\"text\":\"PDF output value exceeds the 1048576-byte limit at `Rows/Value`\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E09",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "instance_too_deep",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "instance_too_deep",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "instance_too_deep"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF output exceeds the 64-level depth limit",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"instance_too_deep\"},\"diagnostics\":{\"display\":{\"text\":\"PDF output exceeds the 64-level depth limit\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E10",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "invalid_pdf",
+        "structured": {
+          "message": "literal invalid PDF"
+        },
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "invalid_pdf",
+        "structured": {
+          "message": "literal invalid PDF"
+        },
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "invalid_pdf",
+              "message": "literal invalid PDF"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "invalid PDF: literal invalid PDF",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"invalid_pdf\",\"message\":\"literal invalid PDF\"},\"diagnostics\":{\"display\":{\"text\":\"invalid PDF: literal invalid PDF\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E11",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "invalid_layout",
+        "structured": {
+          "message": "literal invalid layout"
+        },
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "invalid_layout",
+        "structured": {
+          "message": "literal invalid layout"
+        },
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "invalid_layout",
+              "message": "literal invalid layout"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "invalid PDF layout at runtime: literal invalid layout",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"invalid_layout\",\"message\":\"literal invalid layout\"},\"diagnostics\":{\"display\":{\"text\":\"invalid PDF layout at runtime: literal invalid layout\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E12",
+      "group": "pdf_error",
+      "input": {
+        "typed_PdfError_variant": "invalid_candidate_region",
+        "structured": null,
+        "io_constructor_if_needed": null
+      },
+      "independent_expected": {
+        "wire_variant": "invalid_candidate_region",
+        "structured": null,
+        "required_exit_code": 2,
+        "diagnostics_are_separately_bounded_not_variant_replacements": true,
+        "complete_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "pdf_error",
+            "error": {
+              "variant": "invalid_candidate_region"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "invalid PDF layout at runtime: command resolved outside its candidate region",
+                "truncated": false
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"pdf_error\",\"error\":{\"variant\":\"invalid_candidate_region\"},\"diagnostics\":{\"display\":{\"text\":\"invalid PDF layout at runtime: command resolved outside its candidate region\",\"truncated\":false},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "display_source_basis": "Pinned format-pdf error attributes; E01 also pinned PdfRepairDependency Display. E02 hand-written cause has no child source; PdfError::Io owns the I/O error as its source, retained once."
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E13",
+      "group": "pdf_error",
+      "input": {
+        "constructor_recipe": "PdfError::ValueTooLarge(A repeated path_repeat_count); bounded Display capture=4096 UTF8 bytes; empty causechain",
+        "path_repeat_count": 61153,
+        "canonical_encoding": "protocol,request_id,profile,outcome; outcome kind,error,diagnostics; compact JSON, raw UTF8, no trailing newline"
+      },
+      "independent_expected": {
+        "attempted_byte_len": 65536,
+        "attempted_sha256": "8b2f15fcfb8eca0dae40d71bf2e511a601f151926a38748fc2709b373ed31584",
+        "original_pdf_variant": "value_too_large",
+        "diagnostics": {
+          "display": {
+            "text": "PDF output value exceeds the 1048576-byte limit at `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "truncated": true
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "outcome": "pdf_error",
+        "structured_path_bytes": 61153
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E14",
+      "group": "pdf_error",
+      "input": {
+        "constructor_recipe": "PdfError::ValueTooLarge(A repeated path_repeat_count); bounded Display capture=4096 UTF8 bytes; empty causechain",
+        "path_repeat_count": 61154,
+        "canonical_encoding": "protocol,request_id,profile,outcome; outcome kind,error,diagnostics; compact JSON, raw UTF8, no trailing newline"
+      },
+      "independent_expected": {
+        "attempted_byte_len": 65537,
+        "attempted_sha256": "631a19a3a64abecfe5bb27f850e090e536a81aaa8f4ad4c8b8748f86a85ed711",
+        "original_pdf_variant": "value_too_large",
+        "diagnostics": {
+          "display": {
+            "text": "PDF output value exceeds the 1048576-byte limit at `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "truncated": true
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "outcome": "host_error",
+        "variant": "error_envelope_too_large",
+        "no_truncated_PdfError_reconstruction": true,
+        "complete_fallback_wire_object": {
+          "protocol": "ferrule.pdf-worker/1",
+          "request_id": "0123456789abcdef0123456789abcdef",
+          "profile": "linux-x86_64-v1",
+          "outcome": {
+            "kind": "host_error",
+            "error": {
+              "variant": "error_envelope_too_large",
+              "original_pdf_variant": "value_too_large",
+              "attempted_byte_len": 65537,
+              "attempted_sha256": "631a19a3a64abecfe5bb27f850e090e536a81aaa8f4ad4c8b8748f86a85ed711"
+            },
+            "diagnostics": {
+              "display": {
+                "text": "PDF output value exceeds the 1048576-byte limit at `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "truncated": true
+              },
+              "causes": [],
+              "cause_chain_truncated": false
+            }
+          }
+        },
+        "fallback_canonical_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"outcome\":{\"kind\":\"host_error\",\"error\":{\"variant\":\"error_envelope_too_large\",\"original_pdf_variant\":\"value_too_large\",\"attempted_byte_len\":65537,\"attempted_sha256\":\"631a19a3a64abecfe5bb27f850e090e536a81aaa8f4ad4c8b8748f86a85ed711\"},\"diagnostics\":{\"display\":{\"text\":\"PDF output value exceeds the 1048576-byte limit at `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"truncated\":true},\"causes\":[],\"cause_chain_truncated\":false}}}",
+        "fallback_byte_len": 4537,
+        "fallback_sha256": "1b09d7b88b521dab35fbcc5260c06b7f1f8b97880dd6f4e738eeb39522eaad76"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E15",
+      "group": "diagnostics",
+      "input": {
+        "recipe": "Display writes 4095 ASCII A then Unicode雪 then more data"
+      },
+      "independent_expected": {
+        "captured_text": "A repeated4095; no partial UTF8 scalar appended",
+        "captured_bytes": 4095,
+        "truncated": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "E16",
+      "group": "diagnostics",
+      "input": {
+        "recipe": "nine finite hand-written source causes C1 through C9"
+      },
+      "independent_expected": {
+        "retained_causes": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5",
+          "C6",
+          "C7",
+          "C8"
+        ],
+        "cause_chain_truncated": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "H01",
+      "group": "handshake",
+      "input": {
+        "ready_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"effective_limits\":{\"address_space_bytes\":536870912,\"cpu_soft_seconds\":30,\"cpu_hard_seconds\":31,\"file_size_bytes\":67108864,\"core_bytes\":0}}",
+        "start_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"start\":true}"
+      },
+      "independent_expected": {
+        "ready_accept": true,
+        "start_accept": true,
+        "no_actual_resource_setup_proof": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "H02",
+      "group": "handshake",
+      "input": {
+        "ready_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"profile\":\"linux-x86_64-v1\",\"effective_limits\":{\"address_space_bytes\":536870912,\"cpu_soft_seconds\":30,\"cpu_hard_seconds\":32,\"file_size_bytes\":67108864,\"core_bytes\":0}}"
+      },
+      "independent_expected": {
+        "error": "EffectiveLimitsMismatch"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "H03",
+      "group": "handshake",
+      "input": {
+        "start_utf8": "{\"protocol\":\"ferrule.pdf-worker/1\",\"request_id\":\"0123456789abcdef0123456789abcdef\",\"start\":false}"
+      },
+      "independent_expected": {
+        "error": "InvalidStartToken"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "H04",
+      "group": "handshake",
+      "input": {
+        "recipe": "H01 ready bytes padded with spaces to4097"
+      },
+      "independent_expected": {
+        "error": "ControlFrameTooLarge",
+        "maximum": 4096
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "P01",
+      "group": "library_parity",
+      "input": {
+        "private_source_fixture": "fixtures/empty-page.pdf",
+        "layout": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        },
+        "public_call": "format_pdf::from_bytes once"
+      },
+      "independent_expected": {
+        "typed_ir": [
+          "Group",
+          [
+            [
+              "Value",
+              [
+                "Null"
+              ]
+            ]
+          ]
+        ],
+        "wire_round_trip_identical_complete_tree": true,
+        "actual_PDF_compatibility": "UNRUN"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "P02",
+      "group": "library_parity",
+      "input": {
+        "private_source_fixture": "fixtures/hello-page.pdf",
+        "layout": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        },
+        "public_call": "format_pdf::from_bytes once"
+      },
+      "independent_expected": {
+        "typed_ir": [
+          "Group",
+          [
+            [
+              "Value",
+              [
+                "String",
+                "Hello"
+              ]
+            ]
+          ]
+        ],
+        "wire_round_trip_identical_complete_tree": true,
+        "actual_PDF_compatibility": "UNRUN"
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "P03",
+      "group": "library_parity",
+      "input": {
+        "bytes_recipe": "8388609 zero bytes",
+        "layout": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ],
+          "repair_dependency": {
+            "kind": "object_find"
+          }
+        },
+        "public_call": "format_pdf::from_bytes once"
+      },
+      "independent_expected": {
+        "PdfError": "RepairDependency(ObjectFind)",
+        "priority_before_PDF_size_and_parse": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "P04",
+      "group": "library_parity",
+      "input": {
+        "bytes_recipe": "8388609 zero bytes",
+        "layout": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        },
+        "public_call": "format_pdf::from_bytes once"
+      },
+      "independent_expected": {
+        "PdfError": "InputTooLarge",
+        "no_parse_needed": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "W01",
+      "group": "writer",
+      "input": {
+        "typed_ir_recipe": "Exact T01 independently authored ordered tree",
+        "writer_recipe": "Hand-written Write accepts at most0 total bytes across calls, then returns io::Error::new(BrokenPipe, literal sink closed); no child source. No filesystem."
+      },
+      "independent_expected": {
+        "error": "WriteIo",
+        "io_kind": "BrokenPipe",
+        "raw_os_error": null,
+        "retained_complete_written_prefix_utf8": "",
+        "bytes_successfully_accepted": 0,
+        "no_complete_EncodedBody_success": true
+      },
+      "actual": "UNRUN"
+    },
+    {
+      "id": "W02",
+      "group": "writer",
+      "input": {
+        "typed_ir_recipe": "Exact T01 independently authored ordered tree",
+        "writer_recipe": "Hand-written Write accepts at most5 total bytes across calls, then returns io::Error::new(BrokenPipe, literal sink closed); no child source. No filesystem."
+      },
+      "independent_expected": {
+        "error": "WriteIo",
+        "io_kind": "BrokenPipe",
+        "raw_os_error": null,
+        "retained_complete_written_prefix_utf8": "{\"kin",
+        "bytes_successfully_accepted": 5,
+        "no_complete_EncodedBody_success": true
+      },
+      "actual": "UNRUN"
+    }
+  ],
+  "method": "Literal JSON/typed fields and independent byte-length/hash arithmetic. No proposed codec, parser, PDF extractor, generator, subprocess or model was run. Large boundaries are recipes, not allocated files. Two additive independently frozen writer failure recipes precede implementation; no filesystem or process.",
+  "unsealed_draft_corrections": "UNSEALED_LITERAL_ARITHMETIC_CORRECTIONS_BEFORE_FINAL_FREEZE.json"
+}

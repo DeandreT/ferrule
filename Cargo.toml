@@ -21,6 +21,7 @@ members = [
     "crates/format-edi",
     "crates/format-flextext",
     "crates/format-pdf",
+    "crates/pdf-worker",
     "crates/format-protobuf",
     "crates/format-xbrl",
     "crates/mfd",

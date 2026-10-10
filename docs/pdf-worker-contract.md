@@ -1,11 +1,12 @@
 # PDF Worker Contract
 
-Status: **reviewed design for [#104](https://github.com/DeandreT/ferrule/issues/104);
-implementation pending**.
-This document defines a future execution route. It does not report an implemented
-worker, qualified resource limits, cancellation tests, or measured memory use.
-The first profile is one PDF extraction in an owned Linux child, using local
-filesystem documents. Mapping and target publication stay in the parent.
+Status: **wire codec implemented and locally verified in
+[#325](https://github.com/DeandreT/ferrule/issues/325)**. The Linux owner, CLI opt-in,
+GUI cancellation and resource qualification remain in the dependent increments
+below. The codec does not launch processes or install resource limits.
+The planned first execution profile is one PDF extraction in an owned Linux
+child, using local filesystem documents. Mapping and target publication stay in
+the parent.
 
 ## Current boundary
 
@@ -277,9 +278,9 @@ contract; arbitrary editor text and payload library calls remain in-process.
 There is no hard process-memory claim for the parent, decoded tree, mapping,
 preview retention or serialized targets. See [Memory use and boundary limits](memory-and-limits.md).
 
-| Increment after this design | Owned source boundary | Dependency and qualification |
+| Increment | Owned source boundary | Dependency and qualification |
 | --- | --- | --- |
-| [A. Versioned wire/library boundary (#325)](https://github.com/DeandreT/ferrule/issues/325) | New `crates/pdf-worker` protocol/error codec and bounded fixture tests; workspace registration | This design accepted; no subprocess, CLI dispatch or GUI change |
+| [A. Versioned wire/library boundary (#325)](https://github.com/DeandreT/ferrule/issues/325) | New `crates/pdf-worker` protocol/error codec and bounded fixture tests; workspace registration | Implemented; 81 frozen cases, affected library tests, formatting and strict lint verified |
 | [B. Linux filesystem worker and CLI opt-in (#326)](https://github.com/DeandreT/ferrule/issues/326) | `crates/pdf-worker` Linux owner/client and worker binary; narrow `crates/cli` filesystem-policy/dispatch/packaging tests | A; real ready/limits/kill/reap and complete library-versus-worker fixture comparisons |
 | [C. GUI filesystem cancellation (#327)](https://github.com/DeandreT/ferrule/issues/327) | File-run and filesystem pipeline adapters/pending-state tests in `crates/gui`; narrow CLI cancellation API seam | B; alternate-display cancellation/close and existing publication regressions |
 | [D. Finite resource qualification (#328)](https://github.com/DeandreT/ferrule/issues/328) | Owned synthetic fixture/protocol tests and public bounded report | B; add C cases after C merges; repeated separate child/parent measurements before any default-policy change |
@@ -288,8 +289,21 @@ Keep `format-pdf` extraction/layout semantics, `mapping::PdfLayout` and `ir` mod
 unchanged. Wire code belongs to the worker package, not a process-launching
 pure format reader. B must remain usable without C; C must not reopen A's
 protocol. Each branch/PR has one increment and merges after its own gates pass.
-Only the two documentation files belong to this design PR. No implementation
-starts before design and peer review.
+The design and pure codec received independent source review. Host, CLI and GUI
+implementation must retain the reviewed protocol and qualify their own behavior.
+
+[`pdf-worker`](../crates/pdf-worker/src/lib.rs) provides bounded request,
+instance, result, ready and start codecs. Ordered field pairs preserve duplicate
+data names, empty structures, absent values and Unicode. Instance byte counts and
+digests are checked before decoding. Its PDF error encoder retains all twelve
+existing variants; an oversized structured error produces a distinct host error
+with the complete attempted encoding's length and digest.
+
+The nine codec test functions execute 72 independently frozen cases plus nine
+additive controls. Two small synthetic PDFs match their complete expected
+`format-pdf` results; repair-layout priority and oversized input rejection also
+run through that library. These checks establish the portable wire boundary.
+They do not qualify subprocess limits, cancellation or memory use.
 
 ## Acceptance gates
 
@@ -297,9 +311,12 @@ starts before design and peer review.
   behavior for this design. Reconcile again against each implementation increment's fresh main.
 - [x] Render both diagrams and inspect complete legibility; source fences alone
   are not render evidence.
-- [ ] Freeze independently expected small PDFs/layouts/typed results before
-  worker execution, preserving full fields, order, nulls and all existing errors.
-- [ ] Exercise exact and one-over input/request/result/diagnostic/depth limits,
+- [x] Freeze independently expected small PDFs/layouts/typed results before
+  codec and library execution, preserving full fields, order, nulls and all existing errors.
+- [x] Exercise the pure codec's exact and one-over request/result/instance,
+  diagnostic, depth and node limits; duplicate/unknown keys, digest/length mismatch,
+  unsupported instance kinds, all PDF error variants and borrowed writer failures.
+- [ ] Repeat boundary checks through the real worker, including input limits,
   sparse and growing inputs, repair-layout priority, invalid/encrypted content,
   upstream panic/abort and malformed/truncated/mismatched result controls;
   retain oversized structured errors as `ErrorEnvelopeTooLarge` with the complete
@@ -319,6 +336,7 @@ starts before design and peer review.
   RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
   RSS observations, input bytes and typed tree size remain separate quantities.
 
-Design review and diagram rendering are complete. Implementation and resource
-qualification gates remain pending. This design establishes no actual worker success, hostile
-PDF safety, universal performance improvement, streaming behavior or RSS ceiling.
+Design review, diagram rendering and pure wire/library checks are complete. The
+Linux worker, CLI, GUI and resource qualification gates remain pending. The codec
+checks establish no actual worker success, hostile PDF safety, streaming behavior
+or RSS ceiling.
