@@ -24,10 +24,11 @@ scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 ## Current Baseline
 
 Status snapshot: 2026-10-10, against merged main
-[`4d32a3a`](https://github.com/DeandreT/ferrule/commit/4d32a3a6272e126937330c57544369cb1d2a0152).
+[`6b94863`](https://github.com/DeandreT/ferrule/commit/6b94863beebbc90f0d094e1387391131f73c5a7c).
 The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
 later ownership and qualification changes. This two-document refresh is
-[#336](https://github.com/DeandreT/ferrule/issues/336).
+[#349](https://github.com/DeandreT/ferrule/issues/349), following merged
+[#337](https://github.com/DeandreT/ferrule/pull/337).
 
 PDF isolation design [#329](https://github.com/DeandreT/ferrule/pull/329) and the
 wire/library increment [#334](https://github.com/DeandreT/ferrule/pull/334) are
@@ -35,23 +36,31 @@ merged; [#325](https://github.com/DeandreT/ferrule/issues/325) is closed. The 21
 local tests, 81 frozen wire cases, strict warnings and formatting pass; hosted
 validation remains pending or unknown. Worker-host
 [#326](https://github.com/DeandreT/ferrule/issues/326) is ongoing on
-`feat/pdf-worker-host`. Source review found primary `ResourceSetup` failures
-misclassified as `Protocol`; local host validation remains unrun.
-GUI [#327](https://github.com/DeandreT/ferrule/issues/327)
-and resource qualification [#328](https://github.com/DeandreT/ferrule/issues/328)
-depend on #326. #328's source-only plan has 20 recipes, 15 exact cases and
+`feat/pdf-worker-host`. The primary `ResourceSetup` association is corrected;
+11 worker and 52 regular CLI tests pass, alongside owned protocol, refusal,
+routing, cache and signal controls. Strict-lint correction
+[#348](https://github.com/DeandreT/ferrule/issues/348) and remaining host failure
+controls are pending before merge. The synthetic resource-setup fixture does
+not qualify a real resource-limit setup failure.
+Borrowed filesystem reader [#344](https://github.com/DeandreT/ferrule/issues/344)
+follows #326. GUI filesystem cancellation
+[#327](https://github.com/DeandreT/ferrule/issues/327) and explicit preview input
+acquisition [#340](https://github.com/DeandreT/ferrule/issues/340) follow #344;
+GUI preview ownership [#341](https://github.com/DeandreT/ferrule/issues/341)
+follows #327/#340. Resource qualification
+[#328](https://github.com/DeandreT/ferrule/issues/328) depends on #326.
+Its source-only plan has 20 recipes, 15 exact cases and
 82 planned requests; all execution remains unrun. It does not depend on #327.
 
 The [#309](https://github.com/DeandreT/ferrule/pull/309) duplication candidate
 passes all 753 GUI tests and strict warnings. All 67 native calls match their
 expectations: 60 successes and seven typed `MappingException` outcomes. Desktop
 [#316](https://github.com/DeandreT/ferrule/issues/316) has independently accepted
-four main-copy, six main-original and ten main-history saved pairs with normal
-closure. Six main context/resize/reload pairs are independently accepted. Ten named copy/history pairs are locally
-complete with normal closure; independent review is pending. Named
-original/context retained seven saved pairs, but its deadline ended with exit 20 and
-required cleanup. That phase remains incomplete, with a fresh run pending.
-Six-phase acceptance and the separate native Save/reopen/Save2 cycle remain pending.
+all six phases with normal closure: Main copy/original/history/context has
+4/6/10/6 saved pairs; Named copy/history and original/context has 10/9.
+The total is 45 complete Project/layout pairs and 90 byte/JSON comparisons.
+#316 is closed; earlier failed attempts remain retained. Native
+Save/reopen/Save2 and main integration of #309 remain pending.
 
 The remaining baseline observations retain the date of the
 2026-10-10 10:53:09 UTC snapshot against main `0c7b2ca` in
@@ -590,13 +599,12 @@ round trip. A `.json5` filename is not enough to infer a native component flag.
   [#309](https://github.com/DeandreT/ferrule/pull/309) implementation candidate
   locally: all 753 GUI tests and strict warnings pass. All 67 native calls match
   their expectations: 60 successes and seven typed `MappingException` outcomes.
-- [x] Independently accept #316's main-copy four, main-original six and
-  main-history ten saved pairs, with normal closure.
-- [ ] Complete [#316](https://github.com/DeandreT/ferrule/issues/316)'s remaining
-  desktop phases. Six main context/resize/reload pairs are independently accepted. Ten named copy/history pairs are
-  locally complete with normal closure; independent review is pending. Named
-  original/context retained seven saved pairs before a deadline exit 20 that
-  required cleanup; the phase is incomplete and a fresh run is pending.
+- [x] Complete [#316](https://github.com/DeandreT/ferrule/issues/316)'s six
+  independently reviewed desktop phases: 45 complete saved Project/layout
+  pairs and 90 byte/JSON comparisons, all with normal owned-process closure.
+  Main copy/original/history/context covers 4/6/10/6 pairs; Named
+  copy/history and original/context covers 10/9. Earlier failed attempts remain
+  retained, and native Save/reopen/Save2 and main integration remain pending.
   Preserve #213's Fit hooks, original/copy isolation
   and history/layout; general clipboard and arbitrary graph copying are excluded.
 - [x] Qualify the test-only GUI frame diagnostic change in
@@ -821,10 +829,17 @@ to the recorded route/profile and no inferred streaming or universal benefit.
   The 216 local tests, 81 frozen wire cases, strict warnings and formatting pass;
   hosted validation remains pending or unknown.
 - [ ] Complete worker-host [#326](https://github.com/DeandreT/ferrule/issues/326),
-  ongoing on `feat/pdf-worker-host`. Source review found primary `ResourceSetup`
-  failures misclassified as `Protocol`; local host validation remains unrun.
-- [ ] Complete GUI integration [#327](https://github.com/DeandreT/ferrule/issues/327)
-  after #326.
+  ongoing on `feat/pdf-worker-host`. Initial worker/CLI and owned filesystem
+  controls pass; strict-lint correction #348, affected reruns and remaining
+  host failure controls are pending.
+- [ ] Add borrowed filesystem reader
+  [#344](https://github.com/DeandreT/ferrule/issues/344) after #326.
+- [ ] Complete GUI filesystem cancellation
+  [#327](https://github.com/DeandreT/ferrule/issues/327) after #326/#344.
+- [ ] Add explicit preview input acquisition
+  [#340](https://github.com/DeandreT/ferrule/issues/340) after #326/#344.
+- [ ] Complete GUI preview ownership
+  [#341](https://github.com/DeandreT/ferrule/issues/341) after #327/#340.
 - [ ] Execute resource qualification
   [#328](https://github.com/DeandreT/ferrule/issues/328) after #326. Its source-only
   plan has 20 recipes, 15 exact cases and 82 planned requests; all execution
