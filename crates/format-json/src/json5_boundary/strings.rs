@@ -40,7 +40,28 @@ impl Parser<'_> {
                     return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
                 }
                 self.take()?;
-                let value = self.hex(4, offset)?;
+                let unit = self.hex(4, offset)?;
+                let value = match unit {
+                    0xd800..=0xdbff => {
+                        if self.peek()? != Some('\\') {
+                            return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
+                        }
+                        self.take()?;
+                        if self.peek()? != Some('u') {
+                            return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
+                        }
+                        self.take()?;
+                        let second = self.hex(4, offset)?;
+                        if !(0xdc00..=0xdfff).contains(&second) {
+                            return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
+                        }
+                        0x10000 + ((unit - 0xd800) << 10) + second - 0xdc00
+                    }
+                    0xdc00..=0xdfff => {
+                        return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
+                    }
+                    _ => unit,
+                };
                 let Some(decoded) = char::from_u32(value) else {
                     return Err(self.syntax(Json5SyntaxKind::InvalidEscape, offset));
                 };
@@ -168,5 +189,11 @@ impl Parser<'_> {
 }
 
 fn identifier_char(c: char, first: bool) -> bool {
-    c.is_ascii_alphabetic() || matches!(c, '_' | '$') || (!first && c.is_ascii_digit())
+    if c.is_ascii() {
+        c.is_ascii_alphabetic() || matches!(c, '_' | '$') || (!first && c.is_ascii_digit())
+    } else if first {
+        super::identifiers::is_identifier_start(c)
+    } else {
+        super::identifiers::is_identifier_continue(c)
+    }
 }

@@ -434,7 +434,7 @@ internal static class TargetBuilder
 "#;
 
 // Optional companions are never part of ordinary SOURCES/PROJECT.
-pub(crate) const JSON5_SOURCES: [(&str, &str); 9] = [
+pub(crate) const JSON5_SOURCES: [(&str, &str); 10] = [
     (
         "Runtime/Json5/FerruleJson5Syntax.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.cs"),
@@ -446,6 +446,10 @@ pub(crate) const JSON5_SOURCES: [(&str, &str); 9] = [
     (
         "Runtime/Json5/FerruleJson5Syntax.Strings.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Strings.cs"),
+    ),
+    (
+        "Runtime/Json5/Json5Identifiers.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/Json5Identifiers.cs"),
     ),
     (
         "Runtime/Json5/FerruleJson5Syntax.Errors.cs",

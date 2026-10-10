@@ -241,14 +241,14 @@ pub(super) const CASES: &[Case] = &[
     Case {
         id: "unquoted-unicode-boundary",
         input: "{雪:7}",
-        normalized: None,
-        error: Some(Json5SyntaxKind::UnsupportedIdentifier),
+        normalized: Some("{\"雪\":7}"),
+        error: None,
     },
     Case {
         id: "escaped-unicode-identifier-boundary",
         input: "{\\u96ea:7}",
-        normalized: None,
-        error: Some(Json5SyntaxKind::UnsupportedIdentifier),
+        normalized: Some("{\"雪\":7}"),
+        error: None,
     },
     Case {
         id: "consecutive-comma",

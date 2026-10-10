@@ -6,7 +6,7 @@ namespace Ferrule.Runtime;
 /// <summary>
 /// Pure bounded normalization of one JSON5 value to compact strict JSON.
 /// Duplicate properties and decimal lexicals survive; schema projection is separate.
-/// Unquoted identifiers are deliberately ASCII; quoted strings retain Unicode scalars.
+/// Unquoted identifiers use frozen Unicode 17 scalar membership; quoted strings retain Unicode scalars.
 /// </summary>
 public static partial class FerruleJson5Syntax
 {
