@@ -31,6 +31,7 @@ public static partial class FerruleFunctions
             "sql_like" => BinaryString(function, arguments, SqlLike),
             "pad_string_left" => PadString(function, arguments, left: true),
             "pad_string_right" => PadString(function, arguments, left: false),
+            "format_guid_string" => FormatGuidString(arguments),
             "substring" => Substring(arguments),
             "substring_before" => SplitString(function, arguments, before: true),
             "substring_after" => SplitString(function, arguments, before: false),
