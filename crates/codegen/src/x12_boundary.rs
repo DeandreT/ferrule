@@ -315,7 +315,7 @@ pub fn prepare_x12_boundary(
 
 /// Bound caller-constructed IR before ordinary validation or schema metadata
 /// copies can recursively walk it. The traversal only borrows schema nodes.
-fn preflight_schema_bounds(
+pub(crate) fn preflight_schema_bounds(
     schema: &SchemaNode,
     side: X12BoundarySide,
 ) -> Result<(), X12BoundaryPolicyError> {
@@ -346,7 +346,7 @@ pub fn validate_x12_boundary(
     prepare_x12_boundary(program, policy).map(|_| ())
 }
 
-fn descriptor(
+pub(crate) fn descriptor(
     schema: &SchemaNode,
     options: Option<&X12BoundaryOptions>,
     side: X12BoundarySide,

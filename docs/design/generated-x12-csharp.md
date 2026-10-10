@@ -81,7 +81,77 @@ taking `FerruleExecutionContext`. These helpers use the same embedded boundary
 contract as the mapping methods. A contextual mapping method passes that same
 context to X12 output after the ordinary mapping succeeds.
 
-## Schema and metadata
+## Static named documents and selected output
+
+`--static-document-adapters` selects a separate C# companion for a complete
+static JSON/X12 boundary table. Every primary and named endpoint retains its
+own schema, format options and separators. At least one endpoint is X12. The
+flag conflicts with `--x12-adapters`, `--json5-adapters` and `--csv-output`.
+The public writer is `cli::generate_project_with_static_document_adapters`;
+the emitter is `codegen_csharp::emit_with_static_document_adapters`, using a
+`codegen::StaticDocumentBoundaryPolicy` whose named entries exactly match the
+complete declaration order. This route adds `GeneratedMapping.Documents.cs`
+and the same `Runtime/X12` sources.
+
+The CLI selects an endpoint from its explicit saved X12 family, strict JSON
+flag, or `.edi`, `.x12` or `.json` path identity. Unknown identities and other
+physical formats fail admission. Schema shape and document contents do not
+select a codec. All endpoints are static single documents; dynamic physical
+loaders, output-path plans and document-set iteration fail admission. Ordinary
+typed `CopyOf` and computed JSON object construction keep their existing
+semantics when their own schemas admit one output document.
+
+Borrowed admission encodes every primary source, named source, primary target
+and named target before recursive ordinary validation or schema copies. Each
+descriptor keeps the existing 1 MiB codec limit and exact depth/serialization
+errors, with its endpoint owner. X12 endpoints additionally keep the stricter
+X12 schema bounds. An unused source and an unselected target must still have an
+admitted descriptor. This is per-endpoint admission; it establishes no combined
+document or total-memory bound.
+
+The methods on `Ferrule.Generated.GeneratedMapping` are:
+
+```csharp
+SelectedDocumentTargetOutput ExecuteDocumentSelectedTarget(
+    string source, FerruleTargetSelection selection);
+SelectedDocumentTargetOutput ExecuteDocumentSelectedTargetWithHost(
+    string source, FerruleTargetSelection selection,
+    IReadOnlyList<NamedDocumentInput> extraSources,
+    FerruleExecutionContext? executionContext = null);
+SelectedDocumentBytesTargetOutput ExecuteDocumentBytesSelectedTarget(
+    byte[] source, FerruleTargetSelection selection);
+SelectedDocumentBytesTargetOutput ExecuteDocumentBytesSelectedTargetWithHost(
+    byte[] source, FerruleTargetSelection selection,
+    IReadOnlyList<NamedDocumentBytesInput> extraSources,
+    FerruleExecutionContext? executionContext = null);
+```
+
+`NamedDocumentInput` and `NamedDocumentBytesInput` contain `Name` and `Document`.
+The result is either a `Primary` carrier with `Format` and `Document`, or a
+`Named` carrier whose `Output` also retains the declared `Name`. `Format` is
+`DocumentBoundaryFormat.Json` or `.X12`; callers select a declared target with
+`FerruleTargetSelection.Primary()` or `.Named(name)`.
+
+Calls first reject a null source, then a null selection, then resolve the
+selection using exact ordinal names. Unknown targets fail before named-input
+checks or document parsing. After checking the input list itself, preflight
+visits entries in caller order: null entry, null name, text-document null,
+unknown name, then duplicate name. Missing inputs fail in declaration order.
+For a program with no named sources, entry and name checks precede the
+unexpected-source error, and the supplied document is not inspected.
+
+The primary document parses first, followed by every supplied named document
+in caller order, including unused inputs. Byte-document null is checked at its
+own parse turn, preserving the `extraSource.Document` parameter name. Each
+document uses its own strict JSON or X12 codec and existing resource limits.
+The companion then delegates once to the ordinary typed selected-target API:
+global failure rules run in declaration order, only the selected target is
+constructed, and existing context and per-binding evaluation semantics apply.
+Only that target's own codec serializes the resulting instance. The same
+execution context reaches selected X12 completion. Caller arrays, lists and
+instances remain unchanged, and a failure returns no output carrier.
+
+## Singular schema and metadata
 
 The program has a singular primary document and no named sources, named
 targets, primary-document iteration or XML boundary. Ordinary graph lowering
