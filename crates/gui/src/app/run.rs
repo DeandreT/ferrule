@@ -68,7 +68,7 @@ pub(super) enum FileRunCommand {
     Publish,
 }
 
-enum FileRunEvent {
+pub(super) enum FileRunEvent {
     Paused(Box<engine::PendingTargetWrite>),
     PausedNode(Box<engine::PendingNodeValue>),
     PausedFunctionNode(Box<engine::PendingFunctionNodeValue>),
@@ -84,14 +84,14 @@ enum FileRunEvent {
 }
 
 #[derive(Debug)]
-enum FileRunError {
+pub(super) enum FileRunError {
     Cancelled,
     Failed(String),
     Worker(FileRunWorkerFailure),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FileRunWorkerFailure {
+pub(super) enum FileRunWorkerFailure {
     Panicked,
     Unreported,
 }
@@ -119,22 +119,93 @@ pub(super) enum FileRunPhase {
     Stopping,
 }
 
-pub(super) struct PendingFileRun {
-    receiver: Receiver<FileRunEvent>,
-    worker: Option<JoinHandle<()>>,
-    completed: Option<(
-        Result<cli::RunOutcome, FileRunError>,
-        crate::run_report::TraceReport,
-    )>,
-    commands: Sender<FileRunCommand>,
-    cancelled: Arc<AtomicBool>,
-    started: Instant,
-    debug: bool,
+pub(super) type FileRunCompletion = (
+    Result<cli::RunOutcome, FileRunError>,
+    crate::run_report::TraceReport,
+);
+
+#[derive(Default)]
+pub(super) struct ShutdownIntent {
+    pub(super) requested: bool,
+    pub(super) attempts: u8,
+    pub(super) delivered: Option<bool>,
+    #[cfg(test)]
+    pub(super) join_observer: Option<Arc<std::sync::atomic::AtomicUsize>>,
+}
+
+pub(super) struct FileRunCore {
+    pub(super) receiver: Receiver<FileRunEvent>,
+    pub(super) worker: Option<JoinHandle<()>>,
+    pub(super) completed: Option<FileRunCompletion>,
+    pub(super) commands: Sender<FileRunCommand>,
+    pub(super) cancelled: Arc<AtomicBool>,
+    pub(super) started: Instant,
+    pub(super) debug: bool,
     pub(super) phase: FileRunPhase,
+    pub(super) shutdown: ShutdownIntent,
+}
+
+pub(super) struct PendingFileRun {
+    core: Option<FileRunCore>,
+    reservation: Option<super::file_run_teardown::Reservation>,
+}
+
+impl std::ops::Deref for PendingFileRun {
+    type Target = FileRunCore;
+    fn deref(&self) -> &Self::Target {
+        self.core
+            .as_ref()
+            .expect("attached saved-file core retained")
+    }
+}
+
+impl std::ops::DerefMut for PendingFileRun {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.core
+            .as_mut()
+            .expect("attached saved-file core retained")
+    }
 }
 
 impl PendingFileRun {
-    fn take_completion_if_finished(
+    pub(super) fn new(
+        core: FileRunCore,
+        reservation: super::file_run_teardown::Reservation,
+    ) -> Self {
+        Self {
+            core: Some(core),
+            reservation: Some(reservation),
+        }
+    }
+
+    #[cfg(test)]
+    fn from_test_core(core: FileRunCore) -> Self {
+        let port = super::file_run_teardown::SavedFileRunTeardownPort::default();
+        let reservation = port.reserve().expect("fresh test saved-file owner slot");
+        Self::new(core, reservation)
+    }
+
+    pub(super) fn take_completion_if_finished(&mut self) -> Option<FileRunCompletion> {
+        self.core.as_mut()?.take_completion_if_finished()
+    }
+}
+
+impl Drop for PendingFileRun {
+    fn drop(&mut self) {
+        if let Some(core) = self.core.take() {
+            if let Some(reservation) = self.reservation.take() {
+                reservation.handoff(core);
+            } else {
+                // The core itself drains on Drop; an unexpected missing ticket
+                // never drops a live JoinHandle or pretends that it completed.
+                drop(core);
+            }
+        }
+    }
+}
+
+impl FileRunCore {
+    pub(super) fn take_completion_if_finished(
         &mut self,
     ) -> Option<(
         Result<cli::RunOutcome, FileRunError>,
@@ -149,6 +220,10 @@ impl PendingFileRun {
             .take()
             .expect("run worker handle retained")
             .join();
+        #[cfg(test)]
+        if let Some(observer) = &self.shutdown.join_observer {
+            observer.fetch_add(1, Ordering::AcqRel);
+        }
         let (result, trace) = self.completed.take().unwrap_or_else(|| {
             (
                 Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
@@ -183,13 +258,80 @@ impl PendingFileRun {
         }
         let _ = self.commands.send(command);
     }
+
+    pub(super) fn request_shutdown(&mut self) {
+        if self.worker.is_none() || self.shutdown.requested {
+            return;
+        }
+        self.shutdown.requested = true;
+        if matches!(self.phase, FileRunPhase::Publishing) {
+            return;
+        }
+        if matches!(self.phase, FileRunPhase::Stopping) || self.cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        self.cancelled.store(true, Ordering::Release);
+        self.phase = FileRunPhase::Stopping;
+        self.shutdown.attempts = 1;
+        self.shutdown.delivered = Some(self.commands.send(FileRunCommand::Cancel).is_ok());
+    }
+
+    pub(super) fn poll_shutdown(&mut self) -> Option<super::file_run_teardown::JoinedFileRun> {
+        const EVENT_BATCH: usize = 32;
+        self.worker.as_ref()?;
+        // A queued result remains held even if the sender is disconnected or
+        // the worker keeps running after sending it.
+        if self.completed.is_none() {
+            // Observe completion before probing the queue. A worker may send
+            // Finished and exit between an Empty probe and a later predicate.
+            let finished_before_probe = self.worker.as_ref().is_some_and(JoinHandle::is_finished);
+            let mut exhausted = true;
+            for _ in 0..EVENT_BATCH {
+                match self.receiver.try_recv() {
+                    Ok(FileRunEvent::Finished(result, trace)) => {
+                        self.completed = Some((result, trace));
+                        exhausted = false;
+                        break;
+                    }
+                    Ok(_) => {} // Never grant Publish/resume after detachment.
+                    Err(TryRecvError::Empty | TryRecvError::Disconnected) => {
+                        if !finished_before_probe {
+                            return None;
+                        }
+                        exhausted = false;
+                        break;
+                    }
+                }
+            }
+            if exhausted {
+                return None;
+            }
+        }
+        // Empty/disconnected is not completion. This exact-handle predicate is
+        // also required when a complete result has already been received.
+        let (result, trace) = self.take_completion_if_finished()?;
+        Some(super::file_run_teardown::JoinedFileRun {
+            result,
+            trace,
+            phase: self.phase.clone(),
+            elapsed: self.started.elapsed(),
+            shutdown_cancel_attempts: self.shutdown.attempts,
+            shutdown_cancel_delivered: self.shutdown.delivered,
+        })
+    }
 }
 
-impl Drop for PendingFileRun {
+impl Drop for FileRunCore {
     fn drop(&mut self) {
-        if !matches!(self.phase, FileRunPhase::Publishing) {
-            self.cancelled.store(true, Ordering::Release);
-            let _ = self.commands.send(FileRunCommand::Cancel);
+        self.request_shutdown();
+        while self.worker.is_some() {
+            if let Some(terminal) = self.poll_shutdown() {
+                terminal.report();
+                break;
+            }
+            // An uncooperative in-process parser can keep this owner alive
+            // indefinitely. There is no timeout/drop-as-completion shortcut.
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 }
@@ -270,6 +412,31 @@ impl FileRunDebugHook {
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(super) fn file_run_publication_gate_for_test(
+    events: Sender<FileRunEvent>,
+    commands: Receiver<FileRunCommand>,
+    cancelled: Arc<AtomicBool>,
+) -> bool {
+    FileRunDebugHook {
+        events,
+        commands,
+        cancelled,
+        pause_each_write: Cell::new(false),
+        pause_next_node: Cell::new(false),
+        pause_next_input: Cell::new(false),
+        breakpoint: None,
+        value_condition: None,
+        position_condition: None,
+        source_condition: None,
+        node_condition: None,
+        expression_condition: None,
+        input_condition: None,
+        pause_on_failure: false,
+    }
+    .before_publish()
 }
 
 impl engine::DebugHook for FileRunDebugHook {
@@ -826,12 +993,29 @@ impl FerruleApp {
         } else {
             None
         };
+        let Some(reservation) = self.file_run_teardown.reserve() else {
+            self.status = "run blocked".into();
+            self.diagnostics
+                .error("Run blocked", "a saved-file run is still finishing");
+            return;
+        };
         let (events, receiver) = mpsc::channel();
         let (commands, command_receiver) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.file_run_pause_on_failure;
-        let worker = std::thread::spawn(move || {
+        let mut core = FileRunCore {
+            receiver,
+            worker: None,
+            completed: None,
+            commands,
+            cancelled,
+            started: Instant::now(),
+            debug,
+            phase: FileRunPhase::Running,
+            shutdown: ShutdownIntent::default(),
+        };
+        core.worker = Some(std::thread::spawn(move || {
             let trace = crate::run_report::TraceCollector::new();
             let hook = FileRunDebugHook {
                 events: events.clone(),
@@ -884,17 +1068,10 @@ impl FerruleApp {
                 }
             });
             let _ = events.send(FileRunEvent::Finished(result, trace.finish()));
-        });
-        self.pending_file_run = Some(PendingFileRun {
-            receiver,
-            worker: Some(worker),
-            completed: None,
-            commands,
-            cancelled,
-            started: Instant::now(),
-            debug,
-            phase: FileRunPhase::Running,
-        });
+        }));
+        // Preserve the existing report clock's start after worker creation.
+        core.started = Instant::now();
+        self.pending_file_run = Some(PendingFileRun::new(core, reservation));
         self.status = if debug {
             "debug run running".into()
         } else {
