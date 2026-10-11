@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-10
+Updated: 2026-10-11
 
 ## Goal
 
@@ -21,7 +21,47 @@ which links scoped issues, ownership, dependencies, and shared verification rule
 This roadmap is an execution plan. The complete earlier technical baseline and
 scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
-## Current Baseline
+## Current contributor snapshot
+
+Snapshot: 2026-10-11 15:57:27 UTC, against merged main [`4e0f95d`](https://github.com/DeandreT/ferrule/commit/4e0f95de957c32e6381a1b66c5f0fe21be75da5c).
+Contributor availability below retains its 15:33 UTC snapshot.
+This focused refresh is [#417](https://github.com/DeandreT/ferrule/issues/417).
+The original [#89](https://github.com/DeandreT/ferrule/issues/89) backlog is complete;
+overall compatibility remains incomplete and the conformance survey is unchanged.
+The dated baseline, counts and diagrams below retain their original evidence scope.
+
+The current unassigned lanes are [#103](https://github.com/DeandreT/ferrule/issues/103),
+[#105](https://github.com/DeandreT/ferrule/issues/105),
+[#106](https://github.com/DeandreT/ferrule/issues/106),
+[#108](https://github.com/DeandreT/ferrule/issues/108),
+[#160](https://github.com/DeandreT/ferrule/issues/160),
+[#347](https://github.com/DeandreT/ferrule/issues/347) and
+[#387](https://github.com/DeandreT/ferrule/issues/387).
+[Parallel work](docs/parallel-work.md#available-contributor-lanes) records each
+scope and next gate. The claimed PDF isolation follow-ons under
+[#104](https://github.com/DeandreT/ferrule/issues/104) are maintainer work and are
+unavailable for a new independent claim.
+
+| Verified merged increment | Qualified scope | Remaining boundary |
+| --- | --- | --- |
+| [#405 / PR409](https://github.com/DeandreT/ferrule/pull/409) | Importer diagnostics | Broader importer behavior retains its existing contracts. |
+| [#391 / PR411](https://github.com/DeandreT/ferrule/pull/411) | Twelve routes, four attempted dynamic-source callbacks, 84 original records and 25 closed owners | Dependent source/ancestry propagation under #396/#398 is pending; this is no parser-memory or whole-product claim. |
+| [#394 / PR404](https://github.com/DeandreT/ferrule/pull/404) | Memory report and 31 accepted streaming controls; one 70-row preparation | The refreshed 140-owner resource campaign is unrun; no new memory trial is claimed. |
+
+| Active maintainer lane | Next gate / dependency |
+| --- | --- |
+| [#346 / PR413](https://github.com/DeandreT/ferrule/issues/346) | Native A: 397 tests, including 20 new tests, passed on `9d19`. Test-only successor `6534f9d` has 100 schemas/270 probes and awaits exact-head CI. Generated increment B's accepted design has 130 calls per language and waits for verified A merge before implementation. |
+| [#406 / PR410](https://github.com/DeandreT/ferrule/issues/406) | All three exact-head hosted checks and 751 GUI tests pass. The required alternate-display desktop walkthrough is pending. |
+| [#412](https://github.com/DeandreT/ferrule/issues/412) | All 15 controls/29 synthetic subcases matched once; independent review and complete evidence intake accepted. All 70 requests/140 physical owners remain unrun; fresh actor admission is required. This carries no kernel, PDF or resource credit. |
+| [#396](https://github.com/DeandreT/ferrule/issues/396) | Remaining dependent PDF source/ancestry propagation is pending; each focused head needs its own current checks. |
+| [#416](https://github.com/DeandreT/ferrule/issues/416) | Eighteen obsolete CSV test executables retired with complete originals retained; observed gain is about 1.14 GiB. Fresh per-actor capacity admission is still required; no build or request campaign is admitted. |
+
+Coordinate the compiler/artifact lane, alternate display and same-file edits before
+starting shared verification. Earlier #414/#415 local cache retirement observations
+do not replace fresh capacity admission. Hosted passes, source acceptance and
+physical walkthroughs remain separate gates.
+
+## Earlier baseline (2026-10-10)
 
 Status snapshot: 2026-10-10, against merged main
 [`6b94863`](https://github.com/DeandreT/ferrule/commit/6b94863beebbc90f0d094e1387391131f73c5a7c).

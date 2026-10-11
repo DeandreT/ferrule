@@ -97,7 +97,7 @@ pub fn import_str(text: &str) -> Result<SchemaNode, JsonFormatError> {
     import_value(&value)
 }
 
-fn import_value(value: &serde_json::Value) -> Result<SchemaNode, JsonFormatError> {
+fn import_value(value: &files::LoadedSchema) -> Result<SchemaNode, JsonFormatError> {
     let name = schema_title(value, value)?.unwrap_or("root");
     let schema = parse(name, value, value, &mut Vec::new())?;
     predicate::validate_private_unique_items(&schema)?;
@@ -161,54 +161,55 @@ fn push_active_ref(active_refs: &mut Vec<String>, reference: &str) -> Result<(),
 fn parse(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let _materialization_scope = import_budget::SchemaMaterializationScope::enter()?;
     let _pattern_match_scope = pattern_properties::ImportPatternMatchScope::enter();
-    let mut schema = schema;
-    let mut frames = Vec::new();
+    let mut current = doc.schema_view(schema)?;
+    let mut frames: Vec<(std::borrow::Cow<'_, serde_json::Value>, bool)> = Vec::new();
     let parsed = (|| {
         loop {
-            let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) else {
-                if frames
-                    .iter()
-                    .any(|(frame, apply_siblings): &(&serde_json::Value, bool)| {
-                        *apply_siblings && frame.get("required").is_some()
-                    })
-                {
-                    ref_required::require_concrete_object(name, schema)?;
+            let Some(reference) = current
+                .get("$ref")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+            else {
+                if frames.iter().any(|(frame, apply_siblings)| {
+                    *apply_siblings && frame.get("required").is_some()
+                }) {
+                    ref_required::require_concrete_object(name, &current)?;
                 }
-                return parse_non_ref(name, schema, doc, active_refs);
+                return parse_non_ref(name, &current, doc, active_refs);
             };
-            reject_unsupported_dynamic_references(name, schema)?;
-            let apply_siblings = files::ref_siblings_apply(schema);
+            reject_unsupported_dynamic_references(name, &current)?;
+            let apply_siblings = files::ref_siblings_apply(&current);
             if apply_siblings {
-                if schema.get("required").is_some() {
-                    ref_required::validate_siblings(name, schema)?;
+                if current.get("required").is_some() {
+                    ref_required::validate_siblings(name, &current)?;
                 } else {
-                    reject_unsupported_ref_siblings(name, schema)?;
+                    reject_unsupported_ref_siblings(name, &current)?;
                 }
             }
             // Cyclic and unresolved refs retain the legacy string fallback.
-            let resolved = (!active_refs.iter().any(|active| active == reference))
-                .then(|| resolve_ref(doc, reference))
+            let resolved = (!active_refs.iter().any(|active| active == &reference))
+                .then(|| resolve_ref(doc, &reference))
                 .flatten();
             let Some(resolved) = resolved else {
                 if apply_siblings {
-                    ref_required::reject_unresolved(name, schema)?;
-                    reject_unresolved_ref_constraints(name, schema)?;
+                    ref_required::reject_unresolved(name, &current)?;
+                    reject_unresolved_ref_constraints(name, &current)?;
                 }
                 let mut node = SchemaNode::scalar(name, ScalarType::String);
                 if apply_siblings {
-                    formats::apply(name, schema, &mut node)?;
-                    string_lengths::apply(name, schema, &mut node, false)?;
+                    formats::apply(name, &current, &mut node)?;
+                    string_lengths::apply(name, &current, &mut node, false)?;
                 }
                 return Ok(node);
             };
-            push_active_ref(active_refs, reference)?;
-            frames.push((schema, apply_siblings));
-            schema = resolved;
+            push_active_ref(active_refs, &reference)?;
+            frames.push((current, apply_siblings));
+            current = doc.schema_view(resolved)?;
         }
     })();
     // Each sibling is evaluated after the referenced schema, with the same
@@ -218,9 +219,9 @@ fn parse(
         active_refs.pop();
         if apply_siblings {
             result = result.and_then(|mut node| {
-                ref_required::apply(name, schema, &mut node)?;
-                apply_known_shape_constraints(name, schema, &mut node, doc, active_refs)?;
-                formats::apply(name, schema, &mut node)?;
+                ref_required::apply(name, &schema, &mut node)?;
+                apply_known_shape_constraints(name, &schema, &mut node, doc, active_refs)?;
+                formats::apply(name, &schema, &mut node)?;
                 Ok(node)
             });
         }
@@ -231,7 +232,7 @@ fn parse(
 fn parse_non_ref(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     if schema == &serde_json::Value::Bool(true)
@@ -266,7 +267,7 @@ fn parse_one_of_branch(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut finite) =
@@ -338,7 +339,7 @@ fn parse_any_of_branch(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut finite) =
@@ -424,7 +425,7 @@ fn parse_any_of_branch(
 fn parse_typed_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     patterns::validate_ignored(name, schema)?;
@@ -487,7 +488,7 @@ fn parse_typed_schema(
 fn parse_allowed_typed_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     ty: &ImportedSchemaType<'_>,
     nullable: bool,
@@ -501,7 +502,7 @@ fn parse_allowed_typed_schema(
 fn parse_object_typed_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
@@ -513,7 +514,7 @@ fn parse_object_typed_schema(
 fn finish_object_typed_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     nullable: bool,
     children: Vec<SchemaNode>,
@@ -528,7 +529,7 @@ fn finish_object_typed_schema(
 fn parse_scalar_typed_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     ty: ImportedSchemaType<'_>,
     nullable: bool,
@@ -561,7 +562,7 @@ fn parse_scalar_typed_schema(
 fn apply_typed_schema_constraints(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     mut node: SchemaNode,
     untyped: bool,
@@ -615,7 +616,7 @@ fn parse_allowed_schema(
 fn parse_array_schema(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
@@ -808,7 +809,7 @@ fn apply_nullable_composition_ranges(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     apply_known_shape_constraints(name, schema, node, doc, active_refs)
@@ -818,7 +819,7 @@ fn apply_known_shape_constraints(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     alternatives::reject_string_float_interval_siblings(name, schema, node)?;
@@ -1026,7 +1027,7 @@ fn arbitrary_json_schema(name: &str) -> Result<SchemaNode, JsonFormatError> {
 fn attach_object_metadata(
     group: SchemaNode,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let name = group.name.clone();
@@ -1040,7 +1041,7 @@ fn attach_object_metadata(
 fn attach_dynamic_fields(
     group: SchemaNode,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let additional = match schema.get("additionalProperties") {
@@ -1228,7 +1229,7 @@ fn declares_supported_shape(schema: &serde_json::Map<String, serde_json::Value>)
 
 fn parse_properties(
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Vec<SchemaNode>, JsonFormatError> {
     schema

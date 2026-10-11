@@ -98,7 +98,7 @@ pub(super) fn validate_direct_schema(
 pub(super) fn attach(
     group: SchemaNode,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let Some(patterns) = schema

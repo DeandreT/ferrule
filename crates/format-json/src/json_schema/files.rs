@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::JsonFormatError;
 
 mod numeric_lexemes;
+pub(super) use numeric_lexemes::LoadedSchema;
 
 const MAX_DOCUMENTS: usize = 256;
 const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
@@ -94,6 +95,7 @@ impl ValidationDialect {
 struct Document {
     path: PathBuf,
     value: serde_json::Value,
+    lexemes: numeric_lexemes::Lexemes,
 }
 
 struct Loader {
@@ -133,7 +135,7 @@ impl RewriteContext {
     }
 }
 
-pub(super) fn load(path: &Path, package_root: &Path) -> Result<serde_json::Value, JsonFormatError> {
+pub(super) fn load(path: &Path, package_root: &Path) -> Result<LoadedSchema, JsonFormatError> {
     let package_root =
         std::fs::canonicalize(package_root).map_err(|error| JsonFormatError::SchemaResource {
             reference: package_root.display().to_string(),
@@ -168,14 +170,15 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<serde_json::Value
     loader.finish()
 }
 
-pub(super) fn load_inline(text: &str) -> Result<serde_json::Value, JsonFormatError> {
+pub(super) fn load_inline(text: &str) -> Result<LoadedSchema, JsonFormatError> {
     if text.len() > MAX_TOTAL_BYTES {
         return Err(JsonFormatError::SchemaResourceLimit {
             kind: "total bytes",
             limit: MAX_TOTAL_BYTES,
         });
     }
-    let mut value = numeric_lexemes::decode(text.as_bytes())?;
+    let numeric_lexemes::ParsedDocument { mut value, lexemes } =
+        numeric_lexemes::parse(text.as_bytes())?;
     let dialect = validation_dialect_for_document(&value);
     let mut loader = Loader {
         package_root: PathBuf::new(),
@@ -184,6 +187,7 @@ pub(super) fn load_inline(text: &str) -> Result<serde_json::Value, JsonFormatErr
         documents: vec![Document {
             path: PathBuf::from("<memory>"),
             value: serde_json::Value::Null,
+            lexemes,
         }],
         total_bytes: text.len(),
         references: 0,
@@ -245,7 +249,8 @@ impl Loader {
                 limit: MAX_TOTAL_BYTES,
             });
         }
-        let mut value = numeric_lexemes::decode(&bytes)?;
+        let numeric_lexemes::ParsedDocument { mut value, lexemes } =
+            numeric_lexemes::parse(&bytes)?;
         let dialect = validation_dialect_for_document(&value);
         let ignore_ref_siblings = matches!(
             dialect,
@@ -256,6 +261,7 @@ impl Loader {
         self.documents.push(Document {
             path: path.to_path_buf(),
             value: serde_json::Value::Null,
+            lexemes,
         });
         let context = RewriteContext {
             document_index: index,
@@ -527,10 +533,11 @@ impl Loader {
         }
     }
 
-    fn finish(mut self) -> Result<serde_json::Value, JsonFormatError> {
+    fn finish(mut self) -> Result<LoadedSchema, JsonFormatError> {
         let mut root = std::mem::take(&mut self.documents[0].value);
+        let mut lexemes = std::mem::take(&mut self.documents[0].lexemes);
         if self.documents.len() == 1 {
-            return Ok(root);
+            return Ok(LoadedSchema::new(root, lexemes));
         }
         let root_object = root
             .as_object_mut()
@@ -563,18 +570,19 @@ impl Loader {
                 ),
             });
         }
-        let external = self
-            .documents
-            .into_iter()
-            .enumerate()
-            .skip(1)
-            .map(|(index, document)| (index.to_string(), document.value))
-            .collect();
+        let mut external = serde_json::Map::new();
+        let mut external_lexemes = BTreeMap::new();
+        for (index, document) in self.documents.into_iter().enumerate().skip(1) {
+            let key = index.to_string();
+            external.insert(key.clone(), document.value);
+            external_lexemes.insert(key, document.lexemes);
+        }
         definitions.insert(
             EXTERNAL_DEFS_KEY.to_string(),
             serde_json::Value::Object(external),
         );
-        Ok(root)
+        lexemes.bundle_external(external_lexemes);
+        Ok(LoadedSchema::new(root, lexemes))
     }
 
     fn resource_error<T>(

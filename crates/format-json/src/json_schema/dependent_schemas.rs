@@ -40,7 +40,7 @@ pub(super) fn apply(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     admits_non_objects: bool,
 ) -> Result<(), JsonFormatError> {
@@ -53,7 +53,7 @@ pub(super) fn apply_triggered_schema(
     trigger: &str,
     predicate: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     let mut selected = Selected::default();
@@ -137,7 +137,7 @@ fn apply_selected(
 pub(super) fn validate_ignored(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     selected(name, schema, doc, active_refs).map(|_| ())
@@ -146,7 +146,7 @@ pub(super) fn validate_ignored(
 pub(super) fn is_effectively_constrained(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<bool, JsonFormatError> {
     let selected = selected(name, schema, doc, active_refs)?;
@@ -297,7 +297,7 @@ pub(crate) fn validate_object(
 fn selected(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Selected, JsonFormatError> {
     let dialect = files::validation_dialect(schema);
@@ -336,7 +336,7 @@ fn parse_map(
     name: &str,
     keyword: &str,
     value: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     allow_boolean_schemas: bool,
     selected: &mut Selected,
@@ -372,7 +372,7 @@ fn append_predicate(
     name: &str,
     trigger: &str,
     predicate: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     selected: &mut Selected,
 ) -> Result<(), JsonFormatError> {
@@ -456,7 +456,7 @@ fn pure_all_of(
 fn reduce_required_only(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<Vec<String>>, JsonFormatError> {
     match schema {
@@ -561,7 +561,7 @@ fn reduce_required_only(
 fn parse_predicate(
     trigger: &str,
     predicate: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<JsonSchemaPredicate, JsonFormatError> {
     if predicate_is_never(predicate, doc, active_refs)? {
@@ -590,7 +590,7 @@ fn parse_predicate(
 
 fn predicate_is_never(
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<bool, JsonFormatError> {
     if schema == &serde_json::Value::Bool(false) {
