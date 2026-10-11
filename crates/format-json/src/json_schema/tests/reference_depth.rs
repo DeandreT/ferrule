@@ -158,6 +158,7 @@ fn cyclic_legacy_fallback_and_error_cleanup_remain_stable() {
         json!({"type":"string", "minLength":"invalid"}),
     ))
     .unwrap();
+    let invalid = json_schema::files::LoadedSchema::from_value(invalid);
     let mut active_refs = vec!["#/outer".to_string()];
     assert!(json_schema::parse("Value", &invalid, &invalid, &mut active_refs).is_err());
     assert_eq!(active_refs, ["#/outer"]);
