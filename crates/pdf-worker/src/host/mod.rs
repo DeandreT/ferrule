@@ -232,6 +232,8 @@ mod fs_job;
 mod linux;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod owner;
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod ownership_fault351;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod worker;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]

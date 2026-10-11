@@ -65,6 +65,9 @@ impl<T: Read> Capture<T> {
             self.eof = true;
             self.pipe.take();
             if let Some(f) = self.file.take() {
+                #[cfg(test)]
+                super::ownership_fault351::probe("capture-fsync", "capture")
+                    .map_err(|e| Failure::io("capture fsync", e))?;
                 f.sync_all().map_err(|e| Failure::io("capture fsync", e))?;
             }
             return Ok(());
@@ -542,7 +545,15 @@ impl PdfWorkerManager {
             && !job.wait_lost
             && let Some(pid) = job.receipt.child_pid
         {
-            match super::linux::own_wait(pid) {
+            #[cfg(test)]
+            let wait = if super::ownership_fault351::defer_wait() {
+                Ok(super::linux::Wait::Pending)
+            } else {
+                super::linux::own_wait(pid)
+            };
+            #[cfg(not(test))]
+            let wait = super::linux::own_wait(pid);
+            match wait {
                 Ok(super::linux::Wait::Pending) => {}
                 Ok(super::linux::Wait::Reaped { status, usage }) => {
                     job.receipt.own_reap = true;
@@ -1134,6 +1145,10 @@ mod tests {
 #[cfg(test)]
 #[path = "escalation358_tests.rs"]
 mod escalation358_tests;
+
+#[cfg(all(test, feature = "host-tests"))]
+#[path = "ownership_fault351_tests.rs"]
+mod ownership_fault351_tests;
 
 #[cfg(test)]
 #[path = "budget363_tests.rs"]
