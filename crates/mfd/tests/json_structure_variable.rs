@@ -168,6 +168,7 @@ fn invalid_variable_selectors_and_record_ownership_retain_refusals() {
         (original.replace(selected,"<entry name=\"Stored\"/>"),"selection has an unsupported structural view"),
         (original.replace(selected,"<entry name=\"Stored\" type=\"json-property\"><entry name=\"Code\"/></entry>"),"selection must be one flat declared path"),
         (original.replace("</parameter>","<root><entry name=\"root\"/></root></parameter>"),"selection contains multiple roots"),
+        (original.replace("</parameter>","</parameter><parameter usageKind=\"variable\"/>"),"variable must have one declared parameter"),
         (original.replace("<entry name=\"document\"><entry name=\"object\" inpkey=\"20\"","<entry name=\"compute-when\" inpkey=\"60\"><entry name=\"object\" inpkey=\"20\""),"compute-when and parent-context controls require a separate scope contract"),
         (constructed.replace("<entry name=\"integer\" inpkey=\"24\" outkey=\"25\"/>","<entry name=\"integer\" inpkey=\"24\" outkey=\"25\"/><entry name=\"integer\" inpkey=\"26\"/>").replace("<edge vertexkey=\"24\"/>","<edge vertexkey=\"24\"/><edge vertexkey=\"26\"/>"),"record has multiple declared inputs for one scalar field"),
         (constructed.replace("<connections>","<connections><edge from=\"10\" to=\"20\"/>"),"record has a connected structural or unsupported descendant input"),
