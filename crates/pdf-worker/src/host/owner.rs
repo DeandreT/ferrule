@@ -91,6 +91,24 @@ impl<T: Read> Capture<T> {
         Ok(())
     }
 }
+// Only the two fixed check_budget operations are repeat observations.
+// Keep a separate bit per budget class; every other failure remains distinct.
+#[derive(Default)]
+struct BudgetObservations {
+    cancelled: bool,
+    timed_out: bool,
+}
+impl BudgetObservations {
+    fn first(&mut self, failure: &Failure) -> bool {
+        let seen = match (failure.kind, failure.operation) {
+            (FailureKind::Cancelled, "cancellation observed") => &mut self.cancelled,
+            (FailureKind::TimedOut, "work cutoff") => &mut self.timed_out,
+            _ => return true,
+        };
+        !std::mem::replace(seen, true)
+    }
+}
+
 struct Job {
     dir: Dir,
     id: crate::RequestIdentity,
@@ -107,6 +125,7 @@ struct Job {
     wait_lost: bool,
     unknown_children: bool,
     failure: Option<Failure>,
+    budget_observations: BudgetObservations,
     secondary: Vec<Failure>,
     receipt: ClosedReceipt,
     terminal: Option<ClosedFailure>,
@@ -122,6 +141,9 @@ impl Job {
         }
     }
     fn fail(&mut self, f: Failure) {
+        if !self.budget_observations.first(&f) {
+            return;
+        }
         if self.failure.is_none() {
             self.event("stop", f.errno);
             self.failure = Some(f);
@@ -333,6 +355,7 @@ impl PdfWorkerManager {
             wait_lost: false,
             unknown_children: false,
             failure: None,
+            budget_observations: BudgetObservations::default(),
             secondary: Vec::new(),
             receipt,
             terminal: None,
@@ -1111,3 +1134,7 @@ mod tests {
 #[cfg(test)]
 #[path = "escalation358_tests.rs"]
 mod escalation358_tests;
+
+#[cfg(test)]
+#[path = "budget363_tests.rs"]
+mod budget363_tests;
