@@ -432,6 +432,28 @@ impl ScratchPolicy {
         }
         Ok(())
     }
+    // Additional failure-history bytes use the already held parent. The
+    // unchanged fresh-job96MiB admission remains the only begin admission.
+    pub(crate) fn terminal_capacity(&self, bytes: u64) -> io::Result<()> {
+        self.parent.check()?;
+        let mut fs = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        if unsafe { libc::fstatvfs(self.parent.file.as_raw_fd(), fs.as_mut_ptr()) } != 0 {
+            return Err(super::linux::errno());
+        }
+        let fs = unsafe { fs.assume_init() };
+        let available = fs
+            .f_bavail
+            .checked_mul(fs.f_frsize)
+            .ok_or_else(|| io::Error::other("terminal capacity overflow"))?;
+        let required = self
+            .reserve
+            .checked_add(bytes)
+            .ok_or_else(|| io::Error::other("terminal reserve overflow"))?;
+        if available < required {
+            return Err(io::Error::other("terminal reserve required"));
+        }
+        Ok(())
+    }
     pub(crate) fn create_job(&self) -> io::Result<(Dir, crate::RequestIdentity)> {
         self.capacity()?;
         let mut random = [0; 16];
