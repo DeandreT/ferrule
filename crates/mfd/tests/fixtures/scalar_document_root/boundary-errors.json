@@ -1,0 +1,48 @@
+[
+  {
+    "input": "input-missing.xml",
+    "type": "ReaderNullThenWriterValueType",
+    "expected_source": {
+      "Text": null,
+      "Flag": true,
+      "Count": -7,
+      "Measure": {
+        "FloatBits": "3ff4000000000000"
+      }
+    },
+    "expected_mapped": {
+      "kind": "Null"
+    },
+    "xml_error": {
+      "name": "Output",
+      "expected": "String",
+      "got": "null",
+      "display": "element `Output` expected String, got null"
+    }
+  },
+  {
+    "input": "input-wrong-kind.xml",
+    "type": "ScalarParse",
+    "display": "cannot parse `yes` as Bool for element `Flag`"
+  },
+  {
+    "input": "input-nil.xml",
+    "type": "UnexpectedXmlNil",
+    "display": "element `Text` uses xsi:nil but its schema is not nillable"
+  },
+  {
+    "input": "input-float-INF.xml",
+    "type": "ScalarParse",
+    "display": "cannot parse `INF` as Float for element `Measure`"
+  },
+  {
+    "input": "input-float-negative-INF.xml",
+    "type": "ScalarParse",
+    "display": "cannot parse `-INF` as Float for element `Measure`"
+  },
+  {
+    "input": "input-float-NaN.xml",
+    "type": "ScalarParse",
+    "display": "cannot parse `NaN` as Float for element `Measure`"
+  }
+]

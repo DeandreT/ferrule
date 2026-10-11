@@ -1,0 +1,280 @@
+using System.Globalization;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+internal static class Host
+{
+    private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static readonly List<JsonNode> Outcomes = new();
+    private static readonly List<string> Failures = new();
+    private static string Evidence = "";
+
+    private static void Flush()
+    {
+        File.WriteAllText(Path.Combine(Evidence, "complete-outcomes.original.json"), JsonSerializer.Serialize(Outcomes, Pretty));
+        File.WriteAllText(Path.Combine(Evidence, "failures.json"), JsonSerializer.Serialize(Failures, Pretty));
+    }
+
+    private static FerruleInstance Typed(JsonElement literal) => literal.GetProperty("kind").GetString() switch
+    {
+        "Repeated" => new FerruleRepeated(literal.GetProperty("items").EnumerateArray().Select(Typed)),
+        "Group" when literal.GetProperty("origin").ValueKind == JsonValueKind.Null => new FerruleGroup(literal.GetProperty("fields").EnumerateArray().Select(field => new FerruleField(field.GetProperty("name").GetString()!, Typed(field.GetProperty("value"))))),
+        "Scalar" => new FerruleScalar(Scalar(literal.GetProperty("value"))),
+        _ => throw new InvalidOperationException("Unqualified literal instance or origin."),
+    };
+
+    private static FerruleValue Scalar(JsonElement literal) => literal.GetProperty("kind").GetString() switch
+    {
+        "Null" => FerruleValue.Null,
+        "JsonNull" => FerruleValue.JsonNull,
+        "XmlNil" => FerruleValue.XmlNil,
+        "Int" => FerruleValue.FromInt64(literal.GetProperty("value").GetInt64()),
+        "Bool" => FerruleValue.FromBoolean(literal.GetProperty("value").GetBoolean()),
+        "String" => FerruleValue.FromString(literal.GetProperty("value").GetString()!),
+        "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)Convert.ToUInt64(literal.GetProperty("bits").GetString(), 16)))),
+        _ => throw new InvalidOperationException("Unqualified literal scalar."),
+    };
+
+    private static JsonNode Full(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => new JsonObject { ["kind"] = "Scalar", ["value"] = scalar.Value.Kind switch
+        {
+            FerruleValueKind.Null => new JsonObject { ["kind"] = "Null" },
+            FerruleValueKind.JsonNull => new JsonObject { ["kind"] = "JsonNull" },
+            FerruleValueKind.XmlNil => new JsonObject { ["kind"] = "XmlNil" },
+            FerruleValueKind.Int64 => new JsonObject { ["kind"] = "Int", ["value"] = scalar.Value.Int64Value },
+            FerruleValueKind.Bool => new JsonObject { ["kind"] = "Bool", ["value"] = scalar.Value.BooleanValue },
+            FerruleValueKind.String => new JsonObject { ["kind"] = "String", ["value"] = scalar.Value.StringValue },
+            FerruleValueKind.Double => new JsonObject { ["kind"] = "Float", ["bits"] = unchecked((ulong)BitConverter.DoubleToInt64Bits(scalar.Value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture) },
+            _ => new JsonObject { ["unexpected_scalar"] = scalar.Value.Kind.ToString(), ["complete"] = scalar.Value.ToString() },
+        } },
+        FerruleRepeated repeated => new JsonObject { ["kind"] = "Repeated", ["items"] = new JsonArray(repeated.Items.Select(item => (JsonNode?)Full(item)).ToArray()) },
+        FerruleGroup group => new JsonObject
+        {
+            ["kind"] = "Group",
+            ["origin"] = group.XmlTypeOrigin.Kind == FerruleXmlTypeOriginKind.Unknown ? null : JsonSerializer.SerializeToNode(group.XmlTypeOrigin),
+            ["fields"] = new JsonArray(group.Fields.Select(field => (JsonNode?)new JsonObject { ["name"] = field.Name, ["value"] = Full(field.Value) }).ToArray()),
+        },
+        _ => new JsonObject { ["unexpected_instance"] = instance.GetType().FullName, ["complete"] = instance.ToString() },
+    };
+
+    private static JsonNode Error(Exception error)
+    {
+        var result = new JsonObject { ["Type"] = error.GetType().FullName, ["Message"] = error.Message };
+        // Retain the complete public typed error fields, including nulls, before
+        // comparison. Inner errors retain their own complete typed fields.
+        foreach (var property in error.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).OrderBy(property => property.Name, StringComparer.Ordinal))
+        {
+            if (property.GetIndexParameters().Length != 0) continue;
+            object? value = property.GetValue(error);
+            result[property.Name] = value switch
+            {
+                null => null,
+                Enum kind => JsonValue.Create(kind.ToString()),
+                UInt128 number => JsonValue.Create(number.ToString(CultureInfo.InvariantCulture)),
+                _ => JsonSerializer.SerializeToNode(value),
+            };
+        }
+        var inner = new JsonArray();
+        if (error.InnerException is not null) inner.Add(Error(error.InnerException));
+        result["Inner"] = inner;
+        return result;
+    }
+
+    private static JsonNode Literal(JsonElement value) => JsonNode.Parse(value.GetRawText())!;
+    private static JsonNode Ok(JsonNode value) => new JsonObject { ["ok"] = value };
+    private static JsonNode Refusal(JsonElement value) => new JsonObject { ["error"] = Literal(value) };
+    private static string Hex(byte[] bytes) => Convert.ToHexString(bytes).ToLowerInvariant();
+
+    private static void Caller(string id, string route, JsonNode before, JsonNode after)
+    {
+        bool good = JsonNode.DeepEquals(before, after);
+        File.WriteAllText(Path.Combine(Evidence, id + "-" + route + "-caller.original.json"), new JsonObject { ["before"] = before.DeepClone(), ["after"] = after.DeepClone(), ["good"] = good }.ToJsonString(Pretty));
+        if (!good) Failures.Add(id + "-" + route + ": caller changed");
+        Flush();
+    }
+
+    private static void Call<T>(string id, string route, Func<T> call, JsonNode expected, Func<T, JsonNode> normalize)
+    {
+        var original = new JsonObject { ["id"] = id, ["route"] = route, ["expected"] = expected.DeepClone() };
+        JsonNode actual;
+        try
+        {
+            T value = call();
+            actual = Ok(normalize(value));
+            original["actual"] = actual.DeepClone();
+        }
+        catch (Exception error)
+        {
+            var complete = Error(error);
+            original["exception_original"] = new JsonObject { ["typed"] = complete.DeepClone(), ["hresult"] = error.HResult, ["complete"] = error.ToString() };
+            actual = new JsonObject { ["error"] = complete };
+            original["actual"] = actual.DeepClone();
+        }
+        // Save the complete observed value/error before any assertion.
+        Outcomes.Add(original); Flush();
+        bool good = JsonNode.DeepEquals(actual, expected);
+        original["good"] = good;
+        if (!good) Failures.Add(id + "-" + route);
+        Flush();
+    }
+
+    // This is an unchecked literal constructor, not the production reader.
+    // It preserves invalid item counts, duplicate arrays and scalar shapes.
+    private static FerruleInstance Unchecked(JsonElement model, JsonElement wire)
+    {
+        if (wire.ValueKind == JsonValueKind.Null) return new FerruleScalar(FerruleValue.JsonNull);
+        if (model.ValueKind == JsonValueKind.Object && model.TryGetProperty("repeating", out var repeating) && repeating.GetBoolean() && wire.ValueKind == JsonValueKind.Array)
+        {
+            if (model.TryGetProperty("json_array_wrapper", out var wrapper) && wrapper.GetBoolean())
+            {
+                var child = model.GetProperty("kind").GetProperty("children")[0];
+                return new FerruleRepeated(wire.EnumerateArray().Select(item => new FerruleGroup(new[] { new FerruleField("item", Unchecked(child, item)) })));
+            }
+            var single = JsonNode.Parse(model.GetRawText())!; single["repeating"] = false;
+            using var document = JsonDocument.Parse(single.ToJsonString());
+            var values = wire.EnumerateArray().Select(item => Unchecked(document.RootElement, item)).ToArray();
+            return new FerruleRepeated(values);
+        }
+        return wire.ValueKind switch
+        {
+            JsonValueKind.True => new FerruleScalar(FerruleValue.FromBoolean(true)),
+            JsonValueKind.False => new FerruleScalar(FerruleValue.FromBoolean(false)),
+            JsonValueKind.String => new FerruleScalar(FerruleValue.FromString(wire.GetString()!)),
+            JsonValueKind.Number when wire.TryGetInt64(out long value) => new FerruleScalar(FerruleValue.FromInt64(value)),
+            JsonValueKind.Number => new FerruleScalar(FerruleValue.FromDouble(wire.GetDouble())),
+            JsonValueKind.Array => new FerruleRepeated(wire.EnumerateArray().Select(item => Unchecked(default, item))),
+            JsonValueKind.Object => new FerruleGroup(wire.EnumerateObject().Select(field => new FerruleField(field.Name, Unchecked(default, field.Value)))),
+            _ => throw new InvalidOperationException("Unqualified literal wire."),
+        };
+    }
+
+    private static JsonNode Malformed(JsonElement literal, string id)
+    {
+        var schema = JsonNode.Parse(literal.GetRawText())!;
+        switch (id)
+        {
+            case "scalar-marker": schema["kind"] = new JsonObject { ["kind"] = "scalar", ["ty"] = "int" }; break;
+            case "nonrepeated-wrapper": schema["repeating"] = false; break;
+            case "zero-child": schema["kind"]!["children"] = new JsonArray(); break;
+            case "two-children": schema["kind"]!["children"]!.AsArray().Add(new JsonObject { ["name"] = "extra", ["repeating"] = true, ["kind"] = new JsonObject { ["kind"] = "scalar", ["ty"] = "int" } }); break;
+            case "wrong-child-name": schema["kind"]!["children"]![0]!["name"] = "row"; break;
+            case "nonrepeated-child": schema["kind"]!["children"]![0]!["repeating"] = false; break;
+            case "object-required": schema["kind"]!["required"] = new JsonArray(JsonValue.Create("item")); break;
+            case "dynamic-child": schema["kind"]!["dynamic"] = new JsonObject { ["name"] = "*", ["kind"] = new JsonObject { ["kind"] = "scalar", ["ty"] = "string" } }; break;
+            case "object-property-count": schema["property_count_range"] = new JsonObject { ["minimum"] = 1 }; break;
+            case "scalar-nullable": schema["nullable"] = true; break;
+            case "scalar-range": schema["numeric_range"] = new JsonObject { ["kind"] = "integer", ["bounds"] = new JsonObject { ["minimum"] = 0, ["maximum"] = 1 } }; break;
+            case "xml-attribute": schema["attribute"] = true; break;
+            case "json-any-text": schema["json_any"] = true; break;
+            case "recursion-anchor": schema["recursive_ref"] = "Loop"; break;
+            default: throw new InvalidOperationException("Unqualified malformed category.");
+        }
+        return schema;
+    }
+
+    private static void Run(JsonElement fixture)
+    {
+        var rows = fixture.GetProperty("cases");
+        if (rows.GetArrayLength() != 26 || fixture.GetProperty("typed_output_negative_cases").GetArrayLength() != 5 || fixture.GetProperty("malformed_ir").GetArrayLength() != 14) throw new InvalidOperationException("Closed authored cohort differs.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        int positives = 0, negatives = 0, negativeOutputs = 0;
+        foreach (var row in rows.EnumerateArray())
+        {
+            string id = row.GetProperty("id").GetString()!;
+            if (!ids.Add(id)) throw new InvalidOperationException("Duplicate authored case.");
+            var model = row.GetProperty("expected_model"); string descriptor = model.GetRawText();
+            File.WriteAllText(Path.Combine(Evidence, id + "-descriptor.literal.json"), descriptor);
+            string input = row.GetProperty("wire").GetString()!;
+            byte[] inputBytes = Utf8.GetBytes(input), beforeBytes = inputBytes.ToArray();
+            if (row.TryGetProperty("expected_typed", out var expectedTyped))
+            {
+                positives++;
+                var wanted = Typed(expectedTyped); var before = Full(wanted);
+                Call(id, "parse-text", () => FerruleJson.Parse(descriptor, input), Ok(Full(wanted)), Full);
+                Call(id, "parse-bytes", () => FerruleJson.ParseBytes(descriptor, inputBytes), Ok(Full(wanted)), Full);
+                Call(id, "serialize-text", () => FerruleJson.Serialize(descriptor, wanted), Ok(Literal(row.GetProperty("expected_output"))), value => JsonValue.Create(value)!);
+                Call(id, "serialize-bytes", () => FerruleJson.SerializeBytes(descriptor, wanted), Ok(Literal(row.GetProperty("expected_utf8_hex"))), value => JsonValue.Create(Hex(value))!);
+                Caller(id, "writer", before, Full(wanted));
+            }
+            else
+            {
+                negatives++;
+                Call(id, "parse-text", () => FerruleJson.Parse(descriptor, input), Refusal(row.GetProperty("expected_managed_input_error")), Full);
+                Call(id, "parse-bytes", () => FerruleJson.ParseBytes(descriptor, inputBytes), Refusal(row.GetProperty("expected_managed_input_error")), Full);
+                if (row.TryGetProperty("expected_managed_output_error", out var expectedOutput))
+                {
+                    negativeOutputs++;
+                    using var wire = JsonDocument.Parse(input);
+                    var wanted = Unchecked(model, wire.RootElement); var before = Full(wanted);
+                    File.WriteAllText(Path.Combine(Evidence, id + "-unchecked-writer-input.original.json"), before.ToJsonString(Pretty));
+                    Call(id, "serialize-text", () => FerruleJson.Serialize(descriptor, wanted), Refusal(expectedOutput), value => JsonValue.Create(value)!);
+                    Call(id, "serialize-bytes", () => FerruleJson.SerializeBytes(descriptor, wanted), Refusal(expectedOutput), value => JsonValue.Create(Hex(value))!);
+                    Caller(id, "writer", before, Full(wanted));
+                }
+            }
+            Caller(id, "parse-bytes", JsonValue.Create(Hex(beforeBytes))!, JsonValue.Create(Hex(inputBytes))!);
+        }
+        foreach (var row in fixture.GetProperty("typed_output_negative_cases").EnumerateArray())
+        {
+            string id = row.GetProperty("id").GetString()!;
+            string descriptor = row.GetProperty("expected_model").GetRawText();
+            var wanted = Typed(row.GetProperty("typed")); var before = Full(wanted);
+            File.WriteAllText(Path.Combine(Evidence, id + "-writer-input.original.json"), before.ToJsonString(Pretty));
+            Call(id, "typed-serialize-text", () => FerruleJson.Serialize(descriptor, wanted), Refusal(row.GetProperty("expected_managed_error")), value => JsonValue.Create(value)!);
+            Call(id, "typed-serialize-bytes", () => FerruleJson.SerializeBytes(descriptor, wanted), Refusal(row.GetProperty("expected_managed_error")), value => JsonValue.Create(Hex(value))!);
+            Caller(id, "typed-writer", before, Full(wanted));
+        }
+        var baseModel = rows[0].GetProperty("expected_model");
+        var source = Typed(rows[0].GetProperty("expected_typed"));
+        foreach (var row in fixture.GetProperty("malformed_ir").EnumerateArray())
+        {
+            string id = row.GetProperty("id").GetString()!;
+            string descriptor = Malformed(baseModel, id).ToJsonString();
+            File.WriteAllText(Path.Combine(Evidence, id + "-malformed-descriptor.literal.json"), descriptor);
+            var expected = fixture.GetProperty("managed_invalid_wrapper_error");
+            Call(id, "malformed-parse-text", () => FerruleJson.Parse(descriptor, "[[7,9]]"), Refusal(expected), Full);
+            Call(id, "malformed-parse-bytes", () => FerruleJson.ParseBytes(descriptor, Utf8.GetBytes("[[7,9]]")), Refusal(expected), Full);
+            Call(id, "malformed-serialize-text", () => FerruleJson.Serialize(descriptor, source), Refusal(expected), value => JsonValue.Create(value)!);
+            Call(id, "malformed-serialize-bytes", () => FerruleJson.SerializeBytes(descriptor, source), Refusal(expected), value => JsonValue.Create(Hex(value))!);
+            Caller(id, "malformed-writer", Full(Typed(rows[0].GetProperty("expected_typed"))), Full(source));
+        }
+        var sourceBefore = Full(source);
+        Call("root-complete", "generated-typed", () => GeneratedMapping.Execute(source), Ok(sourceBefore.DeepClone()), Full);
+        Caller("root-complete", "generated-typed", sourceBefore, Full(source));
+        string inputWire = rows[0].GetProperty("wire").GetString()!;
+        Call("root-complete", "generated-json-text", () => GeneratedMapping.ExecuteJson(inputWire), Ok(Literal(rows[0].GetProperty("expected_output"))), value => JsonValue.Create(value)!);
+        Call("root-complete", "generated-json-bytes", () => GeneratedMapping.ExecuteJsonBytes(Utf8.GetBytes(inputWire)), Ok(Literal(rows[0].GetProperty("expected_utf8_hex"))), value => JsonValue.Create(Hex(value))!);
+        if (positives != 15 || negatives != 11 || negativeOutputs != 9 || Outcomes.Count != 169) throw new InvalidOperationException("Closed complete route counts differ.");
+        Flush();
+        if (Failures.Count != 0) throw new InvalidOperationException("Complete nested-array contracts differ; retained failures.json.");
+        Console.WriteLine("NESTED_ARRAY_COMPLETE direct_positive=15 direct_refusal=11 typed_refusal=5 malformed=14 generated=3 outcomes=169");
+    }
+
+    public static int Main(string[] args)
+    {
+        if (args.Length != 1) throw new ArgumentException("Need generated directory.");
+        Evidence = Path.Combine(args[0], "nested-array-csharp-originals-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Evidence);
+        try
+        {
+            byte[] original = File.ReadAllBytes(Path.Combine(args[0], "cases.json"));
+            File.WriteAllBytes(Path.Combine(Evidence, "cases.literal.json"), original);
+            using var document = JsonDocument.Parse(original);
+            Run(document.RootElement);
+            return 0;
+        }
+        catch (Exception error)
+        {
+            File.WriteAllText(Path.Combine(Evidence, "setup-or-final-error.original.json"), new JsonObject { ["typed"] = Error(error), ["hresult"] = error.HResult, ["complete"] = error.ToString() }.ToJsonString(Pretty));
+            Flush();
+            Console.Error.WriteLine(error);
+            return 1;
+        }
+    }
+}

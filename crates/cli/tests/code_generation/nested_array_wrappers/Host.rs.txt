@@ -1,0 +1,528 @@
+use codegen_runtime::{Instance, JsonBoundaryError, Value, XmlTypeOrigin};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{
+    fmt::Debug,
+    fs,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+fn typed(literal: &Json) -> Result<Instance, Box<dyn std::error::Error>> {
+    Ok(
+        match literal["kind"].as_str().ok_or("literal instance kind")? {
+            "Repeated" => Instance::Repeated(
+                literal["items"]
+                    .as_array()
+                    .ok_or("literal items")?
+                    .iter()
+                    .map(typed)
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            "Group" => {
+                if !literal["origin"].is_null() {
+                    return Err("closed expected origin must be Unknown".into());
+                }
+                Instance::Group(
+                    literal["fields"]
+                        .as_array()
+                        .ok_or("literal fields")?
+                        .iter()
+                        .map(|field| {
+                            Ok((
+                                field["name"]
+                                    .as_str()
+                                    .ok_or("literal field name")?
+                                    .to_owned(),
+                                typed(&field["value"])?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?
+                        .into(),
+                )
+            }
+            "Scalar" => Instance::Scalar(
+                match literal["value"]["kind"]
+                    .as_str()
+                    .ok_or("literal scalar kind")?
+                {
+                    "Null" => Value::Null,
+                    "JsonNull" => Value::json_null(),
+                    "XmlNil" => Value::xml_nil(),
+                    "Int" => Value::Int(literal["value"]["value"].as_i64().ok_or("literal i64")?),
+                    "Bool" => {
+                        Value::Bool(literal["value"]["value"].as_bool().ok_or("literal bool")?)
+                    }
+                    "String" => Value::String(
+                        literal["value"]["value"]
+                            .as_str()
+                            .ok_or("literal string")?
+                            .to_owned(),
+                    ),
+                    "Float" => Value::Float(f64::from_bits(u64::from_str_radix(
+                        literal["value"]["bits"]
+                            .as_str()
+                            .ok_or("literal binary64 bits")?,
+                        16,
+                    )?)),
+                    _ => return Err("unqualified literal scalar kind".into()),
+                },
+            ),
+            _ => return Err("unqualified literal instance kind".into()),
+        },
+    )
+}
+
+fn full(instance: &Instance) -> Json {
+    match instance {
+        Instance::Scalar(value) => json!({"kind":"Scalar","value":match value {
+            Value::Null => json!({"kind":"Null"}),
+            Value::JsonNull(_) => json!({"kind":"JsonNull"}),
+            Value::XmlNil(_) => json!({"kind":"XmlNil"}),
+            Value::Int(value) => json!({"kind":"Int","value":value}),
+            Value::Bool(value) => json!({"kind":"Bool","value":value}),
+            Value::String(value) => json!({"kind":"String","value":value}),
+            Value::Float(value) => json!({"kind":"Float","bits":format!("{:016x}",value.to_bits())}),
+        }}),
+        Instance::Repeated(items) => {
+            json!({"kind":"Repeated","items":items.iter().map(full).collect::<Vec<_>>()})
+        }
+        Instance::Group(fields) => {
+            json!({"kind":"Group","origin":match fields.xml_type_origin() { XmlTypeOrigin::Unknown => Json::Null, other => json!({"unexpected":format!("{other:?}")}) },"fields":fields.iter().map(|(name,value)|json!({"name":name,"value":full(value)})).collect::<Vec<_>>()})
+        }
+        other => json!({"unexpected_instance":format!("{other:#?}")}),
+    }
+}
+
+fn error(error: &JsonBoundaryError) -> Json {
+    match error {
+        JsonBoundaryError::EmbeddedSchemaTooLarge { bytes, max } => {
+            json!({"variant":"EmbeddedSchemaTooLarge","bytes":bytes,"max":max})
+        }
+        JsonBoundaryError::InvalidEmbeddedSchema { message } => {
+            json!({"variant":"InvalidEmbeddedSchema","message":message})
+        }
+        JsonBoundaryError::InputTooLarge { bytes, max } => {
+            json!({"variant":"InputTooLarge","bytes":bytes,"max":max})
+        }
+        JsonBoundaryError::InvalidInput { message } => {
+            json!({"variant":"InvalidInput","message":message})
+        }
+        JsonBoundaryError::Execution(cause) => {
+            json!({"variant":"Execution","complete":format!("{cause:#?}"),"display":cause.to_string()})
+        }
+        JsonBoundaryError::InvalidOutput { message } => {
+            json!({"variant":"InvalidOutput","message":message})
+        }
+        JsonBoundaryError::OutputTooLarge { bytes, max } => {
+            json!({"variant":"OutputTooLarge","bytes":bytes,"max":max})
+        }
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+struct Evidence {
+    root: PathBuf,
+    outcomes: Vec<Json>,
+    failures: Vec<String>,
+}
+impl Evidence {
+    fn caller(
+        &mut self,
+        id: &str,
+        route: &str,
+        before: Json,
+        after: Json,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let good = before == after;
+        fs::write(
+            self.root.join(format!("{id}-{route}-caller.original.json")),
+            serde_json::to_vec_pretty(&json!({"before":before,"after":after,"good":good}))?,
+        )?;
+        if !good {
+            self.failures.push(format!("{id}-{route}: caller changed"));
+        }
+        self.flush()
+    }
+    fn check<T: Debug>(
+        &mut self,
+        id: &str,
+        route: &str,
+        original: &Result<T, JsonBoundaryError>,
+        expected: Json,
+        success: impl FnOnce(&T) -> Json,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key = format!("{id}-{route}");
+        fs::write(
+            self.root.join(format!("{key}.original.txt")),
+            format!("{original:#?}\n"),
+        )?;
+        let actual = match original {
+            Ok(value) => json!({"ok":success(value)}),
+            Err(cause) => json!({"error":error(cause)}),
+        };
+        let good = actual == expected;
+        self.outcomes
+            .push(json!({"id":id,"route":route,"actual":actual,"expected":expected,"good":good}));
+        if !good {
+            self.failures.push(key);
+        }
+        self.flush()
+    }
+    fn flush(&self) -> Result<(), Box<dyn std::error::Error>> {
+        fs::write(
+            self.root.join("complete-outcomes.original.json"),
+            serde_json::to_vec_pretty(&self.outcomes)?,
+        )?;
+        fs::write(
+            self.root.join("failures.json"),
+            serde_json::to_vec_pretty(&self.failures)?,
+        )?;
+        Ok(())
+    }
+}
+
+// Construct a writer input from the frozen wire and literal model, without a
+// Ferrule parser or validation. This deliberately preserves invalid lengths,
+// duplicates and scalar shapes for the nine authored output refusal controls.
+fn unchecked(model: &Json, wire: &Json) -> Result<Instance, Box<dyn std::error::Error>> {
+    if wire.is_null() {
+        return Ok(Instance::Scalar(Value::json_null()));
+    }
+    if model["repeating"] == true
+        && let Some(items) = wire.as_array()
+    {
+        if model["json_array_wrapper"] == true {
+            let child = &model["kind"]["children"][0];
+            return Ok(Instance::Repeated(
+                items
+                    .iter()
+                    .map(|item| {
+                        Ok(Instance::Group(
+                            vec![("item".to_owned(), unchecked(child, item)?)].into(),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?,
+            ));
+        }
+        let mut single = model.clone();
+        single["repeating"] = false.into();
+        return Ok(Instance::Repeated(
+            items
+                .iter()
+                .map(|item| unchecked(&single, item))
+                .collect::<Result<Vec<_>, _>>()?,
+        ));
+    }
+    Ok(match wire {
+        Json::Bool(value) => Instance::Scalar(Value::Bool(*value)),
+        Json::String(value) => Instance::Scalar(Value::String(value.clone())),
+        Json::Number(value) if value.is_i64() => {
+            Instance::Scalar(Value::Int(value.as_i64().ok_or("literal integer")?))
+        }
+        Json::Number(value) => {
+            Instance::Scalar(Value::Float(value.as_f64().ok_or("literal float")?))
+        }
+        Json::Array(items) => Instance::Repeated(
+            items
+                .iter()
+                .map(|item| unchecked(&Json::Null, item))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        Json::Object(fields) => Instance::Group(
+            fields
+                .iter()
+                .map(|(name, value)| Ok((name.clone(), unchecked(&Json::Null, value)?)))
+                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?
+                .into(),
+        ),
+        Json::Null => unreachable!("handled above"),
+    })
+}
+
+fn malformed(base: &Json, id: &str) -> Result<Json, Box<dyn std::error::Error>> {
+    let mut schema = base.clone();
+    match id {
+        "scalar-marker" => schema["kind"] = json!({"kind":"scalar","ty":"int"}),
+        "nonrepeated-wrapper" => schema["repeating"] = false.into(),
+        "zero-child" => schema["kind"]["children"] = json!([]),
+        "two-children" => schema["kind"]["children"]
+            .as_array_mut()
+            .ok_or("literal children")?
+            .push(json!({"name":"extra","repeating":true,"kind":{"kind":"scalar","ty":"int"}})),
+        "wrong-child-name" => schema["kind"]["children"][0]["name"] = "row".into(),
+        "nonrepeated-child" => schema["kind"]["children"][0]["repeating"] = false.into(),
+        "object-required" => schema["kind"]["required"] = json!(["item"]),
+        "dynamic-child" => {
+            schema["kind"]["dynamic"] = json!({"name":"*","kind":{"kind":"scalar","ty":"string"}})
+        }
+        "object-property-count" => schema["property_count_range"] = json!({"minimum":1}),
+        "scalar-nullable" => schema["nullable"] = true.into(),
+        "scalar-range" => {
+            schema["numeric_range"] = json!({"kind":"integer","bounds":{"minimum":0,"maximum":1}})
+        }
+        "xml-attribute" => schema["attribute"] = true.into(),
+        "json-any-text" => schema["json_any"] = true.into(),
+        "recursion-anchor" => schema["recursive_ref"] = "Loop".into(),
+        _ => return Err("unqualified malformed category".into()),
+    }
+    Ok(schema)
+}
+
+fn run(evidence: &mut Evidence, fixture: &Json) -> Result<(), Box<dyn std::error::Error>> {
+    let rows = fixture["cases"].as_array().ok_or("literal cases")?;
+    if rows.len() != 26
+        || fixture["typed_output_negative_cases"]
+            .as_array()
+            .ok_or("literal output controls")?
+            .len()
+            != 5
+        || fixture["malformed_ir"]
+            .as_array()
+            .ok_or("literal malformed controls")?
+            .len()
+            != 14
+    {
+        return Err("closed authored cohort differs".into());
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    let mut positives = 0;
+    let mut negatives = 0;
+    let mut negative_outputs = 0;
+    for row in rows {
+        let id = row["id"].as_str().ok_or("literal id")?;
+        if !ids.insert(id) {
+            return Err("duplicate authored case".into());
+        }
+        let descriptor = serde_json::to_string(&row["expected_model"])?;
+        fs::write(
+            evidence.root.join(format!("{id}-descriptor.literal.json")),
+            &descriptor,
+        )?;
+        let input = row["wire"].as_str().ok_or("literal wire")?;
+        let input_bytes = input.as_bytes().to_vec();
+        let before = input_bytes.clone();
+        let text = codegen_runtime::parse_json(&descriptor, input);
+        let bytes = codegen_runtime::parse_json_bytes(&descriptor, &input_bytes);
+        if row.get("expected_typed").is_some() {
+            positives += 1;
+            let wanted = typed(&row["expected_typed"])?;
+            let expected = json!({"ok":full(&wanted)});
+            evidence.check(id, "parse-text", &text, expected.clone(), full)?;
+            evidence.check(id, "parse-bytes", &bytes, expected, full)?;
+            let before = full(&wanted);
+            let output = codegen_runtime::serialize_json(&descriptor, &wanted);
+            let output_bytes = codegen_runtime::serialize_json_bytes(&descriptor, &wanted);
+            evidence.check(
+                id,
+                "serialize-text",
+                &output,
+                json!({"ok":row["expected_output"]}),
+                |text| json!(text),
+            )?;
+            evidence.check(
+                id,
+                "serialize-bytes",
+                &output_bytes,
+                json!({"ok":row["expected_utf8_hex"]}),
+                |bytes| json!(hex(bytes)),
+            )?;
+            evidence.caller(id, "writer", before, full(&wanted))?;
+        } else {
+            negatives += 1;
+            let expected = json!({"error":{"variant":"InvalidInput","message":row["expected_native_error"]["display"]}});
+            evidence.check(id, "parse-text", &text, expected.clone(), full)?;
+            evidence.check(id, "parse-bytes", &bytes, expected, full)?;
+            if row.get("expected_managed_output_error").is_some() {
+                negative_outputs += 1;
+                let input: Json = serde_json::from_str(input)?;
+                let wanted = unchecked(&row["expected_model"], &input)?;
+                let before = full(&wanted);
+                fs::write(
+                    evidence
+                        .root
+                        .join(format!("{id}-unchecked-writer-input.original.txt")),
+                    format!("{wanted:#?}\n"),
+                )?;
+                let output = codegen_runtime::serialize_json(&descriptor, &wanted);
+                let output_bytes = codegen_runtime::serialize_json_bytes(&descriptor, &wanted);
+                let expected = json!({"error": row.get("expected_rust_output_error").cloned().unwrap_or_else(|| json!({"variant":"InvalidOutput","message":row["expected_native_error"]["display"]}))});
+                evidence.check(id, "serialize-text", &output, expected.clone(), |text| {
+                    json!(text)
+                })?;
+                evidence.check(id, "serialize-bytes", &output_bytes, expected, |bytes| {
+                    json!(hex(bytes))
+                })?;
+                evidence.caller(id, "writer", before, full(&wanted))?;
+            }
+        }
+        evidence.caller(
+            id,
+            "parse-bytes",
+            json!(hex(&before)),
+            json!(hex(&input_bytes)),
+        )?;
+    }
+    for row in fixture["typed_output_negative_cases"]
+        .as_array()
+        .ok_or("output controls")?
+    {
+        let id = row["id"].as_str().ok_or("output id")?;
+        let descriptor = serde_json::to_string(&row["expected_model"])?;
+        let wanted = typed(&row["typed"])?;
+        let before = full(&wanted);
+        fs::write(
+            evidence
+                .root
+                .join(format!("{id}-writer-input.original.txt")),
+            format!("{wanted:#?}\n"),
+        )?;
+        let output = codegen_runtime::serialize_json(&descriptor, &wanted);
+        let bytes = codegen_runtime::serialize_json_bytes(&descriptor, &wanted);
+        let expected = json!({"error":{"variant":"InvalidOutput","message":row["expected_native_error"]["display"]}});
+        evidence.check(
+            id,
+            "typed-serialize-text",
+            &output,
+            expected.clone(),
+            |text| json!(text),
+        )?;
+        evidence.check(id, "typed-serialize-bytes", &bytes, expected, |bytes| {
+            json!(hex(bytes))
+        })?;
+        evidence.caller(id, "typed-writer", before, full(&wanted))?;
+    }
+    let base = &rows[0]["expected_model"];
+    let wanted = typed(&rows[0]["expected_typed"])?;
+    for row in fixture["malformed_ir"]
+        .as_array()
+        .ok_or("malformed controls")?
+    {
+        let id = row["id"].as_str().ok_or("malformed id")?;
+        let schema = malformed(base, id)?;
+        let descriptor = serde_json::to_string(&schema)?;
+        fs::write(
+            evidence
+                .root
+                .join(format!("{id}-malformed-descriptor.literal.json")),
+            &descriptor,
+        )?;
+        // SchemaNode's root custom error is returned after Repr deserialization.
+        // serde_json propagates it with line/column zero, so Display has no
+        // location suffix. The codec supplies only its deserialization prefix.
+        let expected = json!({"error":{"variant":"InvalidEmbeddedSchema","message":"cannot read embedded schema: invalid JSON array-wrapper metadata"}});
+        evidence.check(
+            id,
+            "malformed-parse-text",
+            &codegen_runtime::parse_json(&descriptor, "[[7,9]]"),
+            expected.clone(),
+            full,
+        )?;
+        evidence.check(
+            id,
+            "malformed-parse-bytes",
+            &codegen_runtime::parse_json_bytes(&descriptor, b"[[7,9]]"),
+            expected.clone(),
+            full,
+        )?;
+        evidence.check(
+            id,
+            "malformed-serialize-text",
+            &codegen_runtime::serialize_json(&descriptor, &wanted),
+            expected.clone(),
+            |text| json!(text),
+        )?;
+        evidence.check(
+            id,
+            "malformed-serialize-bytes",
+            &codegen_runtime::serialize_json_bytes(&descriptor, &wanted),
+            expected,
+            |bytes| json!(hex(bytes)),
+        )?;
+        evidence.caller(
+            id,
+            "malformed-writer",
+            full(&typed(&rows[0]["expected_typed"])?),
+            full(&wanted),
+        )?;
+    }
+    let before = full(&wanted);
+    let actual = generated::execute(&wanted);
+    fs::write(
+        evidence.root.join("generated-typed.original.txt"),
+        format!("{actual:#?}\n"),
+    )?;
+    let good = matches!(&actual,Ok(value) if full(value)==before) && full(&wanted) == before;
+    evidence.outcomes.push(json!({"id":"root-complete","route":"generated-typed","actual":match &actual {Ok(value)=>json!({"ok":full(value)}),Err(cause)=>json!({"error":format!("{cause:#?}")})},"expected":{"ok":before},"good":good}));
+    if !good {
+        evidence.failures.push("generated-typed".into());
+    }
+    evidence.flush()?;
+    evidence.caller(
+        "root-complete",
+        "generated-typed",
+        full(&typed(&rows[0]["expected_typed"])?),
+        full(&wanted),
+    )?;
+    let input = rows[0]["wire"].as_str().ok_or("mapping wire")?;
+    evidence.check(
+        "root-complete",
+        "generated-json-text",
+        &generated::execute_json(input),
+        json!({"ok":rows[0]["expected_output"]}),
+        |text| json!(text),
+    )?;
+    evidence.check(
+        "root-complete",
+        "generated-json-bytes",
+        &generated::execute_json_bytes(input.as_bytes()),
+        json!({"ok":rows[0]["expected_utf8_hex"]}),
+        |bytes| json!(hex(bytes)),
+    )?;
+    if positives != 15 || negatives != 11 || negative_outputs != 9 || evidence.outcomes.len() != 169
+    {
+        return Err("closed complete route counts differ".into());
+    }
+    evidence.flush()?;
+    if !evidence.failures.is_empty() {
+        return Err("complete nested-array contracts differ; retained failures.json".into());
+    }
+    println!(
+        "NESTED_ARRAY_COMPLETE direct_positive=15 direct_refusal=11 typed_refusal=5 malformed=14 generated=3 outcomes=169"
+    );
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if arguments.len() != 1 {
+        return Err("need generated directory".into());
+    }
+    let directory = Path::new(&arguments[0]);
+    let root = directory.join(format!(
+        "nested-array-rust-originals-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    ));
+    fs::create_dir(&root)?;
+    let bytes = fs::read(directory.join("cases.json"))?;
+    fs::write(root.join("cases.literal.json"), &bytes)?;
+    let fixture: Json = serde_json::from_slice(&bytes)?;
+    let mut evidence = Evidence {
+        root,
+        outcomes: vec![],
+        failures: vec![],
+    };
+    let actual = run(&mut evidence, &fixture);
+    if let Err(cause) = &actual {
+        fs::write(
+            evidence.root.join("setup-or-final-error.original.txt"),
+            format!("{cause:#?}\n{cause}\n"),
+        )?;
+    }
+    evidence.flush()?;
+    actual
+}
