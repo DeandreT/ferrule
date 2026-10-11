@@ -132,6 +132,9 @@ fn validate_body(
             }
         }
         match node {
+            Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+                super::schema::validate_owned_source_node(project, node, &node_location, issues)
+            }
             Node::Unconnected
             | Node::Const { .. }
             | Node::RuntimeValue { .. }

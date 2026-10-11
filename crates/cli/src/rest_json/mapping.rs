@@ -83,7 +83,9 @@ fn preflight(
             "this route requires one strict JSON input and one JSON output",
         ));
     }
-    crate::require_valid(project).map_err(RestJsonError::Mapping)
+    crate::require_valid(project).map_err(RestJsonError::Mapping)?;
+    engine::check_source_ownership_capability(project, Some(engine::TargetSelection::Primary))
+        .map_err(|error| RestJsonError::Mapping(error.into()))
 }
 
 /// Preflights one immutable project before any connection, fetches once, and
@@ -267,4 +269,29 @@ pub fn run_project_value_rest_json_request_file_payloads(
     .with_timeout(timeout)
     .with_headers(&headers);
     run_project_value_rest_json_payloads(project, project_path, &request, policy, options)
+}
+
+#[cfg(test)]
+mod owned_source_rest_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_refusal_is_inside_preflight_and_retains_earlier_policy_errors() {
+        let project = crate::owned_source_test_project();
+        let options =
+            RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
+        let RestJsonError::Mapping(error) = preflight(&project, &options).unwrap_err() else {
+            panic!("typed mapping refusal expected");
+        };
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, .. })
+        ));
+        let options =
+            RestJsonMappingOptions::new(Path::new("response.xml"), Path::new("output.json"));
+        assert!(matches!(
+            preflight(&project, &options),
+            Err(RestJsonError::RequestPolicy(_))
+        ));
+    }
 }

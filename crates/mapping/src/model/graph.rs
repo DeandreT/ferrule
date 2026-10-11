@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
+use crate::{
+    FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedSourceRef, Scope,
+    SourceOwner,
+};
 
 pub type NodeId = u32;
 
@@ -154,10 +157,33 @@ pub enum RuntimeValue {
     CurrentDateTime,
 }
 
+/// A scalar reference with an explicit endpoint owner. Execution remains unavailable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedSourceField {
+    pub source: OwnedSourceRef,
+    /// Exact endpoint-local frame identity; source.path stays absolute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<Vec<String>>,
+}
+
+/// An explicitly owned position. None and an explicit root [] stay distinct.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedPosition {
+    pub owner: SourceOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<Vec<String>>,
+}
+
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Node {
+    /// Preserves explicit ownership without opening evaluation capability.
+    OwnedSourceField(OwnedSourceField),
+    /// Preserves explicit frame selection without opening position capability.
+    OwnedPosition(OwnedPosition),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -413,11 +439,22 @@ pub enum Node {
 }
 
 impl Node {
+    /// Stable wire kind for the two ownership forms which remain capability-closed.
+    pub fn owned_source_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::OwnedSourceField(_) => Some("owned_source_field"),
+            Self::OwnedPosition(_) => Some("owned_position"),
+            _ => None,
+        }
+    }
+
     /// Graph nodes whose outputs must be available to evaluate this node.
     /// The order follows expression evaluation where that order is meaningful.
     pub fn dependencies(&self) -> Vec<NodeId> {
         match self {
-            Self::SourceField { .. }
+            Self::OwnedSourceField(_)
+            | Self::OwnedPosition(_)
+            | Self::SourceField { .. }
             | Self::SourceRootXmlTypeEquals { .. }
             | Self::SourceRootField { .. }
             | Self::SourceDocumentPath

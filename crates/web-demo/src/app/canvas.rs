@@ -79,7 +79,9 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
 /// The wired inputs a graph node has (pin order).
 fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
@@ -149,6 +151,14 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
 
 fn node_title(node: &Node) -> String {
     match node {
+        Node::OwnedSourceField(field) => format!(
+            "owned field {:?} {:?}; frame {:?}; unavailable",
+            field.source.owner, field.source.path, field.frame
+        ),
+        Node::OwnedPosition(position) => format!(
+            "owned position {:?}; collection {:?}; unavailable",
+            position.owner, position.collection
+        ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),
         Node::SourceRootXmlTypeEquals { .. } => "primary XML annotation equality".to_string(),
