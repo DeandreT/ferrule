@@ -28,6 +28,9 @@ class ResourceGuardTests(unittest.TestCase):
             commands = {
                 "id": 'printf "%s\\n" "$FIXTURE_USER"',
                 "mkdir": "exit 0",
+                "python3": ('[ "$#" -eq 3 ] && [ "$1" = -I ] && '
+                            '[ "$2" = "$FIXTURE_CACHE_HELPER" ] && '
+                            '{ [ "$3" = 8 ] || [ "$3" = 16 ]; }'),
                 "realpath": ('if [ "$1" = -m ]; then shift; fi; '
                              'if [ "$1" = "$FIXTURE_SYMLINK" ]; then '
                              'echo /elsewhere; else printf "%s\\n" "$1"; fi'),
@@ -57,6 +60,7 @@ class ResourceGuardTests(unittest.TestCase):
                 "FIXTURE_FREE_KIB": free_kib,
                 "FIXTURE_SYMLINK": symlink,
                 "FERRULE_CI_SUITE": suite,
+                "FIXTURE_CACHE_HELPER": str(SCRIPT.with_name("reclaim-build-cache.py")),
                 "FIXTURE_TIMEOUT_VERSION": ("timeout (GNU coreutils) 9.7"
                                             if gnu_timeout else "timeout (uutils)"),
             }
