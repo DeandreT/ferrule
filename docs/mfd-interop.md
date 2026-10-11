@@ -772,6 +772,11 @@ again. Parser references survive project serialization in versioned recipe
 metadata that leaves parsing behavior unchanged. Native-profile preflight
 marks the export incomplete and rejects publication; the generated schema is
 not evidence that the original external schema was recovered.
+JSON string parsers lower connected scalar property outputs. Unconnected object,
+array and item views do not participate in parser admission. Connected structural
+outputs, root arrays, array-crossing property paths and missing schema paths retain
+their explicit refusal. Each admitted field still parses and validates the complete
+JSON document against its schema, including properties whose ports are unused.
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
