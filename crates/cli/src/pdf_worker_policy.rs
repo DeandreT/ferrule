@@ -4,7 +4,7 @@ use pdf_worker::host::{
     ScratchPolicy, WorkerProgram,
 };
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Explicit opt-in for filesystem project runs. Acquisition stays lazy for
@@ -12,6 +12,8 @@ use std::time::Duration;
 pub struct FilesystemRunPolicy {
     manager: RefCell<Option<PdfWorkerManager>>,
     cancel: CancellationFlag,
+    retain_pdf_evidence: bool,
+    retained_pdf_evidence: RefCell<Vec<PathBuf>>,
 }
 impl Default for FilesystemRunPolicy {
     fn default() -> Self {
@@ -23,7 +25,22 @@ impl FilesystemRunPolicy {
         Self {
             manager: RefCell::new(None),
             cancel: CancellationFlag::new(),
+            retain_pdf_evidence: false,
+            retained_pdf_evidence: RefCell::new(Vec::new()),
         }
+    }
+    /// Opt in before the first lazy PDF acquisition. Ordinary policies clean
+    /// successful worker originals; failure evidence is retained in both modes.
+    pub fn with_retained_pdf_evidence() -> Self {
+        Self {
+            retain_pdf_evidence: true,
+            ..Self::new()
+        }
+    }
+    /// Closed successful PDF folders, in acquisition order. These paths remain
+    /// usable after this policy is dropped; this accessor does not delete them.
+    pub fn retained_pdf_evidence(&self) -> Vec<PathBuf> {
+        self.retained_pdf_evidence.borrow().clone()
     }
     pub fn cancellation(&self) -> &CancellationFlag {
         &self.cancel
@@ -49,6 +66,7 @@ impl FilesystemRunPolicy {
                 return Err(error.into());
             }
         };
+        let mut retained_success = None;
         let original = (|| -> anyhow::Result<ir::Instance> {
             guard.observe(&self.cancel);
             if self.cancel.is_cancelled() {
@@ -70,11 +88,15 @@ impl FilesystemRunPolicy {
                 // Zero is this CLI caller's explicit external reserve. This
                 // is not a build/global reservation or disk quota.
                 let scratch = ScratchPolicy::admit(&std::env::temp_dir(), 0)?;
-                *slot = Some(PdfWorkerManager::new(
+                let mut manager = PdfWorkerManager::new(
                     program,
                     scratch,
                     ExclusiveReaperAdmission::for_current_host(),
-                )?);
+                )?;
+                if self.retain_pdf_evidence {
+                    manager.retain_successful_originals(true)?;
+                }
+                *slot = Some(manager);
             }
             let manager = slot.as_mut().expect("admitted manager");
             match manager.begin(path, layout, &self.cancel) {
@@ -87,7 +109,17 @@ impl FilesystemRunPolicy {
                 guard.observe(&self.cancel);
                 match manager.poll() {
                     JobProgress::Pending { .. } => {}
-                    JobProgress::Succeeded { instance, .. } => return Ok(instance),
+                    JobProgress::Succeeded { instance, .. } => {
+                        if self.retain_pdf_evidence {
+                            retained_success =
+                                Some(
+                                    manager.evidence_paths().last().cloned().context(
+                                        "closed successful PDF evidence path is missing",
+                                    )?,
+                                );
+                        }
+                        return Ok(instance);
+                    }
                     JobProgress::FailedClosed { failure, retained } => {
                         return Err(anyhow::Error::new(failure).context(format!(
                             "closed PDF worker evidence retained at {}",
@@ -127,6 +159,11 @@ impl FilesystemRunPolicy {
             }
         }
         guard.observe(&self.cancel);
+        // This records a closed extraction even when the later CLI boundary
+        // refuses mapping publication after cancellation or recovered restoration.
+        if let Some(path) = retained_success {
+            self.retained_pdf_evidence.borrow_mut().push(path.clone());
+        }
         if let Some(error) = restoration_error {
             return Err(anyhow::Error::new(error).context(format!("PDF signal restoration recovered after {restoration_attempts} failed attempts; extraction is not published")));
         }
@@ -256,5 +293,172 @@ mod tests {
                 .borrow()
                 .contains_key(&("document".into(), "two.pdf".into()))
         );
+    }
+
+    #[test]
+    #[ignore = "root-only retained-success accessor/cache/drop; immutable paired package and fresh evidence root"]
+    fn retained_success_query_survives_policy_drop_without_duplicate_cached_reads() {
+        use std::io::Write;
+        use std::os::unix::ffi::OsStrExt;
+        fn retain(path: &std::path::Path, bytes: &[u8]) {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap();
+            file.write_all(bytes).unwrap();
+            file.sync_all().unwrap();
+            std::fs::File::open(path.parent().unwrap())
+                .unwrap()
+                .sync_all()
+                .unwrap();
+        }
+        let root = PathBuf::from(
+            std::env::var_os("FERRULE_PDF_WORKER_EVIDENCE_API_ROOT")
+                .expect("root-qualified fresh absolute evidence directory"),
+        );
+        assert!(root.is_absolute() && !root.exists());
+        std::fs::create_dir(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let scratch = root.join("scratch");
+        std::fs::create_dir(&scratch).unwrap();
+        std::fs::set_permissions(&scratch, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let package = PathBuf::from(
+            std::env::var_os("FERRULE_PDF_WORKER_PACKAGE_DIR")
+                .expect("root-qualified immutable paired package directory"),
+        );
+        let layout = PdfLayout::new(
+            "Document",
+            PdfPageSelection::First,
+            vec![PdfCommand::Capture(PdfCapture {
+                name: "Value".into(),
+                region: PdfRegion::full(),
+                algorithm: Default::default(),
+            })],
+        )
+        .unwrap();
+        let source = NamedSource {
+            name: "document".into(),
+            path: String::new(),
+            schema: layout.schema(),
+            options: FormatOptions {
+                pdf: Some(layout),
+                ..FormatOptions::default()
+            },
+            dynamic_path: Some(DynamicSourcePath {
+                node: 0,
+                iteration: Vec::new(),
+            }),
+        };
+        retain(
+            &root.join("hello.pdf"),
+            include_bytes!("../../pdf-worker/tests/fixtures/hello-page.pdf"),
+        );
+        let expected = ir::Instance::Group(
+            vec![(
+                "Value".into(),
+                ir::Instance::Scalar(ir::Value::String("Hello".into())),
+            )]
+            .into(),
+        );
+        retain(
+            &root.join("EXPECTED.original.txt"),
+            format!("{expected:#?}").as_bytes(),
+        );
+        let program = WorkerProgram::admit_packaged_sibling(&package.join("ferrule")).unwrap();
+        let mut manager = PdfWorkerManager::new(
+            program,
+            ScratchPolicy::admit(&scratch, 0).unwrap(),
+            ExclusiveReaperAdmission::for_current_host(),
+        )
+        .unwrap();
+        manager.retain_successful_originals(true).unwrap();
+        let policy = FilesystemRunPolicy::with_retained_pdf_evidence();
+        // Private test injection changes no public API or worker admission.
+        *policy.manager.borrow_mut() = Some(manager);
+        let sources = [source];
+        let loader = crate::ProjectDynamicSourceLoader::with_policy(&root, &sources, Some(&policy));
+        let first = loader.load("document", "hello.pdf");
+        retain(
+            &root.join("first.original.txt"),
+            format!("{first:#?}").as_bytes(),
+        );
+        let same = loader.load("document", "hello.pdf");
+        retain(
+            &root.join("cached.original.txt"),
+            format!("{same:#?}").as_bytes(),
+        );
+        let paths = policy.retained_pdf_evidence();
+        let manager_paths = policy.manager.borrow().as_ref().unwrap().evidence_paths();
+        retain(&root.join("query.original.json"), &serde_json::to_vec_pretty(&serde_json::json!({
+            "paths_bytes": paths.iter().map(|p| p.as_os_str().as_bytes()).collect::<Vec<_>>(),
+            "manager_paths_bytes": manager_paths.iter().map(|p| p.as_os_str().as_bytes()).collect::<Vec<_>>()
+        })).unwrap());
+        drop(loader);
+        drop(policy);
+        let mut folders = Vec::new();
+        for path in &paths {
+            let mut leaves = std::fs::read_dir(path)
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .collect::<Vec<_>>();
+            leaves.sort();
+            let mut files = std::collections::BTreeMap::new();
+            let mut raw_files = Vec::new();
+            for leaf in leaves {
+                let metadata = std::fs::symlink_metadata(&leaf).unwrap();
+                retain(
+                    &root.join(format!(
+                        "folder-{}-file-{}.metadata.original.txt",
+                        folders.len(),
+                        raw_files.len()
+                    )),
+                    format!("{leaf:?} {metadata:?}").as_bytes(),
+                );
+                assert!(metadata.is_file() && !metadata.file_type().is_symlink());
+                let body = std::fs::read(&leaf).unwrap();
+                let name = leaf.file_name().unwrap().to_owned();
+                raw_files.push(serde_json::json!({"name_bytes": name.as_bytes(), "body": body}));
+                files.insert(name, body);
+            }
+            retain(
+                &root.join(format!("folder-{}.full.original.json", folders.len())),
+                &serde_json::to_vec_pretty(&raw_files).unwrap(),
+            );
+            folders.push(files);
+        }
+        retain(&root.join("after-drop.original.json"), &serde_json::to_vec_pretty(&serde_json::json!({
+            "folder_count": folders.len(), "paths_bytes": paths.iter().map(|p| p.as_os_str().as_bytes()).collect::<Vec<_>>()
+        })).unwrap());
+        assert_eq!(*first.unwrap(), expected);
+        assert_eq!(*same.unwrap(), expected);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(manager_paths, paths);
+        assert_eq!(folders.len(), 1);
+        let files = &folders[0];
+        for name in [
+            "input.pdf",
+            "request.json",
+            "result.json",
+            "instance.json",
+            "receipt.json",
+        ] {
+            assert!(
+                files.contains_key(std::ffi::OsStr::new(name)),
+                "missing {name}"
+            );
+        }
+        assert!(!files.contains_key(std::ffi::OsStr::new("layout.json")));
+        assert_eq!(
+            files[std::ffi::OsStr::new("input.pdf")],
+            include_bytes!("../../pdf-worker/tests/fixtures/hello-page.pdf").as_slice()
+        );
+        let request: serde_json::Value =
+            serde_json::from_slice(&files[std::ffi::OsStr::new("request.json")]).unwrap();
+        assert!(request.get("layout").is_some());
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&files[std::ffi::OsStr::new("receipt.json")]).unwrap();
+        assert_eq!(receipt["own_reap"], true);
+        assert_eq!(receipt["successful_originals_retained"], true);
     }
 }
