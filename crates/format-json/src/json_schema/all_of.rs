@@ -29,7 +29,7 @@ pub(super) fn parse_all_of(
     name: &str,
     schema: &serde_json::Value,
     composition: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let parsed = parse_branches(name, schema, composition, doc, active_refs)?;
@@ -43,7 +43,7 @@ fn parse_branches(
     name: &str,
     schema: &serde_json::Value,
     composition: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<ParsedBranches, JsonFormatError> {
     let branches = composition
@@ -95,7 +95,7 @@ fn parse_branches(
 fn parse_structural_branch(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     parsed: &mut ParsedBranches,
 ) -> Result<(), JsonFormatError> {
@@ -109,7 +109,7 @@ fn parse_structural_branch(
 fn finish_intersection(
     name: &str,
     parsed: ParsedBranches,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let ParsedBranches {
