@@ -333,7 +333,7 @@ impl EndpointHeaderFixture {
             "graph": &self.graph,
             "root": &self.root,
             "blocks": format!("{:?}/{:?}", self.source_blocks, self.target_blocks),
-            "view": [CanvasNode::SourceBlock(0), CanvasNode::TargetBlock(0)].map(|node| {
+            "view": ([CanvasNode::SourceBlock(0), CanvasNode::TargetBlock(0)].map(|node| {
                 serde_json::json!({
                     "node": format!("{node:?}"),
                     "width": self.scroll.width(node, 230.0),
@@ -342,7 +342,7 @@ impl EndpointHeaderFixture {
                     "limit": self.scroll.visible_limit(node, 20),
                     "pins": (0..20).map(|pin| self.scroll.visual_pin_for_semantic(node, pin, 20)).collect::<Vec<_>>(),
                 })
-            }),
+            })),
             "sizes": format!("{:?}", self.sizes),
             "positions": format!("{:?}", snarl.nodes_pos_ids().collect::<Vec<_>>()),
             "wires": format!("{:?}", snarl.wires().collect::<Vec<_>>()),
