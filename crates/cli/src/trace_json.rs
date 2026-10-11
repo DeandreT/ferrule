@@ -14,7 +14,103 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::WrittenOutput;
 
-const TRACE_SCHEMA_VERSION: u64 = 4;
+const TRACE_SCHEMA_VERSION: u64 = 5;
+
+// These bounds apply only to loader-request records, not existing graph events.
+#[derive(Clone, Copy)]
+struct RequestLimits {
+    source_bytes: usize,
+    path_bytes: usize,
+    line_bytes: usize,
+    requests: u64,
+    bytes: u64,
+}
+
+impl Default for RequestLimits {
+    fn default() -> Self {
+        Self {
+            source_bytes: 4096,
+            path_bytes: 4096,
+            line_bytes: 65536,
+            requests: 4096,
+            bytes: 268435456,
+        }
+    }
+}
+
+struct RequestLineWriter {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl Write for RequestLineWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let length = self.bytes.len().checked_add(bytes.len()).ok_or_else(|| {
+            std::io::Error::other("dynamic source request line exceeds its byte limit")
+        })?;
+        if length > self.limit {
+            return Err(std::io::Error::other(
+                "dynamic source request line exceeds its byte limit",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize)]
+struct RequestEvent<'a> {
+    kind: &'static str,
+    path: &'a str,
+    source: &'a str,
+}
+
+#[derive(serde::Serialize)]
+struct RequestEnvelope<'a> {
+    event: RequestEvent<'a>,
+    schema_version: u64,
+    sequence: u64,
+}
+
+fn request_line(
+    sequence: u64,
+    source: &str,
+    path: &str,
+    limits: RequestLimits,
+) -> Result<Vec<u8>, String> {
+    // Check borrowed UTF-8 byte lengths before allocating the record buffer.
+    if source.len() > limits.source_bytes {
+        return Err("dynamic source request source exceeds its byte limit".into());
+    }
+    if path.len() > limits.path_bytes {
+        return Err("dynamic source request path exceeds its byte limit".into());
+    }
+    let mut writer = RequestLineWriter {
+        bytes: Vec::new(),
+        limit: limits.line_bytes,
+    };
+    // Fixed field order is independent of serde_json map feature unification.
+    // Strings are serialized directly from their borrowed identities.
+    let result = (|| -> std::io::Result<()> {
+        let envelope = RequestEnvelope {
+            event: RequestEvent {
+                kind: "dynamic_source_load_requested",
+                path,
+                source,
+            },
+            schema_version: TRACE_SCHEMA_VERSION,
+            sequence,
+        };
+        serde_json::to_writer(&mut writer, &envelope).map_err(std::io::Error::other)?;
+        writer.write_all(b"\n")
+    })();
+    result.map_err(|error| error.to_string())?;
+    Ok(writer.bytes)
+}
 const STAGE_ATTEMPTS: usize = 64;
 static STAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -34,11 +130,21 @@ struct TraceWriterState {
     writer: Option<BufWriter<File>>,
     sequence: u64,
     error: Option<String>,
+    request_limits: RequestLimits,
+    requests: u64,
+    request_bytes: u64,
 }
 
 impl JsonTraceFile {
     /// Preflights `destination` and creates a private sibling staging file.
     pub fn create(destination: &Path) -> anyhow::Result<Self> {
+        Self::create_with_request_limits(destination, RequestLimits::default())
+    }
+
+    fn create_with_request_limits(
+        destination: &Path,
+        request_limits: RequestLimits,
+    ) -> anyhow::Result<Self> {
         if destination == Path::new("-") {
             bail!(
                 "`--trace-json -` is not supported because `run` reserves stdout for its result report"
@@ -60,6 +166,9 @@ impl JsonTraceFile {
                 writer: Some(BufWriter::new(file)),
                 sequence: 0,
                 error: None,
+                request_limits,
+                requests: 0,
+                request_bytes: 0,
             }),
         })
     }
@@ -109,6 +218,50 @@ impl JsonTraceFile {
 }
 
 impl TraceSink for JsonTraceFile {
+    fn dynamic_source_load_requested(&self, source_name: &str, requested_path: &str) {
+        let mut state = self.state.borrow_mut();
+        if state.error.is_some() {
+            return;
+        }
+        let result = (|| -> Result<(u64, u64, u64), String> {
+            let requests = state
+                .requests
+                .checked_add(1)
+                .filter(|count| *count <= state.request_limits.requests)
+                .ok_or_else(|| "dynamic source request count exceeds its limit".to_string())?;
+            let sequence = state
+                .sequence
+                .checked_add(1)
+                .ok_or_else(|| "trace event sequence overflowed".to_string())?;
+            let line = request_line(
+                state.sequence,
+                source_name,
+                requested_path,
+                state.request_limits,
+            )?;
+            let bytes = state
+                .request_bytes
+                .checked_add(line.len() as u64)
+                .filter(|bytes| *bytes <= state.request_limits.bytes)
+                .ok_or_else(|| "dynamic source request bytes exceed their limit".to_string())?;
+            state
+                .writer
+                .as_mut()
+                .ok_or_else(|| "JSON trace writer was already finalized".to_string())?
+                .write_all(&line)
+                .map_err(|error| error.to_string())?;
+            Ok((sequence, requests, bytes))
+        })();
+        match result {
+            Ok((sequence, requests, bytes)) => {
+                state.sequence = sequence;
+                state.requests = requests;
+                state.request_bytes = bytes;
+            }
+            Err(error) => state.error = Some(error),
+        }
+    }
+
     fn record(&self, event: TraceEvent) {
         let mut state = self.state.borrow_mut();
         if state.error.is_some() {
@@ -774,7 +927,7 @@ mod tests {
 
         let line = trace_line(9, &event);
 
-        assert_eq!(line["schema_version"], 4);
+        assert_eq!(line["schema_version"], 5);
         assert_eq!(line["sequence"], 9);
         assert_eq!(line["event"]["kind"], "iteration_candidate");
         assert_eq!(line["event"]["source_row"]["kind"], "group");
@@ -823,7 +976,7 @@ mod tests {
             },
         );
 
-        assert_eq!(output["schema_version"], 4);
+        assert_eq!(output["schema_version"], 5);
         assert_eq!(output["event"]["kind"], "function_node_value");
         assert_eq!(output["event"]["function"], 12);
         assert_eq!(output["event"]["node"], 3);
@@ -834,3 +987,7 @@ mod tests {
         assert_eq!(input["event"]["input_index"], 1);
     }
 }
+
+#[cfg(test)]
+#[path = "trace_json_request_tests.rs"]
+mod request_tests;
