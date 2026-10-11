@@ -1616,3 +1616,182 @@ fn rejects_filters_without_iteration_before_subset_lowering() {
 }
 
 mod xml_mixed_named_outputs;
+
+fn owned_source_test_node(position: bool) -> Node {
+    if position {
+        Node::OwnedPosition(mapping::OwnedPosition {
+            owner: mapping::SourceOwner::Primary,
+            collection: Some(vec![]),
+        })
+    } else {
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec!["First".into()],
+            },
+            frame: None,
+        })
+    }
+}
+
+#[test]
+fn owned_lowering_is_closed_only_at_existing_reachable_visits() {
+    for (position, kind) in [
+        (false, crate::UnsupportedNodeKind::OwnedSourceField),
+        (true, crate::UnsupportedNodeKind::OwnedPosition),
+    ] {
+        let mut project = supported_project();
+        project
+            .graph
+            .nodes
+            .insert(99, owned_source_test_node(position));
+        assert!(engine::validate(&project).is_empty());
+        let program = lower(&project).unwrap();
+        assert!(
+            !program
+                .expressions
+                .iter()
+                .any(|expression| expression.id == 99)
+        );
+        project.root.bindings[1].node = 99;
+        assert_eq!(
+            lower(&project).unwrap_err().diagnostics(),
+            [Diagnostic::UnsupportedNode { node: 99, kind }]
+        );
+    }
+}
+
+#[test]
+fn owned_lowering_called_function_and_dynamic_path_roots_preserve_namespace() {
+    let mut project = supported_project();
+    let id = mapping::FunctionId::new(7);
+    project.user_functions.insert(
+        id,
+        mapping::UserFunction {
+            library: "tests".into(),
+            name: "owned_source".into(),
+            description: None,
+            parameters: vec![],
+            output_name: "value".into(),
+            output_type: ScalarType::String,
+            body: Graph {
+                nodes: BTreeMap::from([
+                    (
+                        20,
+                        Node::Const {
+                            value: Value::String("dead owner".into()),
+                        },
+                    ),
+                    (99, owned_source_test_node(false)),
+                ]),
+            },
+            output: 20,
+        },
+    );
+    project.graph.nodes.insert(
+        40,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![],
+        },
+    );
+    project.root.bindings[1].node = 40;
+    assert!(lower(&project).is_ok());
+    project.user_functions.get_mut(&id).unwrap().output = 99;
+    assert_eq!(
+        lower(&project).unwrap_err().diagnostics(),
+        [Diagnostic::UserFunction {
+            function: id,
+            diagnostic: Box::new(Diagnostic::UnsupportedNode {
+                node: 99,
+                kind: crate::UnsupportedNodeKind::OwnedSourceField
+            })
+        }]
+    );
+    project.root.bindings[1].node = 20;
+    assert!(lower(&project).is_ok());
+    project.extra_sources.push(mapping::NamedSource {
+        name: "UnusedDynamic".into(),
+        path: "unused.json".into(),
+        schema: SchemaNode::group("Other", vec![scalar("Value")]),
+        options: Default::default(),
+        dynamic_path: Some(mapping::DynamicSourcePath {
+            node: 99,
+            iteration: vec![],
+        }),
+    });
+    project
+        .graph
+        .nodes
+        .insert(99, owned_source_test_node(false));
+    // Lowering deliberately roots every stored dynamic path, unlike engine demand.
+    assert_eq!(
+        lower(&project).unwrap_err().diagnostics(),
+        [Diagnostic::UnsupportedNode {
+            node: 99,
+            kind: crate::UnsupportedNodeKind::OwnedSourceField
+        }]
+    );
+}
+
+#[test]
+fn owned_metadata_is_not_a_new_reachability_edge() {
+    let mut project = supported_project();
+    project.root.bindings.truncate(1);
+    project.root.bindings[0].node = 40;
+    project.root.children.clear();
+    project
+        .graph
+        .nodes
+        .insert(99, owned_source_test_node(false));
+    project.graph.nodes.insert(
+        41,
+        Node::Const {
+            value: Value::String(r#"["Value"]"#.into()),
+        },
+    );
+    project.graph.nodes.insert(
+        40,
+        Node::Call {
+            function: "flextext_parse_field".into(),
+            args: vec![20, 99, 41],
+        },
+    );
+    let reachable = crate::lower::owned_test_reachable_nodes(&project.graph, [40]);
+    assert!(reachable.contains(&20));
+    assert!(!reachable.contains(&99));
+    assert!(!reachable.contains(&41));
+    let reachable = crate::lower::owned_test_reachable_nodes(&project.graph, [40, 99]);
+    assert!(reachable.contains(&99));
+    // Invalid metadata still refuses through the preexisting descriptor checks.
+    assert!(
+        lower(&project)
+            .unwrap_err()
+            .diagnostics()
+            .iter()
+            .all(|diagnostic| !matches!(
+                diagnostic,
+                Diagnostic::UnsupportedNode {
+                    kind: crate::UnsupportedNodeKind::OwnedSourceField,
+                    ..
+                }
+            ))
+    );
+    project.root.bindings.push(MappingBinding {
+        target_field: "FirstOut".into(),
+        node: 99,
+    });
+    assert!(
+        lower(&project)
+            .unwrap_err()
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| matches!(
+                diagnostic,
+                Diagnostic::UnsupportedNode {
+                    node: 99,
+                    kind: crate::UnsupportedNodeKind::OwnedSourceField
+                }
+            ))
+    );
+}

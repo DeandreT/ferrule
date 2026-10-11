@@ -33,6 +33,10 @@ pub(crate) fn required_for_target<'a>(
     selection: TargetSelection<'_>,
 ) -> Result<crate::RequiredTargetSources<'a>, EngineError> {
     let selected = selected_target(project, selection)?;
+    crate::source_ownership::check_roots(
+        project,
+        [selected.map_or(&project.root, |target| &target.root)],
+    )?;
     let mut analysis = Analysis::new(project);
     analysis.inspect_scope(selected.map_or(&project.root, |target| &target.root));
     analysis.inspect_failure_rules();
@@ -209,7 +213,9 @@ impl<'a> Analysis<'a> {
                     self.inspect_path(source.collection());
                 }
             }
-            Node::SourceDocumentPath
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::JoinPosition { .. }

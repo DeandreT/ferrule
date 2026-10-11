@@ -13,6 +13,31 @@ use super::{
     recursive, wsdl, xbrl,
 };
 
+/// Export represents all stored main nodes and every declared function body.
+pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdError> {
+    for (&node, expression) in &project.graph.nodes {
+        if let Some(kind) = expression.owned_source_kind() {
+            return Err(MfdError::UnsupportedSourceOwnership {
+                node,
+                function: None,
+                kind,
+            });
+        }
+    }
+    for (&function, definition) in &project.user_functions {
+        for (&node, expression) in &definition.body.nodes {
+            if let Some(kind) = expression.owned_source_kind() {
+                return Err(MfdError::UnsupportedSourceOwnership {
+                    node,
+                    function: Some(function),
+                    kind,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.source_options.xml_root_view_read_policy
         || project.target_options.xml_root_view_read_policy

@@ -79,6 +79,11 @@ impl GraphViewer<'_> {
         };
         if let Some(node) = node {
             match node {
+                node @ (Node::OwnedSourceField(_) | Node::OwnedPosition(_)) => {
+                    ui.label(
+                        graph_node_presentation::owned_source_title(node).expect("owned title"),
+                    );
+                }
                 Node::SourceField { path, frame } if !sequence_owners.is_empty() => {
                     graph_sequence_ownership::show(ui, &sequence_owners, path, frame.as_deref());
                 }

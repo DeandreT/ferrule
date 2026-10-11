@@ -97,6 +97,9 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         }
 
         match node {
+            Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+                super::schema::validate_owned_source_node(project, node, &location, issues)
+            }
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -611,6 +614,28 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         }
     };
     match node {
+        Node::OwnedSourceField(field) => {
+            if let mapping::SourceOwner::Named { name } = &field.source.owner {
+                if project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+                {
+                    sources.insert(name.as_str());
+                }
+            }
+        }
+        Node::OwnedPosition(position) => {
+            if let mapping::SourceOwner::Named { name } = &position.owner {
+                if project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+                {
+                    sources.insert(name.as_str());
+                }
+            }
+        }
         Node::SourceField { path, frame }
         | Node::DynamicSourceField {
             object: path,
@@ -1149,7 +1174,9 @@ pub(super) fn validate_collection_value(
 
 pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::SourceDocumentPath

@@ -900,7 +900,9 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

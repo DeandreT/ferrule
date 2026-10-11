@@ -1,5 +1,5 @@
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Project, ScopeIteration};
+use mapping::{Node, Project, ScopeIteration, SourceOwner};
 
 use super::{
     ValidationIssue, ValidationOwner, ValidationSchemaLocation, ValidationSchemaStep, own_issues,
@@ -288,6 +288,88 @@ pub(super) fn validate_schema(
             issues,
         );
         path.pop();
+    }
+}
+
+pub(super) fn validate_owned_source_node(
+    project: &Project,
+    node: &Node,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let (owner, scalar_path, collection) = match node {
+        Node::OwnedSourceField(field) => (
+            &field.source.owner,
+            Some(field.source.path.as_slice()),
+            field.frame.as_deref(),
+        ),
+        Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
+        _ => return,
+    };
+    let root = match owner {
+        SourceOwner::Primary => &project.source,
+        SourceOwner::Named { name } => {
+            if name.is_empty() {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "named source owner cannot be empty",
+                ));
+                return;
+            }
+            let mut matches = project
+                .extra_sources
+                .iter()
+                .filter(|source| source.name == *name);
+            let Some(source) = matches.next() else {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!("unknown source owner `{name}`"),
+                ));
+                return;
+            };
+            if matches.next().is_some() {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!("source owner `{name}` is ambiguous"),
+                ));
+                return;
+            }
+            &source.schema
+        }
+    };
+    if let Some(path) = scalar_path {
+        if follow_schema_resolved(root, path).is_none_or(|field| !field.is_scalar()) {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "owned source path `{}` matches no scalar in its owner",
+                    path.join("/")
+                ),
+            ));
+        }
+    }
+    if let Some(collection) = collection {
+        // Explicit root [] preserves flat CSV/XLSX group-root conventions.
+        // Nonempty selectors identify a real collection, including repeated scalars.
+        match follow_schema(root, collection) {
+            None => issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "owned collection `{}` matches no path in its owner",
+                    collection.join("/")
+                ),
+            )),
+            Some(field) if !collection.is_empty() && !field.repeating => {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!(
+                        "owned collection `{}` is not a repeating path in its owner",
+                        collection.join("/")
+                    ),
+                ))
+            }
+            _ => {}
+        }
     }
 }
 
