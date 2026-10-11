@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -82,9 +83,26 @@ enum FileRunEvent {
     ),
 }
 
+#[derive(Debug)]
 enum FileRunError {
     Cancelled,
     Failed(String),
+    Worker(FileRunWorkerFailure),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FileRunWorkerFailure {
+    Panicked,
+    Unreported,
+}
+
+impl FileRunWorkerFailure {
+    fn message(self) -> &'static str {
+        match self {
+            Self::Panicked => "Run worker panicked.",
+            Self::Unreported => "Run worker stopped without reporting a result.",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +121,11 @@ pub(super) enum FileRunPhase {
 
 pub(super) struct PendingFileRun {
     receiver: Receiver<FileRunEvent>,
+    worker: Option<JoinHandle<()>>,
+    completed: Option<(
+        Result<cli::RunOutcome, FileRunError>,
+        crate::run_report::TraceReport,
+    )>,
     commands: Sender<FileRunCommand>,
     cancelled: Arc<AtomicBool>,
     started: Instant,
@@ -111,6 +134,35 @@ pub(super) struct PendingFileRun {
 }
 
 impl PendingFileRun {
+    fn take_completion_if_finished(
+        &mut self,
+    ) -> Option<(
+        Result<cli::RunOutcome, FileRunError>,
+        crate::run_report::TraceReport,
+    )> {
+        if !self.worker.as_ref().is_some_and(JoinHandle::is_finished) {
+            return None;
+        }
+        // Only the exact retained handle is joined, after it reports completion.
+        let joined = self
+            .worker
+            .take()
+            .expect("run worker handle retained")
+            .join();
+        let (result, trace) = self.completed.take().unwrap_or_else(|| {
+            (
+                Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
+                crate::run_report::TraceReport::default(),
+            )
+        });
+        let result = if joined.is_err() {
+            Err(FileRunError::Worker(FileRunWorkerFailure::Panicked))
+        } else {
+            result
+        };
+        Some((result, trace))
+    }
+
     fn command(&mut self, command: FileRunCommand) {
         if matches!(
             self.phase,
@@ -779,7 +831,7 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.file_run_pause_on_failure;
-        std::thread::spawn(move || {
+        let worker = std::thread::spawn(move || {
             let trace = crate::run_report::TraceCollector::new();
             let hook = FileRunDebugHook {
                 events: events.clone(),
@@ -835,6 +887,8 @@ impl FerruleApp {
         });
         self.pending_file_run = Some(PendingFileRun {
             receiver,
+            worker: Some(worker),
+            completed: None,
             commands,
             cancelled,
             started: Instant::now(),
@@ -866,156 +920,188 @@ impl FerruleApp {
         let Some(pending) = &mut self.pending_file_run else {
             return;
         };
-        let event = match pending.receiver.try_recv() {
-            Ok(event) => event,
-            Err(TryRecvError::Empty) => {
-                if !matches!(
-                    pending.phase,
-                    FileRunPhase::Paused(_)
-                        | FileRunPhase::PausedNode(_)
-                        | FileRunPhase::PausedFunctionNode(_)
-                        | FileRunPhase::PausedInput(_)
-                        | FileRunPhase::PausedFunctionInput(_)
-                        | FileRunPhase::PausedFailure(_)
-                        | FileRunPhase::PausedFunctionFailure(_)
-                ) {
-                    ctx.request_repaint_after(Duration::from_millis(100));
-                }
-                return;
-            }
-            Err(TryRecvError::Disconnected) => FileRunEvent::Finished(
-                Err(FileRunError::Failed(
-                    "run worker stopped unexpectedly".into(),
-                )),
-                crate::run_report::TraceReport::default(),
-            ),
-        };
-        match event {
-            FileRunEvent::Paused(write) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!("paused before target field `{}`", write.field);
-                    pending.phase = FileRunPhase::Paused(write);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedNode(value) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!("paused after graph node #{}", value.node);
-                    pending.phase = FileRunPhase::PausedNode(value);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedFunctionNode(value) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!(
-                        "paused after function #{} node #{}",
-                        value.function.get(),
-                        value.node
-                    );
-                    pending.phase = FileRunPhase::PausedFunctionNode(value);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedInput(input) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!(
-                        "paused at node #{} input #{}",
-                        input.consumer,
-                        input.input_index + 1
-                    );
-                    pending.phase = FileRunPhase::PausedInput(input);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedFunctionInput(input) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!(
-                        "paused at function #{} node #{} input #{}",
-                        input.function.get(),
-                        input.consumer,
-                        input.input_index + 1
-                    );
-                    pending.phase = FileRunPhase::PausedFunctionInput(input);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedFailure(failure) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!("paused on graph node #{} error", failure.node);
-                    pending.phase = FileRunPhase::PausedFailure(failure);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::PausedFunctionFailure(failure) => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    self.status = format!(
-                        "paused on function #{} node #{} error",
-                        failure.function.get(),
-                        failure.node
-                    );
-                    pending.phase = FileRunPhase::PausedFunctionFailure(failure);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::ReadyToPublish => {
-                if matches!(pending.phase, FileRunPhase::Stopping) {
-                    let _ = pending.commands.send(FileRunCommand::Cancel);
-                } else {
-                    pending.phase = FileRunPhase::Publishing;
-                    self.status = "publishing run outputs".into();
-                    let _ = pending.commands.send(FileRunCommand::Publish);
-                }
-                ctx.request_repaint();
-            }
-            FileRunEvent::Finished(result, trace) => {
-                let pending = self.pending_file_run.take().expect("run worker exists");
-                if matches!(pending.phase, FileRunPhase::Stopping)
-                    || matches!(result, Err(FileRunError::Cancelled))
-                {
-                    self.status = "run cancelled".into();
-                    self.diagnostics.clear();
-                    self.finish_deferred_close(ctx);
+        if pending.completed.is_none() {
+            // Observe thread completion before probing its queued result. An
+            // Empty probe must not race a result sent just before thread exit.
+            let worker_finished = pending.worker.as_ref().is_some_and(JoinHandle::is_finished);
+            let event = match pending.receiver.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) if worker_finished => FileRunEvent::Finished(
+                    Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
+                    crate::run_report::TraceReport::default(),
+                ),
+                Err(TryRecvError::Empty) => {
+                    if !matches!(
+                        pending.phase,
+                        FileRunPhase::Paused(_)
+                            | FileRunPhase::PausedNode(_)
+                            | FileRunPhase::PausedFunctionNode(_)
+                            | FileRunPhase::PausedInput(_)
+                            | FileRunPhase::PausedFunctionInput(_)
+                            | FileRunPhase::PausedFailure(_)
+                            | FileRunPhase::PausedFunctionFailure(_)
+                    ) {
+                        ctx.request_repaint_after(Duration::from_millis(100));
+                    }
                     return;
                 }
-                match result {
-                    Ok(outcome) => {
-                        self.status = format!(
-                            "wrote {} record(s) to {}",
-                            outcome.records_written,
-                            outcome.output_path.display()
-                        );
-                        let report = crate::run_report::RunReport::from_outcome_with_trace(
-                            outcome,
-                            pending.started.elapsed(),
-                            trace,
-                        );
-                        self.run_report = Some(crate::run_report::RunReportView::new(report));
-                        self.show_run_report = true;
-                        self.diagnostics.clear();
+                Err(TryRecvError::Disconnected) => {
+                    if !matches!(pending.phase, FileRunPhase::Publishing) {
+                        pending.cancelled.store(true, Ordering::Release);
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
                     }
-                    Err(FileRunError::Failed(error)) => {
-                        self.status = "run failed".into();
-                        self.diagnostics.error("Run failed", error);
-                    }
-                    Err(FileRunError::Cancelled) => unreachable!("handled above"),
+                    FileRunEvent::Finished(
+                        Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
+                        crate::run_report::TraceReport::default(),
+                    )
                 }
-                self.finish_deferred_close(ctx);
+            };
+            match event {
+                FileRunEvent::Paused(write) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!("paused before target field `{}`", write.field);
+                        pending.phase = FileRunPhase::Paused(write);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedNode(value) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!("paused after graph node #{}", value.node);
+                        pending.phase = FileRunPhase::PausedNode(value);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedFunctionNode(value) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!(
+                            "paused after function #{} node #{}",
+                            value.function.get(),
+                            value.node
+                        );
+                        pending.phase = FileRunPhase::PausedFunctionNode(value);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedInput(input) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!(
+                            "paused at node #{} input #{}",
+                            input.consumer,
+                            input.input_index + 1
+                        );
+                        pending.phase = FileRunPhase::PausedInput(input);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedFunctionInput(input) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!(
+                            "paused at function #{} node #{} input #{}",
+                            input.function.get(),
+                            input.consumer,
+                            input.input_index + 1
+                        );
+                        pending.phase = FileRunPhase::PausedFunctionInput(input);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedFailure(failure) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!("paused on graph node #{} error", failure.node);
+                        pending.phase = FileRunPhase::PausedFailure(failure);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::PausedFunctionFailure(failure) => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        self.status = format!(
+                            "paused on function #{} node #{} error",
+                            failure.function.get(),
+                            failure.node
+                        );
+                        pending.phase = FileRunPhase::PausedFunctionFailure(failure);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::ReadyToPublish => {
+                    if matches!(pending.phase, FileRunPhase::Stopping) {
+                        let _ = pending.commands.send(FileRunCommand::Cancel);
+                    } else {
+                        pending.phase = FileRunPhase::Publishing;
+                        self.status = "publishing run outputs".into();
+                        let _ = pending.commands.send(FileRunCommand::Publish);
+                    }
+                    ctx.request_repaint();
+                }
+                FileRunEvent::Finished(result, trace) => {
+                    pending.completed = Some((result, trace));
+                }
             }
         }
+        // A finished thread can still have earlier pause/publication events
+        // queued before Finished. Preserve their order until a result is read.
+        if pending.completed.is_none() {
+            return;
+        }
+        let Some((result, trace)) = pending.take_completion_if_finished() else {
+            ctx.request_repaint_after(Duration::from_millis(100));
+            return;
+        };
+        let pending = self.pending_file_run.take().expect("run worker exists");
+        // Thread faults stay visible even when cancellation was requested.
+        if let Err(FileRunError::Worker(failure)) = &result {
+            self.status = "run failed".into();
+            self.diagnostics.error("Run failed", failure.message());
+            self.finish_deferred_close(ctx);
+            return;
+        }
+        if matches!(pending.phase, FileRunPhase::Stopping)
+            || matches!(result, Err(FileRunError::Cancelled))
+        {
+            self.status = "run cancelled".into();
+            self.diagnostics.clear();
+            self.finish_deferred_close(ctx);
+            return;
+        }
+        match result {
+            Ok(outcome) => {
+                self.status = format!(
+                    "wrote {} record(s) to {}",
+                    outcome.records_written,
+                    outcome.output_path.display()
+                );
+                let report = crate::run_report::RunReport::from_outcome_with_trace(
+                    outcome,
+                    pending.started.elapsed(),
+                    trace,
+                );
+                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.show_run_report = true;
+                self.diagnostics.clear();
+            }
+            Err(FileRunError::Failed(error)) => {
+                self.status = "run failed".into();
+                self.diagnostics.error("Run failed", error);
+            }
+            Err(FileRunError::Cancelled | FileRunError::Worker(_)) => {
+                unreachable!("handled above")
+            }
+        }
+        self.finish_deferred_close(ctx);
     }
 
     fn finish_deferred_close(&mut self, ctx: &egui::Context) {
@@ -1203,43 +1289,13 @@ fn nonempty_path(value: &str) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "file_run_ownership_tests.rs"]
+mod file_run_ownership_tests;
 
+#[cfg(test)]
+mod tests {
     #[test]
     fn close_during_publication_waits_for_worker_to_finish() {
-        let (events, receiver) = mpsc::channel();
-        let (commands, _command_receiver) = mpsc::channel();
-        let mut app = FerruleApp {
-            pending_file_run: Some(PendingFileRun {
-                receiver,
-                commands,
-                cancelled: Arc::new(AtomicBool::new(false)),
-                started: Instant::now(),
-                debug: false,
-                phase: FileRunPhase::Publishing,
-            }),
-            ..FerruleApp::default()
-        };
-        let context = egui::Context::default();
-
-        app.guard_app_close_requested(&context, true);
-        assert!(app.close_after_file_run);
-        let pending = app
-            .pending_file_run
-            .as_ref()
-            .expect("worker remains active");
-        assert!(matches!(pending.phase, FileRunPhase::Publishing));
-        assert!(!pending.cancelled.load(Ordering::Acquire));
-
-        events
-            .send(FileRunEvent::Finished(
-                Err(FileRunError::Cancelled),
-                crate::run_report::TraceReport::default(),
-            ))
-            .expect("completion event is sent");
-        app.poll_file_run(&context);
-        assert!(app.pending_file_run.is_none());
-        assert!(!app.close_after_file_run);
+        super::file_run_ownership_tests::close_during_publication();
     }
 }
