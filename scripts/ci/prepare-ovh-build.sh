@@ -37,6 +37,9 @@ case ${FERRULE_CI_SUITE:-native} in
   codegen) reserve_gib=8 ;;
   *) echo 'Unknown Ferrule CI resource profile.' >&2; exit 1 ;;
 esac
+# Reclaim only idle Cargo targets before enforcing the existing hard floor.
+python3 -I "$(dirname "${BASH_SOURCE[0]}")/reclaim-build-cache.py" "$reserve_gib"
+available_kib=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
 if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < reserve_gib * 1024 * 1024 )); then
   printf 'OVH needs at least %s GiB free before starting this build; inspect Ferrule caches.\n' "$reserve_gib" >&2
   df -h "$HOME" >&2

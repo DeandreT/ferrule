@@ -28,7 +28,9 @@ class ResourceGuardTests(unittest.TestCase):
             commands = {
                 "id": 'printf "%s\\n" "$FIXTURE_USER"',
                 "mkdir": "exit 0",
-                "python3": ('[ "$#" -eq 3 ] && [ "$1" = -I ] && '
+                "python3": ('[ "$#" -eq 3 ] && [ "$1" = -I ] || exit 1; '
+                            'if [ "$2" = "$FIXTURE_CACHE_HELPER" ]; then '
+                            '{ [ "$3" = 8 ] || [ "$3" = 16 ]; }; exit $?; fi; '
                             '[ "$2" = "$FIXTURE_EVIDENCE_HELPER" ] && '
                             '[ "$3" = begin ] || exit 1; '
                             '[ "$FIXTURE_EVIDENCE_FAILURE" = no ] || exit 1; '
@@ -65,6 +67,7 @@ class ResourceGuardTests(unittest.TestCase):
                 "FIXTURE_FREE_KIB": free_kib,
                 "FIXTURE_SYMLINK": symlink,
                 "FERRULE_CI_SUITE": suite,
+                "FIXTURE_CACHE_HELPER": str(SCRIPT.with_name("reclaim-build-cache.py")),
                 "FIXTURE_EVIDENCE_FAILURE": "yes" if evidence_failure else "no",
                 "FIXTURE_EVIDENCE_HELPER": str(SCRIPT.with_name("job-evidence.py")),
                 "FIXTURE_TIMEOUT_VERSION": ("timeout (GNU coreutils) 9.7"

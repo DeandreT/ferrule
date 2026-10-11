@@ -36,6 +36,7 @@ jobs:
         run: |
           bash -n scripts/ci/*.sh
           python3 scripts/ci/test-ovh-build.py
+          python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 scripts/ci/test-job-evidence.py
       - name: OVH build resources
         if: runner.environment == 'self-hosted'
