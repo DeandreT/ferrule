@@ -231,8 +231,22 @@ class EvidenceCompactionTests(unittest.TestCase):
                 self.assert_preserved()
 
     def test_direct_admin_invocation_cannot_claim_pre_job_closure(self):
-        with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
-            evidence.producer_closure(processes=[])
+        # Tests themselves can run beneath a real Actions worker. Model an
+        # administrator's ancestry independently of the test harness's parent.
+        with patch.object(evidence, "WORKER", "/no-administrator-job-worker"):
+            with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
+                evidence.producer_closure(processes=[])
+
+    def test_foreign_init_ancestor_does_not_require_executable_access(self):
+        root_process = Mock()
+        root_process.stat.return_value.st_uid = os.getuid() + 1
+        root_process.__truediv__ = Mock(return_value=Mock())
+        root_process.__truediv__.return_value.read_text.return_value = "1 (init) S 0"
+        with patch.object(evidence.os, "getpid", return_value=1), \
+             patch.object(evidence, "Path", return_value=Mock(__truediv__=Mock(return_value=root_process))), \
+             patch.object(evidence.os.path, "realpath", side_effect=PermissionError("root exe")):
+            with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
+                evidence.hook_ancestry()
 
     def test_real_live_producer_without_open_evidence_files_vetoes_compaction(self):
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])

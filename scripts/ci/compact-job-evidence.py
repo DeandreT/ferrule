@@ -31,8 +31,12 @@ def hook_ancestry():
     while pid:
         ancestors.add(pid)
         process = Path("/proc") / str(pid)
-        executable = os.path.realpath(process / "exe")
-        worker_seen |= executable == WORKER
+        # Container init/runuser ancestors belong to root and their executable
+        # links may be unreadable. Only this account can be the job worker;
+        # account-owned ancestors must remain fully inspectable.
+        if process.stat().st_uid == os.getuid():
+            executable = os.path.realpath(process / "exe")
+            worker_seen |= executable == WORKER
         fields = (process / "stat").read_text().rsplit(")", 1)[1].split()
         pid = int(fields[1])
     require(worker_seen, "Evidence compaction requires the actual pre-job hook")
