@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AdjacencyTreePlan, Binding, DynamicBinding, DynamicChild, JoinId, JoinPlan, NodeId,
-    PathHierarchyPlan, RecursiveFilterPlan, ScopeIteration, ScopeSequence, SequenceExpr,
+    OwnedSourceAccess, PathHierarchyPlan, RecursiveFilterPlan, ScopeIteration, ScopeSequence,
+    SequenceExpr, SourceSelector, SourceSelectorMut, SourceSelectorRef,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,29 +221,69 @@ impl Scope {
         self.sort_by.is_some() || !self.sort_then_by.is_empty()
     }
 
-    pub fn source(&self) -> Option<&[String]> {
-        self.iteration.source()
+    pub fn source_selector(&self) -> Option<SourceSelectorRef<'_>> {
+        self.iteration.source_selector()
     }
 
-    pub fn source_mut(&mut self) -> Option<&mut Vec<String>> {
+    pub fn source_selector_mut(&mut self) -> Option<SourceSelectorMut<'_>> {
         match &mut self.iteration {
             ScopeIteration::Source(path)
-            | ScopeIteration::DynamicDocuments { source: path, .. } => Some(path),
-            ScopeIteration::None
-            | ScopeIteration::Sequence(_)
-            | ScopeIteration::InnerJoin { .. }
-            | ScopeIteration::Concatenate(_) => None,
+            | ScopeIteration::DynamicDocuments { source: path, .. } => {
+                Some(SourceSelectorMut::Legacy(path))
+            }
+            ScopeIteration::OwnedSource { source, .. } => Some(SourceSelectorMut::Owned(source)),
+            _ => None,
         }
     }
 
+    pub fn source(&self) -> Result<Option<&[String]>, OwnedSourceAccess> {
+        self.iteration.source()
+    }
+
+    pub fn source_mut(&mut self) -> Result<Option<&mut Vec<String>>, OwnedSourceAccess> {
+        match self.source_selector_mut() {
+            Some(SourceSelectorMut::Legacy(path)) => Ok(Some(path)),
+            Some(SourceSelectorMut::Owned(_)) => Err(OwnedSourceAccess),
+            None => Ok(None),
+        }
+    }
+
+    /// Path edits retain the owner and output expression of an owned iteration.
     pub fn set_source(&mut self, source: Option<Vec<String>>) {
         match (source, &mut self.iteration) {
+            (Some(path), ScopeIteration::OwnedSource { source, .. }) => source.path = path,
             (Some(path), ScopeIteration::DynamicDocuments { source, .. }) => *source = path,
             (Some(path), _) => self.iteration = ScopeIteration::Source(path),
-            (None, ScopeIteration::Source(_) | ScopeIteration::DynamicDocuments { .. }) => {
-                self.iteration = ScopeIteration::None;
-            }
+            (
+                None,
+                ScopeIteration::Source(_)
+                | ScopeIteration::DynamicDocuments { .. }
+                | ScopeIteration::OwnedSource { .. },
+            ) => self.iteration = ScopeIteration::None,
             (None, _) => {}
+        }
+    }
+
+    /// Deliberately replaces the selector while retaining per-item output ownership.
+    pub fn set_source_selector(&mut self, selector: Option<SourceSelector>) {
+        let output_path = self.output_path();
+        match selector {
+            Some(SourceSelector::Owned(source)) => {
+                self.iteration = ScopeIteration::OwnedSource {
+                    source,
+                    output_path,
+                };
+            }
+            Some(SourceSelector::Legacy(source)) => {
+                self.iteration = match output_path {
+                    Some(output_path) => ScopeIteration::DynamicDocuments {
+                        source,
+                        output_path,
+                    },
+                    None => ScopeIteration::Source(source),
+                };
+            }
+            None => self.set_source(None),
         }
     }
 
@@ -252,6 +293,7 @@ impl Scope {
     pub fn output_path(&self) -> Option<NodeId> {
         match self.iteration {
             ScopeIteration::DynamicDocuments { output_path, .. } => Some(output_path),
+            ScopeIteration::OwnedSource { output_path, .. } => output_path,
             _ => None,
         }
     }
@@ -260,6 +302,16 @@ impl Scope {
     /// existing source iteration and cannot silently replace another form.
     pub fn set_output_path(&mut self, output_path: Option<NodeId>) -> bool {
         match (output_path, &mut self.iteration) {
+            (
+                output_path,
+                ScopeIteration::OwnedSource {
+                    output_path: current,
+                    ..
+                },
+            ) => {
+                *current = output_path;
+                true
+            }
             (Some(output_path), ScopeIteration::Source(source)) => {
                 self.iteration = ScopeIteration::DynamicDocuments {
                     source: std::mem::take(source),
@@ -295,6 +347,7 @@ impl Scope {
             ScopeIteration::Sequence(sequence) => Some(sequence),
             ScopeIteration::None
             | ScopeIteration::Source(_)
+            | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. }
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::Concatenate(_) => None,

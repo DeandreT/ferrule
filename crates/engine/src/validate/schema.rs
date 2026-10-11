@@ -306,36 +306,8 @@ pub(super) fn validate_owned_source_node(
         Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
         _ => return,
     };
-    let root = match owner {
-        SourceOwner::Primary => &project.source,
-        SourceOwner::Named { name } => {
-            if name.is_empty() {
-                issues.push(ValidationIssue::new(
-                    location,
-                    "named source owner cannot be empty",
-                ));
-                return;
-            }
-            let mut matches = project
-                .extra_sources
-                .iter()
-                .filter(|source| source.name == *name);
-            let Some(source) = matches.next() else {
-                issues.push(ValidationIssue::new(
-                    location,
-                    format!("unknown source owner `{name}`"),
-                ));
-                return;
-            };
-            if matches.next().is_some() {
-                issues.push(ValidationIssue::new(
-                    location,
-                    format!("source owner `{name}` is ambiguous"),
-                ));
-                return;
-            }
-            &source.schema
-        }
+    let Some(root) = owned_source_root(project, owner, location, issues) else {
+        return;
     };
     if let Some(path) = scalar_path {
         if follow_schema_resolved(root, path).is_none_or(|field| !field.is_scalar()) {
@@ -380,6 +352,11 @@ pub(super) fn current_source_schema<'a>(
 ) -> Option<&'a SchemaNode> {
     match iteration {
         ScopeIteration::None => parent,
+        ScopeIteration::OwnedSource { source, .. } => {
+            let root =
+                owned_source_root(project, &source.owner, "owned collection", &mut Vec::new())?;
+            follow_schema_resolved(root, &source.path)
+        }
         ScopeIteration::Source(path) | ScopeIteration::DynamicDocuments { source: path, .. } => {
             source_schema_at(project, parent, path)
         }
@@ -580,5 +557,75 @@ pub(super) fn display_path(path: &[String]) -> String {
         "<current>".to_string()
     } else {
         path.join("/")
+    }
+}
+
+pub(super) fn owned_source_root<'a>(
+    project: &'a Project,
+    owner: &SourceOwner,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) -> Option<&'a SchemaNode> {
+    let root = match owner {
+        SourceOwner::Primary => &project.source,
+        SourceOwner::Named { name } => {
+            if name.is_empty() {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "named source owner cannot be empty",
+                ));
+                return None;
+            }
+            let mut matches = project
+                .extra_sources
+                .iter()
+                .filter(|source| source.name == *name);
+            let Some(source) = matches.next() else {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!("unknown source owner `{name}`"),
+                ));
+                return None;
+            };
+            if matches.next().is_some() {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!("source owner `{name}` is ambiguous"),
+                ));
+                return None;
+            }
+            &source.schema
+        }
+    };
+    Some(root)
+}
+
+pub(super) fn validate_owned_collection(
+    project: &Project,
+    source: &mapping::OwnedSourceRef,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(root) = owned_source_root(project, &source.owner, location, issues) else {
+        return;
+    };
+    match follow_schema(root, &source.path) {
+        None => issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned collection `{}` matches no path in its owner",
+                source.path.join("/")
+            ),
+        )),
+        Some(field) if !source.path.is_empty() && !field.repeating => {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "owned collection `{}` is not a repeating path in its owner",
+                    source.path.join("/")
+                ),
+            ));
+        }
+        _ => {}
     }
 }

@@ -68,9 +68,17 @@ pub(crate) fn eval_scope(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
+    if matches!(
+        scope.source_selector(),
+        Some(mapping::SourceSelectorRef::Owned(_))
+    ) {
+        return Err(EngineError::UnsupportedSourceIteration {
+            scope: trace_scope.source_scope.clone(),
+        });
+    }
     record(program.trace_sink, || TraceEvent::ScopeStarted {
         scope: trace_scope.clone(),
-        iteration: scope_iteration(&scope.iteration),
+        iteration: scope_iteration(&scope.iteration).expect("owned iteration refused before trace"),
         positions: trace_positions(positions),
     });
     if let Some(segments) = scope.concatenated() {
@@ -126,14 +134,17 @@ pub(crate) fn eval_scope(
         .join()
         .map(|(join, plan)| execute_join(context, positions, join, plan))
         .transpose()?;
-    let dynamic_source = scope.source().and_then(|path| {
-        let name = path.first()?;
-        extra_sources.iter().find_map(|source| {
-            (source.name == *name)
-                .then_some(source)
-                .filter(|source| source.dynamic_path.is_some())
-        })
-    });
+    let dynamic_source = scope
+        .source()
+        .expect("owned iteration refused before evaluation")
+        .and_then(|path| {
+            let name = path.first()?;
+            extra_sources.iter().find_map(|source| {
+                (source.name == *name)
+                    .then_some(source)
+                    .filter(|source| source.dynamic_path.is_some())
+            })
+        });
     let dynamic_drivers = dynamic_source
         .and_then(|source| source.dynamic_path.as_ref())
         .map(|dynamic| {
@@ -195,7 +206,10 @@ pub(crate) fn eval_scope(
     } else if let Some(items) = &sequence_items {
         walk(items, &[], &[], &[], &[])
     } else if let Some(source) = dynamic_source {
-        let path = scope.source().unwrap_or_default();
+        let path = scope
+            .source()
+            .expect("owned iteration refused before evaluation")
+            .unwrap_or_default();
         let tail = path.get(1..).unwrap_or_default();
         let prefix = [source.name.clone()];
         loaded_dynamic
@@ -218,7 +232,10 @@ pub(crate) fn eval_scope(
             })
             .collect()
     } else {
-        match scope.source() {
+        match scope
+            .source()
+            .expect("owned iteration refused before evaluation")
+        {
             None => vec![WalkExtension {
                 instances: Vec::new(),
                 positions: Vec::new(),
@@ -262,7 +279,10 @@ pub(crate) fn eval_scope(
     for (ordinal, extension) in extensions.iter().enumerate() {
         let mut candidate_positions = positions.to_vec();
         candidate_positions.extend(extension.positions.iter().cloned());
-        let wants_source_row = scope.source().is_some()
+        let wants_source_row = scope
+            .source()
+            .expect("owned iteration refused before evaluation")
+            .is_some()
             && program
                 .trace_sink
                 .is_some_and(|sink| sink.wants_source_row());
@@ -559,7 +579,11 @@ pub(crate) fn eval_scope(
             .filter(|group| group.post_filter_match)
             .map(|group| {
                 let members = Instance::Repeated(group.members);
-                let frame = match scope.source().and_then(|path| path.last()) {
+                let frame = match scope
+                    .source()
+                    .expect("owned iteration refused before evaluation")
+                    .and_then(|path| path.last())
+                {
                     Some(segment) => Instance::Group((vec![(segment.clone(), members)]).into()),
                     None => members,
                 };
@@ -1101,7 +1125,7 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 extra_sources,
                 source_loader,
-                &trace_scope.child("<dynamic>", scope.children.len().saturating_add(index)),
+                &trace_scope.dynamic_child(index, scope.children.len().saturating_add(index)),
             )?;
             let traced_key = bounded_text(&key);
             let traced_value = trace_field_value(&child_instance);

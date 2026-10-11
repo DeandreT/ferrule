@@ -169,7 +169,11 @@ fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_eq!(
-        imported.project.root.source(),
+        imported
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
         Some([String::from("contacts|customer_id")].as_slice())
     );
     assert!(imported.project.root.filter.is_some());

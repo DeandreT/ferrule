@@ -295,3 +295,28 @@ mod owned_source_rest_admission_tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod owned_collection_rest_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_collection_refusal_is_inside_preflight_and_retains_earlier_policy_errors() {
+        let project = crate::owned_collection_test_project();
+        let options =
+            RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
+        let RestJsonError::Mapping(error) = preflight(&project, &options).unwrap_err() else {
+            panic!("typed mapping refusal expected");
+        };
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+        ));
+        let options =
+            RestJsonMappingOptions::new(Path::new("response.xml"), Path::new("output.json"));
+        assert!(matches!(
+            preflight(&project, &options),
+            Err(RestJsonError::RequestPolicy(_))
+        ));
+    }
+}

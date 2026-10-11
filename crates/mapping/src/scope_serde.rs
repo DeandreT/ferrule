@@ -3,7 +3,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
     Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId, Scope,
     ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr, SequenceWindow,
-    SortFilterOrder, SortKey, is_constructed_scope, is_false, is_repeated_output,
+    SortFilterOrder, SortKey, SourceSelector, SourceSelectorRef, is_constructed_scope, is_false,
+    is_repeated_output,
 };
 
 #[derive(Serialize)]
@@ -23,7 +24,7 @@ struct ScopeRef<'a> {
     target_field: &'a str,
     #[serde(skip_serializing_if = "is_constructed_scope")]
     construction: ScopeConstruction,
-    source: Option<&'a Vec<String>>,
+    source: Option<SourceSelectorRef<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sequence: Option<&'a SequenceExpr>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,7 +75,7 @@ struct ScopeOwned {
     #[serde(default)]
     construction: ScopeConstruction,
     #[serde(default)]
-    source: Option<Vec<String>>,
+    source: Option<SourceSelector>,
     #[serde(default)]
     sequence: Option<SequenceExpr>,
     #[serde(default)]
@@ -128,8 +129,15 @@ impl Serialize for Scope {
     {
         let (source, sequence, join, segments) = match &self.iteration {
             ScopeIteration::None => (None, None, None, None),
-            ScopeIteration::Source(path) => (Some(path), None, None, None),
-            ScopeIteration::DynamicDocuments { source, .. } => (Some(source), None, None, None),
+            ScopeIteration::Source(path) => {
+                (Some(SourceSelectorRef::Legacy(path)), None, None, None)
+            }
+            ScopeIteration::DynamicDocuments { source, .. } => {
+                (Some(SourceSelectorRef::Legacy(source)), None, None, None)
+            }
+            ScopeIteration::OwnedSource { source, .. } => {
+                (Some(SourceSelectorRef::Owned(source)), None, None, None)
+            }
             ScopeIteration::Sequence(sequence) => (None, Some(sequence), None, None),
             ScopeIteration::InnerJoin { id, plan } => {
                 (None, None, Some(JoinRef { id: *id, plan }), None)
@@ -189,13 +197,21 @@ impl<'de> Deserialize<'de> for Scope {
             wire.segments,
             wire.output_path,
         ) {
-            (Some(source), None, None, None, Some(output_path)) => {
+            (Some(SourceSelector::Legacy(source)), None, None, None, Some(output_path)) => {
                 ScopeIteration::DynamicDocuments {
                     source,
                     output_path,
                 }
             }
-            (Some(path), None, None, None, None) => ScopeIteration::Source(path),
+            (Some(SourceSelector::Legacy(path)), None, None, None, None) => {
+                ScopeIteration::Source(path)
+            }
+            (Some(SourceSelector::Owned(source)), None, None, None, output_path) => {
+                ScopeIteration::OwnedSource {
+                    source,
+                    output_path,
+                }
+            }
             (None, Some(sequence), None, None, None) => ScopeIteration::Sequence(sequence),
             (None, None, Some(join), None, None) => ScopeIteration::InnerJoin {
                 id: join.id,

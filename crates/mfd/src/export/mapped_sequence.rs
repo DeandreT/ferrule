@@ -190,16 +190,19 @@ fn collect_scope_plans(
             )
         });
     }
-    let scope_anchor = scope.source().map_or_else(
-        || anchor.to_vec(),
-        |source| {
-            resolve_source_collection(sources, anchor, source).unwrap_or_else(|| {
-                let mut unresolved = anchor.to_vec();
-                unresolved.extend(source.iter().cloned());
-                unresolved
-            })
-        },
-    );
+    let scope_anchor = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .map_or_else(
+            || anchor.to_vec(),
+            |source| {
+                resolve_source_collection(sources, anchor, source).unwrap_or_else(|| {
+                    let mut unresolved = anchor.to_vec();
+                    unresolved.extend(source.iter().cloned());
+                    unresolved
+                })
+            },
+        );
     let repeated_conditioned_branch = branch.is_some()
         && scope.iteration_output == IterationOutput::Repeated
         && super::concatenation::source_type_condition(scope, graph).is_some();
@@ -290,7 +293,9 @@ fn mapped_scope_plan(
             explicit_text_port,
         });
     }
-    scope.source()?;
+    scope
+        .source()
+        .expect("legacy path after ownership boundary")?;
     let source_condition = super::concatenation::source_type_condition(scope, graph);
     let alternative = source_condition
         .as_ref()
@@ -469,7 +474,10 @@ fn validate_first_outputs(
             ));
         }
         if !path.is_empty()
-            && scope.source().is_some()
+            && scope
+                .source()
+                .expect("legacy path after ownership boundary")
+                .is_some()
             && (scope.group_by.is_some() || scope.group_into_blocks.is_some())
         {
             return Err(format!(
@@ -477,6 +485,11 @@ fn validate_first_outputs(
             ));
         }
         match &scope.iteration {
+            mapping::ScopeIteration::OwnedSource { .. } => {
+                return Err(
+                    "owned source iteration requires unavailable ownership support".to_string(),
+                );
+            }
             mapping::ScopeIteration::Source(_) => {}
             mapping::ScopeIteration::InnerJoin { .. } if !path.is_empty() => {}
             mapping::ScopeIteration::InnerJoin { .. } => {
@@ -561,7 +574,11 @@ fn collect_mapped_bindings(
     relative: &mut Vec<String>,
     bindings: &mut Vec<MappedBinding>,
 ) -> Option<()> {
-    if scope.source().is_some() && !relative.is_empty()
+    if scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .is_some()
+        && !relative.is_empty()
         || scope.sequence().is_some()
         || scope.filter.is_some() && !relative.is_empty()
         || scope.post_group_filter.is_some()

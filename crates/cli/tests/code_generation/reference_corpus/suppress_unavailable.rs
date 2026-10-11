@@ -83,7 +83,10 @@ pub(super) fn assert_case(
     let first = only_child(person);
     assert!(first.children.is_empty());
     for scope in [office, department, person] {
-        assert_eq!(scope.source(), Some([].as_slice()));
+        assert_eq!(
+            scope.source().expect("legacy fixture selector"),
+            Some([].as_slice())
+        );
         assert_eq!(scope.iteration_output, IterationOutput::Repeated);
     }
     assert!(office.group_by.is_some() && department.group_by.is_some());

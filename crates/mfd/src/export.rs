@@ -1176,3 +1176,6 @@ fn database_target_view_compatible(source: &ir::SchemaNode, target: &ir::SchemaN
             .any(|source| source.name == target.name && source.kind == target.kind)
     })
 }
+
+#[cfg(test)]
+mod owned_collection_tests;

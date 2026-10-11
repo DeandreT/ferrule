@@ -233,7 +233,10 @@ fn mapped_sequence_record_udf_preserves_items_and_executes_scalar_expressions() 
     assert!(engine::validate(&imported.project).is_empty());
     let line = &imported.project.root.children[0];
     assert_eq!(line.target_field, "Line");
-    assert_eq!(line.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        line.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert_eq!(line.iteration_output, IterationOutput::Repeated);
 
     let input = source(vec![item("A", 2), item("A", 5), item("B", 1)]);
@@ -317,7 +320,10 @@ fn mapped_sequence_record_composes_disjoint_outputs_from_calls_sharing_driver()
         .first()
         .ok_or_else(|| std::io::Error::other("missing Line scope"))?;
     assert_eq!(line.target_field, "Line");
-    assert_eq!(line.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        line.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert_eq!(line.bindings.len(), 3);
 
     let empty = engine::run(&imported.project, &source(Vec::new()))?;
@@ -688,7 +694,11 @@ fn mapped_sequence_record_executes_into_a_database_root_scope() {
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.target.repeating);
     assert_eq!(
-        imported.project.root.source(),
+        imported
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
         Some(["Item".to_string()].as_slice())
     );
     assert_eq!(

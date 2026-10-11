@@ -613,7 +613,8 @@ fn virtual_endpoints_preserve_physical_indices_and_do_not_auto_connect() {
         ],
     );
     let plan =
-        crate::auto_connect::plan_auto_connect(&source, &schema, &Scope::default(), &[], None);
+        crate::auto_connect::plan_auto_connect(&source, &schema, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
     assert_eq!(
         plan.connections
             .iter()

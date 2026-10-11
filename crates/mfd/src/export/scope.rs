@@ -856,7 +856,12 @@ fn collect_scope_edges(
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all());
     let anchor_len = anchor.len();
-    if scope.construction == ScopeConstruction::CopyCurrentSource && scope.source().is_none() {
+    if scope.construction == ScopeConstruction::CopyCurrentSource
+        && scope
+            .source()
+            .expect("legacy path after ownership boundary")
+            .is_none()
+    {
         match (
             sources.key_for_abs(anchor),
             target_key(target_ports, target_branches, target_branch, chain),
@@ -976,7 +981,10 @@ fn collect_scope_edges(
                 )),
             }
         }
-    } else if scope.source().is_some()
+    } else if scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .is_some()
         && chain.is_empty()
         && !target_root_iterable
         && scope.iteration_output != mapping::IterationOutput::First
@@ -987,14 +995,20 @@ fn collect_scope_edges(
                  shaped in native .mfd terms; the iteration wire is skipped"
                     .to_string(),
             );
-        } else if let Some(source) = scope.source() {
+        } else if let Some(source) = scope
+            .source()
+            .expect("legacy path after ownership boundary")
+        {
             if sources.is_named_extra_path(source) {
                 anchor.clone_from(&source.to_vec());
             } else {
                 anchor.extend(source.iter().cloned());
             }
         }
-    } else if let Some(source) = scope.source() {
+    } else if let Some(source) = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+    {
         let mapped_source =
             mapped_plan.and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()));
         let named_extra_path = sources.is_named_extra_path(source);

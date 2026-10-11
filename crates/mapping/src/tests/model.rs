@@ -760,7 +760,10 @@ fn legacy_source_and_sequence_fields_select_typed_iteration() {
         r#"{"target_field":"","source":["items"],"bindings":[],"children":[]}"#,
     )
     .unwrap();
-    assert_eq!(source.source(), Some(["items".to_string()].as_slice()));
+    assert_eq!(
+        source.source().expect("legacy fixture selector"),
+        Some(["items".to_string()].as_slice())
+    );
     assert!(source.sequence().is_none());
 
     let sequence: Scope = serde_json::from_str(
@@ -964,9 +967,13 @@ fn join_scope_and_owned_nodes_roundtrip() {
 fn scope_iteration_helpers_replace_and_clear_only_their_form() {
     let mut scope = Scope::default();
     scope.set_source(Some(vec!["rows".into()]));
-    scope.source_mut().unwrap().push("items".into());
+    scope
+        .source_mut()
+        .expect("legacy fixture selector")
+        .unwrap()
+        .push("items".into());
     assert_eq!(
-        scope.source(),
+        scope.source().expect("legacy fixture selector"),
         Some(["rows".into(), "items".into()].as_slice())
     );
 
@@ -996,7 +1003,10 @@ fn dynamic_document_iteration_roundtrips_with_its_source() {
     assert!(encoded.contains(r#""source":["documents"]"#));
     assert!(encoded.contains(r#""output_path":42"#));
     let decoded: Scope = serde_json::from_str(&encoded).unwrap();
-    assert_eq!(decoded.source(), Some(["documents".into()].as_slice()));
+    assert_eq!(
+        decoded.source().expect("legacy fixture selector"),
+        Some(["documents".into()].as_slice())
+    );
     assert_eq!(decoded.output_path(), Some(42));
 }
 
@@ -1059,7 +1069,10 @@ fn dynamic_document_output_path_requires_source_iteration() {
     assert!(scope.set_output_path(Some(42)));
     assert_eq!(scope.output_path(), Some(42));
     assert!(scope.set_output_path(None));
-    assert_eq!(scope.source(), Some([].as_slice()));
+    assert_eq!(
+        scope.source().expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
 }
 
 #[test]

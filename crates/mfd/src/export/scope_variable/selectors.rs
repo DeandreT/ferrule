@@ -282,7 +282,10 @@ pub(in crate::export) fn selector_context_warnings(
             }
             let mut frames = parent.to_vec();
             let mut current = anchor.to_vec();
-            if let Some(source) = scope.source() {
+            if let Some(source) = scope
+                .source()
+                .expect("legacy path after ownership boundary")
+            {
                 current = self.source_frames(source, anchor, &mut frames);
             }
             if let Some(sequence) = scope.sequence() {

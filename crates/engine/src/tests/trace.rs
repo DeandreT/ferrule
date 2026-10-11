@@ -30,7 +30,7 @@ fn control_value_previews_are_unicode_safe_and_bounded() {
     assert!(preview.truncated);
     assert_ne!(
         crate::TraceScope::primary(),
-        crate::TraceScope::named("primary")
+        crate::TraceScope::named("primary", 0)
     );
 }
 
