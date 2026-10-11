@@ -178,6 +178,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         xml_attribute_required,
         nullable: _,
         container_nullable,
+        json_array_wrapper,
         json_any,
         fixed,
         json_allowed_values,
@@ -244,6 +245,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         xml_optional,
         xml_attribute_required,
         container_nullable,
+        json_array_wrapper,
         json_any,
         json_unique_items,
         xml_type_alternatives

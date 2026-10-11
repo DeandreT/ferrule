@@ -52,8 +52,12 @@ mod joins;
 mod json5_companions;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/lexical_numeric_bounds.rs"]
+mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
+#[path = "code_generation/nested_array_wrappers.rs"]
+mod nested_array_wrappers;
 #[path = "code_generation/nested_clone_owners.rs"]
 mod nested_clone_owners;
 #[path = "code_generation/optional_runtime_defaults.rs"]
@@ -76,6 +80,8 @@ mod required_ref_boundaries;
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
 mod scalar_algorithms;
+#[path = "code_generation/scalar_document_root.rs"]
+mod scalar_document_root;
 #[path = "code_generation/scalar_functions.rs"]
 mod scalar_functions;
 #[path = "code_generation/scalar_total_corpus.rs"]

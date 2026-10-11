@@ -49,6 +49,7 @@ mod protobuf_target;
 mod recursive;
 mod scalar_anchor;
 mod scalar_function;
+mod scalar_root;
 mod schema;
 mod scope;
 mod sequence_scalar;
@@ -2707,13 +2708,11 @@ fn build_target_scope(
                     &mut group_projections,
                 )
             }
-            Some(_) => match TargetLeaf::from_path(target_path) {
-                Some(target) => bindings.push((target, from, inpkey)),
-                None => builder.warnings.push(
-                    "connection into a scalar document root is not supported; binding skipped"
-                        .to_string(),
-                ),
-            },
+            Some(_) => {
+                if let Some(target) = TargetLeaf::from_path(target_path) {
+                    bindings.push((target, from, inpkey));
+                }
+            }
             None => builder.warnings.push(format!(
                 "target port path `{}` not found in schema",
                 target_path.join("/")
@@ -2743,6 +2742,7 @@ fn build_target_scope(
         }
     }
     materialize::eager_functions(builder);
+    scalar_root::install(target, structure, resources, builder, &mut scopes);
     if let Some(feed) = dynamic_document
         && let Some(node) = builder.binding_node_at_anchor(feed, &[], &[])
         && !scopes.root.set_output_path(Some(node))

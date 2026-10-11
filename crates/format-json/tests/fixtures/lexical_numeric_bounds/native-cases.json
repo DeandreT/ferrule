@@ -1,0 +1,881 @@
+[
+  {
+    "id": "int-min-decimal",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":1.0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 1
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 1
+    },
+    "probes": [
+      {
+        "input": "1",
+        "expected_value": {
+          "tag": "Int",
+          "value": 1
+        },
+        "serialized_json": "1\n"
+      },
+      {
+        "input": "0",
+        "typed_output": {
+          "tag": "Int",
+          "value": 0
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[1, inf]",
+          "got": "0",
+          "display": "`Boundary` requires numeric range [1, inf], got 0"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[1, inf]",
+          "got": "0",
+          "display": "`Boundary` requires numeric range [1, inf], got 0"
+        }
+      }
+    ]
+  },
+  {
+    "id": "int-max-exponent",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"maximum\":3e0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "maximum": 3
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "maximum": 3
+    },
+    "probes": [
+      {
+        "input": "3",
+        "expected_value": {
+          "tag": "Int",
+          "value": 3
+        },
+        "serialized_json": "3\n"
+      },
+      {
+        "input": "4",
+        "typed_output": {
+          "tag": "Int",
+          "value": 4
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-inf, 3]",
+          "got": "4",
+          "display": "`Boundary` requires numeric range [-inf, 3], got 4"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-inf, 3]",
+          "got": "4",
+          "display": "`Boundary` requires numeric range [-inf, 3], got 4"
+        }
+      }
+    ]
+  },
+  {
+    "id": "int-exclusive-negative",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"exclusiveMinimum\":-2.000}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": -1
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": -1
+    },
+    "probes": [
+      {
+        "input": "-1",
+        "expected_value": {
+          "tag": "Int",
+          "value": -1
+        },
+        "serialized_json": "-1\n"
+      },
+      {
+        "input": "-2",
+        "typed_output": {
+          "tag": "Int",
+          "value": -2
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-1, inf]",
+          "got": "-2",
+          "display": "`Boundary` requires numeric range [-1, inf], got -2"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-1, inf]",
+          "got": "-2",
+          "display": "`Boundary` requires numeric range [-1, inf], got -2"
+        }
+      }
+    ]
+  },
+  {
+    "id": "int-exclusive-max",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"exclusiveMaximum\":3.0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "maximum": 2
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "maximum": 2
+    },
+    "probes": [
+      {
+        "input": "2",
+        "expected_value": {
+          "tag": "Int",
+          "value": 2
+        },
+        "serialized_json": "2\n"
+      },
+      {
+        "input": "3",
+        "typed_output": {
+          "tag": "Int",
+          "value": 3
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-inf, 2]",
+          "got": "3",
+          "display": "`Boundary` requires numeric range [-inf, 2], got 3"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[-inf, 2]",
+          "got": "3",
+          "display": "`Boundary` requires numeric range [-inf, 2], got 3"
+        }
+      }
+    ]
+  },
+  {
+    "id": "int-negative-zero",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":-0.0e12}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 0
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 0
+    },
+    "probes": [
+      {
+        "input": "0",
+        "expected_value": {
+          "tag": "Int",
+          "value": 0
+        },
+        "serialized_json": "0\n"
+      },
+      {
+        "input": "-1",
+        "typed_output": {
+          "tag": "Int",
+          "value": -1
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[0, inf]",
+          "got": "-1",
+          "display": "`Boundary` requires numeric range [0, inf], got -1"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[0, inf]",
+          "got": "-1",
+          "display": "`Boundary` requires numeric range [0, inf], got -1"
+        }
+      }
+    ]
+  },
+  {
+    "id": "int-above-double-contiguous",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":9.007199254740993e15}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 9007199254740993
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 9007199254740993
+    },
+    "probes": []
+  },
+  {
+    "id": "int-i64-min",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":-9223372036854775808.000}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": -9223372036854775808
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": -9223372036854775808
+    },
+    "probes": []
+  },
+  {
+    "id": "int-i64-max",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"maximum\":9.223372036854775807e18}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "maximum": 9223372036854775807
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "maximum": 9223372036854775807
+    },
+    "probes": []
+  },
+  {
+    "id": "int-u64-upper-is-unbounded",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"maximum\":1.8446744073709551615e19}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer"
+    },
+    "probes": []
+  },
+  {
+    "id": "float-minimum",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":1e0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 1.0
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "minimum": 1
+    },
+    "probes": [
+      {
+        "input": "1.5",
+        "expected_value": {
+          "tag": "Float",
+          "value": 1.5,
+          "bits": "3ff8000000000000"
+        },
+        "serialized_json": "1.5\n"
+      },
+      {
+        "input": "0.5",
+        "typed_output": {
+          "tag": "Float",
+          "value": 0.5,
+          "bits": "3fe0000000000000"
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[1, inf)",
+          "got": "0.5",
+          "display": "`Boundary` requires numeric range [1, inf), got 0.5"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "[1, inf)",
+          "got": "0.5",
+          "display": "`Boundary` requires numeric range [1, inf), got 0.5"
+        }
+      }
+    ]
+  },
+  {
+    "id": "float-maximum",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":30e-1}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "maximum": {
+            "value": 3.0
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "maximum": 3
+    },
+    "probes": [
+      {
+        "input": "1.5",
+        "expected_value": {
+          "tag": "Float",
+          "value": 1.5,
+          "bits": "3ff8000000000000"
+        },
+        "serialized_json": "1.5\n"
+      },
+      {
+        "input": "3.5",
+        "typed_output": {
+          "tag": "Float",
+          "value": 3.5,
+          "bits": "400c000000000000"
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(-inf, 3]",
+          "got": "3.5",
+          "display": "`Boundary` requires numeric range (-inf, 3], got 3.5"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(-inf, 3]",
+          "got": "3.5",
+          "display": "`Boundary` requires numeric range (-inf, 3], got 3.5"
+        }
+      }
+    ]
+  },
+  {
+    "id": "float-exclusiveMinimum",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMinimum\":1e0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 1.0,
+            "exclusive": true
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "exclusiveMinimum": 1
+    },
+    "probes": [
+      {
+        "input": "1.5",
+        "expected_value": {
+          "tag": "Float",
+          "value": 1.5,
+          "bits": "3ff8000000000000"
+        },
+        "serialized_json": "1.5\n"
+      },
+      {
+        "input": "1",
+        "typed_output": {
+          "tag": "Float",
+          "value": 1.0,
+          "bits": "3ff0000000000000"
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(1, inf)",
+          "got": "1",
+          "display": "`Boundary` requires numeric range (1, inf), got 1"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(1, inf)",
+          "got": "1.0",
+          "display": "`Boundary` requires numeric range (1, inf), got 1.0"
+        }
+      }
+    ]
+  },
+  {
+    "id": "float-exclusiveMaximum",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"exclusiveMaximum\":30e-1}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "maximum": {
+            "value": 3.0,
+            "exclusive": true
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "exclusiveMaximum": 3
+    },
+    "probes": [
+      {
+        "input": "1.5",
+        "expected_value": {
+          "tag": "Float",
+          "value": 1.5,
+          "bits": "3ff8000000000000"
+        },
+        "serialized_json": "1.5\n"
+      },
+      {
+        "input": "3",
+        "typed_output": {
+          "tag": "Float",
+          "value": 3.0,
+          "bits": "4008000000000000"
+        },
+        "input_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(-inf, 3)",
+          "got": "3",
+          "display": "`Boundary` requires numeric range (-inf, 3), got 3"
+        },
+        "output_error": {
+          "variant": "RangeMismatch",
+          "name": "Boundary",
+          "range": "(-inf, 3)",
+          "got": "3.0",
+          "display": "`Boundary` requires numeric range (-inf, 3), got 3.0"
+        }
+      }
+    ]
+  },
+  {
+    "id": "float-signed-integer-token-orientation",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9007199254740993.0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 9007199254740992.0,
+            "exclusive": true
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "exclusiveMinimum": 9007199254740992
+    },
+    "probes": []
+  },
+  {
+    "id": "float-i64-upper-orientation",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9223372036854775807e0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "maximum": {
+            "value": 9.223372036854776e+18,
+            "exclusive": true
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "exclusiveMaximum": 9223372036854775808
+    },
+    "probes": []
+  },
+  {
+    "id": "float-exact-u64-bound",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":9223372036854775808.0}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 9.223372036854776e+18
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "minimum": 9223372036854775808
+    },
+    "probes": []
+  },
+  {
+    "id": "float-negative-zero",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-0.000}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 0.0
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "minimum": 0
+    },
+    "probes": [
+      {
+        "input": "-0.0",
+        "expected_value": {
+          "tag": "Float",
+          "value": -0.0,
+          "bits": "8000000000000000"
+        },
+        "serialized_json": "-0.0\n"
+      }
+    ]
+  },
+  {
+    "id": "int-near-integral-above",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":1.00000000000000001}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "int-near-integral-below",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"maximum\":0.99999999999999999}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "int-fractional-precision-cliff",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":9007199254740992.5}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "float-near-integral-above",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":1.00000000000000001}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "float-fractional-precision-cliff",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740992.5}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "int-outside-negative-domain",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":-9223372036854775809.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "int-outside-unsigned-domain",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"maximum\":18446744073709551616.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints",
+      "display": "JSON Schema union `Boundary` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"
+    }
+  },
+  {
+    "id": "int-u64-lower-empty",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":18446744073709551615.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "lower bound is above the signed 64-bit domain",
+      "display": "JSON Schema union `Boundary` is not representable: lower bound is above the signed 64-bit domain"
+    }
+  },
+  {
+    "id": "float-inexact-u64-token",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":18446744073709551615.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "numeric bound must be a supported finite number",
+      "display": "JSON Schema union `Boundary` is not representable: numeric bound must be a supported finite number"
+    }
+  },
+  {
+    "id": "int-exclusive-max-domain-empty",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"exclusiveMinimum\":9223372036854775807.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "exclusive lower bound empties the i64 domain",
+      "display": "JSON Schema union `Boundary` is not representable: exclusive lower bound empties the i64 domain"
+    }
+  },
+  {
+    "id": "int-exclusive-min-domain-empty",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"exclusiveMaximum\":-9223372036854775808.0}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "exclusive upper bound empties the i64 domain",
+      "display": "JSON Schema union `Boundary` is not representable: exclusive upper bound empties the i64 domain"
+    }
+  },
+  {
+    "id": "string-bound-remains-string",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":\"1.0\"}",
+    "expected_error": {
+      "variant": "UnsupportedSchemaUnion",
+      "name": "Boundary",
+      "reason": "`minimum` must be a number",
+      "display": "JSON Schema union `Boundary` is not representable: `minimum` must be a number"
+    }
+  },
+  {
+    "id": "int-zero-huge-exponent",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"integer\",\"minimum\":0e9999999999999999999999}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 0
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 0
+    },
+    "probes": []
+  },
+  {
+    "id": "float-negative-zero-huge-negative-exponent",
+    "schema_text": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":-0.000e-9999999999999999999999}",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "float"
+      },
+      "numeric_range": {
+        "kind": "number",
+        "bounds": {
+          "minimum": {
+            "value": 0.0
+          }
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "number",
+      "minimum": 0
+    },
+    "probes": []
+  }
+]

@@ -17,6 +17,9 @@ use std::fmt;
 /// Prefix of the lossless descriptor. The rest of the descriptor is one JSON
 /// schema tree with exact floating-point marker strings at typed positions.
 pub const V2_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/2\n";
+/// Descriptor version carrying explicit nested JSON array-wrapper roles.
+/// Older readers reject this version instead of treating the wrapper as an object.
+pub const V3_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/3\n";
 /// Marker used only at schema positions whose IR type is `FiniteF64`.
 pub const FLOAT_BITS_MARKER_PREFIX: &str = "FERRULE-F64-BITS:";
 const VERSION_STEM: &str = "FERRULE-EMBEDDED-SCHEMA/";
@@ -79,13 +82,16 @@ impl fmt::Display for CodecError {
 impl std::error::Error for CodecError {}
 
 /// Encode one schema. Stable schemas keep their byte-for-byte v1 JSON form;
-/// only schemas changed by default JSON parsing receive the v2 descriptor.
+/// schemas changed by default JSON parsing receive the v2 descriptor. Explicit
+/// nested array wrappers always receive v3 so older readers fail closed.
 pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecError> {
     preflight_depth(schema)?;
     let plain = serde_json::to_string(schema)
         .map_err(|error| CodecError::Serialization(error.to_string()))?;
     check_size(plain.len(), max_bytes)?;
-    if let Ok(decoded) = serde_json::from_str::<SchemaNode>(&plain) {
+    if !schema.contains_json_array_wrapper()
+        && let Ok(decoded) = serde_json::from_str::<SchemaNode>(&plain)
+    {
         let canonical = serde_json::to_string(&decoded)
             .map_err(|error| CodecError::Serialization(error.to_string()))?;
         // SchemaNode equality alone cannot distinguish the signs of zero.
@@ -97,8 +103,13 @@ pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecErro
     let payload = marked_value(schema)?;
     let payload = serde_json::to_string(&payload)
         .map_err(|error| CodecError::Serialization(error.to_string()))?;
-    let mut descriptor = String::with_capacity(V2_PREFIX.len() + payload.len());
-    descriptor.push_str(V2_PREFIX);
+    let prefix = if schema.contains_json_array_wrapper() {
+        V3_PREFIX
+    } else {
+        V2_PREFIX
+    };
+    let mut descriptor = String::with_capacity(prefix.len() + payload.len());
+    descriptor.push_str(prefix);
     descriptor.push_str(&payload);
     check_size(descriptor.len(), max_bytes)?;
 
@@ -111,10 +122,13 @@ pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecErro
     Ok(descriptor)
 }
 
-/// Decode v1 JSON or an exact v2 descriptor under one UTF-8 byte limit.
+/// Decode v1 JSON or an exact v2/v3 descriptor under one UTF-8 byte limit.
 pub fn decode(descriptor: &str, max_bytes: usize) -> Result<SchemaNode, CodecError> {
     check_size(descriptor.len(), max_bytes)?;
-    if let Some(payload) = descriptor.strip_prefix(V2_PREFIX) {
+    if let Some(payload) = descriptor
+        .strip_prefix(V2_PREFIX)
+        .or_else(|| descriptor.strip_prefix(V3_PREFIX))
+    {
         let mut value: Value = serde_json::from_str(payload)
             .map_err(|error| CodecError::Deserialization(error.to_string()))?;
         walk_schema(&mut value, "$", Direction::Decode)?;
