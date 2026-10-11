@@ -1,5 +1,7 @@
-//! Pure, bounded PDF worker transport. This crate does not launch a worker,
-//! handle paths, install limits, or establish process closure.
+//! Bounded PDF worker transport and an explicit filesystem host.
+//! The pure wire APIs remain independent of process/resource qualification.
+
+pub mod host;
 
 mod error;
 mod instance;

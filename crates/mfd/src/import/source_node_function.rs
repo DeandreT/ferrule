@@ -33,16 +33,22 @@ pub(super) enum Expr {
 }
 
 #[derive(Clone)]
+enum RuleExpression {
+    Supported(Expr),
+    Unresolved(String),
+}
+
+#[derive(Clone)]
 pub(super) struct Rule {
     expected: Option<ScalarType>,
-    expression: Expr,
+    expression: RuleExpression,
 }
 
 pub(super) type Rules = BTreeMap<u32, Vec<Rule>>;
 pub(super) type Definitions = BTreeMap<String, Expr>;
 
-/// Reads scalar output-node rules attached to schema entries. Unsupported
-/// definitions remain inert, matching the importer's historical behavior.
+/// Reads scalar output-node rules attached to schema entries. Unresolved
+/// references produce diagnostics only when a matching scalar rule is applied.
 pub(super) fn read(mapping: &roxmltree::Node<'_, '_>, warnings: &mut Vec<String>) -> Rules {
     let definitions = mapping
         .children()
@@ -275,10 +281,15 @@ fn read_rule(
         .find(|node| node.has_tag_name("default"))
         .and_then(|default| default.attribute("value"))
     {
-        Expr::Default(value.to_string())
+        RuleExpression::Supported(Expr::Default(value.to_string()))
     } else {
         let function = rule.children().find(|node| node.has_tag_name("function"))?;
-        definitions.get(function.attribute("name")?)?.clone()
+        let name = function.attribute("name")?;
+        match definitions.get(name) {
+            Some(expression) => RuleExpression::Supported(expression.clone()),
+            None if !name.trim().is_empty() => RuleExpression::Unresolved(name.to_string()),
+            None => return None,
+        }
     };
     let datatype = rule
         .children()
@@ -509,7 +520,19 @@ impl GraphBuilder<'_> {
         };
         for rule in rules {
             if rule.expected.is_none_or(|expected| expected == ty) {
-                input = instantiate(&rule.expression, input, ty, None, self);
+                match &rule.expression {
+                    RuleExpression::Supported(expression) => {
+                        input = instantiate(expression, input, ty, None, self);
+                    }
+                    RuleExpression::Unresolved(name) => {
+                        let warning = format!(
+                            "source output-node function `{name}` for output key {key} has no supported definition; rule skipped; restore a supported definition or remove the rule"
+                        );
+                        if !self.warnings.contains(&warning) {
+                            self.warnings.push(warning);
+                        }
+                    }
+                }
             }
         }
         input
@@ -659,5 +682,62 @@ mod input_guard_tests {
                 Some(Expr::Input)
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Definitions, Expr, RuleExpression, collect_entry_rules, read_rule};
+    use ir::ScalarType;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn accepted_rule_and_default_order_is_preserved() {
+        let document = roxmltree::Document::parse(
+            r#"<entry outkey="11"><outputnodefunctions>
+              <rule><function name="known"/><filter datatype="string"/></rule>
+              <rule><default value="first"/><filter datatype="string"/></rule>
+              <rule><function name="missing-rule"/><filter datatype="string"/></rule>
+              <rule><default value="second"/><filter datatype="string"/></rule>
+            </outputnodefunctions></entry>"#,
+        )
+        .unwrap();
+        let definitions = Definitions::from([("known".to_string(), Expr::Input)]);
+        let mut rules = BTreeMap::new();
+        collect_entry_rules(document.root_element(), &[], &definitions, &mut rules);
+        let rules = &rules[&11];
+        assert_eq!(rules.len(), 4);
+        assert!(
+            rules
+                .iter()
+                .all(|rule| rule.expected == Some(ScalarType::String))
+        );
+        assert!(matches!(
+            &rules[0].expression,
+            RuleExpression::Supported(Expr::Input)
+        ));
+        assert!(matches!(
+            &rules[1].expression,
+            RuleExpression::Supported(Expr::Default(value)) if value == "first"
+        ));
+        assert!(matches!(
+            &rules[2].expression,
+            RuleExpression::Unresolved(name) if name == "missing-rule"
+        ));
+        assert!(matches!(
+            &rules[3].expression,
+            RuleExpression::Supported(Expr::Default(value)) if value == "second"
+        ));
+    }
+
+    #[test]
+    fn accepted_whitespace_named_definition_keeps_its_original_identity() {
+        let document = roxmltree::Document::parse(r#"<rule><function name=" "/></rule>"#).unwrap();
+        let definitions = Definitions::from([(" ".to_string(), Expr::Input)]);
+        let (_, rule) = read_rule(document.root_element(), &definitions).unwrap();
+        assert!(matches!(
+            rule.expression,
+            RuleExpression::Supported(Expr::Input)
+        ));
     }
 }
