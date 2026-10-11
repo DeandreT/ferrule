@@ -42,6 +42,7 @@ jobs:
         if: runner.environment == 'self-hosted'
         env:
           FERRULE_CI_SUITE: codegen
+          FERRULE_CI_EVIDENCE_SUITE: codegen-${{ matrix.suite }}
         run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@nightly
         with:
@@ -148,6 +149,28 @@ jobs:
       - name: Trim successful workspace build
         if: success() && runner.environment == 'self-hosted'
         run: cargo clean --workspace
+      # This optional canary contains metadata only. It never marks job evidence archived.
+      - name: Metadata evidence canary
+        id: evidence_canary
+        if: always() && runner.environment == 'self-hosted' && vars.OVH_EVIDENCE_CANARY_ENABLED == 'true' && vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS != '' && env.FERRULE_CI_EVIDENCE_CANARY != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: evidence-canary-${{ env.FERRULE_CI_EVIDENCE_ID }}
+          path: ${{ env.FERRULE_CI_EVIDENCE_CANARY }}
+          archive: true
+          compression-level: 0
+          overwrite: false
+          if-no-files-found: error
+          retention-days: ${{ vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS }}
+      - name: Retain unarchived job observation
+        if: always() && runner.environment == 'self-hosted' && env.FERRULE_CI_EVIDENCE_ROOT != ''
+        env:
+          FERRULE_CI_OBSERVED_JOB_STATE: ${{ job.status }}
+          FERRULE_CI_CANARY_OUTCOME: ${{ steps.evidence_canary.outcome }}
+          FERRULE_CI_SUITE: codegen
+          FERRULE_CI_EVIDENCE_SUITE: codegen-${{ matrix.suite }}
+        run: python3 -I scripts/ci/job-evidence.py observe
       - name: runner resources
         if: always()
         run: |
