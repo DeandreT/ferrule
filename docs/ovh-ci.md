@@ -51,6 +51,11 @@ available. Nothing expires automatically. These are local copies with the same
 host durability as the originals; they do not establish external preservation
 or enable the separate evidence-retirement policy in #360.
 
+This compactor covers only the legacy flat test directories under `ci-tmp`.
+The newer per-job evidence roots created by `job-evidence.py` remain governed
+by their own provenance and retention checks. Their workflow observation and
+optional metadata-canary steps stay in place; this hook does not retire them.
+
 If compaction is insufficient, the hook reclaims only idle, reproducible Cargo
 profile caches. It refuses the job if the existing floor still cannot be met.
 Redirected paths, mounted trees, foreign ownership, writable shared directories,
