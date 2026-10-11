@@ -337,16 +337,16 @@ pub(super) fn validate_owned_source_node(
             &source.schema
         }
     };
-    if let Some(path) = scalar_path {
-        if follow_schema_resolved(root, path).is_none_or(|field| !field.is_scalar()) {
-            issues.push(ValidationIssue::new(
-                location,
-                format!(
-                    "owned source path `{}` matches no scalar in its owner",
-                    path.join("/")
-                ),
-            ));
-        }
+    if let Some(path) = scalar_path
+        && follow_schema_resolved(root, path).is_none_or(|field| !field.is_scalar())
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned source path `{}` matches no scalar in its owner",
+                path.join("/")
+            ),
+        ));
     }
     if let Some(collection) = collection {
         // Explicit root [] preserves flat CSV/XLSX group-root conventions.
