@@ -1684,6 +1684,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             // Account for the nested node/header frame margins. Pin labels are
             // painted independently so right-to-left rows cannot grow sideways.
             ui.set_min_width((width - 32.0).max(0.0));
+            ui.set_max_width((width - 32.0).max(0.0));
         }
         let function_call = Self::mapping_id(canvas_node)
             .and_then(|id| self.graph.nodes.get(&id))
@@ -1698,13 +1699,30 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let compact_header = graph_node
             .and_then(|node| graph_node_presentation::header(node, &full_title, is_output));
         let full_title = graph_node_presentation::complete_title(graph_node, full_title);
-        let header_hint = endpoint_hint
-            .or_else(|| graph_node.map(|node| graph_node_presentation::hint(node, &full_title)));
-        let show_title = |ui: &mut Ui| {
-            if let Some(header) = compact_header {
-                graph_node_presentation::show_header(ui, header, &full_title)
-            } else {
-                ui.label(&full_title)
+        let header_hint = if matches!(
+            canvas_node,
+            CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
+        ) {
+            Some(endpoint_hint.map_or_else(
+                || full_title.clone(),
+                |hint| format!("{full_title}\n{hint}"),
+            ))
+        } else {
+            graph_node.map(|node| graph_node_presentation::hint(node, &full_title))
+        };
+        let show_title = |ui: &mut Ui| match canvas_node {
+            CanvasNode::SourceBlock(_) => {
+                graph_node_presentation::show_endpoint_header(ui, true, &full_title)
+            }
+            CanvasNode::TargetBlock(_) => {
+                graph_node_presentation::show_endpoint_header(ui, false, &full_title)
+            }
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => {
+                if let Some(header) = compact_header {
+                    graph_node_presentation::show_header(ui, header, &full_title)
+                } else {
+                    ui.label(&full_title)
+                }
             }
         };
         let response = if let Some(function) = function_call {
