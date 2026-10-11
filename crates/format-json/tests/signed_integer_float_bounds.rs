@@ -150,7 +150,7 @@ fn signed_integer_float_bounds_preserve_exact_domain_and_round_trip() -> TestRes
         directory.join("COMPLETE-COMPARISONS.txt"),
         format!("schemas={} probes={probes}\n{mismatches:#?}\n", rows.len()),
     )?;
-    if rows.len() != 100 || probes != 264 || !mismatches.is_empty() {
+    if rows.len() != 100 || probes != 270 || !mismatches.is_empty() {
         return Err(format!("authored numeric boundary cohort differs: {mismatches:#?}").into());
     }
     Ok(())

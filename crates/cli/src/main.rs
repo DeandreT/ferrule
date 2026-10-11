@@ -121,6 +121,12 @@ enum Command {
         /// Evaluate and write only the primary target or one named target.
         #[arg(long, value_name = "primary|NAME")]
         target: Option<String>,
+        /// Extract configured filesystem PDF sources in the packaged Linux worker.
+        #[arg(long)]
+        pdf_worker: bool,
+        /// Retain closed successful PDF worker evidence folders.
+        #[arg(long, requires = "pdf_worker")]
+        keep_pdf_evidence: bool,
         /// Write a deterministic, versioned JSON Lines execution trace.
         #[arg(long, value_name = "PATH")]
         trace_json: Option<PathBuf>,
@@ -330,6 +336,7 @@ impl DiagnosticFormat {
         match self {
             Self::Human => match severity {
                 "warning" => eprintln!("warning: {message}"),
+                "info" => eprintln!("{message}"),
                 _ => match location {
                     Some(location) => eprintln!("error: {location}: {message}"),
                     None => eprintln!("Error: {message}"),
@@ -475,12 +482,22 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             target,
             trace_json,
             parameters,
+            pdf_worker,
+            keep_pdf_evidence,
         } => {
             let project = project
                 .or(project_positional)
                 .context("missing project path")?;
             let input = input.or(input_positional);
             let output = output.or(output_positional);
+            if pdf_worker
+                && (input.as_deref() == Some(std::path::Path::new("-"))
+                    || output.as_deref() == Some(std::path::Path::new("-")))
+            {
+                bail!(
+                    "--pdf-worker requires filesystem input and output; standard-stream payloads remain in-process"
+                );
+            }
             let parameters = parse_runtime_parameters(&parameters)?;
             let trace = trace_json
                 .as_deref()
@@ -529,19 +546,42 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 if input.as_deref() == Some(std::path::Path::new("-")) {
                     bail!("`--input -` requires `--output -`");
                 }
-                let outcome = cli::run_project_with_options(
-                    &project,
-                    &cli::RunOptions {
-                        input_path: input.as_deref(),
-                        output_path: output.as_deref(),
-                        target,
-                        runtime_parameters: Some(&parameters),
-                        trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
-                        debug_hook: None,
-                        before_publish: None,
-                        protected_output_paths: &protected_output_paths,
-                    },
-                )?;
+                let run_options = cli::RunOptions {
+                    input_path: input.as_deref(),
+                    output_path: output.as_deref(),
+                    target,
+                    runtime_parameters: Some(&parameters),
+                    trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                    debug_hook: None,
+                    before_publish: None,
+                    protected_output_paths: &protected_output_paths,
+                };
+                let outcome = if pdf_worker {
+                    let policy = if keep_pdf_evidence {
+                        cli::FilesystemRunPolicy::with_retained_pdf_evidence()
+                    } else {
+                        cli::FilesystemRunPolicy::new()
+                    };
+                    let result = cli::run_project_with_options_and_filesystem_policy(
+                        &project,
+                        &run_options,
+                        &policy,
+                    );
+                    for path in policy.retained_pdf_evidence() {
+                        diagnostics.emit(
+                            "run",
+                            "info",
+                            None,
+                            &format!(
+                                "successful PDF worker evidence retained at {}",
+                                path.display()
+                            ),
+                        );
+                    }
+                    result?
+                } else {
+                    cli::run_project_with_options(&project, &run_options)?
+                };
                 if let Some(trace) = trace {
                     trace.finish(&outcome.artifacts)?;
                 }
@@ -1157,5 +1197,146 @@ mod csv_json_flag_tests {
             "--csv-json-adapters requires --language csharp"
         );
         assert!(!output.parent().unwrap().exists());
+    }
+}
+
+#[cfg(test)]
+mod pdf_evidence_flag_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn retain(path: &std::path::Path, bytes: &[u8]) {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .unwrap();
+        file.write_all(bytes).unwrap();
+        file.sync_all().unwrap();
+    }
+
+    #[test]
+    fn retention_requires_the_worker_before_execution() {
+        let args = [
+            "ferrule",
+            "run",
+            "--project",
+            "absent.json",
+            "--input",
+            "input.xml",
+            "--output",
+            "output.xml",
+            "--keep-pdf-evidence",
+        ];
+        let result = Cli::try_parse_from(args);
+        eprintln!(
+            "arguments={args:?}; full original clap error={:?}",
+            result.as_ref().err()
+        );
+        let error = result
+            .err()
+            .expect("retention without a worker was admitted");
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+        assert!(error.to_string().contains("--pdf-worker"));
+    }
+
+    #[test]
+    fn retention_and_worker_flags_parse_together_without_execution() {
+        let args = [
+            "ferrule",
+            "run",
+            "--project",
+            "absent.json",
+            "--input",
+            "input.xml",
+            "--output",
+            "output.xml",
+            "--pdf-worker",
+            "--keep-pdf-evidence",
+        ];
+        let parsed = Cli::try_parse_from(args);
+        eprintln!(
+            "arguments={args:?}; full original clap error={:?}",
+            parsed.as_ref().err()
+        );
+        let parsed = parsed.unwrap();
+        let actual = match parsed.command {
+            Command::Run {
+                pdf_worker,
+                keep_pdf_evidence,
+                ..
+            } => (pdf_worker, keep_pdf_evidence),
+            _ => panic!("run command was not parsed"),
+        };
+        eprintln!("full original parsed worker/retention tuple={actual:?}");
+        assert_eq!(actual, (true, true));
+    }
+
+    #[test]
+    fn retained_worker_standard_stream_refusals_precede_loading_and_publication() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-pdf-evidence-flags-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        for (key, input_stream) in [("stdin", true), ("stdout", false)] {
+            let output = root.join(format!("{key}.xml"));
+            std::fs::write(&output, b"sentinel").unwrap();
+            let trace = root.join(format!("{key}.trace.json"));
+            let args = vec![
+                OsString::from("ferrule"),
+                OsString::from("run"),
+                OsString::from("--project"),
+                root.join("absent-project.json").into_os_string(),
+                OsString::from("--input"),
+                if input_stream {
+                    OsString::from("-")
+                } else {
+                    root.join("absent-input.pdf").into_os_string()
+                },
+                OsString::from("--output"),
+                if input_stream {
+                    output.clone().into_os_string()
+                } else {
+                    OsString::from("-")
+                },
+                OsString::from("--pdf-worker"),
+                OsString::from("--keep-pdf-evidence"),
+                OsString::from("--trace-json"),
+                trace.clone().into_os_string(),
+            ];
+            retain(
+                &root.join(format!("{key}.arguments.original.txt")),
+                format!("{args:#?}").as_bytes(),
+            );
+            let parsed = Cli::try_parse_from(args);
+            retain(
+                &root.join(format!("{key}.parse-error.original.txt")),
+                format!("{:?}", parsed.as_ref().err()).as_bytes(),
+            );
+            let result = execute(parsed.unwrap());
+            retain(
+                &root.join(format!("{key}.outcome.original.txt")),
+                format!("{result:#?}").as_bytes(),
+            );
+            let output_bytes = std::fs::read(&output).unwrap();
+            let trace_exists = trace.exists();
+            retain(&root.join(format!("{key}.output.original")), &output_bytes);
+            retain(
+                &root.join(format!("{key}.trace-state.original.txt")),
+                format!("{trace_exists}").as_bytes(),
+            );
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "--pdf-worker requires filesystem input and output; standard-stream payloads remain in-process"
+            );
+            assert_eq!(output_bytes, b"sentinel");
+            assert!(!trace_exists);
+        }
+        std::fs::File::open(&root).unwrap().sync_all().unwrap();
     }
 }

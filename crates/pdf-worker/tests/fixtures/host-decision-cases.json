@@ -1,0 +1,296 @@
+{
+  "status": "FROZEN_ADDITIVE_DECISION_EDGE18_SOURCE_ONLY_ALL_ACTUALS_UNRUN",
+  "original40_catalog_sha256": "8f0681e4c2a6fb7b9f5356c2ce4bd9a115869fda386ba46eb8ccaf9d148f067e",
+  "counts": {
+    "decision_groups": 18
+  },
+  "rows": [
+    {
+      "id": "D01",
+      "name": "Scoped default-handler signal bridge",
+      "boundary": "modeled function boundary",
+      "input": {
+        "old_SIGINT": "SIG_DFL",
+        "old_SIGTERM": "SIG_DFL",
+        "handler_signal": "SIGTERM"
+      },
+      "independently_frozen_expected": {
+        "handler_operations": [
+          "AtomicBool.store(true,Relaxed)"
+        ],
+        "cancel_observed": true,
+        "handler_allocations": 0,
+        "handler_syscalls": 0
+      }
+    },
+    {
+      "id": "D02",
+      "name": "Foreign existing signal policy",
+      "boundary": "injected sigaction admission",
+      "input": {
+        "old_SIGINT": "foreign_handler",
+        "old_SIGTERM": "SIG_DFL"
+      },
+      "independently_frozen_expected": {
+        "outcome": "PrelaunchFailure",
+        "child_spawned": false,
+        "handlers_overwritten": false
+      }
+    },
+    {
+      "id": "D03",
+      "name": "Second install failure and first rollback",
+      "boundary": "injected sigaction errors",
+      "input": {
+        "install_SIGINT": "ok",
+        "install_SIGTERM": "EIO",
+        "rollback_SIGINT": "ok"
+      },
+      "independently_frozen_expected": {
+        "outcome": "PrelaunchFailure",
+        "actions": [
+          "install_SIGINT",
+          "install_SIGTERM_failed",
+          "restore_SIGINT"
+        ],
+        "child_spawned": false
+      }
+    },
+    {
+      "id": "D04",
+      "name": "Competing handler observed at restore",
+      "boundary": "injected restoration boundary",
+      "input": {
+        "current_SIGINT": "foreign_handler"
+      },
+      "independently_frozen_expected": {
+        "outcome": "SignalRestoreError",
+        "foreign_handler_overwritten": false,
+        "normal_success": false
+      }
+    },
+    {
+      "id": "D05",
+      "name": "Cancellation before staging",
+      "boundary": "model token control",
+      "input": {
+        "cancelled_before_begin": true
+      },
+      "independently_frozen_expected": {
+        "outcome": "CancelledNoChild",
+        "job_created": false,
+        "child_spawned": false,
+        "instance_returned": false
+      }
+    },
+    {
+      "id": "D06",
+      "name": "Real signal during owned wait",
+      "boundary": "future real synthetic child; actual qualification required",
+      "input": {
+        "phase": "Running",
+        "child_TERM_behavior": "exits_on_TERM",
+        "signal_to_parent": "SIGINT"
+      },
+      "independently_frozen_expected": {
+        "outcome": "CancelledFailedClosed",
+        "owner_PIDfd_signals": [
+          "SIGTERM"
+        ],
+        "own_reap_required": true,
+        "instance_returned": false
+      }
+    },
+    {
+      "id": "D07",
+      "name": "Second signal while still stopping",
+      "boundary": "modeled signal/call boundary",
+      "input": {
+        "first_cancel_observed": true,
+        "second_signal": "SIGTERM",
+        "child_unreaped": true
+      },
+      "independently_frozen_expected": {
+        "immediate_exit": false,
+        "child_detached": false,
+        "owner_retained": true,
+        "extra_unprescribed_signal": false
+      }
+    },
+    {
+      "id": "D08",
+      "name": "Partial CLI package missing worker",
+      "boundary": "filesystem admission fixture",
+      "input": {
+        "sibling_present": false
+      },
+      "independently_frozen_expected": {
+        "outcome": "PrelaunchFailure",
+        "input_opened": false,
+        "job_created": false
+      }
+    },
+    {
+      "id": "D09",
+      "name": "Actual child executable differs",
+      "boundary": "injected qualified program/proc observation",
+      "input": {
+        "held_exe_sha_equal": false,
+        "child_TERM_behavior": "exits_on_TERM"
+      },
+      "independently_frozen_expected": {
+        "outcome": "ProtocolFailedClosed",
+        "Start_written": false,
+        "own_reap_required": true,
+        "instance_returned": false
+      }
+    },
+    {
+      "id": "D10",
+      "name": "Scratch final-component symlink",
+      "boundary": "owned filesystem fixture",
+      "input": {
+        "parent_final_type": "symlink"
+      },
+      "independently_frozen_expected": {
+        "outcome": "PrelaunchFailure",
+        "fresh_job_created": false
+      }
+    },
+    {
+      "id": "D11",
+      "name": "Writable nonsticky parent",
+      "boundary": "owned metadata fixture",
+      "input": {
+        "parent_uid": "root",
+        "parent_mode": "0777"
+      },
+      "independently_frozen_expected": {
+        "outcome": "PrelaunchFailure",
+        "fresh_job_created": false
+      }
+    },
+    {
+      "id": "D12",
+      "name": "Exact capacity threshold",
+      "boundary": "injected fstatvfs boundary",
+      "input": {
+        "caller_reserve_bytes": 1024,
+        "available_pairs": [
+          100664320,
+          100664319
+        ]
+      },
+      "independently_frozen_expected": {
+        "admitted": [
+          true,
+          false
+        ],
+        "checked_minimum": 100664320,
+        "global_reservation_claim": false
+      }
+    },
+    {
+      "id": "D13",
+      "name": "Unexpected aliased fixed artifact",
+      "boundary": "owned fixture nlink control",
+      "input": {
+        "instance_nlink": 2
+      },
+      "independently_frozen_expected": {
+        "outcome": "ProtocolFailedClosed",
+        "instance_returned": false,
+        "unknown_alias_deleted": false
+      }
+    },
+    {
+      "id": "D14",
+      "name": "Receipt writer exact/over cap",
+      "boundary": "isolated capped-writer unit vectors, not JSON parser truth",
+      "input": {
+        "attempted_byte_lengths": [
+          65536,
+          65537
+        ]
+      },
+      "independently_frozen_expected": {
+        "writer_accepts": [
+          true,
+          false
+        ],
+        "overcap_outcome": "ReceiptTooLarge",
+        "normal_success_on_overcap": false
+      }
+    },
+    {
+      "id": "D15",
+      "name": "Receipt publication failure",
+      "boundary": "injected IO error boundary",
+      "input": {
+        "publication_step": "fsync",
+        "error": "EIO"
+      },
+      "independently_frozen_expected": {
+        "normal_success": false,
+        "outcome": "FailedClosed",
+        "raw_error_retained": true,
+        "receipt_completion_invented": false
+      }
+    },
+    {
+      "id": "D16",
+      "name": "Publication crosses work cutoff",
+      "boundary": "independent fake-clock boundary",
+      "input": {
+        "work_cutoff_seconds": 30,
+        "time_after_publication_seconds": 30.001,
+        "child_reaped": true
+      },
+      "independently_frozen_expected": {
+        "outcome": "TimedOutFailedClosed",
+        "proven_success": false,
+        "instance_returned": false
+      }
+    },
+    {
+      "id": "D17",
+      "name": "Stop allowance expiry then eventual late reap",
+      "boundary": "independent fake-clock/wait boundary",
+      "input": {
+        "stop_cutoff_seconds": 5,
+        "first_poll_seconds": 5.001,
+        "first_reaped": false,
+        "later_poll_seconds": 6,
+        "later_reaped": true
+      },
+      "independently_frozen_expected": {
+        "first": "ClosureIncomplete",
+        "first_terminal_exit": false,
+        "owner_retained": true,
+        "later": "FailedClosed",
+        "allowance_violation_preserved": true,
+        "retroactive_normal_success": false
+      }
+    },
+    {
+      "id": "D18",
+      "name": "Lost competing wait",
+      "boundary": "injected Child wait error boundary",
+      "input": {
+        "wait_error": "ECHILD",
+        "own_wait_result_missing": true
+      },
+      "independently_frozen_expected": {
+        "outcome": "ClosureIncomplete",
+        "normal_reap_claim": false,
+        "owner_reuse": false,
+        "instance_returned": false
+      }
+    }
+  ],
+  "limits": [
+    "These prospective assertions do not establish tested implementation or actual kernel/syscall behavior.",
+    "Complete synthetic worker/wire fixture source and complete actual originals must be frozen/reviewed before root execution.",
+    "No expected value is derived from candidate output; original40 and codec72+9 remain unchanged."
+  ]
+}

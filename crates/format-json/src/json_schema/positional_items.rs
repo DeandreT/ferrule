@@ -33,7 +33,7 @@ pub(super) fn is_direct_array_schema(schema: &serde_json::Value) -> bool {
 pub(super) fn normalize(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let dialect = files::validation_dialect(schema);
@@ -68,7 +68,7 @@ fn normalize_prefix(
     name: &str,
     schema: &serde_json::Value,
     prefix: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let members = prefix.as_array().ok_or_else(|| {
@@ -101,7 +101,7 @@ fn normalize_tuple(
     schema: &serde_json::Value,
     members: &[serde_json::Value],
     dialect: files::ValidationDialect,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let tail = match schema.get("additionalItems") {
@@ -133,7 +133,7 @@ fn lower(
     allow_empty: bool,
     dialect: files::ValidationDialect,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     member_role: &str,
 ) -> Result<SchemaNode, JsonFormatError> {
@@ -226,7 +226,7 @@ fn parse_item_schema(
     name: &str,
     schema: &serde_json::Value,
     dialect: files::ValidationDialect,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     role: &str,
 ) -> Result<SchemaNode, JsonFormatError> {
