@@ -37,7 +37,7 @@ Every line is one JSON object:
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "sequence": 0,
   "event": {
     "kind": "node_value",
@@ -55,7 +55,9 @@ Every line is one JSON object:
 `sequence` is zero-based, contiguous, and follows deterministic interpreter
 evaluation order. Consumers must reject unsupported `schema_version` values and
 ignore unknown fields within a supported version.
-Version 4 adds function-qualified value and input-delivery events for reusable
+Version 5 adds filesystem dynamic-source request events. Existing graph-event
+payloads remain unchanged. Version 4 added function-qualified value and
+input-delivery events for reusable
 function bodies. It leaves existing event payloads unchanged and records the
 function ID separately from its local node IDs. Version 3 added graph
 input-consumption events; previously saved trace files retain their declared
@@ -82,6 +84,7 @@ The `event.kind` tag selects the event payload:
 
 | Kind | Purpose |
 | --- | --- |
+| `dynamic_source_load_requested` | Exact named-source/path request at filesystem loader entry, before cache lookup or acquisition |
 | `node_value` | Successful graph-node result with active positions |
 | `node_input_value` | Successful value delivered from a graph node to one input pin of a consuming node |
 | `function_node_value` | Successful result of a node inside a reusable function body, qualified by `function` ID |
@@ -96,6 +99,34 @@ The `event.kind` tag selects the event payload:
 | `target_field_written` | Successful static/dynamic binding or child insertion, source nodes, output shape, and optional bounded scalar preview |
 | `target_produced` | Produced target kind and optional document path |
 | `scope_finished` | Candidate count, produced count, and final output kind |
+
+Filesystem runs observe dynamic named-source loader requests before cache
+lookup, declaration lookup, path resolution, or file acquisition. The event
+contains the exact UTF-8 `source` name and requested `path`:
+
+```json
+{"event":{"kind":"dynamic_source_load_requested","path":"secondary.xml","source":"document"},"schema_version":5,"sequence":0}
+```
+
+Repeated requests include cache hits. A request is an attempt, not evidence of
+a file read, worker launch, parse, or successful acquisition. Primary and static
+named input reads do not emit it. An unused dynamic source, absent/null path,
+or a path rejected before loader entry likewise emits no request. Failed loader
+attempts reach a custom observer, but failed runs do not publish JSON trace files.
+
+Request records share the graph events' sequence. Each source name and path is
+limited to 4,096 UTF-8 bytes without truncation. A serialized request line,
+including its newline, is limited to 65,536 bytes. One JSON trace admits at most
+4,096 requests and 268,435,456 serialized request bytes. These limits apply only
+to request records and do not cap graph-event volume. Limit, sequence, or
+writer failures remain sticky and prevent trace publication. Previously
+published mapping outputs can remain when trace finalization fails.
+
+Library sinks may override `TraceSink::dynamic_source_load_requested`. Its
+default implementation is a no-op; identities are borrowed for the synchronous
+call. Custom sinks own any retained data and its bounds. This observation
+currently belongs to the filesystem CLI loader, not arbitrary host loaders or
+payload execution.
 
 Every scope identity includes its primary or named target, semantic target path,
 and structural index path. Structural paths distinguish concatenate segments
