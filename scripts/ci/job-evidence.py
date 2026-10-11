@@ -137,7 +137,9 @@ def begin(home, environment, *, nonce=None):
     facts = identity(environment)  # Validate before creating any directory.
     nonce = secrets.token_hex(16) if nonce is None else nonce
     require(re.fullmatch(r"[0-9a-f]{32}", nonce) is not None, "Invalid nonce")
-    job_id = "-".join((facts["run_id"], facts["attempt"], facts["job"], facts["suite"], nonce))
+    # Compiler tools create Unix sockets below TMPDIR (108 bytes on Linux).
+    # Keep the path bounded; durable receipts retain the complete run identity.
+    job_id = nonce
     root = Path(home) / "ci-tmp" / "jobs" / job_id
     with owned_directory(home) as home_fd, child_directory(home_fd, "ci-tmp") as tmp_parent, \
             child_directory(tmp_parent, "jobs") as jobs, \
@@ -167,8 +169,11 @@ def observe(home, environment):
     facts = identity(environment)
     job_id = environment.get("FERRULE_CI_EVIDENCE_ID", "")
     prefix = "-".join((facts["run_id"], facts["attempt"], facts["job"], facts["suite"])) + "-"
-    require(job_id.startswith(prefix) and re.fullmatch(r"[0-9a-f]{32}", job_id[len(prefix):])
-            is not None, "Mismatched evidence identity")
+    # Existing descriptive roots remain observable without moving their evidence.
+    require(re.fullmatch(r"[0-9a-f]{32}", job_id) is not None or
+            (job_id.startswith(prefix) and
+             re.fullmatch(r"[0-9a-f]{32}", job_id[len(prefix):]) is not None),
+            "Mismatched evidence identity")
     expected_root = Path(home) / "ci-tmp" / "jobs" / job_id
     require(environment.get("FERRULE_CI_EVIDENCE_ROOT") == str(expected_root),
             "Mismatched evidence root")
