@@ -251,5 +251,7 @@ Review GitHub's [runner security guidance](https://docs.github.com/en/actions/re
 before expanding trusted inputs or granting account privileges.
 
 To return to the primary runner, set `CI_RUNNER=cleo`. During migration, the
-legacy `ferrule-ovh` label remains on Over for already queued workflows. The
-old `OVH_RUNNER_ENABLED` variable has no effect on these updated workflows.
+legacy `ferrule-ovh` label belongs only to Cleo, and `OVH_RUNNER_ENABLED=true`
+routes existing main/workflow revisions there until this migration is merged.
+Over retains `ferrule-over` for explicit selection. The old variable has no effect
+on the updated selectors.
