@@ -66,7 +66,7 @@ fn held_result(
     });
     (
         FerruleApp {
-            pending_file_run: Some(PendingFileRun {
+            pending_file_run: Some(PendingFileRun::from_test_core(FileRunCore {
                 receiver,
                 worker: Some(worker),
                 completed: None,
@@ -75,7 +75,8 @@ fn held_result(
                 started: Instant::now(),
                 debug: false,
                 phase,
-            }),
+                shutdown: ShutdownIntent::default(),
+            })),
             ..FerruleApp::default()
         },
         readiness,
@@ -142,7 +143,7 @@ fn disconnected_live_worker_remains_owned_until_joined() {
         eprintln!("disconnected file worker release: {released:?}");
     });
     let mut app = FerruleApp {
-        pending_file_run: Some(PendingFileRun {
+        pending_file_run: Some(PendingFileRun::from_test_core(FileRunCore {
             receiver,
             worker: Some(worker),
             completed: None,
@@ -151,7 +152,8 @@ fn disconnected_live_worker_remains_owned_until_joined() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
-        }),
+            shutdown: ShutdownIntent::default(),
+        })),
         ..FerruleApp::default()
     };
     let ready = readiness.recv_timeout(READY_WAIT);
@@ -215,7 +217,7 @@ fn finished_thread_without_event_has_typed_unreported_result() {
     let (_events, receiver) = mpsc::channel();
     let (commands, _command_receiver) = mpsc::channel();
     let mut app = FerruleApp {
-        pending_file_run: Some(PendingFileRun {
+        pending_file_run: Some(PendingFileRun::from_test_core(FileRunCore {
             receiver,
             worker: Some(std::thread::spawn(|| {})),
             completed: None,
@@ -224,7 +226,8 @@ fn finished_thread_without_event_has_typed_unreported_result() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
-        }),
+            shutdown: ShutdownIntent::default(),
+        })),
         ..FerruleApp::default()
     };
     let finished = wait_finished(&app);
@@ -392,7 +395,7 @@ fn queued_publication_event_does_not_discard_the_following_result() {
         eprintln!("queued file worker sends: {ready:?} {finished:?}");
     });
     let mut app = FerruleApp {
-        pending_file_run: Some(PendingFileRun {
+        pending_file_run: Some(PendingFileRun::from_test_core(FileRunCore {
             receiver,
             worker: Some(worker),
             completed: None,
@@ -401,7 +404,8 @@ fn queued_publication_event_does_not_discard_the_following_result() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
-        }),
+            shutdown: ShutdownIntent::default(),
+        })),
         ..FerruleApp::default()
     };
     let finished = wait_finished(&app);
