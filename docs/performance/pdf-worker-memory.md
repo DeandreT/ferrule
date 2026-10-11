@@ -68,3 +68,27 @@ and bounded executable verification/reporting in
 checks in [#388](https://github.com/DeandreT/ferrule/issues/388) and load-request
 observations in [#391](https://github.com/DeandreT/ferrule/issues/391) have separate
 functional scopes. This table does not qualify those routes or callback counts.
+
+## Real loader-request counts
+
+A separate functional check ran twelve fresh filesystem-route requests, using
+the same fixtures and expectations in two repetitions. It covered ordinary
+`Hello` and typed `Null` outputs through primary, selected static, and demanded
+dynamic sources. Actual schema 5 traces gave these counts:
+
+| Filesystem route | Requests | Attempted loader callbacks per request | Total attempts |
+| --- | ---: | ---: | ---: |
+| Primary | 4 | 0 | 0 |
+| Selected static | 4 | 0 | 0 |
+| Demanded dynamic | 4 | 1 | 4 |
+
+The four attempts came from 84 complete trace event records. All twelve whole
+XML and worker-wire outputs and all 25 normal owner closures were accepted.
+Earlier twelve-route counts inferred from outputs or job records remain
+unqualified as loader callback counts.
+
+These are attempted loader callbacks, not a count of physical PDF acquisitions
+or evidence of cache reuse. Each dynamic request made one demand; repeated
+demands, cache behavior, and unused routes were outside this check. It adds no
+RSS, parser-only memory, native, or full-parity claim. Load-request observation
+is tracked in [#391](https://github.com/DeandreT/ferrule/issues/391).
