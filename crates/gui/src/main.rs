@@ -45,12 +45,24 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
         ..Default::default()
     };
-    eframe::run_native(
+    let mut saved_file_owner = app::SavedFileRunTeardownService::new();
+    let saved_file_port = saved_file_owner.port();
+    let runner_result = eframe::run_native(
         "ferrule",
         native_options,
-        Box::new(|creation| {
+        Box::new(move |creation| {
             icons::install(&creation.egui_ctx);
-            Ok(Box::new(app::FerruleApp::from_storage(creation.storage)))
+            Ok(Box::new(
+                app::FerruleApp::from_storage_with_saved_file_owner(
+                    creation.storage,
+                    saved_file_port,
+                ),
+            ))
         }),
-    )
+    );
+    let (runner_result, terminal) = saved_file_owner.finish_after_runner(runner_result);
+    if let Some(terminal) = terminal {
+        terminal.report();
+    }
+    runner_result
 }
