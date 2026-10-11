@@ -244,16 +244,14 @@ layout and dialect details that an extension cannot express.
   endpoints beyond binary64's contiguous integer precision and both signed
   extremes; an exact endpoint retains its original inclusion flag. Instance
   and constant precision checks remain separate from boundary normalization.
-  Schema resources preserve the raw numeric spelling of these four bound
-  keywords before ordinary JSON number decoding. Decimal and exponent forms
-  that prove an exact integer in the signed or unsigned 64-bit token domain
-  normalize to that integer token, including negative zero. Fractional and
-  out-of-domain forms retain the existing finite-number admission rules.
-  This normalization follows schema-valued keyword positions and authorized
-  reference resources; `const`, `enum`, `default`, examples, and `multipleOf`
-  keep their ordinary number semantics.
-  Decimal endpoints and unsigned endpoints outside the signed domain retain
-  their finite-number admission rules. Import accepts both modern numeric
+  At actual schema positions, native import preserves exact integral decimal
+  and exponent spellings of the four range bounds as signed or unsigned JSON
+  integer tokens, including negative zero. This applies to inline text, file
+  roots, and confined local reference resources. Fractional or out-of-token-domain
+  endpoints retain their existing admission rules; a rounded near-integer is
+  never treated as an exact integral spelling. Opaque annotations and data,
+  `multipleOf`, runtime instance numbers, duplicate-key behavior, dialect policy,
+  and schema resource limits are unchanged. Native and generated Rust/C# adapters enforce the resulting exact bounds. Import accepts both modern numeric
   exclusive bounds and Draft 4
   boolean exclusives regardless of the declared dialect for interoperability;
   export emits the canonical normalized form. Positive finite `multipleOf`

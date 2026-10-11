@@ -1,251 +1,320 @@
-//! Preserve exact integral schema endpoints before `Value` rounds decimal tokens.
+//! Exact numeric-bound lexemes tied to one immutable loaded resource bundle.
+//!
+//! The ordinary Value parser remains authoritative for JSON syntax, overflow
+//! and recursion. Sparse sidecars retain only checked integral candidates;
+//! they never replace annotation/data values in the original document. Schema
+//! views consult them only at the existing parser's actual schema entries and
+//! reference hops, without resolving any additional references.
 
-use std::fmt;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::ops::Deref;
 
-use serde::Deserialize;
-use serde::de::{MapAccess, Visitor};
-use serde_json::value::RawValue;
+use serde_json::{Number, Value, value::RawValue};
 
 use super::{JsonPosition, MAX_JSON_DEPTH, schema_keyword_position};
 use crate::JsonFormatError;
 
-pub(super) fn decode(bytes: &[u8]) -> Result<serde_json::Value, JsonFormatError> {
-    let normalized = normalize(bytes)?;
-    // Retaining every raw entry lets this ordinary decoder keep its duplicate-key
-    // behavior and reject invalid numbers even in earlier duplicate entries.
-    Ok(serde_json::from_str(&normalized)?)
+#[derive(Debug, Default)]
+pub(super) struct Lexemes {
+    numbers: BTreeMap<String, Number>,
+    object: BTreeMap<String, Lexemes>,
+    array: BTreeMap<usize, Lexemes>,
 }
 
-fn normalize(bytes: &[u8]) -> Result<String, JsonFormatError> {
-    let raw: &RawValue = serde_json::from_slice(bytes)?;
-    let mut out = String::with_capacity(bytes.len());
-    rewrite(raw, JsonPosition::Schema, 0, &mut out)?;
-    Ok(out)
-}
+impl Lexemes {
+    fn is_empty(&self) -> bool {
+        self.numbers.is_empty() && self.object.is_empty() && self.array.is_empty()
+    }
 
-// A map would discard earlier duplicate values before ordinary JSON parsing.
-// Borrow the raw values so recursive schema walks do not copy each subtree.
-struct RawObject<'a>(Vec<(String, &'a RawValue)>);
+    pub(super) fn bundle_external(&mut self, external: BTreeMap<String, Lexemes>) {
+        self.object
+            .entry("$defs".to_string())
+            .or_default()
+            .object
+            .insert(
+                super::EXTERNAL_DEFS_KEY.to_string(),
+                Lexemes {
+                    object: external,
+                    ..Self::default()
+                },
+            );
+    }
 
-impl<'de> Deserialize<'de> for RawObject<'de> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct ObjectVisitor;
-        impl<'de> Visitor<'de> for ObjectVisitor {
-            type Value = RawObject<'de>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a JSON object")
-            }
-
-            fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut entries = Vec::new();
-                while let Some(entry) = access.next_entry::<String, &'de RawValue>()? {
-                    entries.push(entry);
+    fn bind(self, value: &Value, patches: &mut BTreeMap<usize, BTreeMap<String, Number>>) {
+        if !self.numbers.is_empty() {
+            patches.insert(value as *const Value as usize, self.numbers);
+        }
+        if let Value::Object(object) = value {
+            for (key, lexemes) in self.object {
+                if let Some(child) = object.get(&key) {
+                    lexemes.bind(child, patches);
                 }
-                Ok(RawObject(entries))
             }
         }
-        deserializer.deserialize_map(ObjectVisitor)
+        if let Value::Array(items) = value {
+            for (index, lexemes) in self.array {
+                if let Some(child) = items.get(index) {
+                    lexemes.bind(child, patches);
+                }
+            }
+        }
     }
 }
 
-fn rewrite(
-    raw: &RawValue,
-    position: JsonPosition,
-    depth: usize,
-    out: &mut String,
-) -> Result<(), JsonFormatError> {
+pub(super) struct ParsedDocument {
+    pub(super) value: Value,
+    pub(super) lexemes: Lexemes,
+}
+
+#[derive(Debug)]
+pub(in crate::json_schema) struct LoadedSchema {
+    // Boxing keeps the root address stable across moves. Descendant addresses
+    // stay stable because this original Value is never mutated after binding.
+    value: Box<Value>,
+    patches: BTreeMap<usize, BTreeMap<String, Number>>,
+}
+
+impl Deref for LoadedSchema {
+    type Target = Value;
+
+    fn deref(&self) -> &Value {
+        &self.value
+    }
+}
+
+impl LoadedSchema {
+    pub(super) fn new(value: Value, lexemes: Lexemes) -> Self {
+        let value = Box::new(value);
+        let mut patches = BTreeMap::new();
+        // Addresses are lookup keys only; no pointer is dereferenced and there
+        // is no unsafe, thread-local or global state.
+        lexemes.bind(&value, &mut patches);
+        Self { value, patches }
+    }
+
+    #[cfg(test)]
+    pub(in crate::json_schema) fn from_value(value: Value) -> Self {
+        Self::new(value, Lexemes::default())
+    }
+
+    pub(in crate::json_schema) fn schema_view<'a>(
+        &self,
+        schema: &'a Value,
+    ) -> Result<Cow<'a, Value>, JsonFormatError> {
+        if !self.walk(schema, None, JsonPosition::Schema, 0)? {
+            return Ok(Cow::Borrowed(schema));
+        }
+        let mut normalized = schema.clone();
+        self.walk(schema, Some(&mut normalized), JsonPosition::Schema, 0)?;
+        Ok(Cow::Owned(normalized))
+    }
+
+    fn walk(
+        &self,
+        original: &Value,
+        mut output: Option<&mut Value>,
+        position: JsonPosition,
+        depth: usize,
+    ) -> Result<bool, JsonFormatError> {
+        check_depth(depth)?;
+        let mut changed = false;
+        match position {
+            JsonPosition::Schema
+            | JsonPosition::SchemaMap
+            | JsonPosition::LegacyDependenciesMap => {
+                let Value::Object(object) = original else {
+                    return Ok(false);
+                };
+                if matches!(position, JsonPosition::Schema)
+                    && let Some(numbers) = self.patches.get(&(original as *const Value as usize))
+                {
+                    changed = true;
+                    if let Some(output) = output.as_deref_mut().and_then(Value::as_object_mut) {
+                        for (key, number) in numbers {
+                            output.insert(key.clone(), Value::Number(number.clone()));
+                        }
+                    }
+                }
+                for (keyword, child) in object {
+                    let position = match position {
+                        JsonPosition::Schema => schema_keyword_position(keyword),
+                        JsonPosition::SchemaMap => JsonPosition::Schema,
+                        JsonPosition::LegacyDependenciesMap => {
+                            if child.is_object() || child.is_boolean() {
+                                JsonPosition::Schema
+                            } else {
+                                JsonPosition::Opaque
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
+                    let out = output.as_deref_mut().and_then(|v| v.get_mut(keyword));
+                    changed |= self.walk(child, out, position, depth + 1)?;
+                }
+            }
+            JsonPosition::SchemaArray => {
+                let Value::Array(items) = original else {
+                    return Ok(false);
+                };
+                for (index, child) in items.iter().enumerate() {
+                    let out = output.as_deref_mut().and_then(|v| v.get_mut(index));
+                    changed |= self.walk(child, out, JsonPosition::Schema, depth + 1)?;
+                }
+            }
+            JsonPosition::Items => {
+                let position = if original.is_array() {
+                    JsonPosition::SchemaArray
+                } else if original.is_object() || original.is_boolean() {
+                    JsonPosition::Schema
+                } else {
+                    JsonPosition::Opaque
+                };
+                changed |= self.walk(original, output, position, depth)?;
+            }
+            JsonPosition::Opaque => {}
+        }
+        Ok(changed)
+    }
+}
+
+pub(super) fn parse(bytes: &[u8]) -> Result<ParsedDocument, JsonFormatError> {
+    let value = serde_json::from_slice(bytes)?;
+    let raw = serde_json::from_slice::<&RawValue>(bytes)?;
+    let lexemes = collect(&value, raw, 0)?;
+    Ok(ParsedDocument { value, lexemes })
+}
+
+fn check_depth(depth: usize) -> Result<(), JsonFormatError> {
     if depth > MAX_JSON_DEPTH {
         return Err(JsonFormatError::SchemaResourceLimit {
             kind: "JSON nesting depth",
             limit: MAX_JSON_DEPTH,
         });
     }
-    let source = raw.get();
-    let first = source.as_bytes().first().copied();
-    let position = match position {
-        JsonPosition::Items => match first {
-            Some(b'[') => JsonPosition::SchemaArray,
-            Some(b'{' | b't' | b'f') => JsonPosition::Schema,
-            _ => JsonPosition::Opaque,
-        },
-        position => position,
-    };
-    match (position, first) {
-        (
-            JsonPosition::Schema | JsonPosition::SchemaMap | JsonPosition::LegacyDependenciesMap,
-            Some(b'{'),
-        ) => {
-            let RawObject(entries) = serde_json::from_str(source)?;
-            out.push('{');
-            for (index, (key, value)) in entries.into_iter().enumerate() {
-                if index != 0 {
-                    out.push(',');
-                }
-                out.push_str(&serde_json::to_string(&key)?);
-                out.push(':');
-                if matches!(position, JsonPosition::Schema)
-                    && matches!(
-                        key.as_str(),
-                        "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum"
-                    )
-                    && let Some(integer) = exact_integer(value.get())
-                {
-                    out.push_str(&integer);
-                    continue;
-                }
-                let child_position = match position {
-                    JsonPosition::Schema => schema_keyword_position(&key),
-                    JsonPosition::SchemaMap => JsonPosition::Schema,
-                    JsonPosition::LegacyDependenciesMap => {
-                        if matches!(value.get().as_bytes().first(), Some(b'{' | b't' | b'f')) {
-                            JsonPosition::Schema
-                        } else {
-                            JsonPosition::Opaque
-                        }
-                    }
-                    _ => unreachable!(),
-                };
-                rewrite(value, child_position, depth + 1, out)?;
-            }
-            out.push('}');
-        }
-        (JsonPosition::SchemaArray, Some(b'[')) => {
-            let entries: Vec<&RawValue> = serde_json::from_str(source)?;
-            out.push('[');
-            for (index, value) in entries.into_iter().enumerate() {
-                if index != 0 {
-                    out.push(',');
-                }
-                rewrite(value, JsonPosition::Schema, depth + 1, out)?;
-            }
-            out.push(']');
-        }
-        _ => out.push_str(source),
-    }
     Ok(())
 }
 
-/// Prove integrality and the JSON integer-token domain using decimal digits only.
-/// Unproved values remain raw for the existing decoder and range admission.
-fn exact_integer(raw: &str) -> Option<String> {
-    let (negative, source) = raw
-        .strip_prefix('-')
-        .map_or((false, raw), |source| (true, source));
-    if !source.as_bytes().first().is_some_and(u8::is_ascii_digit) {
-        return None;
-    }
-    let (mantissa, exponent) = source.find(['e', 'E']).map_or((source, None), |index| {
-        (&source[..index], Some(&source[index + 1..]))
-    });
-    let fraction_digits = mantissa
-        .find('.')
-        .map_or(0, |index| mantissa.len() - index - 1);
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
-    let digits = digits.trim_start_matches('0');
-    if digits.is_empty() {
-        return Some("0".into());
-    }
-    let exponent = exponent.map_or(Some(0_i64), |exponent| exponent.parse().ok())?;
-    let scale = exponent.checked_sub(i64::try_from(fraction_digits).ok()?)?;
-    let (digits, appended_zeros) = if scale < 0 {
-        let removed = usize::try_from(scale.checked_neg()?).ok()?;
-        let trailing_zeros = digits
-            .bytes()
-            .rev()
-            .take_while(|byte| *byte == b'0')
-            .count();
-        if removed > trailing_zeros {
-            return None;
+fn collect(value: &Value, raw: &RawValue, depth: usize) -> Result<Lexemes, JsonFormatError> {
+    check_depth(depth)?;
+    let mut result = Lexemes::default();
+    match value {
+        Value::Object(object) => {
+            // Decoded keys and last duplicate values agree with Value. Its
+            // original first-insertion property order is not modified.
+            let entries: BTreeMap<String, &RawValue> = serde_json::from_str(raw.get())?;
+            for (keyword, child) in object {
+                let raw = entries.get(keyword).ok_or_else(|| {
+                    <serde_json::Error as serde::de::Error>::custom(
+                        "schema lexeme key is absent from the original object",
+                    )
+                })?;
+                if is_bound(keyword)
+                    && child.as_number().is_some_and(Number::is_f64)
+                    && let Some(number) = exact_integer(raw.get())
+                {
+                    result.numbers.insert(keyword.clone(), number);
+                }
+                let lexemes = collect(child, raw, depth + 1)?;
+                if !lexemes.is_empty() {
+                    result.object.insert(keyword.clone(), lexemes);
+                }
+            }
         }
-        (&digits[..digits.len() - removed], 0)
-    } else {
-        (digits, usize::try_from(scale).ok()?)
-    };
-    // No huge power, exponent-sized allocation, or rounded floating conversion.
-    let length = digits.len().checked_add(appended_zeros)?;
-    let limit = if negative {
-        "9223372036854775808"
-    } else {
-        "18446744073709551615"
-    };
-    if length > limit.len() {
+        Value::Array(items) => {
+            let originals: Vec<&RawValue> = serde_json::from_str(raw.get())?;
+            if items.len() != originals.len() {
+                return Err(<serde_json::Error as serde::de::Error>::custom(
+                    "schema lexeme array differs from the original array",
+                )
+                .into());
+            }
+            for (index, (child, raw)) in items.iter().zip(originals).enumerate() {
+                let lexemes = collect(child, raw, depth + 1)?;
+                if !lexemes.is_empty() {
+                    result.array.insert(index, lexemes);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(result)
+}
+
+fn is_bound(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum"
+    )
+}
+
+// The lexeme has already passed the ordinary JSON parser. Work is linear in
+// its length, accumulation is checked u64 arithmetic, and zero padding is at
+// most 19 digits. Huge exponents never expand into a string or allocation.
+fn exact_integer(lexeme: &str) -> Option<Number> {
+    let lexeme = lexeme.trim();
+    let negative = lexeme.starts_with('-');
+    let unsigned = lexeme.strip_prefix('-').unwrap_or(lexeme);
+    let (mantissa, exponent) = unsigned.split_once(['e', 'E']).unwrap_or((unsigned, "0"));
+    let fraction_digits = mantissa.split_once('.').map_or(0, |(_, tail)| tail.len());
+    let mut significant_digits = 0_usize;
+    let mut trailing_zeroes = 0_usize;
+    let mut total_digits = 0_usize;
+    for digit in mantissa.bytes().filter(|digit| *digit != b'.') {
+        total_digits += 1;
+        if significant_digits != 0 || digit != b'0' {
+            significant_digits += 1;
+        }
+        if digit == b'0' {
+            trailing_zeroes += 1;
+        } else {
+            trailing_zeroes = 0;
+        }
+    }
+    if significant_digits == 0 {
+        return Some(Number::from(0));
+    }
+    let shift = exponent
+        .parse::<i64>()
+        .ok()?
+        .checked_sub(i64::try_from(fraction_digits).ok()?)?;
+    let integer_digits = i64::try_from(significant_digits).ok()?.checked_add(shift)?;
+    if !(1..=20).contains(&integer_digits) {
         return None;
     }
-    let mut integer = String::with_capacity(length);
-    integer.push_str(digits);
-    integer.extend(std::iter::repeat_n('0', appended_zeros));
-    if length == limit.len() && integer.as_str() > limit {
+    let removed = if shift < 0 {
+        usize::try_from(shift.checked_neg()?).ok()?
+    } else {
+        0
+    };
+    if removed > trailing_zeroes {
         return None;
+    }
+    let retained = total_digits.checked_sub(removed)?;
+    let mut magnitude = 0_u64;
+    for digit in mantissa
+        .bytes()
+        .filter(|digit| *digit != b'.')
+        .take(retained)
+    {
+        magnitude = magnitude
+            .checked_mul(10)?
+            .checked_add(u64::from(digit - b'0'))?;
+    }
+    for _ in 0..shift.max(0) {
+        magnitude = magnitude.checked_mul(10)?;
     }
     if negative {
-        integer.insert(0, '-');
+        let signed = if magnitude == 1_u64 << 63 {
+            i64::MIN
+        } else {
+            -i64::try_from(magnitude).ok()?
+        };
+        Some(Number::from(signed))
+    } else {
+        Some(Number::from(magnitude))
     }
-    Some(integer)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn record(label: &str, original: &impl fmt::Debug) -> Result<(), Box<dyn std::error::Error>> {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos();
-        let parent = std::env::var_os("FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir);
-        std::fs::write(
-            parent.join(format!(
-                "ferrule-lexemes-{label}-{}-{stamp}.txt",
-                std::process::id()
-            )),
-            format!("{original:#?}\n"),
-        )?;
-        Ok(())
-    }
-
-    #[test]
-    fn lexical_bound_exact_digit_oracles() -> Result<(), Box<dyn std::error::Error>> {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/lexical_numeric_bounds/lexeme-cases.json"
-        ))?;
-        let outcomes = rows
-            .iter()
-            .map(|row| (row, exact_integer(row["raw"].as_str().unwrap())))
-            .collect::<Vec<_>>();
-        record("digits", &outcomes)?;
-        assert!(
-            outcomes
-                .iter()
-                .all(|(row, actual)| actual.as_deref() == row["canonical_integer"].as_str())
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn lexical_bound_schema_positions_and_opaque_oracles() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/lexical_numeric_bounds/position-cases.json"
-        ))?;
-        let outcomes = rows
-            .iter()
-            .map(|row| {
-                (
-                    row,
-                    normalize(row["raw_schema"].as_str().unwrap().as_bytes()),
-                )
-            })
-            .collect::<Vec<_>>();
-        record("positions", &outcomes)?;
-        assert!(outcomes.iter().all(|(row, actual)| matches!(actual, Ok(actual) if row["expected_normalized_json"] == actual.as_str())));
-        Ok(())
-    }
-}
+mod tests;
