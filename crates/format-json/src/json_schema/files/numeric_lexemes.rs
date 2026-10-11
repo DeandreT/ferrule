@@ -34,7 +34,10 @@ impl Lexemes {
             .object
             .insert(
                 super::EXTERNAL_DEFS_KEY.to_string(),
-                Lexemes { object: external, ..Self::default() },
+                Lexemes {
+                    object: external,
+                    ..Self::default()
+                },
             );
     }
 
@@ -117,8 +120,12 @@ impl LoadedSchema {
         check_depth(depth)?;
         let mut changed = false;
         match position {
-            JsonPosition::Schema | JsonPosition::SchemaMap | JsonPosition::LegacyDependenciesMap => {
-                let Value::Object(object) = original else { return Ok(false); };
+            JsonPosition::Schema
+            | JsonPosition::SchemaMap
+            | JsonPosition::LegacyDependenciesMap => {
+                let Value::Object(object) = original else {
+                    return Ok(false);
+                };
                 if matches!(position, JsonPosition::Schema)
                     && let Some(numbers) = self.patches.get(&(original as *const Value as usize))
                 {
@@ -147,7 +154,9 @@ impl LoadedSchema {
                 }
             }
             JsonPosition::SchemaArray => {
-                let Value::Array(items) = original else { return Ok(false); };
+                let Value::Array(items) = original else {
+                    return Ok(false);
+                };
                 for (index, child) in items.iter().enumerate() {
                     let out = output.as_deref_mut().and_then(|v| v.get_mut(index));
                     changed |= self.walk(child, out, JsonPosition::Schema, depth + 1)?;
@@ -217,7 +226,8 @@ fn collect(value: &Value, raw: &RawValue, depth: usize) -> Result<Lexemes, JsonF
             if items.len() != originals.len() {
                 return Err(<serde_json::Error as serde::de::Error>::custom(
                     "schema lexeme array differs from the original array",
-                ).into());
+                )
+                .into());
             }
             for (index, (child, raw)) in items.iter().zip(originals).enumerate() {
                 let lexemes = collect(child, raw, depth + 1)?;
@@ -247,7 +257,7 @@ fn exact_integer(lexeme: &str) -> Option<Number> {
     let unsigned = lexeme.strip_prefix('-').unwrap_or(lexeme);
     let (mantissa, exponent) = unsigned
         .split_once(['e', 'E'])
-        .map_or((unsigned, "0"), |parts| parts);
+        .unwrap_or((unsigned, "0"));
     let fraction_digits = mantissa.split_once('.').map_or(0, |(_, tail)| tail.len());
     let mut significant_digits = 0_usize;
     let mut trailing_zeroes = 0_usize;
@@ -284,7 +294,11 @@ fn exact_integer(lexeme: &str) -> Option<Number> {
     }
     let retained = total_digits.checked_sub(removed)?;
     let mut magnitude = 0_u64;
-    for digit in mantissa.bytes().filter(|digit| *digit != b'.').take(retained) {
+    for digit in mantissa
+        .bytes()
+        .filter(|digit| *digit != b'.')
+        .take(retained)
+    {
         magnitude = magnitude
             .checked_mul(10)?
             .checked_add(u64::from(digit - b'0'))?;
