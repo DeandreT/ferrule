@@ -31,9 +31,12 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod code_generation;
 mod output_documents;
 mod payload;
+mod pdf_worker_policy;
+mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
 mod project_paths;
+pub use pdf_worker_policy::FilesystemRunPolicy;
 mod rest_json;
 mod stdio;
 mod trace_json;
@@ -304,6 +307,35 @@ pub fn run_project_value_with_options(
     project_path: &Path,
     options: &RunOptions<'_>,
 ) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_filesystem_policy(project, project_path, options, None)
+}
+
+/// Loads a filesystem project with an explicit owned-PDF policy. Payload and
+/// pipeline entrypoints retain their existing in-process behavior.
+pub fn run_project_with_options_and_filesystem_policy(
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    policy: &FilesystemRunPolicy,
+) -> anyhow::Result<RunOutcome> {
+    let project = load_project(project_path)?;
+    run_project_value_with_options_and_filesystem_policy(&project, project_path, options, policy)
+}
+
+pub fn run_project_value_with_options_and_filesystem_policy(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    policy: &FilesystemRunPolicy,
+) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_filesystem_policy(project, project_path, options, Some(policy))
+}
+
+fn run_project_value_with_filesystem_policy(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    policy: Option<&FilesystemRunPolicy>,
+) -> anyhow::Result<RunOutcome> {
     require_valid(project)?;
 
     let input_path = resolve_run_path(
@@ -332,7 +364,12 @@ pub fn run_project_value_with_options(
         .map(|target| target.destination.path().to_path_buf())
         .context("project run selected no targets")?;
 
-    let source_instance = read_instance(&input_path, &project.source, &project.source_options)?;
+    let source_instance = read_instance_with_policy(
+        &input_path,
+        &project.source,
+        &project.source_options,
+        policy,
+    )?;
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
     let mut extras = Vec::with_capacity(project.extra_sources.len());
@@ -350,7 +387,7 @@ pub fn run_project_value_with_options(
         };
         extras.push((
             extra.name.clone(),
-            read_instance(&path, &extra.schema, &extra.options)
+            read_instance_with_policy(&path, &extra.schema, &extra.options, policy)
                 .with_context(|| format!("loading extra source `{}`", extra.name))?,
         ));
     }
@@ -359,7 +396,8 @@ pub fn run_project_value_with_options(
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
-    let dynamic_loader = ProjectDynamicSourceLoader::new(project_dir, &project.extra_sources);
+    let dynamic_loader =
+        ProjectDynamicSourceLoader::with_policy(project_dir, &project.extra_sources, policy);
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
@@ -672,14 +710,24 @@ struct ProjectDynamicSourceLoader<'a> {
     project_dir: &'a Path,
     sources: &'a [mapping::NamedSource],
     cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
+    policy: Option<&'a FilesystemRunPolicy>,
 }
 
 impl<'a> ProjectDynamicSourceLoader<'a> {
     fn new(project_dir: &'a Path, sources: &'a [mapping::NamedSource]) -> Self {
+        Self::with_policy(project_dir, sources, None)
+    }
+
+    fn with_policy(
+        project_dir: &'a Path,
+        sources: &'a [mapping::NamedSource],
+        policy: Option<&'a FilesystemRunPolicy>,
+    ) -> Self {
         Self {
             project_dir,
             sources,
             cache: RefCell::new(BTreeMap::new()),
+            policy,
         }
     }
 }
@@ -702,7 +750,7 @@ impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
             self.project_dir.join(path)
         };
         let instance = Arc::new(
-            read_instance(&resolved, &source.schema, &source.options)
+            read_instance_with_policy(&resolved, &source.schema, &source.options, self.policy)
                 .map_err(|error| error.to_string())?,
         );
         self.cache.borrow_mut().insert(key, Arc::clone(&instance));
@@ -1306,6 +1354,15 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    read_instance_with_policy(path, schema, options, None)
+}
+
+fn read_instance_with_policy(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    policy: Option<&FilesystemRunPolicy>,
+) -> anyhow::Result<Instance> {
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;
@@ -1364,8 +1421,11 @@ fn read_instance(
 
     if let Some(pdf) = &options.pdf {
         reject_pdf_conflicts(options, "input")?;
-        return format_pdf::read(path, pdf)
-            .with_context(|| format!("reading input {}", path.display()));
+        let instance = match policy {
+            Some(policy) => policy.read_pdf(path, pdf),
+            None => format_pdf::read(path, pdf).map_err(anyhow::Error::new),
+        };
+        return instance.with_context(|| format!("reading input {}", path.display()));
     }
 
     if let Some(layout) = &options.flextext {
