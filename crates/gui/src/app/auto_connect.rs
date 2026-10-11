@@ -39,14 +39,26 @@ impl FerruleApp {
             return;
         };
         let target_chain = scope_target_chain(root, &self.selected_scope);
-        let hint = source_frame_hint(root, &self.selected_scope);
-        let plan = plan_auto_connect(
+        let hint = match source_frame_hint(root, &self.selected_scope) {
+            Ok(hint) => hint,
+            Err(reason) => {
+                self.status = reason.to_owned();
+                return;
+            }
+        };
+        let plan = match plan_auto_connect(
             &self.project.source,
             schema,
             selected_scope,
             &target_chain,
             hint.as_deref(),
-        );
+        ) {
+            Ok(plan) => plan,
+            Err(reason) => {
+                self.status = reason.to_owned();
+                return;
+            }
+        };
         let scope_label = if target_chain.is_empty() {
             format!("{boundary_name} / root")
         } else {
@@ -116,6 +128,21 @@ impl FerruleApp {
         let Some(pending) = self.pending_auto_connect.take() else {
             return;
         };
+        // Recheck ancestors after confirmation before any graph or scope mutation.
+        let root = match pending.target {
+            AutoConnectTarget::Primary => Some(&self.project.root),
+            AutoConnectTarget::Named(index) => self
+                .project
+                .extra_targets
+                .get(index)
+                .map(|target| &target.root),
+        };
+        if let Some(root) = root {
+            if let Err(reason) = source_frame_hint(root, &pending.scope_path) {
+                self.status = reason.to_owned();
+                return;
+            }
+        }
         let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
         let result = match pending.target {
             AutoConnectTarget::Primary => {

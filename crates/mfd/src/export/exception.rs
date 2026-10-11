@@ -226,11 +226,14 @@ fn collect_complementary_filters(
     if scope.concatenated().is_some() {
         return;
     }
-    let collection = scope.source().map(|source| {
-        let mut collection = parent_collection.to_vec();
-        collection.extend(source.iter().cloned());
-        collection
-    });
+    let collection = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .map(|source| {
+            let mut collection = parent_collection.to_vec();
+            collection.extend(source.iter().cloned());
+            collection
+        });
     let current = collection.as_deref().unwrap_or(parent_collection);
     let plain = scope.construction == ScopeConstruction::Constructed
         && matches!(
@@ -249,7 +252,10 @@ fn collect_complementary_filters(
         && scope.dynamic_bindings.is_empty()
         && scope.dynamic_children.is_empty()
         && !scope.merge_dynamic_fields;
-    if scope.source().is_some()
+    if scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .is_some()
         && ancestors_preserve_items
         && plain
         && current == expected_collection
@@ -328,7 +334,9 @@ fn count_scope_matches(
             })
             .sum();
     }
-    let explicit_source = scope.source();
+    let explicit_source = scope
+        .source()
+        .expect("legacy path after ownership boundary");
     let collection = explicit_source.map(|source| {
         let mut collection = parent_collection.to_vec();
         collection.extend(source.iter().cloned());

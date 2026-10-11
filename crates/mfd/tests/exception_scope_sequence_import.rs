@@ -505,7 +505,9 @@ fn typed_scope_sequence_reimports_two_cycles_with_exact_owner_raw_message_and_co
                     );
                 }
                 assert_eq!(
-                    candidate.root.children[0].source(),
+                    candidate.root.children[0]
+                        .source()
+                        .expect("legacy fixture selector"),
                     Some(&["Item".to_owned()][..])
                 );
                 assert_eq!(

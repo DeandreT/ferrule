@@ -110,9 +110,12 @@ fn cloned_occurrence_branches_keep_their_own_descendant_bindings()
         .iter()
         .collect::<Vec<_>>();
     assert_eq!(segments.len(), 2);
-    assert_eq!(segments[0].source(), Some(["Debit".to_string()].as_slice()));
     assert_eq!(
-        segments[1].source(),
+        segments[0].source().expect("legacy fixture selector"),
+        Some(["Debit".to_string()].as_slice())
+    );
+    assert_eq!(
+        segments[1].source().expect("legacy fixture selector"),
         Some(["Credit".to_string()].as_slice())
     );
 

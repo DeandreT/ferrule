@@ -204,3 +204,29 @@ impl<'de> Deserialize<'de> for SourceSelector {
         deserializer.deserialize_any(SourceSelectorVisitor)
     }
 }
+
+/// A borrowed source selector that retains its owner discriminant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum SourceSelectorRef<'a> {
+    Legacy(&'a [String]),
+    Owned(&'a OwnedSourceRef),
+}
+
+/// Mutable selector access preserves the distinction between both wire forms.
+pub enum SourceSelectorMut<'a> {
+    Legacy(&'a mut Vec<String>),
+    Owned(&'a mut OwnedSourceRef),
+}
+
+/// A path-only accessor cannot represent an explicitly owned selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OwnedSourceAccess;
+
+impl fmt::Display for OwnedSourceAccess {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("owned source selection requires owner-aware access")
+    }
+}
+
+impl std::error::Error for OwnedSourceAccess {}

@@ -79,7 +79,7 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
     let person = &project.root.children[0];
     assert_eq!(person.target_field, "Person");
     assert_eq!(
-        person.source(),
+        person.source().expect("legacy fixture selector"),
         Some(
             ["Interchange", "Group", "Message", "SG2"]
                 .map(String::from)
@@ -337,9 +337,12 @@ fn cloned_edi_target_segments_keep_branch_local_bindings() {
         .iter()
         .collect::<Vec<_>>();
     assert_eq!(branches.len(), 2);
-    assert_eq!(branches[0].source(), Some(["Debit".to_string()].as_slice()));
     assert_eq!(
-        branches[1].source(),
+        branches[0].source().expect("legacy fixture selector"),
+        Some(["Debit".to_string()].as_slice())
+    );
+    assert_eq!(
+        branches[1].source().expect("legacy fixture selector"),
         Some(["Credit".to_string()].as_slice())
     );
     assert_eq!(branches[0].bindings.len(), 1);

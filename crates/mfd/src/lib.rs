@@ -78,6 +78,8 @@ pub const MAX_MFD_DESIGN_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum MfdError {
+    #[error("cannot export owned source iteration at {scope:?}")]
+    UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
     #[error(
         "cannot export {kind} node {node} (function {function:?}): source ownership is unsupported"
     )]

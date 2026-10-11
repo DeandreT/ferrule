@@ -743,6 +743,13 @@ mod tests {
 
     fn scope() -> TraceScope {
         TraceScope {
+            source_scope: mapping::SourceScopeLocation {
+                target: mapping::SourceScopeTarget::Named {
+                    index: 0,
+                    name: "audit".into(),
+                },
+                path: vec![mapping::SourceScopeStep::Child(2)],
+            },
             target: TraceTarget::Named("audit".into()),
             target_path: vec!["Rows".into()],
             structural_path: vec![2],

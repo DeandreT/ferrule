@@ -23,6 +23,16 @@ fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
 
 fn trace_scope() -> cli::TraceScope {
     cli::TraceScope {
+        source_scope: mapping::SourceScopeLocation {
+            target: mapping::SourceScopeTarget::Named {
+                index: 0,
+                name: "Audit".into(),
+            },
+            path: vec![
+                mapping::SourceScopeStep::Child(1),
+                mapping::SourceScopeStep::Child(3),
+            ],
+        },
         target: cli::TraceTarget::Named("Audit".into()),
         target_path: vec!["Orders".into(), "Line".into()],
         structural_path: vec![1, 3],

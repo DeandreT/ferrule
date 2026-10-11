@@ -50,7 +50,10 @@ pub fn plan_auto_connect(
     selected_scope: &Scope,
     selected_target_chain: &[String],
     source_frame_hint: Option<&[String]>,
-) -> AutoConnectPlan {
+) -> Result<AutoConnectPlan, &'static str> {
+    if contains_owned_iteration(selected_scope) {
+        return Err("auto-connect does not support owned source iteration");
+    }
     let sources = source_leaves(source_schema);
     let targets = target_leaves(target_schema);
     let mut plan = AutoConnectPlan::default();
@@ -86,23 +89,48 @@ pub fn plan_auto_connect(
             }
         }
     }
-    plan
+    Ok(plan)
 }
 
 /// Returns the innermost source iteration path that can identify a repetition
 /// frame for the selected scope. Empty-path nested scopes inherit their parent.
-pub fn source_frame_hint(root: &Scope, selected_path: &[usize]) -> Option<Vec<String>> {
+pub fn source_frame_hint(
+    root: &Scope,
+    selected_path: &[usize],
+) -> Result<Option<Vec<String>>, &'static str> {
     let mut scope = root;
-    let mut hint = scope.source().map(<[String]>::to_vec);
+    let mut hint = scope
+        .source()
+        .map_err(|_| "auto-connect does not support an owned source ancestor")?
+        .map(<[String]>::to_vec);
     for &index in selected_path {
-        scope = scope.children.get(index)?;
-        if let Some(source) = scope.source()
+        let Some(child) = scope.children.get(index) else {
+            return Ok(None);
+        };
+        scope = child;
+        if let Some(source) = scope
+            .source()
+            .map_err(|_| "auto-connect does not support an owned source ancestor")?
             && (!source.is_empty() || hint.is_none())
         {
             hint = Some(source.to_vec());
         }
     }
-    hint
+    Ok(hint)
+}
+
+fn contains_owned_iteration(scope: &Scope) -> bool {
+    matches!(
+        scope.source_selector(),
+        Some(mapping::SourceSelectorRef::Owned(_))
+    ) || scope.children.iter().any(contains_owned_iteration)
+        || scope
+            .dynamic_children
+            .iter()
+            .any(|child| contains_owned_iteration(&child.scope))
+        || scope
+            .concatenated()
+            .is_some_and(|segments| segments.iter().any(contains_owned_iteration))
 }
 
 pub fn scope_at<'a>(root: &'a Scope, path: &[usize]) -> Option<&'a Scope> {
@@ -131,6 +159,9 @@ pub fn apply_auto_connect(
     plan: &AutoConnectPlan,
     owned_items: &BTreeSet<NodeId>,
 ) -> Result<usize, &'static str> {
+    if contains_owned_iteration(selected_scope) {
+        return Err("auto-connect does not support owned source iteration");
+    }
     let accepted = plan
         .connections
         .iter()
@@ -416,7 +447,8 @@ mod tests {
             )],
         );
 
-        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None);
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
 
         assert_eq!(plan.connections.len(), 1);
         assert_eq!(
@@ -436,7 +468,8 @@ mod tests {
             "target",
             vec![SchemaNode::scalar("CustomerID", ScalarType::String)],
         );
-        let unique = plan_auto_connect(&unique_source, &target, &Scope::default(), &[], None);
+        let unique = plan_auto_connect(&unique_source, &target, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
         assert_eq!(unique.connections.len(), 1);
 
         let ambiguous_source = group(
@@ -452,7 +485,8 @@ mod tests {
                 ),
             ],
         );
-        let ambiguous = plan_auto_connect(&ambiguous_source, &target, &Scope::default(), &[], None);
+        let ambiguous = plan_auto_connect(&ambiguous_source, &target, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
         assert!(ambiguous.connections.is_empty());
         assert_eq!(ambiguous.skipped_ambiguous, 1);
     }
@@ -470,8 +504,11 @@ mod tests {
         let mut scope = Scope::default();
         scope.set_source(Some(vec!["B".to_owned()]));
 
-        let hint = source_frame_hint(&scope, &[]).expect("source frame is available");
-        let plan = plan_auto_connect(&source, &target, &scope, &[], Some(&hint));
+        let hint = source_frame_hint(&scope, &[])
+            .expect("legacy fixture selector")
+            .expect("source frame is available");
+        let plan = plan_auto_connect(&source, &target, &scope, &[], Some(&hint))
+            .expect("legacy fixture selector");
 
         assert_eq!(plan.connections.len(), 1);
         assert_eq!(plan.connections[0].source_frame, Some(vec!["B".to_owned()]));
@@ -499,7 +536,8 @@ mod tests {
             node: 9,
         });
 
-        let plan = plan_auto_connect(&source, &target, &scope, &[], None);
+        let plan = plan_auto_connect(&source, &target, &scope, &[], None)
+            .expect("legacy fixture selector");
 
         assert!(plan.connections.is_empty());
         assert_eq!(plan.skipped_incompatible, 1);
@@ -524,7 +562,8 @@ mod tests {
             ],
         );
 
-        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None);
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
 
         assert_eq!(plan.connections.len(), 1);
         assert_eq!(plan.connections[0].target_field, "safe");
@@ -542,7 +581,8 @@ mod tests {
             )],
         );
 
-        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None);
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None)
+            .expect("legacy fixture selector");
 
         assert_eq!(plan.connections.len(), 1);
         assert_eq!(plan.skipped_incompatible, 0);
@@ -566,7 +606,8 @@ mod tests {
         );
         let mut graph = Graph::default();
         let mut scope = Scope::default();
-        let plan = plan_auto_connect(&source, &target, &scope, &[], None);
+        let plan = plan_auto_connect(&source, &target, &scope, &[], None)
+            .expect("legacy fixture selector");
 
         assert_eq!(
             apply_auto_connect(&mut graph, &mut scope, &plan, &BTreeSet::new()),
@@ -622,3 +663,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "auto_connect/owned_collection_tests.rs"]
+mod owned_collection_tests;

@@ -66,16 +66,19 @@ impl Plan {
         anchor: &[String],
         parent: Option<(&Scope, &[String])>,
     ) {
-        let collection = scope.source().map_or_else(
-            || anchor.to_vec(),
-            |source| {
-                if sources.is_named_extra_path(source) {
-                    source.to_vec()
-                } else {
-                    sources.resolve_scope_path(anchor, source).0
-                }
-            },
-        );
+        let collection = scope
+            .source()
+            .expect("legacy path after ownership boundary")
+            .map_or_else(
+                || anchor.to_vec(),
+                |source| {
+                    if sources.is_named_extra_path(source) {
+                        source.to_vec()
+                    } else {
+                        sources.resolve_scope_path(anchor, source).0
+                    }
+                },
+            );
         if scope.iteration_output == IterationOutput::First {
             let label = if path.is_empty() {
                 "<root>".into()
@@ -92,14 +95,20 @@ impl Plan {
             };
             let qualified = (|| {
                 if path.is_empty()
-                    || scope.source().is_none()
+                    || scope
+                        .source()
+                        .expect("legacy path after ownership boundary")
+                        .is_none()
                     || scope.construction != ScopeConstruction::Constructed
                     || !scope.children.is_empty()
                 {
                     return None;
                 }
                 let (parent, parent_collection) = parent?;
-                if parent.source().is_none()
+                if parent
+                    .source()
+                    .expect("legacy path after ownership boundary")
+                    .is_none()
                     || parent.construction != ScopeConstruction::Constructed
                     || parent.iteration_output != IterationOutput::Repeated
                     || parent.filter.is_some()
@@ -153,7 +162,10 @@ impl Plan {
                         Node::Position {
                             collection: position_collection,
                         } if position_collection == &collection
-                            || scope.source() == Some(position_collection.as_slice()) =>
+                            || scope
+                                .source()
+                                .expect("legacy path after ownership boundary")
+                                == Some(position_collection.as_slice()) =>
                         {
                             position = true;
                             fields.push((port, None));
@@ -164,7 +176,10 @@ impl Plan {
                             {
                                 &path[0]
                             } else if frame.is_none()
-                                && scope.source() == Some(collection.as_slice())
+                                && scope
+                                    .source()
+                                    .expect("legacy path after ownership boundary")
+                                    == Some(collection.as_slice())
                                 && path.len() == collection.len() + 1
                                 && path.starts_with(&collection)
                             {

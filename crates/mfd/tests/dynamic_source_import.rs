@@ -95,7 +95,9 @@ fn connected_document_input_becomes_a_typed_dynamic_source()
     assert_eq!(dynamic.iteration, ["File"]);
     assert!(imported.project.graph.nodes.contains_key(&dynamic.node));
     assert_eq!(
-        imported.project.root.children[0].source(),
+        imported.project.root.children[0]
+            .source()
+            .expect("legacy fixture selector"),
         Some(&[source.name.clone(), "Item".into()][..])
     );
     Ok(())

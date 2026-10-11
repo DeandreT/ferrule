@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{NodeId, Scope, SequenceExpr};
+use crate::{NodeId, OwnedSourceAccess, OwnedSourceRef, Scope, SequenceExpr, SourceSelectorRef};
 
 /// Stable identity of one joined iteration within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -314,6 +314,11 @@ pub enum ScopeIteration {
     #[default]
     None,
     Source(Vec<String>),
+    /// Explicit endpoint-relative collection identity; execution remains unavailable.
+    OwnedSource {
+        source: OwnedSourceRef,
+        output_path: Option<NodeId>,
+    },
     /// Produces one independently named document per source item.
     DynamicDocuments {
         source: Vec<String>,
@@ -328,10 +333,22 @@ pub enum ScopeIteration {
 }
 
 impl ScopeIteration {
-    pub fn source(&self) -> Option<&[String]> {
+    pub fn source_selector(&self) -> Option<SourceSelectorRef<'_>> {
         match self {
-            Self::Source(path) | Self::DynamicDocuments { source: path, .. } => Some(path),
+            Self::Source(path) | Self::DynamicDocuments { source: path, .. } => {
+                Some(SourceSelectorRef::Legacy(path))
+            }
+            Self::OwnedSource { source, .. } => Some(SourceSelectorRef::Owned(source)),
             Self::None | Self::Sequence(_) | Self::InnerJoin { .. } | Self::Concatenate(_) => None,
+        }
+    }
+
+    /// Legacy path access refuses an owned selector instead of dropping its owner.
+    pub fn source(&self) -> Result<Option<&[String]>, OwnedSourceAccess> {
+        match self.source_selector() {
+            Some(SourceSelectorRef::Legacy(path)) => Ok(Some(path)),
+            Some(SourceSelectorRef::Owned(_)) => Err(OwnedSourceAccess),
+            None => Ok(None),
         }
     }
 
@@ -340,6 +357,7 @@ impl ScopeIteration {
             Self::Sequence(sequence) => Some(sequence),
             Self::None
             | Self::Source(_)
+            | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::InnerJoin { .. }
             | Self::Concatenate(_) => None,
@@ -351,6 +369,7 @@ impl ScopeIteration {
             Self::InnerJoin { id, plan } => Some((*id, plan)),
             Self::None
             | Self::Source(_)
+            | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::Concatenate(_) => None,
@@ -362,6 +381,7 @@ impl ScopeIteration {
             Self::Concatenate(sequence) => Some(sequence),
             Self::None
             | Self::Source(_)
+            | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::InnerJoin { .. } => None,
@@ -373,6 +393,7 @@ impl ScopeIteration {
             Self::Concatenate(sequence) => Some(sequence),
             Self::None
             | Self::Source(_)
+            | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::InnerJoin { .. } => None,

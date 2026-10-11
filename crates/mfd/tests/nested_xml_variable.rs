@@ -201,7 +201,10 @@ fn constructed_variable_repeated_child_executes_and_roundtrips() -> Result<(), B
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let rows = row(&imported.project.root, "Row").ok_or("missing Row scope")?;
-    assert_eq!(rows.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        rows.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert_execution(&imported.project)?;
 
     let exported = dir.0.join("round-trip.mfd");
@@ -221,7 +224,10 @@ fn wrapped_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let rows = row(&imported.project.root, "Row").ok_or("missing Row scope")?;
-    assert_eq!(rows.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        rows.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert_execution(&imported.project)?;
 
     let exported = dir.0.join("deep-round-trip.mfd");
