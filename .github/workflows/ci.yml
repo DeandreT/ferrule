@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for this run
+        type: choice
+        default: cleo
+        options: [cleo, over, github-hosted]
 
 permissions:
   contents: read
@@ -25,8 +31,8 @@ env:
 
 jobs:
   test:
-    # Only branches writable by this repository's contributors reach OVH.
-    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    # Repository-owned events use Cleo by default; forks stay on hosted runners.
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || (inputs.runner || vars.CI_RUNNER || 'cleo') == 'github-hosted') && '["ubuntu-latest"]' || (inputs.runner || vars.CI_RUNNER || 'cleo') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || '["self-hosted", "Linux", "X64", "ferrule-cleo"]') }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -36,10 +42,11 @@ jobs:
         run: |
           bash -n scripts/ci/*.sh
           python3 scripts/ci/test-ovh-build.py
+          python3 -B scripts/ci/test-runner-routing.py
           python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 scripts/ci/test-job-evidence.py
           python3 -B scripts/ci/test-compact-job-evidence.py
-      - name: OVH build resources
+      - name: Self-hosted build resources
         if: runner.environment == 'self-hosted'
         run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@nightly

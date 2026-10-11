@@ -1,15 +1,61 @@
-# OVHcloud CI runner
+# Ferrule CI runners: Cleo and Over
 
-Ferrule's native CI and both generated-backend suites run on the repository's
-`ferrule-ovh-quinta` runner when `OVH_RUNNER_ENABLED=true`. Pushes to `main`,
-manual dispatches, and pull requests from branches in `DeandreT/ferrule` can
-use OVH. Fork pull requests run on GitHub's `ubuntu-latest` machines. Existing
-check names and qualification commands are preserved. Website deployment
-continues through the separate Pages workflow.
+Native CI and generated-backend suites default to `ferrule-cleo`. `ferrule-over`
+on the OVHcloud host is an optional alternative. Set repository variable
+`CI_RUNNER` to `cleo`, `over`, or `github-hosted` to choose the default for new
+runs. The manual workflow's runner choice overrides that variable for one run.
+There is no automatic failover: an offline selected runner leaves jobs queued.
+Fork pull requests always use GitHub's `ubuntu-latest` machines. Pages remains
+on its separate GitHub-hosted workflow.
 
-## Host and isolation
+## Cleo's persistent hosting
 
-The existing SSH alias `ovh` connects as `ubuntu` to the Ubuntu x86_64 host
+Connect with `ssh cleo` as `deck`. Cleo runs SteamOS, so provisioning uses
+rootless Podman without changing its read-only system partition. Files and
+runner data live under `/home/deck/services/ferrule`; Podman image storage is
+already on the persistent home partition. The runner's home inside the container
+is `/home/ferrule-runner`, so both hosts use the same cache and space admission
+helpers. Historical `*-ovh-*` helper filenames remain compatible with the
+existing deployed pre-job hook; they apply to both runners.
+
+From a clean checkout with an authenticated GitHub CLI:
+
+```sh
+ssh cleo 'mkdir -p /home/deck/services/ferrule/provision'
+scp scripts/ci/cleo-runner.Containerfile scripts/ci/cleo-runner-entrypoint.sh \
+  scripts/ci/provision-cleo-runner.sh scripts/ci/guard-ovh-job.sh \
+  scripts/ci/prepare-ovh-job.py scripts/ci/compact-job-evidence.py \
+  scripts/ci/reclaim-build-cache.py cleo:/home/deck/services/ferrule/provision/
+gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
+  --jq .token | ssh cleo 'bash /home/deck/services/ferrule/provision/provision-cleo-runner.sh'
+```
+
+The installer requires 32 GiB free. A private container runs as `ferrule-runner`,
+without sudo, a Docker socket, host credentials, or desktop display sockets.
+Xvfb supplies isolated graphical displays. Cleo permits two CPU cores and 5 GiB
+memory for this container, with bounded build/test parallelism. The separate
+Wareboxes runner has its own home and container.
+
+Quadlet configuration lives at
+`/home/deck/.config/containers/systemd/ferrule-cleo.container`. Its `[Install]`
+section and the existing user lingering setting start it on later boots;
+generated Quadlet services do not use `systemctl enable`. The definition avoids
+SteamOS's inactive network-online target and retries failures. Manage it with:
+
+```sh
+ssh cleo 'systemctl --user status ferrule-cleo.service --no-pager'
+ssh cleo 'journalctl --user -u ferrule-cleo.service -n 100 --no-pager'
+ssh cleo 'df -h /home; podman exec ferrule-cleo du -h -d 1 /home/ferrule-runner/ci-cache'
+```
+
+Wait for the runner to become idle before stopping or replacing it. Container
+replacement preserves `services/ferrule/home`, including registration, caches,
+and retained diagnostics. No actual reboot or SteamOS update is implied by a
+service startup/restart check.
+
+## Over: host and isolation
+
+The existing SSH alias `over` (with `ovh` retained as a compatibility alias) connects as `ubuntu` to the Ubuntu x86_64 host
 `quinta`. Provisioning installs a dedicated `ferrule-runner` account, with no
 supplemental groups, sudo privileges, Docker socket, or SSH credentials. Its
 login shell is disabled; the service runs its commands directly.
@@ -68,7 +114,7 @@ service restrictions. Ubuntu 26.04's tar needs `openat2`; the service leaves
 
 There is one runner slot, so native and codegen matrix jobs execute sequentially.
 The service has a CPU quota of 150% (1.5 cores), memory high watermark of 3 GiB,
-and hard limit of 3500 MiB. OVH jobs use one Cargo build job, two ordinary test
+and hard limit of 3500 MiB. Over jobs use one Cargo build job, two ordinary test
 threads, and one generated-backend test thread. Graphical tests use Xvfb with
 ambient Wayland handles removed. These limits leave capacity for the existing
 Wareboxes runner and Valheim service; they do not reserve capacity from them.
@@ -118,7 +164,7 @@ Build outputs persist outside the cleaned checkout:
   their verified member manifests. Keep these alongside remaining `ci-tmp`
   records when inspecting historical failures. No automatic archive expiration.
 
-GitHub-hosted jobs continue to use the existing Actions Rust cache. OVH skips
+GitHub-hosted jobs continue to use the existing Actions Rust cache. Self-hosted CI skips
 that archive cache to avoid duplicating persistent build outputs. Nightly Rust
 and .NET 10 are maintained through the existing setup actions. No GitHub
 personal access token is installed on the server.
@@ -127,7 +173,7 @@ compilation stays disabled, as required by the compiler cache. Final runner
 diagnostics report cache hits and misses. The cache tool is root-owned and its
 download has a pinned SHA-256, following the [upstream Rust cache contract](https://github.com/mozilla/sccache/blob/main/docs/Rust.md).
 
-## Provision or replace the runner
+## Provision or replace Over
 
 The administrator needs SSH sudo access and permission to administer repository
 runners. The installer requires at least 8 GiB free, verifies the downloaded
@@ -139,33 +185,33 @@ Dependency installation does not automatically restart unrelated services.
 From a clean checkout with an authenticated GitHub CLI:
 
 ```sh
-scp scripts/ci/provision-ovh-runner.sh ovh:/tmp/ferrule-provision-runner.sh
-scp scripts/ci/guard-ovh-job.sh ovh:/tmp/guard-ovh-job.sh
+scp scripts/ci/provision-ovh-runner.sh over:/tmp/ferrule-provision-runner.sh
+scp scripts/ci/guard-ovh-job.sh over:/tmp/guard-ovh-job.sh
 scp scripts/ci/prepare-ovh-job.py scripts/ci/compact-job-evidence.py \
-  scripts/ci/reclaim-build-cache.py ovh:/tmp/
+  scripts/ci/reclaim-build-cache.py over:/tmp/
 gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
-  --jq .token | ssh ovh 'sudo -n bash /tmp/ferrule-provision-runner.sh'
+  --jq .token | ssh over 'sudo -n bash /tmp/ferrule-provision-runner.sh'
 gh api repos/DeandreT/ferrule/actions/runners \
   --jq '.runners[] | {name, status, busy, labels}'
-gh variable set OVH_RUNNER_ENABLED --body true --repo DeandreT/ferrule
+gh variable set CI_RUNNER --body over --repo DeandreT/ferrule
 ```
 
 Keep shell tracing disabled around the short-lived registration token. The
 installer refuses an active Ferrule service; stop it only after the runner is
 idle before reprovisioning. An existing registration is retained. If replacing
 the machine, remove its old registration through GitHub's runner settings
-first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`. Builds require
+first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-over`. Builds require
 16 GiB free for native CI and 8 GiB for codegen after provisioning, even though
 installation itself requires less.
 
 ## Check and maintain
 
 ```sh
-ssh ovh 'sudo systemctl status ferrule-actions-runner.service --no-pager'
-ssh ovh 'sudo journalctl -u ferrule-actions-runner.service -n 100 --no-pager'
-ssh ovh 'df -h /home; sudo du -h -d 1 /home/ferrule-runner/ci-cache'
-gh workflow run ci.yml --repo DeandreT/ferrule
-gh workflow run codegen.yml --repo DeandreT/ferrule
+ssh over 'sudo systemctl status ferrule-actions-runner.service --no-pager'
+ssh over 'sudo journalctl -u ferrule-actions-runner.service -n 100 --no-pager'
+ssh over 'df -h /home; sudo du -h -d 1 /home/ferrule-runner/ci-cache'
+gh workflow run ci.yml --repo DeandreT/ferrule -f runner=over
+gh workflow run codegen.yml --repo DeandreT/ferrule -f runner=over
 ```
 
 Watch the corresponding Actions jobs and confirm their runner name, conclusion,
@@ -192,14 +238,18 @@ archive and its manifest. Manual archive removal is outside the automatic policy
 ## Fall back to GitHub-hosted builds
 
 ```sh
-gh variable set OVH_RUNNER_ENABLED --body false --repo DeandreT/ferrule
+gh variable set CI_RUNNER --body github-hosted --repo DeandreT/ferrule
 ```
 
 Newly scheduled jobs use GitHub-hosted runners. Existing queued or running
 jobs keep their selected runner; cancel and rerun those if necessary. To retire
-OVH entirely, wait for idle, disable the Ferrule service, and remove this runner
+Over entirely, wait for idle, disable the Ferrule service, and remove this runner
 from repository settings. Wareboxes and Valheim services are independent.
 
 The routing follows GitHub's [self-hosted runner label documentation](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow).
 Review GitHub's [runner security guidance](https://docs.github.com/en/actions/reference/security/secure-use)
 before expanding trusted inputs or granting account privileges.
+
+To return to the primary runner, set `CI_RUNNER=cleo`. During migration, the
+legacy `ferrule-ovh` label remains on Over for already queued workflows. The
+old `OVH_RUNNER_ENABLED` variable has no effect on these updated workflows.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ ${RUNNER_ENVIRONMENT:-} != self-hosted || $(id -un) != ferrule-runner ]]; then
-  echo 'OVH preparation requires the dedicated ferrule-runner account.' >&2
+  echo 'Self-hosted preparation requires the dedicated ferrule-runner account.' >&2
   exit 1
 fi
 if [[ ${HOME:?} != /home/ferrule-runner || ! -f ${GITHUB_ENV:?} ]]; then
@@ -16,7 +16,7 @@ timeout_path=$(command -v gnutimeout || command -v timeout)
 timeout_path=$(realpath "$timeout_path")
 if [[ ! -f $timeout_path || -L $timeout_path ]] ||
    [[ $("$timeout_path" --version) != 'timeout (GNU coreutils)'* ]]; then
-  echo 'OVH codegen qualification requires a regular GNU timeout executable.' >&2
+  echo 'Self-hosted codegen qualification requires a regular GNU timeout executable.' >&2
   exit 1
 fi
 
@@ -41,7 +41,7 @@ esac
 python3 -I "$(dirname "${BASH_SOURCE[0]}")/reclaim-build-cache.py" "$reserve_gib"
 available_kib=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
 if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < reserve_gib * 1024 * 1024 )); then
-  printf 'OVH needs at least %s GiB free before starting this build; inspect Ferrule caches.\n' "$reserve_gib" >&2
+  printf 'The runner needs at least %s GiB free before starting this build; inspect Ferrule caches.\n' "$reserve_gib" >&2
   df -h "$HOME" >&2
   exit 1
 fi

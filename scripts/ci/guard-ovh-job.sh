@@ -50,16 +50,16 @@ try:
         if not os.environ.get("GITHUB_REF", "").startswith("refs/heads/"):
             raise ValueError("manual builds require a repository branch")
     else:
-        raise ValueError("event type is not admitted on OVH")
+        raise ValueError("event type is not admitted on this runner")
 except (OSError, KeyError, ValueError, AttributeError, TypeError) as error:
-    print(f"OVH job refused: {error}", file=sys.stderr, flush=True)
+    print(f"Ferrule job refused: {error}", file=sys.stderr, flush=True)
     abort_rejected_worker()
     sys.exit(1)
-print("OVH job admitted for a trusted Ferrule repository event.")
+print("Ferrule job admitted for a trusted Ferrule repository event.")
 try:
     prepare_admitted_worker()
 except (OSError, subprocess.SubprocessError) as error:
-    print(f"OVH pre-job preparation failed: {error}", file=sys.stderr, flush=True)
+    print(f"Ferrule pre-job preparation failed: {error}", file=sys.stderr, flush=True)
     abort_rejected_worker()
     sys.exit(1)
 PY

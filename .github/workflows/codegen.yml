@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for this run
+        type: choice
+        default: cleo
+        options: [cleo, over, github-hosted]
 
 permissions:
   contents: read
@@ -28,7 +34,7 @@ env:
 jobs:
   generated-backends:
     name: generated-backends (${{ matrix.suite }})
-    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || (inputs.runner || vars.CI_RUNNER || 'cleo') == 'github-hosted') && '["ubuntu-latest"]' || (inputs.runner || vars.CI_RUNNER || 'cleo') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || '["self-hosted", "Linux", "X64", "ferrule-cleo"]') }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -40,9 +46,10 @@ jobs:
           persist-credentials: false
       - name: pre-job space guard tests
         run: |
+          python3 -B scripts/ci/test-runner-routing.py
           python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 -B scripts/ci/test-compact-job-evidence.py
-      - name: OVH build resources
+      - name: Self-hosted build resources
         if: runner.environment == 'self-hosted'
         env:
           FERRULE_CI_SUITE: codegen

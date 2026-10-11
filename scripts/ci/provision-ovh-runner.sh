@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run as root on the OVH host. Supply a short-lived registration token on stdin.
+# Run as root on the Over host. Supply a short-lived registration token on stdin.
 set +x
 set -euo pipefail
 
@@ -116,8 +116,8 @@ if [[ ! -f $runner_dir/.runner ]]; then
     runuser -u "$runner_user" -- env HOME="$runner_home" \
       PATH="/opt/ferrule-runner-tools:$runner_home/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
       ./config.sh --unattended --url https://github.com/DeandreT/ferrule \
-      --token "$registration_token" --name "ferrule-ovh-$(hostname -s)" \
-      --labels ferrule-ovh --work _work
+      --token "$registration_token" --name "ferrule-over" \
+      --labels ferrule-over --work _work
   )
   unset registration_token
 fi
