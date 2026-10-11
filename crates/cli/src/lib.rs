@@ -441,10 +441,6 @@ fn run_project_value_with_pdf_reader(
     let dynamic_loader =
         ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader)
             .with_trace_sink(options.trace_sink);
-     reader: Option<&'a dyn FilesystemPdfReader>,
-    trace_sink: Option<&'a dyn TraceSink>,
-             reader,
-            trace_sink: None,
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
@@ -757,6 +753,8 @@ struct ProjectDynamicSourceLoader<'a> {
     project_dir: &'a Path,
     sources: &'a [mapping::NamedSource],
     cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
+    reader: Option<&'a dyn FilesystemPdfReader>,
+    trace_sink: Option<&'a dyn TraceSink>,
 }
 
 impl<'a> ProjectDynamicSourceLoader<'a> {
@@ -785,6 +783,8 @@ impl<'a> ProjectDynamicSourceLoader<'a> {
             project_dir,
             sources,
             cache: RefCell::new(BTreeMap::new()),
+            reader,
+            trace_sink: None,
         }
     }
 
