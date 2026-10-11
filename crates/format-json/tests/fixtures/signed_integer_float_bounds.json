@@ -2914,12 +2914,66 @@
     {
       "id": "ambiguous-decimal-one",
       "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"minimum\":1.0}",
-      "error": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+      "minimum": {
+        "bits": "3ff0000000000000",
+        "exclusive": false
+      },
+      "maximum": null,
+      "range_text": "[1, inf)",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "minimum": 1
+      },
+      "probes": [
+        {
+          "input": "0.9999999999999999",
+          "bits": "3fefffffffffffff",
+          "accepted": false
+        },
+        {
+          "input": "1",
+          "bits": "3ff0000000000000",
+          "accepted": true
+        },
+        {
+          "input": "1.0000000000000002",
+          "bits": "3ff0000000000001",
+          "accepted": true
+        }
+      ]
     },
     {
       "id": "ambiguous-decimal-wide",
       "schema": "{\"title\":\"Boundary\",\"type\":\"number\",\"maximum\":9007199254740993.0}",
-      "error": "floating-point numeric bound rounded to an ambiguous integral value; use an integer JSON token for integral endpoints"
+      "minimum": null,
+      "maximum": {
+        "bits": "4340000000000000",
+        "exclusive": false
+      },
+      "range_text": "(-inf, 9007199254740992]",
+      "exported": {
+        "title": "Boundary",
+        "type": "number",
+        "maximum": 9007199254740992
+      },
+      "probes": [
+        {
+          "input": "9007199254740991",
+          "bits": "433fffffffffffff",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740992",
+          "bits": "4340000000000000",
+          "accepted": true
+        },
+        {
+          "input": "9007199254740994",
+          "bits": "4340000000000001",
+          "accepted": false
+        }
+      ]
     },
     {
       "id": "unsigned-inexact-unchanged",
