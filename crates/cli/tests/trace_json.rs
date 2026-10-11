@@ -263,7 +263,7 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     let lines = json_lines(&trace)?;
     assert!(!lines.is_empty());
     for (sequence, line) in lines.iter().enumerate() {
-        assert_eq!(line["schema_version"], 4);
+        assert_eq!(line["schema_version"], 5);
         assert_eq!(line["sequence"], sequence);
         assert!(line["event"]["kind"].is_string());
     }
@@ -429,7 +429,7 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
         serde_json::from_slice::<serde_json::Value>(&std::fs::read(dir.0.join("output.json"))?)?,
         serde_json::json!({"Rows": [{"Value": "a"}, {"Value": "b"}]})
     );
-    assert!(lines.iter().all(|line| line["schema_version"] == 4));
+    assert!(lines.iter().all(|line| line["schema_version"] == 5));
     Ok(())
 }
 
