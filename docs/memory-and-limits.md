@@ -151,3 +151,7 @@ universal improvement claim or total-RAM cap. The separate
 [filesystem input-lifetime measurement](performance/filesystem-input-lifetime-2026-10-07.md)
 records eight normal-debug observations, exact output checks, and the workloads
 where early input release did and did not reduce the observed process peak.
+
+The [PDF worker memory observations](performance/pdf-worker-memory.md) retain five
+process lifetime measurements and explain executable-verification overhead.
+They do not establish parser-only memory or a post-correction improvement.
