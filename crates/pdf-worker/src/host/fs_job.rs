@@ -205,17 +205,27 @@ impl Dir {
         Ok(v)
     }
     pub fn write_frozen(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        #[cfg(test)]
+        super::ownership_fault351::retain_payload(name, bytes)?;
         let mut f = self.create(name)?;
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-write", name)?;
         f.write_all(bytes)?;
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-fsync", name)?;
         f.sync_all()?;
         if unsafe { libc::fchmod(f.as_raw_fd(), 0o444) } != 0 {
             return Err(super::linux::errno());
         }
         f.sync_all()?;
         drop(f);
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-directory-fsync", name)?;
         self.file.sync_all()
     }
     pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+        #[cfg(test)]
+        super::ownership_fault351::probe("rename", from)?;
         let a = CString::new(from).map_err(io::Error::other)?;
         let b = CString::new(to).map_err(io::Error::other)?;
         // RENAME_NOREPLACE: never overwrite an existing fixed result artifact.
@@ -291,6 +301,8 @@ impl Dir {
         if now.identity != row.identity || now.sha256 != row.sha256 {
             return Err(io::Error::other("cleanup artifact identity changed"));
         }
+        #[cfg(test)]
+        super::ownership_fault351::probe("artifact-unlink", &row.name)?;
         self.unlink(&row.name)
     }
 }
@@ -420,6 +432,28 @@ impl ScratchPolicy {
         }
         Ok(())
     }
+    // Additional failure-history bytes use the already held parent. The
+    // unchanged fresh-job96MiB admission remains the only begin admission.
+    pub(crate) fn terminal_capacity(&self, bytes: u64) -> io::Result<()> {
+        self.parent.check()?;
+        let mut fs = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        if unsafe { libc::fstatvfs(self.parent.file.as_raw_fd(), fs.as_mut_ptr()) } != 0 {
+            return Err(super::linux::errno());
+        }
+        let fs = unsafe { fs.assume_init() };
+        let available = fs
+            .f_bavail
+            .checked_mul(fs.f_frsize)
+            .ok_or_else(|| io::Error::other("terminal capacity overflow"))?;
+        let required = self
+            .reserve
+            .checked_add(bytes)
+            .ok_or_else(|| io::Error::other("terminal reserve overflow"))?;
+        if available < required {
+            return Err(io::Error::other("terminal reserve required"));
+        }
+        Ok(())
+    }
     pub(crate) fn create_job(&self) -> io::Result<(Dir, crate::RequestIdentity)> {
         self.capacity()?;
         let mut random = [0; 16];
@@ -485,6 +519,8 @@ impl ScratchPolicy {
         if m.dev() != dir.dev || m.ino() != dir.ino {
             return Err(io::Error::other("job named directory changed"));
         }
+        #[cfg(test)]
+        super::ownership_fault351::probe("directory-unlink", "job")?;
         if unsafe {
             libc::unlinkat(
                 self.parent.file.as_raw_fd(),
@@ -532,8 +568,10 @@ pub(crate) fn stage(
         super::fs_job::identity(&metadata).map_err(|e| Failure::io("source identity", e))?;
     *before_out = Some(before);
     if before[6] > format_pdf::MAX_INPUT_BYTES as u64 {
-        return Err(Failure::new(FailureKind::Protocol, "input byte cap"));
+        return Err(Failure::input_too_large());
     }
+    #[cfg(test)]
+    stage_fault382::stage_boundary(&input, &before);
     let mut out = dir
         .create("input.pdf")
         .map_err(|e| Failure::io("create snapshot", e))?;
@@ -548,7 +586,7 @@ pub(crate) fn stage(
             break;
         }
         if bytes.len() + n > format_pdf::MAX_INPUT_BYTES {
-            return Err(Failure::new(FailureKind::Protocol, "input byte cap"));
+            return Err(Failure::input_too_large());
         }
         out.write_all(&block[..n])
             .map_err(|e| Failure::io("snapshot write", e))?;
@@ -657,3 +695,6 @@ mod snapshot_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod stage_fault382;

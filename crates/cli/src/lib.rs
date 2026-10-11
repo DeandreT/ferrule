@@ -45,6 +45,9 @@ mod rest_json;
 mod stdio;
 mod trace_json;
 
+#[cfg(test)]
+mod dynamic_source_load_tests;
+
 pub use code_generation::{
     GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_json_adapters,
     generate_project_with_csv_output, generate_project_with_csv_x12_adapters,
@@ -436,7 +439,12 @@ fn run_project_value_with_pdf_reader(
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
     let dynamic_loader =
-        ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader);
+        ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader)
+            .with_trace_sink(options.trace_sink);
+     reader: Option<&'a dyn FilesystemPdfReader>,
+    trace_sink: Option<&'a dyn TraceSink>,
+             reader,
+            trace_sink: None,
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
@@ -749,7 +757,6 @@ struct ProjectDynamicSourceLoader<'a> {
     project_dir: &'a Path,
     sources: &'a [mapping::NamedSource],
     cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
-    reader: Option<&'a dyn FilesystemPdfReader>,
 }
 
 impl<'a> ProjectDynamicSourceLoader<'a> {
@@ -778,13 +785,20 @@ impl<'a> ProjectDynamicSourceLoader<'a> {
             project_dir,
             sources,
             cache: RefCell::new(BTreeMap::new()),
-            reader,
         }
+    }
+
+    fn with_trace_sink(mut self, trace_sink: Option<&'a dyn TraceSink>) -> Self {
+        self.trace_sink = trace_sink;
+        self
     }
 }
 
 impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
     fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
+        if let Some(sink) = self.trace_sink {
+            sink.dynamic_source_load_requested(source_name, path);
+        }
         let key = (source_name.to_string(), path.to_string());
         if let Some(instance) = self.cache.borrow().get(&key).cloned() {
             return Ok(instance);

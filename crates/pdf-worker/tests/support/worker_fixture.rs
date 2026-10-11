@@ -2,6 +2,14 @@
 //! sibling resolution. Mode comes only from the root-owned fixture executable
 //! name, not from a production project/flag/environment.
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod startup_fixture;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod protocol_boundary_fixture;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod ownership_fault_fixture351;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 fn run() -> std::io::Result<u8> {
     use pdf_worker::*;
     use std::io::{Read, Write};
@@ -10,6 +18,12 @@ fn run() -> std::io::Result<u8> {
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("")
         .to_owned();
+    if let Some(result) = startup_fixture::run(&name) {
+        return result;
+    }
+    if let Some(result) = protocol_boundary_fixture::run(&name) {
+        return result;
+    }
     if name == "fixture-production" {
         return Ok(pdf_worker::host::worker_entry());
     }
@@ -23,6 +37,12 @@ fn run() -> std::io::Result<u8> {
         Profile::LinuxX86_64V1,
     );
     pdf_worker::host::fixture_install_policy(parent)?;
+    if matches!(
+        name.as_str(),
+        "fixture351-success" | "fixture351-ignore-term"
+    ) {
+        return ownership_fault_fixture351::run(&name, id);
+    }
     if name == "fixture-no-ready" {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
