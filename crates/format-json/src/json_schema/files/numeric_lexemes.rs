@@ -255,9 +255,7 @@ fn exact_integer(lexeme: &str) -> Option<Number> {
     let lexeme = lexeme.trim();
     let negative = lexeme.starts_with('-');
     let unsigned = lexeme.strip_prefix('-').unwrap_or(lexeme);
-    let (mantissa, exponent) = unsigned
-        .split_once(['e', 'E'])
-        .unwrap_or((unsigned, "0"));
+    let (mantissa, exponent) = unsigned.split_once(['e', 'E']).unwrap_or((unsigned, "0"));
     let fraction_digits = mantissa.split_once('.').map_or(0, |(_, tail)| tail.len());
     let mut significant_digits = 0_usize;
     let mut trailing_zeroes = 0_usize;
