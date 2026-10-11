@@ -170,6 +170,42 @@ pub struct ClosedReceipt {
     pub elapsed_microseconds: u64,
     pub successful_originals_retained: bool,
 }
+/// Parent-owned failure records are separate from `evidence_paths()` job paths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum JobDirectoryState {
+    Present,
+    Removed,
+    Unknown,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum TerminalPersistence {
+    Incomplete,
+    Durable,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct TerminalLeaf {
+    pub part_name: String,
+    pub final_name: String,
+    /// A full stable read of an owned reached leaf; incomplete is not durable.
+    pub record: Option<FileRecord>,
+    pub persistence: TerminalPersistence,
+    pub last_completed_phase: &'static str,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct TerminalEvidence {
+    pub parent: PathBuf,
+    pub request_id: String,
+    pub job_directory: JobDirectoryState,
+    pub pre_cleanup: Option<TerminalLeaf>,
+    pub versions: Vec<TerminalLeaf>,
+    pub cleanup_intent: Option<TerminalLeaf>,
+    pub latest_sha256: Option<String>,
+    pub persistence_failure: Option<Failure>,
+    pub cleanup_failure: Option<Failure>,
+    pub secondary_cap_reached: bool,
+    /// Returned afterfacts, not a rewrite of the immutable cleanup intent.
+    pub cleanup_removed: Vec<String>,
+}
 #[derive(Debug, thiserror::Error)]
 #[error("{failure}")]
 pub struct ClosedFailure {
@@ -234,6 +270,8 @@ mod linux;
 mod owner;
 #[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod ownership_fault351;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod terminal;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod worker;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
@@ -317,6 +355,9 @@ mod unsupported {
         pub fn request_cancel(&mut self) {}
         pub fn evidence_paths(&self) -> Vec<PathBuf> {
             Vec::new()
+        }
+        pub fn terminal_evidence(&self) -> Option<&TerminalEvidence> {
+            None
         }
         pub fn retain_successful_originals(&mut self, _: bool) -> Result<(), Failure> {
             Err(refused())
