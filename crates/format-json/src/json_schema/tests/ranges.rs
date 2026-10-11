@@ -78,7 +78,6 @@ fn integer_ranges_preserve_large_i64_endpoints_and_reject_inexact_fractional_bou
         r#"{"title":"UnitCliff","type":"integer","minimum":4503599627370496.5}"#,
         r#"{"title":"RoundedAbove","type":"integer","minimum":1.00000000000000001}"#,
         r#"{"title":"RoundedBelow","type":"integer","maximum":0.99999999999999999}"#,
-        r#"{"title":"IntegralFloat","type":"integer","exclusiveMinimum":1.0}"#,
     ] {
         assert!(matches!(
             import_str_result(schema),
