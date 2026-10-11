@@ -788,6 +788,12 @@ constant or required non-null JSON scalar input establishes record presence.
 Connected structural inputs, competing field connectors, repeating dependencies, overlapping target
 inputs, unresolved selections and variable scope controls retain refusals.
 
+JSON variable selectors can cross a declared object array through an explicit
+`array` followed by its canonical `item` / `json-item` role, then select a
+non-repeating descendant. The selected schema remains complete; graph inputs
+establish its value and iteration context. Selected array roots, nested-array
+wrappers, malformed item roles and alternative views retain refusals.
+
 EDI structure variables resolve their flat declared parameter-root path against
 a complete compiled EDI configuration. The selected value preserves scalar types
 and cardinalities and remains an intermediate component. Scalar outputs resolve
