@@ -1305,7 +1305,7 @@ fn integral_float_endpoint_keeps_required_string_int_model_and_boundaries()
     let negative_input = from_str(r#"{"value":1}"#, &expected_model);
     let negative_instance = group(Value::Int(1));
     let negative_output = to_string(&expected_model, &negative_instance);
-    const ERROR: &str = r#"{"variant":"RangeMismatch","name":"value","range":"[2, inf)","got":"1","display":"`value` requires numeric range [2, inf), got 1"}"#;
+    const ERROR: &str = r#"{"variant":"RangeMismatch","name":"value","range":"[2, inf]","got":"1","display":"`value` requires numeric range [2, inf], got 1"}"#;
     eprintln!(
         "STRING_INT_INTEGRAL_ENDPOINT_BOUNDARY_ORIGINALS {}",
         serde_json::json!({"expected_schema":expected_model,"expected_export":EXPECTED_EXPORT,
