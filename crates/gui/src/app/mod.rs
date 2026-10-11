@@ -53,6 +53,8 @@ mod extra_source_ui;
 #[path = "extra_targets.rs"]
 mod extra_target_ui;
 mod failure_rules;
+mod file_run_teardown;
+pub(crate) use file_run_teardown::{SavedFileRunTeardownPort, SavedFileRunTeardownService};
 mod filter_map_authoring;
 #[path = "../workspace/functions.rs"]
 mod function_workspace;
@@ -434,6 +436,7 @@ pub struct FerruleApp {
     file_run_input_condition: crate::preview::BreakpointInputConditionDraft,
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
+    file_run_teardown: SavedFileRunTeardownPort,
     rest_run_draft: Option<rest_run::RestRunDraft>,
     pending_rest_run: Option<rest_run::PendingRestRun>,
     rest_run_result: Option<rest_run::RestRunResult>,
@@ -606,6 +609,7 @@ impl Default for FerruleApp {
             file_run_input_condition: Default::default(),
             file_run_pause_on_failure: false,
             pending_file_run: None,
+            file_run_teardown: SavedFileRunTeardownPort::default(),
             rest_run_draft: None,
             pending_rest_run: None,
             rest_run_result: None,
@@ -857,6 +861,24 @@ impl FerruleApp {
             mfd_package_manifest: preferences.mfd_package_manifest,
             ..Self::default()
         }
+    }
+
+    pub(crate) fn from_storage_with_saved_file_owner(
+        storage: Option<&dyn eframe::Storage>,
+        owner: SavedFileRunTeardownPort,
+    ) -> Self {
+        Self {
+            file_run_teardown: owner,
+            ..Self::from_storage(storage)
+        }
+    }
+
+    // Dropping the pending facade transfers its entire live core. The app's
+    // automatic field destruction uses the same path, without a FerruleApp
+    // Drop impl that would break existing struct-update constructors.
+    #[cfg(test)]
+    pub(super) fn handoff_saved_file_run(&mut self) {
+        drop(self.pending_file_run.take());
     }
 
     fn is_dirty(&self) -> bool {

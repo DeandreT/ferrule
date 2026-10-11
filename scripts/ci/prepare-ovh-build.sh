@@ -9,7 +9,7 @@ if [[ ${HOME:?} != /home/ferrule-runner || ! -f ${GITHUB_ENV:?} ]]; then
   echo 'Unexpected runner home or missing GitHub environment file.' >&2
   exit 1
 fi
-for prerequisite in df awk realpath xvfb-run xauth cc pkg-config sccache; do
+for prerequisite in df awk realpath python3 xvfb-run xauth cc pkg-config sccache; do
   command -v "$prerequisite" >/dev/null
 done
 timeout_path=$(command -v gnutimeout || command -v timeout)
@@ -45,11 +45,14 @@ fi
 mkdir -p "$cache_root/workspace-target" "$cache_root/generated-host-target" \
   "$cache_root/compiler" "$HOME/.dotnet" "$HOME/ci-tmp"
 
+# Publish settings only after the fresh job metadata is durable.
+evidence_settings=$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/job-evidence.py" begin)
+
 {
   printf 'CARGO_TARGET_DIR=%s/workspace-target\n' "$cache_root"
   printf 'FERRULE_CODEGEN_HOST_TARGET_DIR=%s/generated-host-target\n' "$cache_root"
   printf 'DOTNET_INSTALL_DIR=%s/.dotnet\n' "$HOME"
-  printf 'TMPDIR=%s/ci-tmp\n' "$HOME"
+  printf '%s\n' "$evidence_settings"
   printf 'FERRULE_CODEGEN_GNU_TIMEOUT=%s\n' "$timeout_path"
   printf 'SCCACHE_DIR=%s/compiler\n' "$cache_root"
   printf '%s\n' 'SCCACHE_CACHE_SIZE=2G' 'CARGO_BUILD_JOBS=1' 'RUST_TEST_THREADS=2' \
