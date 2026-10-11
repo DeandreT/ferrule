@@ -410,7 +410,7 @@ fn compiled_hosts(
         cargo
             .args(["build", "--offline", "--jobs", "1"])
             .current_dir(&rust)
-            .env("CARGO_TARGET_DIR", &target)
+            .env("CARGO_TARGET_DIR", target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-Dwarnings");
         let rust_build = root.command("RUST-BUILD", &mut cargo);
