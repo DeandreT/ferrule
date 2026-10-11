@@ -112,10 +112,26 @@ fn project(root: &Evidence, fixture: &Json) -> TestResult<Project> {
         root: root_scope,
     };
     if fixture["named"] == true {
-        let extra_source: SchemaNode =
-            serde_json::from_value(fixture["expected_extra_source_model"].clone())?;
-        let extra_target: SchemaNode =
-            serde_json::from_value(fixture["expected_extra_target_model"].clone())?;
+        let extra_source: SchemaNode = if let Some(raw) = fixture["extra_source_schema"].as_str() {
+            exact_integral_model(
+                root,
+                &format!("{name}-EXTRA-SOURCE"),
+                raw,
+                &fixture["expected_extra_source_model"],
+            )?
+        } else {
+            serde_json::from_value(fixture["expected_extra_source_model"].clone())?
+        };
+        let extra_target: SchemaNode = if let Some(raw) = fixture["extra_target_schema"].as_str() {
+            exact_integral_model(
+                root,
+                &format!("{name}-EXTRA-TARGET"),
+                raw,
+                &fixture["expected_extra_target_model"],
+            )?
+        } else {
+            serde_json::from_value(fixture["expected_extra_target_model"].clone())?
+        };
         project.extra_sources.push(mapping::NamedSource {
             name: "catalog".into(),
             path: "unused.json".into(),
@@ -335,6 +351,16 @@ fn string_int_ranges_compiled_rust_and_csharp_complete_text_and_bytes() -> TestR
     }
     let corpus = corpus(&root)?;
     let (dependencies, references) = emit(&root, &corpus, true)?;
+    compiled_hosts(&root, &corpus, &target, dependencies, references)
+}
+
+fn compiled_hosts(
+    root: &Evidence,
+    corpus: &Json,
+    target: &Path,
+    dependencies: String,
+    references: String,
+) -> TestResult<()> {
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()?;
@@ -384,7 +410,7 @@ fn string_int_ranges_compiled_rust_and_csharp_complete_text_and_bytes() -> TestR
         cargo
             .args(["build", "--offline", "--jobs", "1"])
             .current_dir(&rust)
-            .env("CARGO_TARGET_DIR", &target)
+            .env("CARGO_TARGET_DIR", target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-Dwarnings");
         let rust_build = root.command("RUST-BUILD", &mut cargo);
@@ -474,6 +500,144 @@ fn string_int_ranges_compiled_rust_and_csharp_complete_text_and_bytes() -> TestR
     original?;
     if !stable {
         return Err("complete generated or host input bytes changed".into());
+    }
+    Ok(())
+}
+
+// Schema strings are authored JSON lexemes, never reconstructed from floating values.
+fn exact_integral_model(
+    root: &Evidence,
+    label: &str,
+    raw: &str,
+    expected: &Json,
+) -> TestResult<SchemaNode> {
+    root.record(
+        &format!("{label}-COMPLETE-RAW-SCHEMA-AND-EXPECTED-MODEL"),
+        &(raw, expected),
+    )?;
+    let imported = format_json::json_schema::import_str(raw);
+    root.record(&format!("{label}-COMPLETE-IMPORT"), &imported)?;
+    let exported = imported.as_ref().ok().map(format_json::json_schema::export);
+    root.record(&format!("{label}-COMPLETE-EXPORT"), &exported)?;
+    let reimported = exported
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(|text| format_json::json_schema::import_str(text));
+    root.record(&format!("{label}-COMPLETE-REIMPORT"), &reimported)?;
+    let expected = serde_json::from_value::<SchemaNode>(expected.clone());
+    root.record(&format!("{label}-COMPLETE-EXPECTED-MODEL-PARSE"), &expected)?;
+    let expected = expected?;
+    if !matches!(&imported, Ok(actual) if actual == &expected)
+        || !matches!(&reimported, Some(Ok(actual)) if actual == &expected)
+    {
+        return Err("whole exact integral imported/exported/reimported model differs".into());
+    }
+    Ok(imported?)
+}
+
+fn exact_integral_corpus(root: &Evidence, index: usize) -> TestResult<Json> {
+    let bytes =
+        include_bytes!("string_int_range_boundaries/exact_integral_schema_bounds.cases.json");
+    std::fs::write(root.0.join("complete-exact-integral-catalog.json"), bytes)?;
+    let original = serde_json::from_slice::<Json>(bytes);
+    root.record("COMPLETE-INDEPENDENT-EXACT-INTEGRAL-CATALOG", &original)?;
+    let matrix = original?;
+    let (id, logical, counts) = match index {
+        0 => (
+            "input-and-inclusive-domains",
+            35,
+            serde_json::json!([70, 38, 32]),
+        ),
+        1 => (
+            "exclusive-and-output-domains",
+            30,
+            serde_json::json!([60, 36, 24]),
+        ),
+        _ => return Err("only two exact integral cohorts are declared".into()),
+    };
+    let selected = matrix["cohorts"]
+        .as_array()
+        .and_then(|cohorts| cohorts.get(index))
+        .ok_or("declared cohort required")?;
+    root.record("COMPLETE-SELECTED-EXACT-INTEGRAL-COHORT", &selected)?;
+    let corpus = selected.clone();
+    if matrix["cohorts"].as_array().map(Vec::len) != Some(2)
+        || matrix["new_case_counts"]["logical_cases"] != 65
+        || matrix["new_case_counts"]["per_language_text_and_bytes"]
+            != serde_json::json!([130, 74, 56])
+        || corpus["id"] != id
+        || corpus["fixtures"].as_array().map(Vec::len) != Some(7)
+        || corpus["cases"].as_array().map(Vec::len) != Some(logical)
+        || corpus["expected_counts"] != counts
+        || corpus["per_language_api_order"] != serde_json::json!(["text", "bytes"])
+    {
+        return Err("finite exact integral cohort identities/counts changed".into());
+    }
+    let encoded = serde_json::to_vec_pretty(&corpus);
+    root.record("COMPLETE-SELECTED-HOST-CORPUS-BYTES", &encoded)?;
+    std::fs::write(root.0.join("cases.json"), encoded?)?;
+    for fixture in corpus["fixtures"].as_array().ok_or("fixtures required")? {
+        let name = fixture["name"].as_str().ok_or("fixture name required")?;
+        for (raw_key, model_key) in [
+            ("source_schema", "expected_source_model"),
+            ("target_schema", "expected_target_model"),
+            ("extra_source_schema", "expected_extra_source_model"),
+            ("extra_target_schema", "expected_extra_target_model"),
+        ] {
+            if (raw_key == "extra_source_schema" || raw_key == "extra_target_schema")
+                && fixture["named"] != true
+            {
+                continue;
+            }
+            let raw = fixture[raw_key].as_str().ok_or("raw schema required")?;
+            let original = exact_integral_model(
+                root,
+                &format!("{name}-PREFLIGHT-{raw_key}"),
+                raw,
+                &fixture[model_key],
+            );
+            root.record(
+                &format!("{name}-COMPLETE-PREFLIGHT-{raw_key}-RESULT"),
+                &original,
+            )?;
+            original?;
+        }
+    }
+    Ok(corpus)
+}
+
+#[test]
+fn exact_integral_schema_bounds_emit_complete_primary_and_named_metadata() -> TestResult<()> {
+    for index in 0..2 {
+        let root = Evidence::new(&format!("exact-integral-emission-{index}"))?;
+        let corpus = exact_integral_corpus(&root, index)?;
+        let original = emit(&root, &corpus, false);
+        root.record("COMPLETE-EXACT-INTEGRAL-EMISSION-RESULT", &original)?;
+        original?;
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "root-coordinated offline compiled hosts require a shared Cargo target and disk reserve"]
+fn exact_integral_schema_bounds_compiled_rust_and_csharp_complete_text_and_bytes() -> TestResult<()>
+{
+    let target = PathBuf::from(
+        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+            .ok_or("set coordinated shared target")?,
+    );
+    if !target.is_absolute() {
+        return Err("shared Cargo target must be absolute".into());
+    }
+    for index in 0..2 {
+        let root = Evidence::new(&format!("exact-integral-compiled-{index}"))?;
+        let corpus = exact_integral_corpus(&root, index)?;
+        let emitted = emit(&root, &corpus, true);
+        root.record("COMPLETE-EXACT-INTEGRAL-COMPILED-EMISSION-RESULT", &emitted)?;
+        let (dependencies, references) = emitted?;
+        let original = compiled_hosts(&root, &corpus, &target, dependencies, references);
+        root.record("COMPLETE-EXACT-INTEGRAL-COMPILED-HOSTS-RESULT", &original)?;
+        original?;
     }
     Ok(())
 }
