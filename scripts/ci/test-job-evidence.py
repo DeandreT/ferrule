@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import socket
 import tempfile
 import unittest
 from unittest import mock
@@ -79,12 +80,52 @@ class JobEvidenceTests(unittest.TestCase):
         self.assertFalse((self.home / "ci-tmp").exists())
 
     def test_codegen_matrix_identity_is_separate(self):
+        roots = []
         for number, suite in enumerate(("codegen-crates", "codegen-mappings")):
             settings = self.begin(str(number) * 32, FERRULE_CI_SUITE="codegen",
                                   FERRULE_CI_EVIDENCE_SUITE=suite)
-            self.assertIn(suite, settings["FERRULE_CI_EVIDENCE_ID"])
+            root = Path(settings["FERRULE_CI_EVIDENCE_ROOT"])
+            record = json.loads((root / "receipts/UNARCHIVED.json").read_bytes())
+            self.assertEqual(record["identity"]["suite"], suite)
+            roots.append(root)
+        self.assertNotEqual(*roots)
         with self.assertRaises(ValueError):
             self.begin("2" * 32, FERRULE_CI_SUITE="codegen")
+
+    def test_longest_identity_leaves_room_for_compiler_startup_socket(self):
+        with tempfile.TemporaryDirectory(prefix="fe-", dir="/tmp") as scratch:
+            home = Path(scratch) / "runner"
+            home.mkdir(mode=0o700)
+            environment = self.environment | {"GITHUB_RUN_ID": "9" * 20,
+                "GITHUB_RUN_ATTEMPT": "9" * 20, "GITHUB_JOB": "j" * 80,
+                "FERRULE_CI_SUITE": "codegen", "FERRULE_CI_EVIDENCE_SUITE": "codegen-mappings"}
+            settings = evidence.begin(home, environment, nonce="0" * 32)
+            startup = Path(settings["TMPDIR"]) / "sccacheABC123"
+            startup.mkdir()
+            with socket.socket(socket.AF_UNIX) as channel:
+                channel.bind(str(startup / "sock"))
+            deployed_path = (Path("/home/ferrule-runner/ci-tmp/jobs") /
+                             settings["FERRULE_CI_EVIDENCE_ID"] / "tmp/sccacheABC123/sock")
+            self.assertLess(len(os.fsencode(deployed_path)), 108)
+            evidence.observe(home, environment | settings | {"FERRULE_CI_OBSERVED_JOB_STATE": "success"})
+
+    def test_legacy_descriptive_evidence_remains_observable(self):
+        settings = self.begin()
+        root = Path(settings["FERRULE_CI_EVIDENCE_ROOT"])
+        legacy_id = "123-1-test-native-" + "0" * 32
+        legacy_root = root.with_name(legacy_id)
+        root.rename(legacy_root)
+        initial = legacy_root / "receipts/UNARCHIVED.json"
+        record = json.loads(initial.read_bytes()) | {"job_id": legacy_id}
+        initial.chmod(0o600)
+        initial.write_text(json.dumps(record))
+        initial.chmod(0o444)
+        retained = initial.read_bytes()
+        settings |= {"FERRULE_CI_EVIDENCE_ID": legacy_id,
+                     "FERRULE_CI_EVIDENCE_ROOT": str(legacy_root)}
+        evidence.observe(self.home, self.observer_environment(settings))
+        self.assertEqual(initial.read_bytes(), retained)
+        self.assertEqual(len(list((legacy_root / "receipts").glob("observation-*.json"))), 1)
 
     def test_symlinked_parent_refuses_and_preserves_outside(self):
         outside = self.home.parent / "outside"
