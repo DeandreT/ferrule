@@ -21,7 +21,55 @@ choose a lane and avoid conflicting changes.
    and next step. Release ownership when pausing or handing off so another
    contributor can take it.
 
-## Ownership and readiness
+## Current ownership and readiness
+
+Snapshot: 2026-10-11 15:57:27 UTC, against merged main [`4e0f95d`](https://github.com/DeandreT/ferrule/commit/4e0f95de957c32e6381a1b66c5f0fe21be75da5c).
+Contributor availability below retains its 15:33 UTC snapshot.
+This refresh is [#417](https://github.com/DeandreT/ferrule/issues/417).
+The original #89 backlog is complete. The current lanes below supersede the older
+ownership snapshot for choosing new work; its evidence, counts and diagrams remain
+dated history. Verify the live assignee before claiming a lane.
+
+### Available contributor lanes
+
+These seven issues are unassigned in this snapshot. Agree the contract and claim
+the issue before implementation; availability does not bypass a dependency or
+shared verification slot.
+
+| Issue / scope | Next gate | Coordination boundary |
+| --- | --- | --- |
+| [#103 Typed SQLite query boundary](https://github.com/DeandreT/ferrule/issues/103) | Settle the read-only query contract first. | Boundary model, SQLite and CLI input; #233 metadata inspection is a separate scope. |
+| [#105 Offline mapping bundle export](https://github.com/DeandreT/ferrule/issues/105) | Settle the bundle contract first. | CLI staging, resources and path codecs. |
+| [#106 JSON5 interchange metadata](https://github.com/DeandreT/ferrule/issues/106) | Observe saved metadata before implementation. | Coordinate alternate-display access with #93. |
+| [#108 Mapping-path desktop workflow](https://github.com/DeandreT/ferrule/issues/108) | Qualify the existing implementation's desktop workflow. | Coordinate the desktop scenario with #92/#93. |
+| [#160 C# JSON5 allocation attribution](https://github.com/DeandreT/ferrule/issues/160) | Agree a matched profiling/retention plan before attribution. | Benchmark/report only; production optimization and filesystem #107 are excluded. |
+| [#347 Nested JSON Schema array wrappers](https://github.com/DeandreT/ferrule/issues/347) | Design independent wrapper representation and native/export/generated behavior first; retain the typed refusal until qualified. | Shared IR, format-json and codegen ownership must coordinate with #346. |
+| [#387 Bounded input-limit fixture journals](https://github.com/DeandreT/ferrule/issues/387) | Independent design can start; code waits for #382's module to merge. | Test-only `stage_fault382.rs` journal bounds/batching; preserve all 16 frozen rows and production parser/profile behavior. |
+
+### Maintainer lanes and publication gates
+
+The claimed PDF isolation follow-ons under [#104](https://github.com/DeandreT/ferrule/issues/104)
+are unavailable for independent claim. Active maintainer lanes remain assigned to
+`DeandreT`; coordinate overlapping source and serial resources before adding work.
+
+| Lane | Current qualification | Next gate / dependency |
+| --- | --- | --- |
+| [#405 / PR409](https://github.com/DeandreT/ferrule/pull/409) | Verified merged importer diagnostics | Preserve the existing importer/repair scope. |
+| [#391 / PR411](https://github.com/DeandreT/ferrule/pull/411) | Verified merged scoped report: four attempted callbacks across 12 routes, 84 original records and 25 closed owners | Remaining #396/#398 dependent source/ancestry propagation. |
+| [#394 / PR404](https://github.com/DeandreT/ferrule/pull/404) | Merged memory report; 31 accepted streaming controls; 70-row preparation complete once | Refreshed 140-owner resource campaign remains unrun. |
+| [#346 / PR413](https://github.com/DeandreT/ferrule/issues/346) | Native A: 397 tests, including 20 new tests, passed on `9d19`; test-only successor `6534f9d` has 100 schemas/270 probes | Exact-head CI is pending; verified A merge precedes B implementation. B's accepted design has 130 calls per language. |
+| [#406 / PR410](https://github.com/DeandreT/ferrule/issues/406) | Three exact-head hosted checks and 751 GUI tests pass | Required alternate-display walkthrough remains pending. |
+| [#412](https://github.com/DeandreT/ferrule/issues/412) | All 15 controls/29 synthetic subcases matched once; independent review and complete evidence intake accepted | All 70 requests/140 physical owners remain unrun; fresh actor admission is required. No kernel, PDF or resource credit. |
+| [#396](https://github.com/DeandreT/ferrule/issues/396) | Dependent propagation remains pending | Preserve each focused source scope and check its exact new head. |
+| [#416](https://github.com/DeandreT/ferrule/issues/416) | Eighteen obsolete CSV test executables retired with complete originals retained; observed gain is about 1.14 GiB | Fresh per-actor capacity admission is still required; no build or request campaign is admitted. |
+
+Cargo artifacts/compiler ownership, the native alternate display and same-file
+edits are shared serial resources. Completed local #414/#415 cache retirements do
+not establish current request/build capacity. Source-only acceptance, hosted
+checks and physical workflows carry separate evidence; the survey and historical
+progress denominators below are unchanged and overall compatibility is incomplete.
+
+## Earlier ownership and readiness (2026-10-10)
 
 Snapshot: 2026-10-10, against merged main
 [`6b94863`](https://github.com/DeandreT/ferrule/commit/6b94863beebbc90f0d094e1387391131f73c5a7c).

@@ -1028,7 +1028,8 @@ fn required_ref_depth_and_transactional_constraint_refusals_do_not_weaken_existi
     // A failed required sibling must restore the caller's active-reference set.
     let value = json!({"$ref":"#/$defs/Base","required":["missing"],"$defs":{"Base":{"type":"object","properties":{},"additionalProperties":false}}});
     let mut active = vec!["#/outer".to_string()];
-    let actual = super::super::parse("Envelope", &value, &value, &mut active);
+    let document = super::super::files::LoadedSchema::from_value(value.clone());
+    let actual = super::super::parse("Envelope", &value, &document, &mut active);
     evidence.retain("active-reference-restoration", &format!("schema={value}\nexpected=UnsupportedSchemaObject Envelope: modern `$ref` sibling `required` name `missing` must identify a declared property\nexpected_active=[#/outer]\nactual={actual:#?}\nafter_active={active:#?}\n"));
     assert!(
         matches!(actual,Err(JsonFormatError::UnsupportedSchemaObject { name,reason })
