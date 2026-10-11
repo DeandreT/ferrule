@@ -14,7 +14,7 @@ pub(super) fn apply(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     admits_non_arrays: bool,
 ) -> Result<(), JsonFormatError> {
@@ -57,7 +57,7 @@ pub(super) fn apply(
 pub(super) fn validate_ignored(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     selected(name, schema, doc, active_refs).map(|_| ())
@@ -66,7 +66,7 @@ pub(super) fn validate_ignored(
 pub(super) fn is_effectively_constrained(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<bool, JsonFormatError> {
     Ok(!selected(name, schema, doc, active_refs)?.is_empty())
@@ -158,7 +158,7 @@ pub(super) fn render(
 fn selected(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Selected, JsonFormatError> {
     if !has_keyword(schema) || !files::validation_dialect(schema).supports_contains() {

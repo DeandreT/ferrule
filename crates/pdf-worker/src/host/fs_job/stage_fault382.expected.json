@@ -1,0 +1,608 @@
+{
+  "status": "COMPLETE_FROZEN_LITERAL_EXPECTATIONS_BEFORE_ANY_IMPLEMENTATION",
+  "controls": 9,
+  "physical_rows": 16,
+  "constructor_unit_functions": 1,
+  "constructor_assertions": 2,
+  "fixture_unit_functions": 1,
+  "source_reconciliation_rows": 1,
+  "rows": [
+    {
+      "id": "c03_manager_sparse_plus",
+      "control": "C03_F07_SPARSE",
+      "mode": "manager",
+      "length": 8388609,
+      "expected": {
+        "kind": "InputTooLarge",
+        "operation": "input byte cap",
+        "diagnostics": {
+          "display": {
+            "text": "PDF input exceeds the 8388608-byte limit",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "receipt.json"
+      ],
+      "source_before_length": 8388609,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false,
+      "begin_variant": "OwnedStopping"
+    },
+    {
+      "id": "c04_stage_minus",
+      "control": "C04_CAP_BOUNDARIES",
+      "mode": "stage",
+      "length": 8388607,
+      "expected": "ok",
+      "names": [
+        "input.pdf",
+        "request.json"
+      ],
+      "source_before_length": 8388607,
+      "source_after_length": 8388607,
+      "hook": "none",
+      "snapshot": {
+        "byte_len": 8388607,
+        "sha256": "3057d206a6a595b89e17a91813aaec0df31cd59a4204cf8ca786c23321c4ca1b",
+        "mode": 292
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false
+    },
+    {
+      "id": "c04_stage_equal",
+      "control": "C04_CAP_BOUNDARIES",
+      "mode": "stage",
+      "length": 8388608,
+      "expected": "ok",
+      "names": [
+        "input.pdf",
+        "request.json"
+      ],
+      "source_before_length": 8388608,
+      "source_after_length": 8388608,
+      "hook": "none",
+      "snapshot": {
+        "byte_len": 8388608,
+        "sha256": "2daeb1f36095b44b318410b3f4e8b5d989dcc7bb023d1426c492dab0a3053e74",
+        "mode": 292
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false
+    },
+    {
+      "id": "c04_stage_plus",
+      "control": "C04_CAP_BOUNDARIES",
+      "mode": "stage",
+      "length": 8388609,
+      "expected": {
+        "kind": "InputTooLarge",
+        "operation": "input byte cap",
+        "diagnostics": {
+          "display": {
+            "text": "PDF input exceeds the 8388608-byte limit",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [],
+      "source_before_length": 8388609,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false
+    },
+    {
+      "id": "c05_stage_growth",
+      "control": "C05_GROWTH_STAGE",
+      "mode": "stage",
+      "length": 8388608,
+      "expected": {
+        "kind": "InputTooLarge",
+        "operation": "input byte cap",
+        "diagnostics": {
+          "display": {
+            "text": "PDF input exceeds the 8388608-byte limit",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf"
+      ],
+      "source_before_length": 8388608,
+      "source_after_length": null,
+      "hook": "append",
+      "snapshot": {
+        "byte_len": 8388608,
+        "sha256": "2daeb1f36095b44b318410b3f4e8b5d989dcc7bb023d1426c492dab0a3053e74",
+        "mode": 384
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true
+    },
+    {
+      "id": "c09_manager_growth",
+      "control": "C09_OWNER_CLOSURE",
+      "mode": "manager",
+      "length": 8388608,
+      "expected": {
+        "kind": "InputTooLarge",
+        "operation": "input byte cap",
+        "diagnostics": {
+          "display": {
+            "text": "PDF input exceeds the 8388608-byte limit",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf",
+        "receipt.json"
+      ],
+      "source_before_length": 8388608,
+      "source_after_length": null,
+      "hook": "append",
+      "snapshot": {
+        "byte_len": 8388608,
+        "sha256": "2daeb1f36095b44b318410b3f4e8b5d989dcc7bb023d1426c492dab0a3053e74",
+        "mode": 384
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true,
+      "begin_variant": "OwnedStopping"
+    },
+    {
+      "id": "c06_repair_oversized",
+      "control": "C06_REPAIR_PRIORITY",
+      "mode": "manager",
+      "length": 8388609,
+      "expected": {
+        "kind": "RepairDependency",
+        "operation": "repair-dependent layout",
+        "diagnostics": {
+          "display": {
+            "text": "PDF extraction blocked: unsupported native PDF ObjectFind detection; the stored extraction layout is a repair draft",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [],
+      "source_before_length": null,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false,
+      "begin_variant": "NoChild"
+    },
+    {
+      "id": "c06_repair_missing",
+      "control": "C06_REPAIR_PRIORITY",
+      "mode": "manager",
+      "length": null,
+      "expected": {
+        "kind": "RepairDependency",
+        "operation": "repair-dependent layout",
+        "diagnostics": {
+          "display": {
+            "text": "PDF extraction blocked: unsupported native PDF ObjectFind detection; the stored extraction layout is a repair draft",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [],
+      "source_before_length": null,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false,
+      "begin_variant": "NoChild"
+    },
+    {
+      "id": "c07_initial_cancel",
+      "control": "C07_CANCEL_PRIORITY",
+      "mode": "manager",
+      "length": 8388609,
+      "expected": {
+        "kind": "Cancelled",
+        "operation": "cancellation observed",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [],
+      "source_before_length": null,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": true,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false,
+      "begin_variant": "NoChild"
+    },
+    {
+      "id": "c07_stage_cancel",
+      "control": "C07_CANCEL_PRIORITY",
+      "mode": "stage",
+      "length": 4096,
+      "expected": {
+        "kind": "Cancelled",
+        "operation": "cancellation observed",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf"
+      ],
+      "source_before_length": 4096,
+      "source_after_length": null,
+      "hook": "cancel",
+      "snapshot": {
+        "byte_len": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mode": 384
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true
+    },
+    {
+      "id": "c07_stage_timeout",
+      "control": "C07_CANCEL_PRIORITY",
+      "mode": "stage",
+      "length": 4096,
+      "expected": {
+        "kind": "TimedOut",
+        "operation": "work cutoff",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf"
+      ],
+      "source_before_length": 4096,
+      "source_after_length": null,
+      "hook": "observe",
+      "snapshot": {
+        "byte_len": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mode": 384
+      },
+      "expired": true,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true
+    },
+    {
+      "id": "c07_stage_cancel_timeout",
+      "control": "C07_CANCEL_PRIORITY",
+      "mode": "stage",
+      "length": 4096,
+      "expected": {
+        "kind": "Cancelled",
+        "operation": "cancellation observed",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf"
+      ],
+      "source_before_length": 4096,
+      "source_after_length": null,
+      "hook": "cancel",
+      "snapshot": {
+        "byte_len": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mode": 384
+      },
+      "expired": true,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true
+    },
+    {
+      "id": "c08_stage_missing",
+      "control": "C08_SOURCE_SEMANTICS",
+      "mode": "stage",
+      "length": null,
+      "expected": {
+        "kind": "Io",
+        "operation": "open source nofollow",
+        "diagnostics": {
+          "display": {
+            "text": "No such file or directory (os error 2)",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": 2
+      },
+      "names": [],
+      "source_before_length": null,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false
+    },
+    {
+      "id": "c08_stage_nonregular",
+      "control": "C08_SOURCE_SEMANTICS",
+      "mode": "stage",
+      "length": "directory",
+      "expected": {
+        "kind": "Protocol",
+        "operation": "nonregular source",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [],
+      "source_before_length": null,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": false
+    },
+    {
+      "id": "c08_stage_mismatch",
+      "control": "C08_SOURCE_SEMANTICS",
+      "mode": "stage",
+      "length": 4096,
+      "expected": {
+        "kind": "SnapshotMismatch",
+        "operation": "source changed during copy",
+        "diagnostics": {
+          "display": {
+            "text": "",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "input.pdf"
+      ],
+      "source_before_length": 4096,
+      "source_after_length": 4097,
+      "hook": "append",
+      "snapshot": {
+        "byte_len": 4097,
+        "sha256": "6a541784627992ad4e91064162676e94454d1c4646b455f3f4729b15530107c2",
+        "mode": 292
+      },
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": false,
+      "expected_hook_reached": true
+    },
+    {
+      "id": "c09_manager_metadata_cleanup",
+      "control": "C09_OWNER_CLOSURE",
+      "mode": "manager",
+      "length": 8388609,
+      "expected": {
+        "kind": "InputTooLarge",
+        "operation": "input byte cap",
+        "diagnostics": {
+          "display": {
+            "text": "PDF input exceeds the 8388608-byte limit",
+            "truncated": false
+          },
+          "causes": [],
+          "cause_chain_truncated": false
+        },
+        "errno": null
+      },
+      "names": [
+        "receipt.json"
+      ],
+      "source_before_length": 8388609,
+      "source_after_length": null,
+      "hook": "none",
+      "snapshot": null,
+      "expired": false,
+      "initial_cancel": false,
+      "actual": "UNRUN",
+      "cleanup": true,
+      "expected_hook_reached": false,
+      "begin_variant": "OwnedStopping",
+      "cleanup_result": {
+        "removed": [
+          "receipt.json",
+          "cleanup-0.json"
+        ],
+        "directory_removed": true
+      },
+      "after_job_absent": true
+    }
+  ],
+  "no_physical_credit": true,
+  "constructor_expectation": {
+    "kind": "InputTooLarge",
+    "operation": "input byte cap",
+    "diagnostics": {
+      "display": {
+        "text": "PDF input exceeds the 8388608-byte limit",
+        "truncated": false
+      },
+      "causes": [],
+      "cause_chain_truncated": false
+    },
+    "errno": null
+  },
+  "ready_layout_wire": {
+    "root_name": "Document",
+    "page_selection": {
+      "kind": "first"
+    },
+    "commands": [
+      {
+        "kind": "capture",
+        "name": "Value",
+        "region": {
+          "left": {
+            "reference": {
+              "kind": "left"
+            },
+            "offset": 0.0
+          },
+          "top": {
+            "reference": {
+              "kind": "top"
+            },
+            "offset": 0.0
+          },
+          "right": {
+            "reference": {
+              "kind": "right"
+            },
+            "offset": 0.0
+          },
+          "bottom": {
+            "reference": {
+              "kind": "bottom"
+            },
+            "offset": 0.0
+          }
+        },
+        "algorithm": {
+          "kind": "basic_visual",
+          "separate_words": "insert_space",
+          "whitespace": "default"
+        }
+      }
+    ]
+  },
+  "manager_receipt_invariants": {
+    "profile": "linux-x86_64-v1",
+    "child_pid": null,
+    "child_birth": null,
+    "child_ppid": null,
+    "pidfd_acquired": false,
+    "ready": false,
+    "start_sent": false,
+    "effective_limits": null,
+    "raw_wait_status": null,
+    "reap_usage": null,
+    "own_reap": false,
+    "observed_unexpected_children": [],
+    "stderr_observed_bytes": 0,
+    "stdout_observed_bytes": 0,
+    "stderr_overflow": false,
+    "stdout_closed_before_eof": false,
+    "stderr_closed_before_eof": false,
+    "polls": 1,
+    "work_seconds": 30,
+    "stop_seconds": 5,
+    "cleanup_removed": [],
+    "secondary_failures": [],
+    "stop_allowance_exceeded": false,
+    "receipt_published_before_cleanup": true,
+    "successful_originals_retained": false
+  },
+  "terminal_accessor_nominal": null,
+  "manager_actual_children_claim": "Only actual returned no-child fields and absence of spawn event; no synthesized child outcome, PID, wait or usage.",
+  "custody": "Exact job and terminal sibling before/after/named metadata, complete streaming originals with EOF count/hash; unknown entries or any incomplete custody prevent cleanup.",
+  "negative_limits": "No source-metadata failure injection is authored; ordinary source-open Io, nonregular and consistency categories covered."
+}

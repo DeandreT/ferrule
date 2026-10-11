@@ -19,7 +19,7 @@ pub(super) fn apply(
     name: &str,
     schema: &serde_json::Value,
     node: &mut ir::SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     admits_non_objects: bool,
 ) -> Result<(), JsonFormatError> {
@@ -52,7 +52,7 @@ pub(super) fn apply(
 pub(super) fn selected(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<JsonPropertyNameConstraints>, JsonFormatError> {
     if !has_keyword(schema) || !files::validation_dialect(schema).supports_property_names() {
@@ -71,7 +71,7 @@ pub(super) fn selected(
 pub(super) fn validate_ignored(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     if has_keyword(schema) && files::validation_dialect(schema).supports_property_names() {
@@ -196,7 +196,7 @@ pub(super) fn render(node: &ir::SchemaNode, out: &mut serde_json::Map<String, se
 fn parse_constraint(
     name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<JsonPropertyNameConstraints>, JsonFormatError> {
     match schema {

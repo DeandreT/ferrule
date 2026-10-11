@@ -50,7 +50,7 @@ pub(super) fn parse_finite_scalar_composition(
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
     keyword: &str,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
@@ -139,7 +139,7 @@ pub(super) fn parse_finite_scalar_composition(
 
 fn resolves_to_structured_alternative(
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &[String],
 ) -> Result<bool, JsonFormatError> {
     let mut schema = schema;
@@ -174,7 +174,7 @@ pub(super) fn parse_scalar_any_of(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     parse_scalar_composition(name, schema, alternatives, "anyOf", false, doc, active_refs)
@@ -188,7 +188,7 @@ pub(super) fn parse_scalar_one_of(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     parse_scalar_composition(name, schema, alternatives, "oneOf", true, doc, active_refs)
@@ -200,7 +200,7 @@ fn parse_scalar_composition(
     alternatives: &serde_json::Value,
     keyword: &str,
     exclusive: bool,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
@@ -447,7 +447,7 @@ pub(super) fn parse_scalar_domain_array_any_of(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
@@ -738,7 +738,7 @@ pub(super) fn parse_nullable_scalar_alternatives(
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
     keyword: &str,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
@@ -807,7 +807,7 @@ pub(super) fn parse_nullable_composition(
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
     keyword: &str,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
     let Some(alternatives) = alternatives
@@ -905,7 +905,7 @@ pub(super) fn parse_nullable_composition(
 fn is_null_alternative(
     union_name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<bool, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
@@ -952,7 +952,7 @@ fn is_null_alternative(
 fn classify_scalar_alternative(
     union_name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<ScalarAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
@@ -1000,7 +1000,7 @@ fn classify_scalar_alternative(
 fn classify_exact_scalar_alternative(
     union_name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<ExactScalarAlternative, JsonFormatError> {
     if schema.get("allOf").is_some() {
@@ -1070,7 +1070,7 @@ fn exact_scalar_from_node(parsed: SchemaNode) -> ExactScalarAlternative {
 fn classify_exact_array_alternative(
     union_name: &str,
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<ArrayAlternative, JsonFormatError> {
     if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
@@ -1459,7 +1459,7 @@ pub(super) fn parse_object_alternatives(
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
     mode: GroupAlternativeMode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let keyword = match mode {
@@ -2115,7 +2115,7 @@ fn clear_constrained_fixed(
 
 fn parse_alternative_properties(
     schema: &serde_json::Value,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Vec<SchemaNode>, JsonFormatError> {
     schema

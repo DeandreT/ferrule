@@ -20,6 +20,7 @@ mod item_counts;
 mod memory;
 mod multiples;
 mod nullable_composition;
+mod numeric_lexemes;
 mod object_openness;
 mod pattern_properties;
 mod patterns;

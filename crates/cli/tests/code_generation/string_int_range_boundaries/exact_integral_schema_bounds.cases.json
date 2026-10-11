@@ -1,0 +1,2243 @@
+{
+  "status": "INDEPENDENT_FROZEN_DESIGN_MATRIX_ALL_IMPORT_EMIT_COMPILE_CALLS_UNRUN",
+  "issue": 346,
+  "expected_origin": "Independently declared integer intervals and literal public outputs/errors; no candidate execution or interpreter-derived expected outputs.",
+  "proposed_catalog_repo_path": "crates/cli/tests/code_generation/string_int_range_boundaries/exact_integral_schema_bounds.cases.json",
+  "cohorts": [
+    {
+      "id": "input-and-inclusive-domains",
+      "fixtures": [
+        {
+          "name": "I",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9007199254740993.0,\"maximum\":90071992547409950e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9.007199254740993e15,\"maximum\":9007199254740995.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              9007199254740993,
+              9007199254740995
+            ],
+            "primary_target": [
+              9007199254740993,
+              9007199254740995
+            ]
+          }
+        },
+        {
+          "name": "W",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9.007199254740995e15,\"maximum\":-9007199254740993.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9007199254740995.0,\"maximum\":-90071992547409930e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "primary_target": [
+              -9007199254740995,
+              -9007199254740993
+            ]
+          }
+        },
+        {
+          "name": "N",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"minimum\":-0.0,\"maximum\":30e-1}},\"required\":[],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"minimum\":-0e+12,\"maximum\":3.0}},\"required\":[],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "nullable": true,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "nullable": true,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              0,
+              3
+            ],
+            "primary_target": [
+              0,
+              3
+            ]
+          }
+        },
+        {
+          "name": "L",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775808.0,\"exclusiveMaximum\":-92233720368547758070e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9.223372036854775808e18,\"maximum\":-9223372036854775808.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9223372036854775808,
+                      "maximum": -9223372036854775808
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9223372036854775808,
+                      "maximum": -9223372036854775808
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              -9223372036854775808,
+              -9223372036854775808
+            ],
+            "primary_target": [
+              -9223372036854775808,
+              -9223372036854775808
+            ]
+          }
+        },
+        {
+          "name": "U",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":9.223372036854775806e18,\"maximum\":92233720368547758070e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9223372036854775807.0,\"maximum\":9.223372036854775807e18}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9223372036854775807,
+                      "maximum": 9223372036854775807
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9223372036854775807,
+                      "maximum": 9223372036854775807
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              9223372036854775807,
+              9223372036854775807
+            ],
+            "primary_target": [
+              9223372036854775807,
+              9223372036854775807
+            ]
+          }
+        },
+        {
+          "name": "O",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":90071992547409930e-1,\"maximum\":9.007199254740995e15}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              9007199254740993,
+              9007199254740995
+            ]
+          }
+        },
+        {
+          "name": "E",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9007199254740995.0,\"maximum\":-90071992547409930e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": true,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "extra_source": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "extra_target": [
+              -9007199254740995,
+              -9007199254740993
+            ]
+          },
+          "extra_source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9.007199254740995e15,\"maximum\":-9007199254740993.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "extra_target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-90071992547409950e-1,\"maximum\":-9.007199254740993e15}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_extra_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_extra_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "cases": [
+        {
+          "id": "B1-I-min",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-I-inner",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740994}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740994\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-I-max",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-I-below",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-I-above",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-W-min",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-W-inner",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740994}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740994\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-W-max",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-W-below",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-W-above",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-I-string-bypass",
+          "fixture": "I",
+          "input": "{\"value\":\"9007199254740992\"}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": \"9007199254740992\"\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-I-runtime-decimal",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740993.0}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value`: expected declared scalar union, got number",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON field 'value' expected declared scalar union, got Number.",
+              "detail": "JSON field 'value' expected declared scalar union, got Number.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-I-runtime-exponent",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740993e0}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value`: expected declared scalar union, got number",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON field 'value' expected declared scalar union, got Number.",
+              "detail": "JSON field 'value' expected declared scalar union, got Number.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-I-runtime-above-i64",
+          "fixture": "I",
+          "input": "{\"value\":9223372036854775808}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value`: expected declared scalar union, got number",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON field 'value' expected declared scalar union, got Number.",
+              "detail": "JSON field 'value' expected declared scalar union, got Number.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-I-runtime-below-i64",
+          "fixture": "I",
+          "input": "{\"value\":-9223372036854775809}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value`: expected declared scalar union, got number",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON field 'value' expected declared scalar union, got Number.",
+              "detail": "JSON field 'value' expected declared scalar union, got Number.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-N-0",
+          "fixture": "N",
+          "input": "{\"value\":0}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 0\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-N-3",
+          "fixture": "N",
+          "input": "{\"value\":3}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 3\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-N-refuse--1",
+          "fixture": "N",
+          "input": "{\"value\":-1}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [0, 3], got -1",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -1.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -1.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-N-refuse-4",
+          "fixture": "N",
+          "input": "{\"value\":4}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [0, 3], got 4",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 4.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 4.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-N-null",
+          "fixture": "N",
+          "input": "{\"value\":null}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": null\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-N-missing",
+          "fixture": "N",
+          "input": "{}",
+          "expected": {
+            "primary_utf8": "{}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-N-string-bypass",
+          "fixture": "N",
+          "input": "{\"value\":\"4\"}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": \"4\"\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-L-endpoint",
+          "fixture": "L",
+          "input": "{\"value\":-9223372036854775808}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9223372036854775808\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-L-neighbor",
+          "fixture": "L",
+          "input": "{\"value\":-9223372036854775807}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9223372036854775808, -9223372036854775808], got -9223372036854775807",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-U-endpoint",
+          "fixture": "U",
+          "input": "{\"value\":9223372036854775807}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9223372036854775807\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-U-neighbor",
+          "fixture": "U",
+          "input": "{\"value\":9223372036854775806}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [9223372036854775807, 9223372036854775807], got 9223372036854775806",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-O-9007199254740993",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-O-9007199254740995",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B1-O-refuse-9007199254740992",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-O-refuse-9007199254740996",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B1-E-min",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740995\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":-9007199254740995}"
+        },
+        {
+          "id": "B1-E-max",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740993\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":-9007199254740993}"
+        },
+        {
+          "id": "B1-E-input-below",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          },
+          "catalog": "{\"value\":-9007199254740996}"
+        },
+        {
+          "id": "B1-E-output-above",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          },
+          "catalog": "{\"value\":-9007199254740995}"
+        },
+        {
+          "id": "B1-E-string-bypass",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": \"-9007199254740996\"\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":\"-9007199254740996\"}"
+        }
+      ],
+      "expected_counts": [
+        70,
+        38,
+        32
+      ],
+      "per_language_api_order": [
+        "text",
+        "bytes"
+      ],
+      "all_generated_actuals": "UNRUN"
+    },
+    {
+      "id": "exclusive-and-output-domains",
+      "fixtures": [
+        {
+          "name": "I",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":9007199254740992.0,\"exclusiveMaximum\":90071992547409960e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":9.007199254740992e15,\"exclusiveMaximum\":9007199254740996.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              9007199254740993,
+              9007199254740995
+            ],
+            "primary_target": [
+              9007199254740993,
+              9007199254740995
+            ]
+          }
+        },
+        {
+          "name": "W",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":-90071992547409960e-1,\"exclusiveMaximum\":-9.007199254740992e15}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":-9007199254740996.0,\"exclusiveMaximum\":-90071992547409920e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "primary_target": [
+              -9007199254740995,
+              -9007199254740993
+            ]
+          }
+        },
+        {
+          "name": "N",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"exclusiveMinimum\":-10e-1,\"exclusiveMaximum\":40e-1}},\"required\":[],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\",\"null\"],\"exclusiveMinimum\":-1.0,\"exclusiveMaximum\":4e0}},\"required\":[],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "nullable": true,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "nullable": true,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": [
+              0,
+              3
+            ],
+            "primary_target": [
+              0,
+              3
+            ]
+          }
+        },
+        {
+          "name": "L",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775808.0,\"exclusiveMaximum\":-9.223372036854775807e18}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9223372036854775808,
+                      "maximum": -9223372036854775808
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              -9223372036854775808,
+              -9223372036854775808
+            ]
+          }
+        },
+        {
+          "name": "U",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":92233720368547758060e-1,\"maximum\":9.223372036854775807e18}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9223372036854775807,
+                      "maximum": 9223372036854775807
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              9223372036854775807,
+              9223372036854775807
+            ]
+          }
+        },
+        {
+          "name": "O",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":90071992547409920e-1,\"exclusiveMaximum\":9.007199254740996e15}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": 9007199254740993,
+                      "maximum": 9007199254740995
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": false,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              9007199254740993,
+              9007199254740995
+            ]
+          }
+        },
+        {
+          "name": "E",
+          "source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":-9007199254740996.0,\"exclusiveMaximum\":-9007199254740992e0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "kind": {
+                    "kind": "scalar",
+                    "ty": "int"
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "named": true,
+          "expected_ir_intervals": {
+            "primary_source": null,
+            "primary_target": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "extra_source": [
+              -9007199254740995,
+              -9007199254740993
+            ],
+            "extra_target": [
+              -9007199254740995,
+              -9007199254740993
+            ]
+          },
+          "extra_source_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":-90071992547409960e-1,\"exclusiveMaximum\":-9.007199254740992e15}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "extra_target_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":-9.007199254740996e15,\"exclusiveMaximum\":-9007199254740992.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          "expected_extra_source_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          },
+          "expected_extra_target_model": {
+            "name": "Record",
+            "repeating": false,
+            "kind": {
+              "kind": "group",
+              "children": [
+                {
+                  "name": "value",
+                  "repeating": false,
+                  "numeric_range": {
+                    "kind": "integer",
+                    "bounds": {
+                      "minimum": -9007199254740995,
+                      "maximum": -9007199254740993
+                    }
+                  },
+                  "kind": {
+                    "kind": "scalar_union",
+                    "types": [
+                      "string",
+                      "int"
+                    ]
+                  }
+                }
+              ],
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "cases": [
+        {
+          "id": "B2-I-min",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-I-inner",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740994}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740994\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-I-max",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-I-below",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-I-above",
+          "fixture": "I",
+          "input": "{\"value\":9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-W-min",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-W-inner",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740994}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740994\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-W-max",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-W-below",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-W-above",
+          "fixture": "W",
+          "input": "{\"value\":-9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-N-0",
+          "fixture": "N",
+          "input": "{\"value\":0}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 0\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-N-3",
+          "fixture": "N",
+          "input": "{\"value\":3}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 3\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-N-refuse--1",
+          "fixture": "N",
+          "input": "{\"value\":-1}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [0, 3], got -1",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -1.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -1.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-N-refuse-4",
+          "fixture": "N",
+          "input": "{\"value\":4}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [0, 3], got 4",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 4.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 4.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-N-null",
+          "fixture": "N",
+          "input": "{\"value\":null}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": null\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-N-missing",
+          "fixture": "N",
+          "input": "{}",
+          "expected": {
+            "primary_utf8": "{}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-N-string-bypass",
+          "fixture": "N",
+          "input": "{\"value\":\"4\"}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": \"4\"\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-L-endpoint",
+          "fixture": "L",
+          "input": "{\"value\":-9223372036854775808}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9223372036854775808\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-L-neighbor",
+          "fixture": "L",
+          "input": "{\"value\":-9223372036854775807}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [-9223372036854775808, -9223372036854775808], got -9223372036854775807",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9223372036854775807.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-U-endpoint",
+          "fixture": "U",
+          "input": "{\"value\":9223372036854775807}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9223372036854775807\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-U-neighbor",
+          "fixture": "U",
+          "input": "{\"value\":9223372036854775806}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [9223372036854775807, 9223372036854775807], got 9223372036854775806",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9223372036854775806.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-O-9007199254740993",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740993}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740993\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-O-9007199254740995",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": 9007199254740995\n}\n",
+            "extras": []
+          }
+        },
+        {
+          "id": "B2-O-refuse-9007199254740992",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-O-refuse-9007199254740996",
+          "fixture": "O",
+          "input": "{\"value\":9007199254740996}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [9007199254740993, 9007199254740995], got 9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: 9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          }
+        },
+        {
+          "id": "B2-E-min",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740995\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":-9007199254740995}"
+        },
+        {
+          "id": "B2-E-max",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": -9007199254740993\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":-9007199254740993}"
+        },
+        {
+          "id": "B2-E-input-below",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidInput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740996",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740996.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          },
+          "catalog": "{\"value\":-9007199254740996}"
+        },
+        {
+          "id": "B2-E-output-above",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740992}",
+          "expected": {
+            "rust": {
+              "variant": "InvalidOutput",
+              "message": "`value` requires numeric range [-9007199254740995, -9007199254740993], got -9007199254740992",
+              "source": null
+            },
+            "csharp": {
+              "type": "Ferrule.Runtime.FerruleRuntimeException",
+              "code": "JsonBoundary",
+              "message": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "detail": "JSON scalar 'value' is outside its numeric range: -9007199254740992.",
+              "inner_exception": null,
+              "data": [],
+              "other_runtime_owned_payload_properties": null
+            }
+          },
+          "catalog": "{\"value\":-9007199254740995}"
+        },
+        {
+          "id": "B2-E-string-bypass",
+          "fixture": "E",
+          "input": "{\"value\":-9007199254740995}",
+          "expected": {
+            "primary_utf8": "{\n  \"value\": \"-9007199254740996\"\n}\n",
+            "extras": [
+              {
+                "name": "audit",
+                "document_utf8": "{\n  \"value\": -9007199254740995\n}\n"
+              }
+            ]
+          },
+          "catalog": "{\"value\":\"-9007199254740996\"}"
+        }
+      ],
+      "expected_counts": [
+        60,
+        36,
+        24
+      ],
+      "per_language_api_order": [
+        "text",
+        "bytes"
+      ],
+      "all_generated_actuals": "UNRUN"
+    }
+  ],
+  "new_case_counts": {
+    "fixtures_per_cohort": 7,
+    "total_fixture_instances": 14,
+    "logical_cases": 65,
+    "per_language_text_and_bytes": [
+      130,
+      74,
+      56
+    ],
+    "both_languages": [
+      260,
+      148,
+      112
+    ]
+  },
+  "legacy_cohort_conservation": {
+    "whole_catalog_sha256": "eeb8929144870262a799e5f4ae44f4985e375eb5db2a3b1eb9d7fa26471e2842",
+    "fixtures": 7,
+    "cases": 38,
+    "per_language_counts": [
+      76,
+      46,
+      30
+    ],
+    "all_old_fixture_cases_expected_values_and_hosts_unchanged": true
+  },
+  "native_A_controls_separate_from_generated_case_counts": [
+    {
+      "id": "R01",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9007199254740993.1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "fractional",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R02",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":9007199254740992.99999999999999999999999999999999}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "fractional precision cliff",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R03",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"maximum\":9223372036854775807.1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "fractional at signed maximum",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R04",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775808.1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "fractional below signed minimum",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R05",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":1e-1}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "accepted_normalization_before_generation",
+      "reason": "exact 1e-1 is 1/10; integer minimum is ceil(1/10)=1, with no upper bound",
+      "import_result_original": "retain complete Result before acceptance/whole-model comparison; no schema parser, emitter or generated host has been run",
+      "complete_expected_native_model": {
+        "name": "Record",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "value",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 1
+                }
+              },
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            }
+          ],
+          "required": [
+            "value"
+          ]
+        }
+      }
+    },
+    {
+      "id": "R06",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"exclusiveMinimum\":1.9999999999999999999}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "fractional exclusive bound",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R07",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"maximum\":18446744073709551616.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "above unsigned64 schema token domain",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    },
+    {
+      "id": "R08",
+      "complete_schema": "{\"title\":\"Record\",\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"],\"minimum\":-9223372036854775809.0}},\"required\":[\"value\"],\"additionalProperties\":false}",
+      "expected_stage": "schema_import",
+      "expected": "refusal_before_generation",
+      "reason": "below signed64 schema token domain",
+      "typed_error_original": "retain complete Result before refusal comparison; exact A error details remain native-A authority, never synthesized here"
+    }
+  ],
+  "no_generated_host_claim_for_refused_imports": true
+}

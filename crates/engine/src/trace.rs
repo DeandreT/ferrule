@@ -428,6 +428,14 @@ pub enum TraceEvent {
 pub trait TraceSink {
     fn record(&self, event: TraceEvent);
 
+    /// Observes one filesystem named-source loader entry, before cache lookup
+    /// or acquisition. Names and paths are borrowed, exact request identities.
+    /// Cache hits and failed attempts are included; this is not an outcome.
+    /// Sinks that retain requests are responsible for their own bounds.
+    fn dynamic_source_load_requested(&self, source_name: &str, requested_path: &str) {
+        let _ = (source_name, requested_path);
+    }
+
     /// Whether constructing a bounded source-row snapshot can be useful to
     /// this sink. Streaming sinks keep the default; bounded collectors may
     /// decline after their retained prefix is full.

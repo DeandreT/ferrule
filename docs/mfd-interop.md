@@ -38,6 +38,14 @@ Source fan-out and separately declared target occurrences retain their own
 cardinality and ordering rules; competing bindings to a singular target remain
 subject to executable validation.
 
+A used scalar source output-node rule that names a missing or unsupported
+function definition produces a warning with the function name and source output
+key. Restore a supported definition or remove the rule before requesting an
+executable import. Ordinary import keeps the field's editable mapping and skips
+only the unresolved rule; supported rules and defaults retain their order.
+Unconnected references, nonmatching scalar filters, and blocked inherited rules
+do not produce this warning.
+
 For a mapping package whose resources sit above or beside the design directory,
 declare the trusted package root:
 

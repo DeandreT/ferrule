@@ -65,6 +65,9 @@ impl<T: Read> Capture<T> {
             self.eof = true;
             self.pipe.take();
             if let Some(f) = self.file.take() {
+                #[cfg(test)]
+                super::ownership_fault351::probe("capture-fsync", "capture")
+                    .map_err(|e| Failure::io("capture fsync", e))?;
                 f.sync_all().map_err(|e| Failure::io("capture fsync", e))?;
             }
             return Ok(());
@@ -91,6 +94,24 @@ impl<T: Read> Capture<T> {
         Ok(())
     }
 }
+// Only the two fixed check_budget operations are repeat observations.
+// Keep a separate bit per budget class; every other failure remains distinct.
+#[derive(Default)]
+struct BudgetObservations {
+    cancelled: bool,
+    timed_out: bool,
+}
+impl BudgetObservations {
+    fn first(&mut self, failure: &Failure) -> bool {
+        let seen = match (failure.kind, failure.operation) {
+            (FailureKind::Cancelled, "cancellation observed") => &mut self.cancelled,
+            (FailureKind::TimedOut, "work cutoff") => &mut self.timed_out,
+            _ => return true,
+        };
+        !std::mem::replace(seen, true)
+    }
+}
+
 struct Job {
     dir: Dir,
     id: crate::RequestIdentity,
@@ -107,6 +128,10 @@ struct Job {
     wait_lost: bool,
     unknown_children: bool,
     failure: Option<Failure>,
+    budget_observations: BudgetObservations,
+    failure_epoch: u64,
+    secondary_cap_reached: bool,
+    history: super::terminal::History,
     secondary: Vec<Failure>,
     receipt: ClosedReceipt,
     terminal: Option<ClosedFailure>,
@@ -122,6 +147,10 @@ impl Job {
         }
     }
     fn fail(&mut self, f: Failure) {
+        if !self.budget_observations.first(&f) {
+            return;
+        }
+        self.failure_epoch = self.failure_epoch.saturating_add(1);
         if self.failure.is_none() {
             self.event("stop", f.errno);
             self.failure = Some(f);
@@ -129,6 +158,8 @@ impl Job {
             self.stdin.take();
         } else if self.secondary.len() < 8 {
             self.secondary.push(f);
+        } else {
+            self.secondary_cap_reached = true;
         }
     }
     fn unresolved(&self) -> bool {
@@ -153,7 +184,22 @@ impl Job {
             stop_allowance_exceeded: self.receipt.stop_allowance_exceeded,
         }
     }
+    #[cfg(test)]
+    fn observe366(&mut self, phase: &'static str) {
+        if let Some(failure) = super::terminal::tests::budget(phase) {
+            match failure.kind {
+                FailureKind::Cancelled => self.cancel.cancel(),
+                FailureKind::TimedOut => {
+                    self.start = Instant::now()
+                        .checked_sub(Duration::from_secs(WORK_SECONDS + 1))
+                        .unwrap();
+                }
+                _ => unreachable!("only fixed modeled budget observations"),
+            }
+        }
+    }
     fn publish_receipt(&mut self) -> Result<(), Failure> {
+        self.history.began_epoch = self.failure_epoch;
         self.receipt.elapsed_microseconds = micros(self.start.elapsed());
         self.receipt.failure = self.failure.clone();
         self.receipt.secondary_failures = self.secondary.clone();
@@ -173,14 +219,25 @@ impl Job {
                 .map_err(|e| Failure::io("receipt durable write", e))?;
             self.dir
                 .rename("receipt.part", "receipt.json")
-                .map_err(|e| Failure::io("receipt publication", e))
+                .map_err(|e| Failure::io("receipt publication", e))?;
+            self.history.snapshot = Some(super::terminal::snapshot(&self.dir, &bytes)?);
+            #[cfg(test)]
+            self.observe366("after-snapshot");
+            Ok(())
         })();
-        if result.is_err() {
+        if let Err(failure) = &result {
             self.receipt.receipt_published_before_cleanup = false;
+            self.history.snapshot_failure = Some(failure.clone());
         }
         result
     }
 }
+// Leave polling slack inside the unchanged at-most-one-second TERM grace.
+// The real signal interval still requires independent physical qualification.
+fn kill_due(grace: Duration, kill_attempted: bool) -> bool {
+    grace >= Duration::from_millis(900) && !kill_attempted
+}
+
 fn micros(d: Duration) -> u64 {
     u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
 }
@@ -192,6 +249,7 @@ pub struct PdfWorkerManager {
     job: Option<Job>,
     retained_successes: Vec<Dir>,
     retain_success: bool,
+    last_terminal_evidence: Option<TerminalEvidence>,
     launch_thread: std::thread::ThreadId,
     _not_send: PhantomData<Rc<()>>,
 }
@@ -209,6 +267,7 @@ impl PdfWorkerManager {
             job: None,
             retained_successes: Vec::new(),
             retain_success: false,
+            last_terminal_evidence: None,
             launch_thread: std::thread::current().id(),
             _not_send: PhantomData,
         })
@@ -229,6 +288,14 @@ impl PdfWorkerManager {
             .map(|d| d.path.clone())
             .chain(self.job.as_ref().map(|j| j.dir.path.clone()))
             .collect()
+    }
+    /// Exact parent-relative failure leaves; `evidence_paths` keeps job semantics.
+    /// Clone this descriptor before a new job replaces the last cleanup metadata.
+    pub fn terminal_evidence(&self) -> Option<&TerminalEvidence> {
+        self.job
+            .as_ref()
+            .and_then(|job| job.history.evidence.as_ref())
+            .or(self.last_terminal_evidence.as_ref())
     }
     pub fn request_cancel(&mut self) {
         if let Some(j) = &self.job {
@@ -311,6 +378,7 @@ impl PdfWorkerManager {
             elapsed_microseconds: 0,
             successful_originals_retained: self.retain_success,
         };
+        self.last_terminal_evidence = None;
         let mut job = Job {
             dir,
             id,
@@ -327,6 +395,10 @@ impl PdfWorkerManager {
             wait_lost: false,
             unknown_children: false,
             failure: None,
+            budget_observations: BudgetObservations::default(),
+            failure_epoch: 0,
+            secondary_cap_reached: false,
+            history: super::terminal::History::default(),
             secondary: Vec::new(),
             receipt,
             terminal: None,
@@ -459,7 +531,7 @@ impl PdfWorkerManager {
                     child_outcome: terminal.child_outcome.clone(),
                     receipt: terminal.receipt.clone(),
                 },
-                retained: job.dir.path.clone(),
+                retained: job.history.retained_path(&job.dir.path),
             };
             self.job = Some(job);
             return progress;
@@ -513,7 +585,15 @@ impl PdfWorkerManager {
             && !job.wait_lost
             && let Some(pid) = job.receipt.child_pid
         {
-            match super::linux::own_wait(pid) {
+            #[cfg(test)]
+            let wait = if super::ownership_fault351::defer_wait() {
+                Ok(super::linux::Wait::Pending)
+            } else {
+                super::linux::own_wait(pid)
+            };
+            #[cfg(not(test))]
+            let wait = super::linux::own_wait(pid);
+            match wait {
                 Ok(super::linux::Wait::Pending) => {}
                 Ok(super::linux::Wait::Reaped { status, usage }) => {
                     job.receipt.own_reap = true;
@@ -616,7 +696,7 @@ impl PdfWorkerManager {
                     }
                 }
             }
-            if grace >= Duration::from_secs(1) && !job.kill_attempted {
+            if kill_due(grace, job.kill_attempted) {
                 job.kill_attempted = true;
                 if let Some(fd) = &job.pidfd {
                     let r = super::linux::signal(fd, libc::SIGKILL);
@@ -776,6 +856,20 @@ impl PdfWorkerManager {
             job.fail(f);
             instance = None;
         }
+        #[cfg(test)]
+        if let Some(failure) = super::terminal::tests::budget("late-final") {
+            job.fail(failure);
+            instance = None;
+        }
+        if job.failure_epoch != job.history.began_epoch {
+            // Only a newly observed post-snapshot/attempt failure activates disk
+            // history. Existing repeated budget observations never do so.
+            self.persist_terminal_history(&mut job);
+            if let Some(evidence) = &mut job.history.evidence {
+                evidence.secondary_cap_reached = job.secondary_cap_reached;
+            }
+            instance = None;
+        }
         job.receipt.elapsed_microseconds = micros(job.start.elapsed());
         job.receipt.failure = job.failure.clone();
         job.receipt.secondary_failures = job.secondary.clone();
@@ -801,10 +895,115 @@ impl PdfWorkerManager {
                 child_outcome: outcome,
                 receipt: job.receipt.clone(),
             },
-            retained: job.dir.path.clone(),
+            retained: job.history.retained_path(&job.dir.path),
         };
         self.job = Some(job);
         progress
+    }
+    fn persist_terminal_history(&self, job: &mut Job) {
+        use super::terminal::{self, Delta};
+        job.history.activate(
+            &self.scratch,
+            &job.receipt.request_id,
+            job.secondary_cap_reached,
+        );
+        let capacity = self
+            .scratch
+            .terminal_capacity(terminal::TOTAL_BYTES)
+            .map_err(|e| Failure::io("terminal history capacity", e));
+        if let Err(failure) = capacity {
+            job.history.evidence.as_mut().unwrap().persistence_failure = Some(failure.clone());
+            job.fail(failure);
+            if let Err(failure) = fs_job::check_budget(job.start, &job.cancel) {
+                job.fail(failure);
+            }
+            return;
+        }
+        if let Some(snapshot) = &job.history.snapshot {
+            let (leaf, result) = terminal::publish(
+                &self.scratch,
+                &job.receipt.request_id,
+                "pre-cleanup-receipt",
+                &snapshot.bytes,
+            );
+            job.history.evidence.as_mut().unwrap().pre_cleanup = Some(leaf);
+            if let Err(failure) = result {
+                job.history.evidence.as_mut().unwrap().persistence_failure = Some(failure.clone());
+                job.fail(failure);
+                if let Err(failure) = fs_job::check_budget(job.start, &job.cancel) {
+                    job.fail(failure);
+                }
+                return;
+            }
+        }
+        loop {
+            job.receipt.elapsed_microseconds = micros(job.start.elapsed());
+            job.receipt.failure = job.failure.clone();
+            job.receipt.secondary_failures = job.secondary.clone();
+            let prior_epoch = job.failure_epoch;
+            let evidence = job.history.evidence.as_ref().unwrap();
+            let sequence = evidence.versions.len();
+            if sequence >= 3 {
+                break;
+            } // Two fixed budget classes give at most3.
+            let delta = Delta {
+                request_id: &job.receipt.request_id,
+                profile: job.receipt.profile,
+                sequence,
+                prior_record_sha256: evidence.latest_sha256.as_deref(),
+                pre_cleanup_original: job.history.snapshot.as_ref().map(|s| &s.original),
+                job_directory: job.history.directory(),
+                cancelled_observed: job.budget_observations.cancelled,
+                timed_out_observed: job.budget_observations.timed_out,
+                secondary_cap_reached: job.secondary_cap_reached,
+                recorded_job_files_are_historical: true,
+                closed_receipt: &job.receipt,
+            };
+            let encoded = terminal::encode(&delta);
+            let (leaf, result) = match encoded {
+                Ok(bytes) => terminal::publish(
+                    &self.scratch,
+                    &job.receipt.request_id,
+                    ["terminal-0", "terminal-1", "terminal-2"][sequence],
+                    &bytes,
+                ),
+                Err(failure) => {
+                    job.history.evidence.as_mut().unwrap().persistence_failure =
+                        Some(failure.clone());
+                    job.fail(failure);
+                    break;
+                }
+            };
+            let directory = job.history.directory();
+            let evidence = job.history.evidence.as_mut().unwrap();
+            evidence.job_directory = directory;
+            evidence.secondary_cap_reached = job.secondary_cap_reached;
+            if let Ok(record) = &result {
+                evidence.latest_sha256 = Some(record.sha256.clone());
+            }
+            evidence.versions.push(leaf);
+            if let Err(failure) = result {
+                job.history.evidence.as_mut().unwrap().persistence_failure = Some(failure.clone());
+                job.fail(failure);
+                if let Err(f) = fs_job::check_budget(job.start, &job.cancel) {
+                    job.fail(f);
+                }
+                break; // Unknown persistence is never automatically retried.
+            }
+            if let Err(f) = fs_job::check_budget(job.start, &job.cancel) {
+                job.fail(f);
+            }
+            #[cfg(test)]
+            if let Some(f) = super::terminal::tests::budget("after-terminal") {
+                job.fail(f);
+            }
+            if prior_epoch == job.failure_epoch {
+                break;
+            }
+        }
+        if let Some(evidence) = &mut job.history.evidence {
+            evidence.secondary_cap_reached = job.secondary_cap_reached;
+        }
     }
     fn cleanup_job(&self, job: &mut Job) -> Result<(), Failure> {
         let rows = job
@@ -842,9 +1041,80 @@ impl PdfWorkerManager {
                 .map_err(|e| Failure::io("completed intent unlink", e))?;
             job.receipt.cleanup_removed.push(row.name.clone());
         }
-        self.scratch
+        job.history.directory = Some(JobDirectoryState::Unknown);
+        let result = self
+            .scratch
             .remove_job(&job.dir)
-            .map_err(|e| Failure::io("empty owned directory unlink", e))
+            .map_err(|e| Failure::io("empty owned directory unlink", e));
+        if result.is_ok() {
+            job.history.directory = Some(JobDirectoryState::Removed);
+            #[cfg(test)]
+            job.observe366("after-job-remove");
+        }
+        result
+    }
+    fn cleanup_terminal_failure(&self, job: &mut Job) -> Result<CleanupReceipt, Failure> {
+        use super::terminal::{self, CleanupIntent};
+        let state = job.history.directory();
+        if state == JobDirectoryState::Unknown {
+            return Err(Failure::new(
+                FailureKind::Cleanup,
+                "unknown job directory cleanup refused",
+            ));
+        }
+        let evidence = job.history.evidence.as_ref().unwrap();
+        let parent_rows = terminal::verify_known(&self.scratch, evidence)?;
+        let job_rows = if state == JobDirectoryState::Present {
+            job.dir
+                .census()
+                .map_err(|e| Failure::io("terminal cleanup job census", e))?
+        } else {
+            Vec::new()
+        }; // Removed jobs are never reopened or recreated.
+        let intent = CleanupIntent {
+            request_id: &job.receipt.request_id,
+            operation: "exact closed terminal evidence cleanup",
+            job_directory: state,
+            job_records: &job_rows,
+            parent_records: &parent_rows,
+        };
+        let bytes = terminal::encode(&intent)?;
+        let (leaf, result) = terminal::publish(
+            &self.scratch,
+            &job.receipt.request_id,
+            "terminal-cleanup-intent",
+            &bytes,
+        );
+        job.history.evidence.as_mut().unwrap().cleanup_intent = Some(leaf);
+        if let Err(failure) = result {
+            job.history.evidence.as_mut().unwrap().persistence_failure = Some(failure.clone());
+            return Err(failure); // No deletion on unknown intent durability.
+        }
+        if state == JobDirectoryState::Present {
+            self.cleanup_job(job)?;
+        }
+        for row in &parent_rows {
+            self.scratch
+                .parent
+                .remove_exact(row)
+                .map_err(|e| Failure::io("exact terminal evidence unlink", e))?;
+            job.history
+                .evidence
+                .as_mut()
+                .unwrap()
+                .cleanup_removed
+                .push(row.name.clone());
+        }
+        let evidence = job.history.evidence.as_mut().unwrap();
+        evidence.job_directory = JobDirectoryState::Removed;
+        // This remaining immutable intent is authorization, not rewritten
+        // deletion afterfacts. Its lifetime belongs to the explicit caller.
+        let mut removed = job.receipt.cleanup_removed.clone();
+        removed.extend(evidence.cleanup_removed.iter().cloned());
+        Ok(CleanupReceipt {
+            removed,
+            directory_removed: true,
+        })
     }
     pub fn cleanup_closed_failure(&mut self) -> Result<CleanupReceipt, CleanupFailure> {
         let Some(mut job) = self.job.take() else {
@@ -859,6 +1129,24 @@ impl PdfWorkerManager {
                 FailureKind::Ownership,
                 "failed cleanup before closed receipt",
             ));
+        }
+        if job.history.evidence.is_some() {
+            let result = self.cleanup_terminal_failure(&mut job);
+            return match result {
+                Ok(receipt) => {
+                    self.last_terminal_evidence = job.history.evidence.take();
+                    Ok(receipt)
+                }
+                Err(failure) => {
+                    let state = job.history.directory();
+                    if let Some(evidence) = &mut job.history.evidence {
+                        evidence.job_directory = state;
+                        evidence.cleanup_failure = Some(failure.clone());
+                    }
+                    self.job = Some(job);
+                    Err(failure)
+                }
+            };
         }
         match self.cleanup_job(&mut job) {
             Ok(()) => Ok(CleanupReceipt {
@@ -1101,3 +1389,19 @@ mod tests {
         assert!(broken.pipe.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "escalation358_tests.rs"]
+mod escalation358_tests;
+
+#[cfg(all(test, feature = "host-tests"))]
+#[path = "ownership_fault351_tests.rs"]
+mod ownership_fault351_tests;
+
+#[cfg(test)]
+#[path = "budget363_tests.rs"]
+mod budget363_tests;
+
+#[cfg(all(test, feature = "host-tests"))]
+#[path = "terminal_owner366_tests.rs"]
+mod terminal_owner366_tests;
