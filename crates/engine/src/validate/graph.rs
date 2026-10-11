@@ -615,25 +615,23 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
     };
     match node {
         Node::OwnedSourceField(field) => {
-            if let mapping::SourceOwner::Named { name } = &field.source.owner {
-                if project
+            if let mapping::SourceOwner::Named { name } = &field.source.owner
+                && project
                     .extra_sources
                     .iter()
                     .any(|source| source.name == *name && source.dynamic_path.is_some())
-                {
-                    sources.insert(name.as_str());
-                }
+            {
+                sources.insert(name.as_str());
             }
         }
         Node::OwnedPosition(position) => {
-            if let mapping::SourceOwner::Named { name } = &position.owner {
-                if project
+            if let mapping::SourceOwner::Named { name } = &position.owner
+                && project
                     .extra_sources
                     .iter()
                     .any(|source| source.name == *name && source.dynamic_path.is_some())
-                {
-                    sources.insert(name.as_str());
-                }
+            {
+                sources.insert(name.as_str());
             }
         }
         Node::SourceField { path, frame }
