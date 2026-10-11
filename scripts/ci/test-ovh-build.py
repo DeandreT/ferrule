@@ -19,7 +19,7 @@ GUARD = Path(__file__).with_name("guard-ovh-job.sh")
 class ResourceGuardTests(unittest.TestCase):
     def run_guard(self, *, free_kib="16777216", user="ferrule-runner",
                   runner="self-hosted", home="/home/ferrule-runner",
-                  symlink="", env_file=True, suite="native", gnu_timeout=True):
+                  symlink="", env_file=True, suite="native", gnu_timeout=True, evidence_failure=False):
         with tempfile.TemporaryDirectory(prefix="ferrule-ci-guard-") as tmp:
             root = Path(tmp)
             tools = root / "bin"
@@ -28,9 +28,16 @@ class ResourceGuardTests(unittest.TestCase):
             commands = {
                 "id": 'printf "%s\\n" "$FIXTURE_USER"',
                 "mkdir": "exit 0",
-                "python3": ('[ "$#" -eq 3 ] && [ "$1" = -I ] && '
-                            '[ "$2" = "$FIXTURE_CACHE_HELPER" ] && '
-                            '{ [ "$3" = 8 ] || [ "$3" = 16 ]; }'),
+                "python3": ('[ "$#" -eq 3 ] && [ "$1" = -I ] || exit 1; '
+                            'if [ "$2" = "$FIXTURE_CACHE_HELPER" ]; then '
+                            '{ [ "$3" = 8 ] || [ "$3" = 16 ]; }; exit $?; fi; '
+                            '[ "$2" = "$FIXTURE_EVIDENCE_HELPER" ] && '
+                            '[ "$3" = begin ] || exit 1; '
+                            '[ "$FIXTURE_EVIDENCE_FAILURE" = no ] || exit 1; '
+                            'printf "%s\\n" "TMPDIR=/home/ferrule-runner/ci-tmp/jobs/fresh/tmp" '
+                            '"FERRULE_CI_EVIDENCE_ROOT=/home/ferrule-runner/ci-tmp/jobs/fresh" '
+                            '"FERRULE_CI_EVIDENCE_ID=fresh" '
+                            '"FERRULE_CI_EVIDENCE_CANARY=/home/ferrule-runner/ci-tmp/jobs/fresh/receipts/evidence-canary.json"'),
                 "realpath": ('if [ "$1" = -m ]; then shift; fi; '
                              'if [ "$1" = "$FIXTURE_SYMLINK" ]; then '
                              'echo /elsewhere; else printf "%s\\n" "$1"; fi'),
@@ -61,6 +68,8 @@ class ResourceGuardTests(unittest.TestCase):
                 "FIXTURE_SYMLINK": symlink,
                 "FERRULE_CI_SUITE": suite,
                 "FIXTURE_CACHE_HELPER": str(SCRIPT.with_name("reclaim-build-cache.py")),
+                "FIXTURE_EVIDENCE_FAILURE": "yes" if evidence_failure else "no",
+                "FIXTURE_EVIDENCE_HELPER": str(SCRIPT.with_name("job-evidence.py")),
                 "FIXTURE_TIMEOUT_VERSION": ("timeout (GNU coreutils) 9.7"
                                             if gnu_timeout else "timeout (uutils)"),
             }
@@ -91,6 +100,9 @@ class ResourceGuardTests(unittest.TestCase):
         self.assertIn("CARGO_BUILD_JOBS=1\n", output)
         self.assert_refused(suite="unknown")
 
+    def test_failed_job_metadata_prevents_environment_publication(self):
+        self.assert_refused(evidence_failure=True)
+
     def test_non_gnu_timeout_is_refused(self):
         self.assert_refused(gnu_timeout=False)
 
@@ -111,7 +123,10 @@ class ResourceGuardTests(unittest.TestCase):
             "CARGO_TARGET_DIR": "/home/ferrule-runner/ci-cache/workspace-target",
             "FERRULE_CODEGEN_HOST_TARGET_DIR": "/home/ferrule-runner/ci-cache/generated-host-target",
             "DOTNET_INSTALL_DIR": "/home/ferrule-runner/.dotnet",
-            "TMPDIR": "/home/ferrule-runner/ci-tmp",
+            "TMPDIR": "/home/ferrule-runner/ci-tmp/jobs/fresh/tmp",
+            "FERRULE_CI_EVIDENCE_ROOT": "/home/ferrule-runner/ci-tmp/jobs/fresh",
+            "FERRULE_CI_EVIDENCE_ID": "fresh",
+            "FERRULE_CI_EVIDENCE_CANARY": "/home/ferrule-runner/ci-tmp/jobs/fresh/receipts/evidence-canary.json",
             "CARGO_BUILD_JOBS": "1",
             "RUST_TEST_THREADS": "2",
             "MSBUILDDISABLENODEREUSE": "1",
