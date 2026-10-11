@@ -18,6 +18,10 @@ supported whole-product parity percentage.
 Choose or claim an independent lane in [Parallel work](docs/parallel-work.md),
 which links scoped issues, ownership, dependencies, and shared verification rules.
 
+The [explicit source ownership plan](docs/design/source-ownership.md) records
+current wire/gate progress, the core interpreter and Rust/C# lanes, and 14
+scoped operator follow-ons with acceptance checklists and a dependency diagram.
+
 This roadmap is an execution plan. The complete earlier technical baseline and
 scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
 
