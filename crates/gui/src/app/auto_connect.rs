@@ -137,11 +137,11 @@ impl FerruleApp {
                 .get(index)
                 .map(|target| &target.root),
         };
-        if let Some(root) = root {
-            if let Err(reason) = source_frame_hint(root, &pending.scope_path) {
-                self.status = reason.to_owned();
-                return;
-            }
+        if let Some(root) = root
+            && let Err(reason) = source_frame_hint(root, &pending.scope_path)
+        {
+            self.status = reason.to_owned();
+            return;
         }
         let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
         let result = match pending.target {
