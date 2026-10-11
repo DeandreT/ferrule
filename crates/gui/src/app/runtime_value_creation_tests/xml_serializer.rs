@@ -315,7 +315,11 @@ fn source_picker_labels(output: &egui::FullOutput) -> Vec<String> {
         .iter()
         .filter(|(label, clip, rect)| label == "<source root>" && clip.contains(rect.center()))
         .collect::<Vec<_>>();
-    assert_eq!(roots.len(), 1, "one visible source-root choice in the picker");
+    assert_eq!(
+        roots.len(),
+        1,
+        "one visible source-root choice in the picker"
+    );
     let picker_clip = roots[0].1;
     labels
         .into_iter()
