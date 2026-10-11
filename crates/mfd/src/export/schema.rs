@@ -1709,7 +1709,15 @@ impl PortTree {
         let mut out = String::new();
         if schema.repeating {
             let pad = "\t".repeat(indent);
-            let _ = writeln!(out, "{pad}<entry name=\"array\" expanded=\"1\">");
+            let wrapper_key = if schema.json_array_wrapper {
+                format!(" {attr}=\"{}\"", self.by_abs[&Vec::new()])
+            } else {
+                String::new()
+            };
+            let _ = writeln!(
+                out,
+                "{pad}<entry name=\"array\"{wrapper_key} expanded=\"1\">"
+            );
             let _ = writeln!(
                 out,
                 "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
@@ -1735,6 +1743,24 @@ impl PortTree {
     ) {
         let pad = "\t".repeat(indent);
         let key = self.by_abs[&*path];
+        if let Some(item) = node.json_array_wrapper_item() {
+            path.push(item.name.clone());
+            let item_key = if item.json_array_wrapper {
+                format!(" {attr}=\"{}\"", self.by_abs[&*path])
+            } else {
+                String::new()
+            };
+            let _ = writeln!(out, "{pad}<entry name=\"array\"{item_key} expanded=\"1\">");
+            let _ = writeln!(
+                out,
+                "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+            );
+            self.json_value_xml(item, path, attr, indent + 2, out);
+            let _ = writeln!(out, "{pad}\t</entry>");
+            let _ = writeln!(out, "{pad}</entry>");
+            path.pop();
+            return;
+        }
         match &node.kind {
             SchemaKind::Scalar { ty } => {
                 let _ = writeln!(
@@ -1761,7 +1787,15 @@ impl PortTree {
                     );
                     path.push(child.name.clone());
                     if child.repeating {
-                        let _ = writeln!(out, "{pad}\t\t<entry name=\"array\" expanded=\"1\">");
+                        let wrapper_key = if child.json_array_wrapper {
+                            format!(" {attr}=\"{}\"", self.by_abs[&*path])
+                        } else {
+                            String::new()
+                        };
+                        let _ = writeln!(
+                            out,
+                            "{pad}\t\t<entry name=\"array\"{wrapper_key} expanded=\"1\">"
+                        );
                         let _ = writeln!(
                             out,
                             "{pad}\t\t\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
@@ -1782,7 +1816,8 @@ impl PortTree {
 }
 
 fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
-    if node.xml_namespace.is_some()
+    if node.json_array_wrapper
+        || node.xml_namespace.is_some()
         || node.recursive_ref.is_some()
         || node.nullable
         || node.container_nullable

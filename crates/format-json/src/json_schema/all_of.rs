@@ -470,6 +470,12 @@ fn intersect(
             "allOf branches have incompatible array and non-array shapes",
         ));
     }
+    if target.json_array_wrapper != branch.json_array_wrapper {
+        return Err(unsupported_union(
+            name,
+            "allOf branches have incompatible nested array wrapper levels",
+        ));
+    }
     target.nullable &= branch.nullable;
     target.container_nullable &= branch.container_nullable;
     target.item_count_range =

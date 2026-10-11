@@ -1,0 +1,93 @@
+{
+  "source": {
+    "name": "Input",
+    "repeating": true,
+    "json_array_wrapper": true,
+    "item_count_range": {
+      "minimum": 1,
+      "maximum": 2
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "item",
+          "repeating": true,
+          "item_count_range": {
+            "minimum": 2,
+            "maximum": 3
+          },
+          "json_unique_items": true,
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Output",
+    "repeating": true,
+    "json_array_wrapper": true,
+    "item_count_range": {
+      "minimum": 1,
+      "maximum": 2
+    },
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "item",
+          "repeating": true,
+          "item_count_range": {
+            "minimum": 2,
+            "maximum": 3
+          },
+          "json_unique_items": true,
+          "kind": {
+            "kind": "scalar",
+            "ty": "int"
+          }
+        }
+      ]
+    }
+  },
+  "source_options": {
+    "json_document": true
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_sources": [],
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "item"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": [],
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "item",
+        "source": [
+          "item"
+        ],
+        "bindings": [],
+        "children": [],
+        "construction": {
+          "scalar": {
+            "value": 1
+          }
+        }
+      }
+    ]
+  }
+}
