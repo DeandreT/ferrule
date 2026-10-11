@@ -2,6 +2,12 @@
 //! sibling resolution. Mode comes only from the root-owned fixture executable
 //! name, not from a production project/flag/environment.
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod startup_fixture;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod protocol_boundary_fixture;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod ownership_fault_fixture351;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 fn run() -> std::io::Result<u8> {
@@ -12,6 +18,12 @@ fn run() -> std::io::Result<u8> {
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("")
         .to_owned();
+    if let Some(result) = startup_fixture::run(&name) {
+        return result;
+    }
+    if let Some(result) = protocol_boundary_fixture::run(&name) {
+        return result;
+    }
     if name == "fixture-production" {
         return Ok(pdf_worker::host::worker_entry());
     }
