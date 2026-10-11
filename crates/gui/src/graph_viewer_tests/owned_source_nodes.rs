@@ -1,6 +1,6 @@
 use mapping::{Graph, Node, OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};
 
-use super::{GraphViewer, graph_node_presentation, graph_references};
+use super::{GraphViewer, fixture, graph_node_presentation, graph_references};
 
 #[test]
 fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
@@ -43,9 +43,11 @@ fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
     assert_eq!(serde_json::to_string(&reopened).unwrap(), encoded);
     assert_eq!(reopened.nodes[&99].dependencies(), vec![9]);
     assert!(reopened.nodes.contains_key(&9));
-    for node in &nodes {
+    let mut fx = fixture();
+    fx.graph = reopened;
+    for (index, node) in nodes.iter().enumerate() {
         assert_eq!(GraphViewer::input_count(node), 0);
-        assert_eq!(GraphViewer::input_at(node, 0), None);
+        assert_eq!(fx.viewer().input_at(index as u32 + 9, 0), None);
         assert!(graph_references::node_inputs(node).is_empty());
         assert!(graph_node_presentation::header(node, "owned", false).is_some());
         let full = graph_node_presentation::complete_title(Some(node), "short".into());
