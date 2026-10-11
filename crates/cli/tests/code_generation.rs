@@ -50,6 +50,8 @@ mod iteration_metadata;
 mod joins;
 #[path = "code_generation/json5_companions.rs"]
 mod json5_companions;
+#[path = "code_generation/json_parser_ports.rs"]
+mod json_parser_ports;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
