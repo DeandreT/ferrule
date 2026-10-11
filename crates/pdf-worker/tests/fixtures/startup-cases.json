@@ -1,0 +1,168 @@
+{
+  "schema": "ferrule.pdf-worker.startup-controls/1",
+  "scope": "seven physical startup/admission controls; all execution UNRUN",
+  "fixed_worker_limits": {
+    "address_space_bytes": [
+      536870912,
+      536870912
+    ],
+    "cpu_seconds": [
+      30,
+      31
+    ],
+    "file_size_bytes": [
+      67108864,
+      67108864
+    ],
+    "core_bytes": [
+      0,
+      0
+    ]
+  },
+  "shared_closed_receipt_expected": {
+    "own_reap": true,
+    "pidfd_acquired": true,
+    "reap_usage_present": true,
+    "ready": false,
+    "start_sent": false,
+    "effective_limits": null,
+    "stdout_observed_bytes": 0,
+    "stderr_overflow": false,
+    "stdout_closed_before_eof": false,
+    "stderr_closed_before_eof": false,
+    "secondary_failures": [],
+    "observed_unexpected_children": [],
+    "stop_allowance_exceeded": false,
+    "instance.part": "absent",
+    "instance.json": "absent"
+  },
+  "diagnostic_flags": {
+    "display_truncated": false,
+    "causes": [],
+    "cause_chain_truncated": false
+  },
+  "cases": [
+    {
+      "id": "S01",
+      "node_kind": "Missing",
+      "description": "Missing fixed packaged sibling; no child",
+      "errno": 2,
+      "failure_kind": "UnsupportedHost",
+      "operation": "open packaged worker",
+      "display": "PDF worker UnsupportedHost: open packaged worker",
+      "admitted": false
+    },
+    {
+      "id": "S02",
+      "node_kind": "Directory",
+      "description": "Directory at fixed packaged sibling; no child",
+      "errno": null,
+      "diagnostic_display": "regular single-link file required",
+      "failure_kind": "UnsupportedHost",
+      "operation": "open packaged worker",
+      "display": "PDF worker UnsupportedHost: open packaged worker",
+      "admitted": false
+    },
+    {
+      "id": "S03",
+      "node_kind": "Fifo",
+      "description": "FIFO at fixed packaged sibling; nonblocking no-child refusal",
+      "errno": null,
+      "diagnostic_display": "regular single-link file required",
+      "failure_kind": "UnsupportedHost",
+      "operation": "open packaged worker",
+      "display": "PDF worker UnsupportedHost: open packaged worker",
+      "admitted": false
+    },
+    {
+      "id": "S04",
+      "node_kind": "Regular",
+      "description": "Supported regular single-link executable admission, no launch",
+      "admitted": true
+    },
+    {
+      "id": "S05",
+      "description": "Real inherited CPU limit incompatibility after same-PID re-exec; no Ready/Start/parser",
+      "fixture_mode": "fixture-startup-low-soft",
+      "inherited_cpu": [
+        29,
+        31
+      ],
+      "marker_stages": [
+        "prepared",
+        "inherited"
+      ],
+      "installed_limits": null,
+      "failure_kind": "ResourceSetup",
+      "operation": "complete pre-Ready resource setup refusal",
+      "display": "PDF worker ResourceSetup: complete pre-Ready resource setup refusal",
+      "diagnostic_display": "",
+      "errno": null,
+      "raw_wait_status": 512,
+      "child_error": "ResourceSetup",
+      "child_diagnostic_display": "cannot raise inherited limit"
+    },
+    {
+      "id": "S06",
+      "description": "Real inherited CPU limit incompatibility after same-PID re-exec; no Ready/Start/parser",
+      "fixture_mode": "fixture-startup-low-hard",
+      "inherited_cpu": [
+        30,
+        30
+      ],
+      "marker_stages": [
+        "prepared",
+        "inherited"
+      ],
+      "installed_limits": null,
+      "failure_kind": "ResourceSetup",
+      "operation": "complete pre-Ready resource setup refusal",
+      "display": "PDF worker ResourceSetup: complete pre-Ready resource setup refusal",
+      "diagnostic_display": "",
+      "errno": null,
+      "raw_wait_status": 512,
+      "child_error": "ResourceSetup",
+      "child_diagnostic_display": "cannot raise inherited limit"
+    },
+    {
+      "id": "S07",
+      "description": "Actual supported setup succeeds; intentional exit before Ready is not extraction success",
+      "fixture_mode": "fixture-startup-supported",
+      "inherited_cpu": [
+        30,
+        31
+      ],
+      "marker_stages": [
+        "prepared",
+        "inherited",
+        "installed"
+      ],
+      "installed_limits": [
+        [
+          536870912,
+          536870912
+        ],
+        [
+          30,
+          31
+        ],
+        [
+          67108864,
+          67108864
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "failure_kind": "Protocol",
+      "operation": "ready EOF/frame",
+      "display": "PDF worker Protocol: ready EOF/frame",
+      "diagnostic_display": "",
+      "errno": null,
+      "raw_wait_status": 0,
+      "child_error": null
+    }
+  ],
+  "excluded": "Unsupported-platform/syscall injection and existing extraction success are separate; no pressure, caps, CLI signal or foreign-wait qualification."
+}

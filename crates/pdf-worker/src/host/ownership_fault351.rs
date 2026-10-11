@@ -16,12 +16,15 @@ struct State {
     payload_count: usize,
 }
 thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+#[cfg(feature = "host-tests")]
 pub(super) struct Guard;
+#[cfg(feature = "host-tests")]
 impl Drop for Guard {
     fn drop(&mut self) {
         STATE.with(|s| *s.borrow_mut() = State::default());
     }
 }
+#[cfg(feature = "host-tests")]
 pub(super) fn arm(point: Option<(&'static str, &'static str)>, output: &Path) -> Guard {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
@@ -85,6 +88,7 @@ pub(super) fn retain_payload(name: &str, bytes: &[u8]) -> io::Result<()> {
         Ok(())
     })
 }
+#[cfg(feature = "host-tests")]
 pub(super) fn set_deferred_wait(defer: bool) {
     STATE.with(|s| s.borrow_mut().defer_wait = defer);
 }
@@ -102,6 +106,7 @@ pub(super) fn defer_wait() -> bool {
         }
     })
 }
+#[cfg(feature = "host-tests")]
 pub(super) fn facts() -> (bool, usize, Vec<String>) {
     STATE.with(|s| {
         let state = s.borrow();
