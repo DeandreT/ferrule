@@ -349,6 +349,10 @@ fn run_pipeline_value_with_options(
     let paths = validate_host_inputs(&host_boundaries, inputs)?;
     let selected = select_outputs(pipeline, outputs)?;
 
+    // Admission follows execution's dependency order and includes every target;
+    // selected outputs only choose the files to publish.
+    engine::check_pipeline_source_ownership_capability(pipeline)?;
+
     let mut protected = vec![pipeline_path.to_path_buf()];
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &host_boundaries {
