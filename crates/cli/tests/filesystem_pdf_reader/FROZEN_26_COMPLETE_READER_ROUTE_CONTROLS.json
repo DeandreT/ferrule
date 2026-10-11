@@ -1,0 +1,1457 @@
+{
+  "schema": "ferrule.issue344.frozen-reader-controls.v1",
+  "independent_authoring": {
+    "candidate_functions_called": false,
+    "expected_from_actual": false,
+    "pdf_generation_or_parse": false,
+    "basis": "Owning immutable source definitions plus independently specified single-field literals and approved unchanged tiny PDFs."
+  },
+  "fresh_root_substitution": {
+    "token": "@ROOT@",
+    "authority": "Future root-selected fresh absolute test directory; supplied before invocation; never learned from a result. Exact path field substitution only."
+  },
+  "oracle_conventions": {
+    "typed_files": "Complete ordinary IR serde instance value documents; group origin Unknown asserted separately. Output typed files are schema-decoded wire observations, never claimed internal pre-serialization Instances.",
+    "scripted_reader": "Synchronous borrowed object with RefCell queue, Rc marker allowed, no Send/Sync bound. Store full request/reply before returning.",
+    "errors": "Retain complete actual Debug/Display/ordered source chain and raw returned error before comparing exact frozen type/variant/Display/chain. No exact OS errno or worker lifecycle is scripted.",
+    "dynamic_error": "Existing loader uses error.to_string(); C16 expects only top reading-input context in returned String while the injected full cause is separately retained.",
+    "file_comparison": "Full byte-to-EOF comparison and original before/after pins; hash-only or summary-true is insufficient.",
+    "counts": "C01-C12/C21/C23/C25 ProjectSuccess count is primary records only; C11 is 1 despite three artifacts.",
+    "unsupported_inference": "These are future synthetic reader controls, two tiny existing direct-parser baselines, and wire observations. No GUI/Preview/signal/PIDfd/worker/RSS/resource/physical qualification."
+  },
+  "cases": [
+    {
+      "id": "C01",
+      "title": "project-file route forwards the borrowed reader",
+      "route": "ProjectFileReader",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C02",
+      "title": "project-value route forwards the borrowed reader",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "reader_type_compile_property": {
+        "captures": "Rc<RefCell<complete_script_queue>>",
+        "must_not_require": [
+          "Send",
+          "Sync"
+        ],
+        "expected": "trait object borrowed by synchronous public route accepts this reader"
+      },
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C03",
+      "title": "pipeline-file route forwards the borrowed reader",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/single.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PipelineSuccess",
+        "stages_executed": [
+          "first"
+        ],
+        "artifacts": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C04",
+      "title": "empty scripted Instance is a routing control, not an empty-PDF parser oracle",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/empty.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "empty.pdf": "fixtures/inputs/empty-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/empty.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/empty.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/empty.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/empty.json",
+            "wire_observation": "fixtures/expected/empty.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "empty.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C05",
+      "title": "default filesystem route retains direct tiny-PDF extraction",
+      "route": "ProjectFileDefault",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "direct_parser_expected": "hello",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C06",
+      "title": "non-PDF JSON input bypasses the supplied PDF reader",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/plain.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "plain.json": "fixtures/inputs/plain.json",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/plain.json",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/plain.json",
+            "wire_observation": "fixtures/expected/plain.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "plain.json"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C07",
+      "title": "stateless PDF payload route stays direct and in memory",
+      "route": "PayloadDefault",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "payload_path": "input.pdf",
+        "payload_bytes": "fixtures/inputs/hello-page.pdf",
+        "target": "Primary",
+        "output_path": "out.json",
+        "project_identity": "@ROOT@/project.json"
+      },
+      "initial_files": {},
+      "scripted_reader_requests_in_order": [],
+      "expected": {
+        "kind": "PayloadSuccess",
+        "artifacts": [
+          {
+            "path": "out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json",
+            "target": "Output"
+          }
+        ],
+        "records_written": 1
+      },
+      "preserve_files": [],
+      "candidate_execution": "UNRUN",
+      "limits": "Existing payload caps, unchanged; no filesystem PDF reader parameter is added.",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C08",
+      "title": "selected primary omits an unused static PDF path",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/unused-static.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C09",
+      "title": "selected named constant still acquires primary",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/named-constant.json",
+      "invocation": {
+        "target": {
+          "Named": "chosen"
+        }
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "named.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/named.json",
+        "primary_outputs": [],
+        "extra_outputs": [
+          {
+            "name": "chosen",
+            "records_written": 1,
+            "path": "@ROOT@/named.json",
+            "bytes": "fixtures/expected/named.json",
+            "wire_observation": "fixtures/expected/named.typed.json"
+          }
+        ],
+        "artifacts": [
+          {
+            "name": "chosen",
+            "records_written": 1,
+            "path": "@ROOT@/named.json",
+            "bytes": "fixtures/expected/named.json",
+            "wire_observation": "fixtures/expected/named.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C10",
+      "title": "selected named output acquires only its required static lookup",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/named-lookup.json",
+      "invocation": {
+        "target": {
+          "Named": "chosen"
+        }
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "lookup.pdf": "fixtures/inputs/hello-page.pdf",
+        "named.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/lookup.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/lookup.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/named.json",
+        "primary_outputs": [],
+        "extra_outputs": [
+          {
+            "name": "chosen",
+            "records_written": 1,
+            "path": "@ROOT@/named.json",
+            "bytes": "fixtures/expected/lookup.json",
+            "wire_observation": "fixtures/expected/lookup.typed.json"
+          }
+        ],
+        "artifacts": [
+          {
+            "name": "chosen",
+            "records_written": 1,
+            "path": "@ROOT@/named.json",
+            "bytes": "fixtures/expected/lookup.json",
+            "wire_observation": "fixtures/expected/lookup.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf",
+        "lookup.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C11",
+      "title": "all-output static source and artifact order remain declared order",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/all-static.json",
+      "invocation": {
+        "target": null
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "zeta.pdf": "fixtures/inputs/hello-page.pdf",
+        "alpha.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin",
+        "zeta.json": "fixtures/inputs/sentinel.bin",
+        "alpha.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/zeta.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/zeta.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/alpha.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/alpha.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [
+          {
+            "name": "zeta-target",
+            "records_written": 1,
+            "path": "@ROOT@/zeta.json",
+            "bytes": "fixtures/expected/zeta.json",
+            "wire_observation": "fixtures/expected/zeta.typed.json"
+          },
+          {
+            "name": "alpha-target",
+            "records_written": 1,
+            "path": "@ROOT@/alpha.json",
+            "bytes": "fixtures/expected/alpha.json",
+            "wire_observation": "fixtures/expected/alpha.typed.json"
+          }
+        ],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          },
+          {
+            "name": "zeta-target",
+            "records_written": 1,
+            "path": "@ROOT@/zeta.json",
+            "bytes": "fixtures/expected/zeta.json",
+            "wire_observation": "fixtures/expected/zeta.typed.json"
+          },
+          {
+            "name": "alpha-target",
+            "records_written": 1,
+            "path": "@ROOT@/alpha.json",
+            "bytes": "fixtures/expected/alpha.json",
+            "wire_observation": "fixtures/expected/alpha.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf",
+        "zeta.pdf",
+        "alpha.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C12",
+      "title": "unused dynamic source stays lazy",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/unused-dynamic.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "ProjectSuccess",
+        "records_written": 1,
+        "input_path": "@ROOT@/input.pdf",
+        "output_path": "@ROOT@/out.json",
+        "primary_outputs": [],
+        "extra_outputs": [],
+        "artifacts": [
+          {
+            "name": "Output",
+            "records_written": 1,
+            "path": "@ROOT@/out.json",
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C13",
+      "title": "successful identical dynamic key is cached",
+      "route": "PrivateDynamicLoaderUnit",
+      "model": "fixtures/projects/dynamic-declarations.json",
+      "invocation": {
+        "load_calls": [
+          [
+            "dynamic",
+            "a.pdf"
+          ],
+          [
+            "dynamic",
+            "a.pdf"
+          ]
+        ]
+      },
+      "initial_files": {
+        "a.pdf": "fixtures/inputs/hello-page.pdf",
+        "b.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/a.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PrivateLoaderReturns",
+        "returns": [
+          {
+            "Ok": "fixtures/expected/a.typed.json"
+          },
+          {
+            "Ok": "fixtures/expected/a.typed.json"
+          }
+        ],
+        "filesystem_publication": [],
+        "same_arc_identity": true,
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "a.pdf",
+        "b.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C14",
+      "title": "different requested paths have separate cache entries",
+      "route": "PrivateDynamicLoaderUnit",
+      "model": "fixtures/projects/dynamic-declarations.json",
+      "invocation": {
+        "load_calls": [
+          [
+            "dynamic",
+            "a.pdf"
+          ],
+          [
+            "dynamic",
+            "b.pdf"
+          ]
+        ]
+      },
+      "initial_files": {
+        "a.pdf": "fixtures/inputs/hello-page.pdf",
+        "b.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/a.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/b.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/b.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PrivateLoaderReturns",
+        "returns": [
+          {
+            "Ok": "fixtures/expected/a.typed.json"
+          },
+          {
+            "Ok": "fixtures/expected/b.typed.json"
+          }
+        ],
+        "filesystem_publication": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "a.pdf",
+        "b.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C15",
+      "title": "source name remains part of the dynamic cache key",
+      "route": "PrivateDynamicLoaderUnit",
+      "model": "fixtures/projects/dynamic-declarations.json",
+      "invocation": {
+        "load_calls": [
+          [
+            "dynamic",
+            "a.pdf"
+          ],
+          [
+            "other",
+            "a.pdf"
+          ]
+        ]
+      },
+      "initial_files": {
+        "a.pdf": "fixtures/inputs/hello-page.pdf",
+        "b.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/a.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/b.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PrivateLoaderReturns",
+        "returns": [
+          {
+            "Ok": "fixtures/expected/a.typed.json"
+          },
+          {
+            "Ok": "fixtures/expected/b.typed.json"
+          }
+        ],
+        "filesystem_publication": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "a.pdf",
+        "b.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C16",
+      "title": "failed dynamic acquisition is not cached",
+      "route": "PrivateDynamicLoaderUnit",
+      "model": "fixtures/projects/dynamic-declarations.json",
+      "invocation": {
+        "load_calls": [
+          [
+            "dynamic",
+            "a.pdf"
+          ],
+          [
+            "dynamic",
+            "a.pdf"
+          ]
+        ]
+      },
+      "initial_files": {
+        "a.pdf": "fixtures/inputs/hello-page.pdf",
+        "b.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Err": {
+              "type": "ScriptedPdfReaderError",
+              "variant": "Denied",
+              "display": "scripted PDF reader refusal: denied",
+              "source": null
+            }
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/a.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/recovered.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PrivateLoaderReturns",
+        "returns": [
+          {
+            "Err": "reading input @ROOT@/a.pdf"
+          },
+          {
+            "Ok": "fixtures/expected/recovered.typed.json"
+          }
+        ],
+        "filesystem_publication": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "a.pdf",
+        "b.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C17",
+      "title": "two pipeline stages sharing a host acquire it once",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/same-host.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          },
+          {
+            "stage": "second",
+            "target": null,
+            "path": "@ROOT@/second.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin",
+        "second.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PipelineSuccess",
+        "stages_executed": [
+          "first",
+          "second"
+        ],
+        "artifacts": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          },
+          {
+            "stage": "second",
+            "target": null,
+            "path": "@ROOT@/second.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C18",
+      "title": "typed stage edge never re-reads or re-parses a PDF",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/typed-edge.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          },
+          {
+            "stage": "second",
+            "target": null,
+            "path": "@ROOT@/second.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin",
+        "second.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PipelineSuccess",
+        "stages_executed": [
+          "first",
+          "second"
+        ],
+        "artifacts": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          },
+          {
+            "stage": "second",
+            "target": null,
+            "path": "@ROOT@/second.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C19",
+      "title": "pipeline host acquisition is lexical by name",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/static-lookup.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          },
+          {
+            "name": "lookup",
+            "path": "@ROOT@/lookup.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "lookup.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/lookup.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/lookup.typed.json"
+          }
+        },
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PipelineSuccess",
+        "stages_executed": [
+          "first"
+        ],
+        "artifacts": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/lookup.json",
+            "wire_observation": "fixtures/expected/lookup.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf",
+        "lookup.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C20",
+      "title": "unused pipeline dynamic source is not acquired",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/unused-dynamic.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "PipelineSuccess",
+        "stages_executed": [
+          "first"
+        ],
+        "artifacts": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json",
+            "records_written": 1,
+            "bytes": "fixtures/expected/hello.json",
+            "wire_observation": "fixtures/expected/hello.typed.json"
+          }
+        ]
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C21",
+      "title": "explicitly protected project destination refuses before input acquisition",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary",
+        "output_path": "@ROOT@/input.pdf",
+        "protected_output_paths": [
+          "@ROOT@/input.pdf"
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [],
+      "expected": {
+        "kind": "Error",
+        "typed_root": null,
+        "display": "output destination @ROOT@/input.pdf is reserved by the host",
+        "source_chain_in_order": [],
+        "published_files": [],
+        "all_initial_files_unchanged": true,
+        "classification": "HostPathRefusal (test observation label, not public enum)",
+        "dynamic_error_type": "anyhow::Error carrying the exact host-refusal text; no stable concrete root variant asserted"
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": [],
+      "expected_before_publish_calls": 0
+    },
+    {
+      "id": "C22",
+      "title": "pipeline host input is protected against output replacement",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/single.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/input.pdf"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "Error",
+        "typed_root": null,
+        "display": "output destination @ROOT@/input.pdf is reserved by the host",
+        "source_chain_in_order": [],
+        "published_files": [],
+        "all_initial_files_unchanged": true,
+        "classification": "HostPathRefusal (test observation label, not public enum)",
+        "dynamic_error_type": "anyhow::Error carrying the exact host-refusal text; no stable concrete root variant asserted"
+      },
+      "preserve_files": [
+        "input.pdf"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": []
+    },
+    {
+      "id": "C23",
+      "title": "project publication gate cancels after acquisition",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary",
+        "before_publish": false
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "Error",
+        "typed_root": {
+          "type": "engine::EngineError",
+          "variant": "DebugCancelled"
+        },
+        "display": "debug run cancelled before target field insertion",
+        "source_chain_in_order": [],
+        "published_files": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "input.pdf",
+        "out.json"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": [],
+      "expected_before_publish_calls": 1
+    },
+    {
+      "id": "C24",
+      "title": "pipeline publication gate cancels after stage evaluation",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/single.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          }
+        ],
+        "before_publish": false
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Ok": "fixtures/expected/hello.typed.json"
+          }
+        }
+      ],
+      "expected": {
+        "kind": "Error",
+        "typed_root": {
+          "type": "engine::EngineError",
+          "variant": "DebugCancelled"
+        },
+        "display": "debug run cancelled before target field insertion",
+        "source_chain_in_order": [],
+        "published_files": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "input.pdf",
+        "out.json"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": [],
+      "expected_before_publish_calls": 1
+    },
+    {
+      "id": "C25",
+      "title": "primary reader refusal is closed-error propagation, not publication",
+      "route": "ProjectValueReader",
+      "model": "fixtures/projects/simple.json",
+      "invocation": {
+        "target": "Primary"
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Err": {
+              "type": "ScriptedPdfReaderError",
+              "variant": "Denied",
+              "display": "scripted PDF reader refusal: denied",
+              "source": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "Error",
+        "typed_root": {
+          "type": "ScriptedPdfReaderError",
+          "variant": "Denied"
+        },
+        "display": "reading input @ROOT@/input.pdf",
+        "source_chain_in_order": [
+          "scripted PDF reader refusal: denied"
+        ],
+        "published_files": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "input.pdf",
+        "out.json"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": [],
+      "expected_before_publish_calls": 0
+    },
+    {
+      "id": "C26",
+      "title": "pipeline host refusal retains both wrapping contexts",
+      "route": "PipelineFileReader",
+      "model": "fixtures/pipelines/single.json",
+      "invocation": {
+        "inputs": [
+          {
+            "name": "primary",
+            "path": "@ROOT@/input.pdf"
+          }
+        ],
+        "outputs": [
+          {
+            "stage": "first",
+            "target": null,
+            "path": "@ROOT@/out.json"
+          }
+        ]
+      },
+      "initial_files": {
+        "input.pdf": "fixtures/inputs/hello-page.pdf",
+        "out.json": "fixtures/inputs/sentinel.bin"
+      },
+      "scripted_reader_requests_in_order": [
+        {
+          "method": "read_pdf",
+          "path": "@ROOT@/input.pdf",
+          "layout": "fixtures/layout.json",
+          "reply": {
+            "Err": {
+              "type": "ScriptedPdfReaderError",
+              "variant": "Denied",
+              "display": "scripted PDF reader refusal: denied",
+              "source": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "Error",
+        "typed_root": {
+          "type": "ScriptedPdfReaderError",
+          "variant": "Denied"
+        },
+        "display": "loading pipeline host input `primary`",
+        "source_chain_in_order": [
+          "reading input @ROOT@/input.pdf",
+          "scripted PDF reader refusal: denied"
+        ],
+        "published_files": [],
+        "all_initial_files_unchanged": true
+      },
+      "preserve_files": [
+        "input.pdf",
+        "out.json"
+      ],
+      "candidate_execution": "UNRUN",
+      "model_bytes_preserved": true,
+      "unexpected_files_expected": [],
+      "expected_before_publish_calls": 0
+    }
+  ],
+  "future_route_bindings": {
+    "ProjectFileReader": "run_project_with_options_and_pdf_reader(project_path, options, reader)",
+    "ProjectValueReader": "run_project_value_with_options_and_pdf_reader(project, project_path, options, reader)",
+    "PipelineFileReader": "run_pipeline_file_with_options_and_pdf_reader(pipeline_path, inputs, outputs, options, reader)",
+    "ProjectFileDefault": "existing run_project_with_options(project_path, options), no reader",
+    "PayloadDefault": "existing run_project_value_payloads(project, @ROOT@/project.json, PayloadRunOptions::new(primary).with_target(Primary).with_output_path(Path::new(\"out.json\"))), no filesystem PDF reader API",
+    "PrivateDynamicLoaderUnit": "cfg(test) crate-private ProjectDynamicSourceLoader::with_pdf_reader; call existing engine::DynamicSourceLoader::load; no production getter"
+  }
+}

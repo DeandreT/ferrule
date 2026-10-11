@@ -1,0 +1,70 @@
+{
+  "source": {
+    "name": "Document",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Output",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "plain.json",
+  "target_path": "out.json",
+  "source_options": {
+    "json_document": true
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_sources": [],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "Value"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 0
+      }
+    ],
+    "children": []
+  }
+}

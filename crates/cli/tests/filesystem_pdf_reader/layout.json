@@ -1,0 +1,43 @@
+{
+  "root_name": "Document",
+  "page_selection": {
+    "kind": "first"
+  },
+  "commands": [
+    {
+      "kind": "capture",
+      "name": "Value",
+      "region": {
+        "left": {
+          "reference": {
+            "kind": "left"
+          },
+          "offset": 0.0
+        },
+        "top": {
+          "reference": {
+            "kind": "top"
+          },
+          "offset": 0.0
+        },
+        "right": {
+          "reference": {
+            "kind": "right"
+          },
+          "offset": 0.0
+        },
+        "bottom": {
+          "reference": {
+            "kind": "bottom"
+          },
+          "offset": 0.0
+        }
+      },
+      "algorithm": {
+        "kind": "basic_visual",
+        "separate_words": "insert_space",
+        "whitespace": "default"
+      }
+    }
+  ]
+}
