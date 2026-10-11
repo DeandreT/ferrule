@@ -1647,7 +1647,11 @@ fn import_resolved(
                     match read_json_component_in_package(&component, resources, &mut warnings) {
                         Some(sc) => match json_serializer::read(&component, &sc) {
                             Ok(Some(serializer)) => json_serializers.push(serializer),
-                            Ok(None) => match json_parser::read(&component, &sc) {
+                            Ok(None) => match json_parser::read(
+                                &component,
+                                &sc,
+                                &edges.feeds.values().copied().collect(),
+                            ) {
                                 Ok(Some(parser)) => json_parsers.push(parser),
                                 Ok(None) => schema_components.push(sc),
                                 Err(reason) => warnings.push(format!(
