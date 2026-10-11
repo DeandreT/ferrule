@@ -44,6 +44,7 @@ pub enum FailureKind {
     Cleanup,
     Io,
     Ownership,
+    InputTooLarge,
 }
 #[derive(Clone, Debug, Serialize, thiserror::Error)]
 #[error("PDF worker {kind:?}: {operation}")]
@@ -59,6 +60,15 @@ impl Failure {
             kind,
             operation,
             diagnostics: Diagnostics::empty(),
+            errno: None,
+        }
+    }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    fn input_too_large() -> Self {
+        Self {
+            kind: FailureKind::InputTooLarge,
+            operation: "input byte cap",
+            diagnostics: crate::error::capture(&format_pdf::PdfError::InputTooLarge),
             errno: None,
         }
     }
@@ -379,4 +389,33 @@ pub use unsupported::{PdfWorkerManager, ScratchPolicy, WorkerProgram};
 ))]
 pub fn fixture_install_policy(parent: u32) -> std::io::Result<()> {
     linux::setup_worker(parent)
+}
+
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod input_limit382 {
+    use super::{Failure, FailureKind};
+
+    #[test]
+    fn input_too_large_has_frozen_complete_projection() {
+        let failure = Failure::input_too_large();
+        let original = serde_json::to_value(&failure).expect("input-limit failure must serialize");
+        eprintln!("input_limit382 original {original:#?}");
+        assert_eq!(failure.kind, FailureKind::InputTooLarge);
+        assert_eq!(
+            original,
+            serde_json::json!({
+                "kind": "InputTooLarge",
+                "operation": "input byte cap",
+                "diagnostics": {
+                    "display": {
+                        "text": "PDF input exceeds the 8388608-byte limit",
+                        "truncated": false
+                    },
+                    "causes": [],
+                    "cause_chain_truncated": false
+                },
+                "errno": null
+            })
+        );
+    }
 }

@@ -568,8 +568,10 @@ pub(crate) fn stage(
         super::fs_job::identity(&metadata).map_err(|e| Failure::io("source identity", e))?;
     *before_out = Some(before);
     if before[6] > format_pdf::MAX_INPUT_BYTES as u64 {
-        return Err(Failure::new(FailureKind::Protocol, "input byte cap"));
+        return Err(Failure::input_too_large());
     }
+    #[cfg(test)]
+    stage_fault382::stage_boundary(&input, &before);
     let mut out = dir
         .create("input.pdf")
         .map_err(|e| Failure::io("create snapshot", e))?;
@@ -584,7 +586,7 @@ pub(crate) fn stage(
             break;
         }
         if bytes.len() + n > format_pdf::MAX_INPUT_BYTES {
-            return Err(Failure::new(FailureKind::Protocol, "input byte cap"));
+            return Err(Failure::input_too_large());
         }
         out.write_all(&block[..n])
             .map_err(|e| Failure::io("snapshot write", e))?;
@@ -693,3 +695,6 @@ mod snapshot_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod stage_fault382;
