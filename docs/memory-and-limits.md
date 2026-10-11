@@ -120,3 +120,5 @@ allocations or bound RAM for arbitrary large files.
 
 This page describes source contracts and measurement practice. It supplies no
 universal improvement claim or total-RAM cap.
+
+Whole-process memory includes executable verification as well as parsing.
