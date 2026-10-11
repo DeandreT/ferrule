@@ -791,8 +791,15 @@ inputs, unresolved selections and variable scope controls retain refusals.
 JSON variable selectors can cross a declared object array through an explicit
 `array` followed by its canonical `item` / `json-item` role, then select a
 non-repeating descendant. The selected schema remains complete; graph inputs
-establish its value and iteration context. Selected array roots, nested-array
-wrappers, malformed item roles and alternative views retain refusals.
+establish its value and iteration context. Selecting an item as a variable root
+does not remove repetition. Nested-array wrappers, malformed item roles and
+alternative views retain refusals.
+
+A terminal `array` view can select a complete array of records for transparent
+forwarding. One explicit structural input supplies the collection; descendant
+outputs retain its item frame, ordering and scalar paths. Array and item facets
+remain intact. Connected descendant overrides, competing structural drivers and
+variable scope controls retain refusals until their construction contracts qualify.
 
 EDI structure variables resolve their flat declared parameter-root path against
 a complete compiled EDI configuration. The selected value preserves scalar types

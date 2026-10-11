@@ -202,6 +202,32 @@ impl GraphBuilder<'_> {
                 return Ok(None);
             };
             let component_key = component.output_keys.first().copied().unwrap_or(output_key);
+            if component.format == schema::ComponentFormat::Json
+                && component.is_variable
+                && component.schema.repeating
+            {
+                let connected_inputs = component
+                    .ports
+                    .iter()
+                    .filter(|(key, _)| {
+                        component.input_keys.contains(key) && self.edge_from.contains_key(key)
+                    })
+                    .collect::<Vec<_>>();
+                let reason = if connected_inputs.iter().any(|(_, path)| !path.is_empty()) {
+                    Some("a selected array root cannot have connected descendant overrides")
+                } else if connected_inputs.len() != 1 {
+                    Some("a selected array root must have one explicit structural driver")
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
+                    return Err(VariableConstructionIssue {
+                        component_key,
+                        component: component.name.clone(),
+                        reason,
+                    });
+                }
+            }
             let candidates = component
                 .ports
                 .iter()

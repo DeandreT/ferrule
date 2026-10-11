@@ -37,6 +37,7 @@ pub(super) fn select(
         .filter(|node| node.has_tag_name("root"))
         .collect::<Vec<_>>();
     let selected = match roots.as_slice() {
+        [] if schema.repeating => return Err("selected root is an array"),
         [] => schema,
         [root] => {
             let entries = root
@@ -49,6 +50,7 @@ pub(super) fn select(
             let mut selected = schema;
             let mut expects_item = false;
             let mut item_view = false;
+            let mut terminal_array = false;
             for (index, entry) in entries.iter().enumerate() {
                 if entry.children().any(|node| node.has_tag_name("entry")) {
                     return Err("selection must be one flat declared path");
@@ -75,7 +77,8 @@ pub(super) fn select(
                             && selected.alternatives().is_empty()
                             && matches!(selected.kind, SchemaKind::Group { .. }) =>
                     {
-                        expects_item = true;
+                        terminal_array = index + 1 == entries.len();
+                        expects_item = !terminal_array;
                     }
                     (Some("json-property"), Some(name)) => {
                         if selected.repeating && !item_view {
@@ -95,11 +98,18 @@ pub(super) fn select(
             if expects_item {
                 return Err("array view must be followed by its canonical item role");
             }
+            if selected.repeating && !terminal_array {
+                return Err("selected root is an array");
+            }
             selected
         }
         _ => return Err("selection contains multiple roots"),
     };
-    if selected.repeating {
+    if selected.repeating
+        && (selected.json_array_wrapper
+            || !selected.alternatives().is_empty()
+            || !matches!(selected.kind, SchemaKind::Group { .. }))
+    {
         return Err("selected root is an array");
     }
     Ok(Some(selected.clone()))
@@ -158,6 +168,31 @@ mod tests {
     }
 
     #[test]
+    fn terminal_array_selection_retains_repetition_and_complete_facets() {
+        let mut schema = schema();
+        if let SchemaKind::Group { children, .. } = &mut schema.kind {
+            children[0].json_unique_items = true;
+        }
+        let value = SchemaNode::scalar("Value", ir::ScalarType::Int)
+            .with_numeric_range(ir::NumericRange::Integer(
+                ir::IntegerRange::new(Some(-5), Some(10)).unwrap(),
+            ))
+            .unwrap();
+        let mut expected =
+            SchemaNode::group("Rows", vec![SchemaNode::group("Header", vec![value])])
+                .repeating()
+                .with_item_count_range(ir::ItemCountRange::new(2, Some(4)).unwrap())
+                .unwrap();
+        expected.json_unique_items = true;
+        assert_eq!(
+            resolve(&format!("{PREFIX}<entry name=\"array\"/>"), &schema).unwrap(),
+            Some(expected)
+        );
+        assert!(resolve(&format!("{PREFIX}{ITEM}"), &schema).is_err());
+        assert!(resolve(PREFIX, &schema).is_err());
+    }
+
+    #[test]
     fn array_descendant_selection_refuses_unpaired_items_and_repeating_roots() {
         let suffixes = [
             format!("<entry name=\"array\"/>{CHILD}"),
@@ -165,7 +200,6 @@ mod tests {
             format!("<entry name=\"array\"/><entry name=\"item\"/>{CHILD}"),
             format!("<entry name=\"item\" type=\"json-item\"/>{CHILD}"),
             format!("{ITEM}<entry name=\"item\" type=\"json-item\"/>{CHILD}"),
-            "<entry name=\"array\"/>".into(),
             ITEM.into(),
             CHILD.into(),
         ];
