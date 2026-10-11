@@ -25,6 +25,19 @@ layout and dialect details that an extension cannot express.
 
 ## Important Boundaries
 
+- MFD import constructs a required, non-null singleton XML scalar document root
+  from one matching String, Bool, Int or Float constant, or one required XML
+  element path whose root and ancestors are singular. The selected scalar
+  declaration uses qualified `xs:string`, `xs:boolean`, `xs:long` or `xs:double`.
+  Its own XSD must prove default or explicit 1..1 occurrences through each
+  selected element and containing sequence or all particle. Constants must have
+  valid saved lexical values; Float constants must be finite. Primary and named
+  targets retain their own schemas and output identities. Repeated, optional,
+  nullable, competing and metadata-dependent root feeds, custom scalar facets,
+  lists, unions, attributes and simple-content paths produce repair warnings
+  and refuse executable import. XML instance readers and writers retain their
+  existing typed errors, including nonfinite output refusal. Singleton scalar
+  root MFD export remains unsupported and refuses before publishing artifacts.
 - JSON5 input accepts comments, trailing commas, single-quoted strings, and
   other supported JSON5 syntax; comments are not represented in mapping values
   or written back. Output omits quotes around property names when JSON5 allows

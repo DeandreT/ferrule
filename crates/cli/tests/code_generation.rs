@@ -80,6 +80,8 @@ mod required_ref_boundaries;
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
 mod scalar_algorithms;
+#[path = "code_generation/scalar_document_root.rs"]
+mod scalar_document_root;
 #[path = "code_generation/scalar_functions.rs"]
 mod scalar_functions;
 #[path = "code_generation/scalar_total_corpus.rs"]
