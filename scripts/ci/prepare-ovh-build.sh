@@ -9,7 +9,7 @@ if [[ ${HOME:?} != /home/ferrule-runner || ! -f ${GITHUB_ENV:?} ]]; then
   echo 'Unexpected runner home or missing GitHub environment file.' >&2
   exit 1
 fi
-for prerequisite in df awk realpath xvfb-run xauth cc pkg-config sccache; do
+for prerequisite in df awk realpath python3 xvfb-run xauth cc pkg-config sccache; do
   command -v "$prerequisite" >/dev/null
 done
 timeout_path=$(command -v gnutimeout || command -v timeout)
@@ -37,6 +37,9 @@ case ${FERRULE_CI_SUITE:-native} in
   codegen) reserve_gib=8 ;;
   *) echo 'Unknown Ferrule CI resource profile.' >&2; exit 1 ;;
 esac
+# Reclaim only idle Cargo targets before enforcing the existing hard floor.
+python3 -I "$(dirname "${BASH_SOURCE[0]}")/reclaim-build-cache.py" "$reserve_gib"
+available_kib=$(df -Pk "$HOME" | awk 'NR == 2 { print $4 }')
 if [[ ! $available_kib =~ ^[0-9]+$ ]] || (( available_kib < reserve_gib * 1024 * 1024 )); then
   printf 'OVH needs at least %s GiB free before starting this build; inspect Ferrule caches.\n' "$reserve_gib" >&2
   df -h "$HOME" >&2
