@@ -138,9 +138,11 @@ def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
             held.callback(os.close, target_fd)
             require(os.fstat(target_fd).st_dev == os.fstat(cache_fd).st_dev,
                     "Target cache uses another filesystem")
-            require(set(os.listdir(target_fd)) <=
-                    {*PROFILES, ".rustc_info.json", "CACHEDIR.TAG"},
-                    "Unknown target layout; preserve it for inspection")
+            # Cargo and test harnesses may also retain tmp/timing/report roots.
+            # Only known profile caches are eligible; every other entry stays.
+            untouched = sorted(set(os.listdir(target_fd)) -
+                               {*PROFILES, ".rustc_info.json", "CACHEDIR.TAG"})
+            print(json.dumps({"target": name, "preserved_entries": untouched}), flush=True)
             roots.append(root)
             profiles = []
             for profile in PROFILES:
@@ -155,8 +157,9 @@ def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
                 held.callback(os.close, lease)
                 profiles.append(profile_fd)
             plans.append((name, target_fd, profiles))
-        for _, target_fd, _ in plans:
-            check_tree(target_fd, os.fstat(target_fd).st_dev)
+        for _, target_fd, profiles in plans:
+            for profile_fd in profiles:
+                check_tree(profile_fd, os.fstat(target_fd).st_dev)
         active(roots)
         for name, target_fd, profiles in plans:
             if available(home) >= goal:

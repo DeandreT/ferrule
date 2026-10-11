@@ -55,7 +55,7 @@ Before each build it seeks four additional GiB of headroom. When space is low,
 live cache users before reclaiming reproducible outputs, first from the generated
 host target and then from the workspace target. It preserves profile lock inodes,
 retained job evidence, compiler/download caches and installed toolchains. Redirected
-paths, unknown target layouts, unreadable live processes or busy caches refuse
+paths, unsafe profile entries, unreadable live processes or busy caches refuse
 reclamation; insufficient capacity still refuses the build. This policy assumes
 the dedicated runner has one job slot and Cargo builds use the configured targets.
 The first native build used approximately 13 GiB, mostly workspace test

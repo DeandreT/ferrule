@@ -95,11 +95,12 @@ class CacheSpaceTests(unittest.TestCase):
         self.run_reclaim(available=self.capacity)
         self.preserve()
 
-    def test_unknown_target_layout_refuses_all_retirement(self):
-        (self.cache / "workspace-target/private-evidence").mkdir()
-        with self.assertRaisesRegex(ValueError, "Unknown target layout"):
-            self.run_reclaim(available=self.capacity)
-        self.assertTrue(all(p.exists() for p in self.markers))
+    def test_unrecognized_target_entries_are_preserved(self):
+        retained = self.cache / "workspace-target/private-evidence/original"
+        retained.parent.mkdir()
+        retained.write_bytes(b"retained target-root evidence")
+        self.run_reclaim(available=self.capacity)
+        self.assertEqual(retained.read_bytes(), b"retained target-root evidence")
         self.preserve()
 
     def test_special_file_refuses_before_either_target_is_trimmed(self):
