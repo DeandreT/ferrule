@@ -205,17 +205,27 @@ impl Dir {
         Ok(v)
     }
     pub fn write_frozen(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        #[cfg(test)]
+        super::ownership_fault351::retain_payload(name, bytes)?;
         let mut f = self.create(name)?;
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-write", name)?;
         f.write_all(bytes)?;
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-fsync", name)?;
         f.sync_all()?;
         if unsafe { libc::fchmod(f.as_raw_fd(), 0o444) } != 0 {
             return Err(super::linux::errno());
         }
         f.sync_all()?;
         drop(f);
+        #[cfg(test)]
+        super::ownership_fault351::probe("frozen-directory-fsync", name)?;
         self.file.sync_all()
     }
     pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+        #[cfg(test)]
+        super::ownership_fault351::probe("rename", from)?;
         let a = CString::new(from).map_err(io::Error::other)?;
         let b = CString::new(to).map_err(io::Error::other)?;
         // RENAME_NOREPLACE: never overwrite an existing fixed result artifact.
@@ -291,6 +301,8 @@ impl Dir {
         if now.identity != row.identity || now.sha256 != row.sha256 {
             return Err(io::Error::other("cleanup artifact identity changed"));
         }
+        #[cfg(test)]
+        super::ownership_fault351::probe("artifact-unlink", &row.name)?;
         self.unlink(&row.name)
     }
 }
@@ -485,6 +497,8 @@ impl ScratchPolicy {
         if m.dev() != dir.dev || m.ino() != dir.ino {
             return Err(io::Error::other("job named directory changed"));
         }
+        #[cfg(test)]
+        super::ownership_fault351::probe("directory-unlink", "job")?;
         if unsafe {
             libc::unlinkat(
                 self.parent.file.as_raw_fd(),
