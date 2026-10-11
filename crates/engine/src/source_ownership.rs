@@ -224,10 +224,10 @@ impl<'a> Admission<'a> {
     }
 
     fn function(&mut self, function: FunctionId) {
-        if self.functions.insert(function) {
-            if let Some(body) = self.project.user_functions.get(&function) {
-                self.pending.push((Some(function), body.output));
-            }
+        if self.functions.insert(function)
+            && let Some(body) = self.project.user_functions.get(&function)
+        {
+            self.pending.push((Some(function), body.output));
         }
     }
 
