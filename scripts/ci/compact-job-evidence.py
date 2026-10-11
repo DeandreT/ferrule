@@ -71,9 +71,22 @@ def owned_directory(path, *, parent=None):
     return fd
 
 
+def reject_mounts(root, *, mountinfo=None):
+    # Device checks alone miss bind mounts on the same filesystem.
+    path = os.readlink(f"/proc/self/fd/{root}")
+    mountinfo = (Path("/proc/self/mountinfo").read_text()
+                 if mountinfo is None else mountinfo)
+    for line in mountinfo.splitlines():
+        point = line.split()[4]
+        point = re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), point)
+        require(point != path and not point.startswith(path + "/"),
+                "Mounted evidence requires inspection")
+
+
 def inventory(root):
     """Snapshot a finite tree through directory descriptors without following links."""
     entries = {".": signature(os.fstat(root))}
+    reject_mounts(root)
     device = os.fstat(root).st_dev
 
     def visit(directory, prefix):
@@ -205,7 +218,8 @@ def compact_directory(scratch, archives, name, *, closed=producer_closure,
         require(identity.st_dev == os.fstat(scratch).st_dev,
                 "Evidence directory uses another filesystem")
         entries = inventory(root)
-        stem = f"{name}-{time.time_ns()}-{secrets.token_hex(4)}"
+        # Keep archive filenames below NAME_MAX even for long test directory names.
+        stem = f"{name[:180]}-{time.time_ns()}-{secrets.token_hex(4)}"
         pending = stem + ".pending"
         destination = stem + ".tar.gz"
         flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC

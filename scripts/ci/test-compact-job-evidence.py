@@ -89,6 +89,26 @@ class EvidenceCompactionTests(unittest.TestCase):
         self.assert_preserved()
         self.assertEqual(list(self.archives.iterdir()), [])
 
+    def test_long_original_names_fit_archive_filesystem_limits(self):
+        name = "ferrule-" + "x" * 212
+        self.original.rename(self.scratch / name)
+        self.name = name
+        self.original = self.scratch / name
+        manifest = self.archive_one()
+        self.assertEqual(manifest["original_directory"], name)
+        self.assertTrue((self.archives / manifest["archive"]).is_file())
+
+    def test_same_filesystem_bind_mount_also_refuses(self):
+        fd = evidence.owned_directory(self.original)
+        try:
+            path = str(self.original / "nested mount").replace(" ", "\\040")
+            mounts = f"42 1 0:1 / {path} rw - ext4 device rw\n"
+            with self.assertRaisesRegex(ValueError, "Mounted evidence"):
+                evidence.reject_mounts(fd, mountinfo=mounts)
+        finally:
+            os.close(fd)
+        self.assert_preserved()
+
     def test_producer_reappearing_before_removal_preserves_original(self):
         with self.assertRaisesRegex(ValueError, "producer"):
             self.archive_one(closed=Mock(side_effect=ValueError("producer alive")))
