@@ -31,6 +31,7 @@ Description=Ferrule CI runner on Cleo
 [Container]
 Image=localhost/ferrule-cleo:latest
 ContainerName=ferrule-cleo
+StopTimeout=300
 Volume=$service_home/home:/home/ferrule-runner
 PodmanArgs=--init --cpus 2 --memory 5g --pids-limit 1024
 [Quadlet]

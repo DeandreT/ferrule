@@ -19,4 +19,7 @@ fi
 touch /tmp/runner-ready
 while [[ ! -f $runner_dir/.runner ]]; do sleep 2; done
 cd "$runner_dir"
-exec runuser -u ferrule-runner -- ./run.sh
+# The official service supervisor forwards stop signals and removes the server
+# session before exit. Direct run.sh startup can leave a stale session on restart.
+exec setpriv --reuid=ferrule-runner --regid=ferrule-runner --init-groups \
+  ./externals/node20/bin/node ./bin/RunnerService.js
