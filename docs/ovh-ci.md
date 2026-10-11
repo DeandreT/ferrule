@@ -50,6 +50,14 @@ Private `/tmp` remains enabled for programs that ignore `TMPDIR`.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
 paths, or less than 16 GiB free for native CI and 8 GiB for codegen CI.
+Before each build it seeks four additional GiB of headroom. When space is low,
+`reclaim-build-cache.py` acquires exclusive Cargo profile locks and checks for
+live cache users before reclaiming reproducible outputs, first from the generated
+host target and then from the workspace target. It preserves profile lock inodes,
+retained job evidence, compiler/download caches and installed toolchains. Redirected
+paths, unsafe profile entries, unreadable live processes or busy caches refuse
+reclamation; insufficient capacity still refuses the build. This policy assumes
+the dedicated runner has one job slot and Cargo builds use the configured targets.
 The first native build used approximately 13 GiB, mostly workspace test
 executables. It checks Xvfb and native build prerequisites before toolchain setup.
 
@@ -62,8 +70,8 @@ Build outputs persist outside the cleaned checkout:
 
 - `/home/ferrule-runner/ci-cache/workspace-target` — workspace builds. After a
   successful job, `cargo clean --workspace` removes workspace outputs while
-  retaining third-party dependencies. Failed jobs retain their build artifacts
-  for diagnosis. This prevents successive source/toolchain builds from retaining
+  retaining third-party dependencies. Build artifacts are reproducible caches; later space admission can reclaim them.
+  Retained failure diagnostics belong in job temporary/evidence directories. This prevents successive source/toolchain builds from retaining
   multiple complete sets of test executables on the shared disk.
 - `/home/ferrule-runner/ci-cache/generated-host-target` — generated host builds
   that support `FERRULE_CODEGEN_HOST_TARGET_DIR`, separate from outer Cargo.
