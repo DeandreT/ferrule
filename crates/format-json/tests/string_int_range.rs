@@ -1197,11 +1197,6 @@ fn broader_domains_and_correlated_or_duplicate_branches_stay_refused() -> Result
             r###"{"variant":"UnsupportedSchemaUnion","name":"value","reason":"numeric range has no signed 64-bit integer values","display":"JSON Schema union `value` is not representable: numeric range has no signed 64-bit integer values"}"###,
         ),
         (
-            r###"integral-float-endpoint"###,
-            r###"{"title":"Record","type":"object","properties":{"value":{"type":["string","integer"],"minimum":2.0}},"required":["value"],"additionalProperties":false}"###,
-            r###"{"variant":"UnsupportedSchemaUnion","name":"value","reason":"floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints","display":"JSON Schema union `value` is not representable: floating-point integer bound is not exactly normalizable to i64; use an integer JSON token for integral endpoints"}"###,
-        ),
-        (
             r###"malformed-bound"###,
             r###"{"title":"Record","type":"object","properties":{"value":{"type":["string","integer"],"minimum":"2"}},"required":["value"],"additionalProperties":false}"###,
             r###"{"variant":"UnsupportedSchemaUnion","name":"value","reason":"`minimum` must be a number","display":"JSON Schema union `value` is not representable: `minimum` must be a number"}"###,
@@ -1255,6 +1250,105 @@ fn broader_domains_and_correlated_or_duplicate_branches_stay_refused() -> Result
             "{name}: {result:#?}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn integral_float_endpoint_keeps_required_string_int_model_and_boundaries()
+-> Result<(), Box<dyn Error>> {
+    const INPUT_SCHEMA: &str = r#"{"title":"Record","type":"object","properties":{"value":{"type":["string","integer"],"minimum":2.0}},"required":["value"],"additionalProperties":false}"#;
+    const EXPECTED_MODEL: &str = r#"{"name":"Record","repeating":false,"kind":{"kind":"group","children":[{"name":"value","repeating":false,"numeric_range":{"kind":"integer","bounds":{"minimum":2}},"kind":{"kind":"scalar_union","types":["string","int"]}}],"required":["value"]}}"#;
+    const EXPECTED_EXPORT: &str = r#"{"title":"Record","type":"object","properties":{"value":{"type":["string","integer"],"minimum":2}},"required":["value"],"additionalProperties":false}"#;
+    let imported = json_schema::import_str(INPUT_SCHEMA);
+    let expected_model = serde_json::from_str::<SchemaNode>(EXPECTED_MODEL);
+    eprintln!(
+        "STRING_INT_INTEGRAL_ENDPOINT_MODEL_ORIGINALS {}",
+        serde_json::json!({"schema_text":INPUT_SCHEMA,"expected_ir_text":EXPECTED_MODEL,
+            "import_original":original(&imported),"expected_model_original":format!("{expected_model:#?}")})
+    );
+    let expected_model = expected_model?;
+    let exported = json_schema::export(&expected_model);
+    let reimported = exported
+        .as_ref()
+        .ok()
+        .map(|text| json_schema::import_str(text));
+    let group = |value| Instance::Group(vec![("value".into(), Instance::Scalar(value))].into());
+    let cases = [
+        (
+            "boundary",
+            r#"{"value":2}"#,
+            group(Value::Int(2)),
+            "{\n  \"value\": 2\n}\n",
+        ),
+        (
+            "unbounded-upper",
+            r#"{"value":9223372036854775807}"#,
+            group(Value::Int(i64::MAX)),
+            "{\n  \"value\": 9223372036854775807\n}\n",
+        ),
+        (
+            "numeric-looking-string",
+            r#"{"value":"1"}"#,
+            group(Value::String("1".into())),
+            "{\n  \"value\": \"1\"\n}\n",
+        ),
+    ];
+    let actuals: Vec<_> = cases
+        .iter()
+        .map(|(_, input, value, _)| {
+            (
+                from_str(input, &expected_model),
+                to_string(&expected_model, value),
+            )
+        })
+        .collect();
+    let negative_input = from_str(r#"{"value":1}"#, &expected_model);
+    let negative_instance = group(Value::Int(1));
+    let negative_output = to_string(&expected_model, &negative_instance);
+    const ERROR: &str = r#"{"variant":"RangeMismatch","name":"value","range":"[2, inf)","got":"1","display":"`value` requires numeric range [2, inf), got 1"}"#;
+    eprintln!(
+        "STRING_INT_INTEGRAL_ENDPOINT_BOUNDARY_ORIGINALS {}",
+        serde_json::json!({"expected_schema":expected_model,"expected_export":EXPECTED_EXPORT,
+            "export_original":original(&exported),"reimport_original":reimported.as_ref().map(original),
+            "positive_cases":cases.iter().zip(&actuals).map(|((name,input,expected,output),(read,write))|
+                serde_json::json!({"case":name,"input":input,"expected_instance":instance_original(expected),
+                    "expected_output":output,"read_original":original(read),"write_original":original(write)})).collect::<Vec<_>>(),
+            "negative_input":"{\"value\":1}","negative_output_input":instance_original(&negative_instance),
+            "expected_input_error":ERROR,"expected_output_error":ERROR,
+            "negative_input_original":original(&negative_input),"negative_output_original":original(&negative_output)})
+    );
+    assert_eq!(
+        imported.as_ref().ok(),
+        Some(&expected_model),
+        "{imported:#?}"
+    );
+    assert_eq!(
+        reimported.as_ref().and_then(|value| value.as_ref().ok()),
+        Some(&expected_model),
+        "{reimported:#?}"
+    );
+    assert_eq!(
+        exported
+            .as_ref()
+            .ok()
+            .map(|text| serde_json::from_str::<serde_json::Value>(text))
+            .transpose()?,
+        Some(serde_json::from_str(EXPECTED_EXPORT)?)
+    );
+    for ((name, _, expected, output), (read, write)) in cases.iter().zip(&actuals) {
+        assert_eq!(read.as_ref().ok(), Some(expected), "{name}: {read:#?}");
+        assert_eq!(write.as_deref().ok(), Some(*output), "{name}: {write:#?}");
+    }
+    assert_eq!(
+        negative_input.as_ref().err().map(error_fields),
+        Some(serde_json::from_str(ERROR)?),
+        "{negative_input:#?}"
+    );
+    assert_eq!(
+        negative_output.as_ref().err().map(error_fields),
+        Some(serde_json::from_str(ERROR)?),
+        "{negative_output:#?}"
+    );
     Ok(())
 }
 
