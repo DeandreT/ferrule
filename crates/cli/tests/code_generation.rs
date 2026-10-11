@@ -56,6 +56,8 @@ mod json_text_boundaries;
 mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
+#[path = "code_generation/nested_array_wrappers.rs"]
+mod nested_array_wrappers;
 #[path = "code_generation/nested_clone_owners.rs"]
 mod nested_clone_owners;
 #[path = "code_generation/optional_runtime_defaults.rs"]

@@ -47,6 +47,14 @@ fn render_shape(
     node: &SchemaNode,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
+    if node.json_array_wrapper {
+        let item = node.json_array_wrapper_item().ok_or_else(|| {
+            JsonFormatError::InvalidArrayWrapperMetadata {
+                name: node.name.clone(),
+            }
+        })?;
+        return render(item, out);
+    }
     match &node.kind {
         SchemaKind::Scalar { ty } => {
             if node.json_any {

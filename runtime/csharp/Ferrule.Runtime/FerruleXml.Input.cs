@@ -182,7 +182,7 @@ public static partial class FerruleXml
             throw new FormatException("XML input schema requires an exact namespace identity");
         }
         foreach (var flag in new[] { "repeating", "text", "nillable", "xml_optional",
-            "nullable", "container_nullable", "json_any", "json_unique_items" })
+            "nullable", "container_nullable", "json_array_wrapper", "json_any", "json_unique_items" })
         {
             RequireInputBoolean(node, flag, false);
         }

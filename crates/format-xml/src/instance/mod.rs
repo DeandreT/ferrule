@@ -1082,6 +1082,13 @@ fn render_with_options(
 }
 
 pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), XmlFormatError> {
+    if schema.json_array_wrapper {
+        return Err(XmlFormatError::UnsupportedSchemaRole {
+            node: schema.name.clone(),
+            role: "element",
+            kind: "JSON array wrapper",
+        });
+    }
     if !schema.xml_optional_is_valid() {
         return Err(XmlFormatError::InvalidXmlOptional {
             name: schema.name.clone(),
