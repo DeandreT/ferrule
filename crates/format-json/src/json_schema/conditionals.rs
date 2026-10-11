@@ -37,7 +37,7 @@ pub(super) fn apply(
     name: &str,
     schema: &serde_json::Value,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
     admits_non_objects: bool,
 ) -> Result<(), JsonFormatError> {
@@ -211,7 +211,7 @@ fn apply_never_else(
     name: &str,
     selected: Selected<'_>,
     node: &mut SchemaNode,
-    doc: &serde_json::Value,
+    doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<(), JsonFormatError> {
     let SchemaKind::Group {
