@@ -6,10 +6,16 @@ pub(super) fn select(
     data: roxmltree::Node<'_, '_>,
     schema: &SchemaNode,
 ) -> Result<Option<SchemaNode>, &'static str> {
-    let Some(parameter) = data.children().find(|node| {
-        node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
-    }) else {
-        return Ok(None);
+    let parameters = data
+        .children()
+        .filter(|node| {
+            node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
+        })
+        .collect::<Vec<_>>();
+    let parameter = match parameters.as_slice() {
+        [] => return Ok(None),
+        [parameter] => *parameter,
+        _ => return Err("variable must have one declared parameter"),
     };
     if data
         .children()
