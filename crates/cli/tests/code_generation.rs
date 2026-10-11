@@ -54,6 +54,9 @@ mod json5_companions;
 mod json_parser_ports;
 #[path = "code_generation/json_structure_variables.rs"]
 mod json_structure_variables;
+
+#[path = "code_generation/edi_structure_variables.rs"]
+mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
