@@ -75,6 +75,76 @@ jobs:
         run: >-
           cargo test -p cli --test code_generation
           --features codegen-tests -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+      - name: compiled string and integral boundary regressions
+        id: compiled_boundaries
+        if: matrix.suite == 'mappings'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+          RUST_TEST_THREADS: "1"
+        run: |
+          set -euo pipefail
+          evidence_dir=$(mktemp -d "$RUNNER_TEMP/ferrule-compiled-boundaries.XXXXXX")
+          printf 'evidence_dir=%s\n' "$evidence_dir" >> "$GITHUB_OUTPUT"
+          export FERRULE_CODEGEN_STRING_INT_RANGE_EVIDENCE_DIR="$evidence_dir/originals"
+          shared_target="${FERRULE_CODEGEN_HOST_TARGET_DIR:-${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/target}}"
+          printf '%s\n' "$shared_target" > "$evidence_dir/shared-target.original"
+          if [[ $shared_target != /* || ! -d $shared_target ]]; then
+            echo 'Compiled regressions require the existing absolute shared Cargo target.' > "$evidence_dir/setup-error.original"
+            cat "$evidence_dir/setup-error.original" >&2
+            exit 1
+          fi
+          export FERRULE_CODEGEN_HOST_TARGET_DIR="$shared_target"
+          reserve_bytes=8589934592
+          check_storage() {
+            local phase=$1 location label available_bytes
+            df --block-size=1 "$shared_target" "$evidence_dir" > "$evidence_dir/$phase.df.original" 2> "$evidence_dir/$phase.df.stderr.original"
+            du --summarize --block-size=1 "$shared_target" > "$evidence_dir/$phase.target-allocated.original" 2> "$evidence_dir/$phase.target-allocated.stderr.original"
+            du --summarize --apparent-size --block-size=1 "$shared_target" > "$evidence_dir/$phase.target-logical.original" 2> "$evidence_dir/$phase.target-logical.stderr.original"
+            for label in target evidence; do
+              if [[ $label == target ]]; then location=$shared_target; else location=$evidence_dir; fi
+              df --block-size=1 --output=avail "$location" > "$evidence_dir/$phase.$label-free.original" 2> "$evidence_dir/$phase.$label-free.stderr.original"
+              available_bytes=$(tail -n 1 "$evidence_dir/$phase.$label-free.original")
+              available_bytes="${available_bytes//[[:space:]]/}"
+              if [[ ! $available_bytes =~ ^[0-9]+$ ]] || (( available_bytes < reserve_bytes )); then
+                printf 'Compiled regressions need at least 8 GiB free on %s (%s bytes available).\n' "$location" "$available_bytes" > "$evidence_dir/$phase.$label-refusal.original"
+                cat "$evidence_dir/$phase.$label-refusal.original" >&2
+                return 1
+              fi
+            done
+            cat "$evidence_dir/$phase.df.original" "$evidence_dir/$phase.target-allocated.original" "$evidence_dir/$phase.target-logical.original"
+          }
+          result=0
+          for test_name in \
+            string_int_range_boundaries::string_int_ranges_compiled_rust_and_csharp_complete_text_and_bytes \
+            string_int_range_boundaries::exact_integral_schema_bounds_compiled_rust_and_csharp_complete_text_and_bytes; do
+            test_label="${test_name##*::}"
+            check_storage "$test_label.before"
+            printf '%s\n' "cargo test -p cli --test code_generation --features codegen-tests $test_name -- --ignored --exact --nocapture --test-threads=1" > "$evidence_dir/$test_label.command.original"
+            set +e
+            cargo test -p cli --test code_generation --features codegen-tests "$test_name" \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              > "$evidence_dir/$test_label.stdout.original" 2> "$evidence_dir/$test_label.stderr.original"
+            status=$?
+            set -e
+            printf '%s\n' "$status" > "$evidence_dir/$test_label.exit-status.original"
+            cat "$evidence_dir/$test_label.stdout.original" "$evidence_dir/$test_label.stderr.original"
+            if (( status != 0 )) || ! grep -Fxq 'running 1 test' "$evidence_dir/$test_label.stdout.original"; then
+              result=1
+            fi
+            check_storage "$test_label.after"
+          done
+          exit "$result"
+      - name: retain compiled boundary verification originals
+        if: always() && matrix.suite == 'mappings' && steps.compiled_boundaries.outputs.evidence_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-boundaries-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.compiled_boundaries.outputs.evidence_dir }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
       - name: Trim successful workspace build
         if: success() && runner.environment == 'self-hosted'
         run: cargo clean --workspace
