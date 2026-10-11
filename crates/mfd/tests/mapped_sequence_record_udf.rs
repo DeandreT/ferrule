@@ -507,8 +507,12 @@ fn mapped_sequence_record_composition_retains_owner_for_duplicate_field()
             r#"<entry name="Label" inpkey="404"/>"#,
         )
         .replace(
+            r#"<entry name="Label" inpkey="21"/>"#,
+            r#"<entry name="Label" inpkey="21"/><entry name="Label" inpkey="24"/>"#,
+        )
+        .replace(
             r#"<vertex vertexkey="51"><edges><edge vertexkey="23"/></edges></vertex>"#,
-            r#"<vertex vertexkey="51"><edges><edge vertexkey="21"/></edges></vertex>"#,
+            r#"<vertex vertexkey="51"><edges><edge vertexkey="24"/></edges></vertex>"#,
         );
     let dir = setup(&design);
     add_optional_extra_field(&dir);
