@@ -20,6 +20,7 @@ mod source_field_tests;
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
+pub use resolve::{OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimitKind};
 
 use crate::{DynamicSourceLoader, ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
 
@@ -619,4 +620,454 @@ fn string_path_has_suffix(path: &[String], suffix: &[&str]) -> bool {
             .iter()
             .zip(suffix)
             .all(|(segment, expected)| segment == expected)
+}
+
+/// An exact source endpoint for the additive owned runtime APIs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceOwnerRef<'a> {
+    Primary,
+    Named(&'a str),
+}
+
+/// One declared static named endpoint, which need not have been acquired.
+#[derive(Clone, Copy, Debug)]
+pub struct DeclaredNamedSourceRoot<'a> {
+    pub name: &'a str,
+    pub instance: Option<&'a Instance>,
+}
+
+/// Caller-selected finite metadata limits; no deployment defaults are implied.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OwnedSourceLimits {
+    pub max_roots: usize,
+    pub max_active_frames: usize,
+    pub max_path_segments: usize,
+    pub max_metadata_bytes: usize,
+    pub max_walk_contexts: usize,
+}
+
+struct SourceRootRegistry<'a> {
+    primary: &'a Instance,
+    named: &'a [DeclaredNamedSourceRoot<'a>],
+    limits: OwnedSourceLimits,
+    name_bytes: usize,
+    root_count: usize,
+    slot_bound: usize,
+}
+
+/// Shares an immutable descriptor while all source data remains borrowed.
+#[derive(Clone)]
+pub struct SourceRoots<'a> {
+    registry: std::sync::Arc<SourceRootRegistry<'a>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OwnedOwnerKey {
+    Primary,
+    Named(usize),
+}
+
+#[derive(Clone)]
+struct OwnedSourceFrame<'a> {
+    owner: OwnedOwnerKey,
+    collection: Vec<String>,
+    instance: &'a Instance,
+    index: usize,
+}
+
+/// An owner-aware view separate from every legacy ScopeContext operation.
+/// Only static source walking creates its private occurrence frames.
+pub struct OwnedScopeContext<'a> {
+    registry: std::sync::Arc<SourceRootRegistry<'a>>,
+    frames: Vec<OwnedSourceFrame<'a>>,
+}
+
+struct OwnedMetadataBudget {
+    used: usize,
+    max: usize,
+    slots: OwnedSlotBudget,
+}
+
+struct OwnedSlotBudget {
+    used: usize,
+    max: usize,
+}
+
+impl OwnedSlotBudget {
+    fn charge(&mut self, slots: usize) -> Result<(), OwnedSourceError> {
+        self.used = owned_charge(
+            OwnedSourceLimitKind::MetadataSlots,
+            self.used,
+            slots,
+            self.max,
+        )?;
+        Ok(())
+    }
+
+    fn release(&mut self, slots: usize) -> Result<(), OwnedSourceError> {
+        self.used =
+            self.used
+                .checked_sub(slots)
+                .ok_or(OwnedSourceError::MetadataArithmeticOverflow {
+                    kind: OwnedSourceLimitKind::MetadataSlots,
+                })?;
+        Ok(())
+    }
+}
+
+fn owned_slot_bound(limits: OwnedSourceLimits) -> Result<usize, OwnedSourceError> {
+    let overflow = || OwnedSourceError::MetadataArithmeticOverflow {
+        kind: OwnedSourceLimitKind::MetadataSlots,
+    };
+    let product = limits
+        .max_walk_contexts
+        .checked_mul(limits.max_active_frames)
+        .ok_or_else(overflow)?;
+    let current_scratch = limits
+        .max_active_frames
+        .checked_mul(2)
+        .ok_or_else(overflow)?;
+    let all_frames = product.checked_add(current_scratch).ok_or_else(overflow)?;
+    let frame_strings = all_frames
+        .checked_mul(limits.max_path_segments)
+        .ok_or_else(overflow)?;
+    let tasks = limits
+        .max_active_frames
+        .checked_add(1)
+        .and_then(|n| n.checked_mul(2))
+        .ok_or_else(overflow)?;
+    let registries = limits.max_roots.checked_mul(2).ok_or_else(overflow)?;
+    let diagnostics = limits
+        .max_path_segments
+        .checked_mul(2)
+        .and_then(|n| n.checked_add(2))
+        .ok_or_else(overflow)?;
+    [
+        registries,
+        1,
+        all_frames,
+        frame_strings,
+        tasks,
+        limits.max_walk_contexts,
+        diagnostics,
+    ]
+    .into_iter()
+    .try_fold(0_usize, |total, slots| {
+        total.checked_add(slots).ok_or_else(overflow)
+    })
+}
+
+fn owned_charge(
+    kind: OwnedSourceLimitKind,
+    used: usize,
+    requested: usize,
+    max: usize,
+) -> Result<usize, OwnedSourceError> {
+    let next = used
+        .checked_add(requested)
+        .ok_or(OwnedSourceError::MetadataArithmeticOverflow { kind })?;
+    if next > max {
+        return Err(OwnedSourceError::MetadataLimit {
+            kind,
+            used,
+            requested,
+            max,
+        });
+    }
+    Ok(next)
+}
+
+impl OwnedMetadataBudget {
+    fn charge(&mut self, bytes: usize) -> Result<(), OwnedSourceError> {
+        self.used = owned_charge(
+            OwnedSourceLimitKind::MetadataBytes,
+            self.used,
+            bytes,
+            self.max,
+        )?;
+        Ok(())
+    }
+
+    fn strings(&mut self, path: &[String]) -> Result<(), OwnedSourceError> {
+        for segment in path {
+            self.charge(segment.len())?;
+        }
+        Ok(())
+    }
+
+    fn borrowed_path(&mut self, path: &[&str]) -> Result<(), OwnedSourceError> {
+        for segment in path {
+            self.charge(segment.len())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> SourceRoots<'a> {
+    /// Bounds metadata without loading inputs or resolving unused names.
+    pub fn try_new(
+        primary: &'a Instance,
+        named: &'a [DeclaredNamedSourceRoot<'a>],
+        limits: OwnedSourceLimits,
+    ) -> Result<Self, OwnedSourceError> {
+        let root_count = owned_charge(
+            OwnedSourceLimitKind::Roots,
+            1,
+            named.len(),
+            limits.max_roots,
+        )?;
+        // Validate every aggregate slot product/sum before registry allocation.
+        let slot_bound = owned_slot_bound(limits)?;
+        let mut budget = OwnedMetadataBudget {
+            used: 0,
+            max: limits.max_metadata_bytes,
+            slots: OwnedSlotBudget {
+                used: root_count,
+                max: slot_bound,
+            },
+        };
+        for declaration in named {
+            budget.charge(declaration.name.len())?;
+        }
+        Ok(Self {
+            registry: std::sync::Arc::new(SourceRootRegistry {
+                primary,
+                named,
+                limits,
+                name_bytes: budget.used,
+                root_count,
+                slot_bound,
+            }),
+        })
+    }
+
+    /// The context owns a shared descriptor, never a borrow of this handle.
+    pub fn root_context(&self) -> Result<OwnedScopeContext<'a>, OwnedSourceError> {
+        owned_charge(
+            OwnedSourceLimitKind::MetadataSlots,
+            self.registry.root_count,
+            1,
+            self.registry.slot_bound,
+        )?;
+        Ok(OwnedScopeContext {
+            registry: std::sync::Arc::clone(&self.registry),
+            frames: Vec::new(),
+        })
+    }
+}
+
+impl<'a> OwnedScopeContext<'a> {
+    fn query_budget(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+    ) -> Result<OwnedMetadataBudget, OwnedSourceError> {
+        let limits = self.registry.limits;
+        owned_charge(
+            OwnedSourceLimitKind::PathSegments,
+            0,
+            path.len(),
+            limits.max_path_segments,
+        )?;
+        if let Some(frame) = frame {
+            owned_charge(
+                OwnedSourceLimitKind::PathSegments,
+                0,
+                frame.len(),
+                limits.max_path_segments,
+            )?;
+        }
+        let mut budget = OwnedMetadataBudget {
+            used: self.registry.name_bytes,
+            max: limits.max_metadata_bytes,
+            slots: OwnedSlotBudget {
+                used: self.registry.root_count,
+                max: self.registry.slot_bound,
+            },
+        };
+        budget.slots.charge(1)?; // The current context remains borrowed and live.
+        for active in &self.frames {
+            budget.slots.charge(1)?;
+            budget.slots.charge(active.collection.len())?;
+            budget.strings(&active.collection)?;
+        }
+        // Reserve complete diagnostic String/index slots before namespace errors.
+        budget.slots.charge(2)?;
+        budget.slots.charge(path.len())?;
+        if let Some(frame) = frame {
+            budget.slots.charge(frame.len())?;
+        }
+        if matches!(owner, SourceOwnerRef::Named(_)) {
+            budget.slots.charge(self.registry.named.len())?;
+        }
+        let owner_name = match owner {
+            SourceOwnerRef::Primary => "",
+            SourceOwnerRef::Named(name) => name,
+        };
+        // Admit borrowed query text and reserve every possible copied error
+        // name/path/frame before a diagnostic can allocate it.
+        for _ in 0..2 {
+            budget.charge(owner_name.len())?;
+            budget.borrowed_path(path)?;
+            if let Some(frame) = frame {
+                budget.borrowed_path(frame)?;
+            }
+        }
+        budget.charge(path.iter().map(|segment| segment.len()).max().unwrap_or(0))?;
+        Ok(budget)
+    }
+
+    fn resolve_owned_owner(
+        &self,
+        owner: SourceOwnerRef<'_>,
+    ) -> Result<(OwnedOwnerKey, &'a Instance), OwnedSourceError> {
+        let SourceOwnerRef::Named(name) = owner else {
+            return Ok((OwnedOwnerKey::Primary, self.registry.primary));
+        };
+        if name.is_empty() {
+            return Err(OwnedSourceError::InvalidNamedOwner);
+        }
+        let mut matches = self
+            .registry
+            .named
+            .iter()
+            .enumerate()
+            .filter(|(_, declaration)| declaration.name == name);
+        let Some((index, declaration)) = matches.next() else {
+            return Err(OwnedSourceError::UnknownOwner {
+                name: name.to_string(),
+            });
+        };
+        if matches.next().is_some() {
+            return Err(OwnedSourceError::AmbiguousOwner {
+                name: name.to_string(),
+                declarations: self
+                    .registry
+                    .named
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, declaration)| (declaration.name == name).then_some(index))
+                    .collect(),
+            });
+        }
+        declaration
+            .instance
+            .map(|instance| (OwnedOwnerKey::Named(index), instance))
+            .ok_or_else(|| OwnedSourceError::SourceUnavailable {
+                name: name.to_string(),
+            })
+    }
+
+    fn owned_identity(&self, owner: OwnedOwnerKey) -> OwnedSourceIdentity {
+        match owner {
+            OwnedOwnerKey::Primary => OwnedSourceIdentity::Primary,
+            OwnedOwnerKey::Named(index) => {
+                OwnedSourceIdentity::Named(self.registry.named[index].name.to_string())
+            }
+        }
+    }
+
+    fn owned_frame_index(
+        &self,
+        owner: OwnedOwnerKey,
+        collection: Option<&[&str]>,
+    ) -> Option<usize> {
+        self.frames.iter().rposition(|frame| {
+            frame.owner == owner && collection.is_none_or(|path| same_path(path, &frame.collection))
+        })
+    }
+
+    fn owned_base(&self, owner: OwnedOwnerKey, path: &[&str]) -> Option<&OwnedSourceFrame<'a>> {
+        self.frames
+            .iter()
+            .rev()
+            .find(|frame| frame.owner == owner && has_prefix(path, &frame.collection))
+    }
+
+    fn copy_owned_frames(
+        &self,
+        frames: &[OwnedSourceFrame<'a>],
+        budget: &mut OwnedMetadataBudget,
+    ) -> Result<Vec<OwnedSourceFrame<'a>>, OwnedSourceError> {
+        owned_charge(
+            OwnedSourceLimitKind::Frames,
+            0,
+            frames.len(),
+            self.registry.limits.max_active_frames,
+        )?;
+        for frame in frames {
+            budget.slots.charge(1)?;
+            budget.slots.charge(frame.collection.len())?;
+            budget.strings(&frame.collection)?;
+        }
+        Ok(frames.to_vec())
+    }
+
+    /// Copies only admitted metadata, retaining actual borrowed source items.
+    pub fn try_clone_view(&self) -> Result<Self, OwnedSourceError> {
+        let mut budget = self.query_budget(SourceOwnerRef::Primary, &[], None)?;
+        budget.slots.charge(1)?;
+        Ok(Self {
+            registry: std::sync::Arc::clone(&self.registry),
+            frames: self.copy_owned_frames(&self.frames, &mut budget)?,
+        })
+    }
+
+    /// An inactive or foreign-owner collection is never default position one.
+    pub fn owned_position(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        collection: Option<&[&str]>,
+    ) -> Result<usize, OwnedSourceError> {
+        self.query_budget(owner, &[], collection)?;
+        let (owner, _) = self.resolve_owned_owner(owner)?;
+        self.owned_frame_index(owner, collection)
+            .map(|index| self.frames[index].index)
+            .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+                owner: self.owned_identity(owner),
+                collection: collection.map(owned_string_path),
+            })
+    }
+
+    /// Returns a bounded view with only the selected owned position replaced.
+    pub fn with_owned_position(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        collection: Option<&[&str]>,
+        index: usize,
+    ) -> Result<Self, OwnedSourceError> {
+        let mut budget = self.query_budget(owner, &[], collection)?;
+        let (owner, _) = self.resolve_owned_owner(owner)?;
+        let frame = self.owned_frame_index(owner, collection).ok_or_else(|| {
+            OwnedSourceError::InactiveSourceFrame {
+                owner: self.owned_identity(owner),
+                collection: collection.map(owned_string_path),
+            }
+        })?;
+        if index == 0 {
+            return Err(OwnedSourceError::InvalidPosition { index });
+        }
+        budget.slots.charge(1)?;
+        let mut frames = self.copy_owned_frames(&self.frames, &mut budget)?;
+        frames[frame].index = index;
+        Ok(Self {
+            registry: std::sync::Arc::clone(&self.registry),
+            frames,
+        })
+    }
+}
+
+fn owned_string_path(path: &[&str]) -> Vec<String> {
+    path.iter().map(|segment| (*segment).to_string()).collect()
+}
+
+fn owned_instance_kind(instance: &Instance) -> InstanceKind {
+    match instance {
+        Instance::Scalar(_) => InstanceKind::Scalar,
+        Instance::Group(_) => InstanceKind::Group,
+        Instance::Repeated(_) => InstanceKind::Repeated,
+        Instance::DocumentSet(_) => InstanceKind::DocumentSet,
+        Instance::MappedSequence(_) => InstanceKind::MappedSequence,
+    }
 }
