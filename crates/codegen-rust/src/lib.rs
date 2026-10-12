@@ -2807,3 +2807,11 @@ mod tests;
 
 #[cfg(test)]
 mod direct_program_tests;
+
+// Private checked prototype; public emission and prepared entries stay exact.
+#[cfg(test)]
+pub(crate) fn render_checked_private_owned_basic_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    owned_basic::render_checked_basic_owned_source(program)
+}
