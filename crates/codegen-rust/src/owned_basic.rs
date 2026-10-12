@@ -382,9 +382,6 @@ fn render_entries(program: &Program) -> String {
 // factory alone owns supplied-input normalization and admitted storage.
 pub(crate) fn render_checked_basic_owned_source(program: &Program) -> Result<String, EmitError> {
     let mut source = render_basic_owned_source(program)?;
-    if !program.failure_rules.is_empty() {
-        return Err(failure_refusal(0, Capability::FailureRule));
-    }
     let plan = codegen::legacy_named_input_admission_plan(program)?;
     source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
     source.push_str(&render_checked_catalogue(
@@ -492,12 +489,16 @@ pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
     }
 }
 
-// This checked-only shared context seam is the explicit later failure-bridge
-// composition point. The current prototype still closes failure-rule inventory.
+// This checked-only shared context adopts the normalized roots once.
+// Ordinary global source rules run before any selected or all-target output.
 fn execute_private_checked_basic_context(
     context: &BasicScopeContext<'_>, selected: Option<usize>,
 ) -> Result<PrivateCheckedBasicOutput, RuntimeError> {
-    if let Some(selected) = selected {
+"#);
+    if !program.failure_rules.is_empty() {
+        source.push_str("    evaluate_basic_failure_rules(context)?;\n");
+    }
+    source.push_str(r#"    if let Some(selected) = selected {
         return match selected {
             0 => Ok(PrivateCheckedBasicOutput::Selected(SelectedTargetOutput::Primary(scope_root(context)?))),
 "#);
