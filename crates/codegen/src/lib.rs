@@ -15,6 +15,7 @@ mod join;
 mod json5_boundary;
 mod lower;
 mod model;
+mod owned_admission;
 mod static_document_boundary;
 mod validate;
 mod x12_boundary;
@@ -59,6 +60,10 @@ pub use model::{
     SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
     XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
     XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
+};
+pub use owned_admission::{
+    NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
+    NamedTargetInputCatalogue, legacy_named_input_admission_plan,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
