@@ -35,8 +35,9 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots,
-    CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+    BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext,
+    BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
+    PhaseSelection, RetainedSourceCohort,
 };
 pub use context::{
     DeclaredNamedSourceRoot, OwnedScopeContext, OwnedSourceError, OwnedSourceIdentity,
