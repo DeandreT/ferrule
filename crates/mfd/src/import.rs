@@ -41,6 +41,7 @@ mod iteration;
 mod join;
 mod json_parser;
 mod json_serializer;
+mod json_variable;
 mod materialize;
 mod mixed_content;
 mod output_parameter;
@@ -2693,6 +2694,32 @@ fn build_target_scope(
         }
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
+                match json_variable::expand_record(
+                    target,
+                    target_path,
+                    node,
+                    inpkey,
+                    from,
+                    copy_all_targets.contains(&inpkey),
+                    builder,
+                ) {
+                    Ok(Some(record)) => {
+                        for (path, feed) in record {
+                            if let Some(leaf) = TargetLeaf::from_path(&path) {
+                                bindings.push((leaf, feed, inpkey));
+                            }
+                        }
+                        continue;
+                    }
+                    Err(reason) => {
+                        builder.warnings.push(format!(
+                            "JSON variable record into `{}` is unsupported: {reason}; skipped",
+                            target_path.join("/")
+                        ));
+                        continue;
+                    }
+                    Ok(None) => {}
+                }
                 if udf::structured::accept_target(target, target_path, node, inpkey, from, builder)
                 {
                     structured_udf_targets.push((target_path.clone(), from));

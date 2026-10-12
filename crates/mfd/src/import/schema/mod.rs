@@ -15,6 +15,7 @@ mod fixed_width;
 mod flextext;
 mod generic_xml;
 mod http_get;
+mod json_variable;
 mod pdf;
 mod protobuf;
 mod shared;
@@ -931,6 +932,19 @@ fn read_json_component_resolved(
             }
             json_entry_value_schema(&name, &entry)
         });
+    let is_variable = match json_variable::select(data, &schema) {
+        Ok(Some(selected)) => {
+            schema = selected;
+            true
+        }
+        Ok(None) => false,
+        Err(reason) => {
+            warnings.push(format!(
+                "JSON variable `{name}` has an unsupported root selection: {reason}; skipped"
+            ));
+            return None;
+        }
+    };
     if schema.contains_json_array_wrapper()
         && let Err(reason) =
             remap_json_array_wrapper_ports(&entry, &schema, &mut Vec::new(), &mut ports)
@@ -954,6 +968,9 @@ fn read_json_component_resolved(
         return None;
     }
 
+    let (input_keys, output_keys) = entry_key_sets(&root_el);
+    let input_ancestors = input_port_ancestors(&entry, &input_keys);
+
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Json,
@@ -973,13 +990,13 @@ fn read_json_component_resolved(
         },
         is_source,
         is_default_output: is_default_output(component),
-        is_variable: false,
+        is_variable,
         is_pass_through: false,
         compute_when_key: None,
         ports,
-        input_ancestors: BTreeMap::new(),
-        input_keys: BTreeSet::new(),
-        output_keys: BTreeSet::new(),
+        input_ancestors,
+        input_keys,
+        output_keys,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json,
