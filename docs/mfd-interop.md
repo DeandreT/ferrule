@@ -777,6 +777,16 @@ array and item views do not participate in parser admission. Connected structura
 outputs, root arrays, array-crossing property paths and missing schema paths retain
 their explicit refusal. Each admitted field still parses and validates the complete
 JSON document against its schema, including properties whose ports are unused.
+
+JSON structure variables use the explicit parameter-root path to select their
+schema value. Property steps retain their names; object views are transparent.
+Variables remain intermediate values and scalar outputs resolve through their
+declared input connectors. A copy-all connection can construct a closed,
+non-repeating JSON record of scalar fields from constants or singleton XML/JSON
+source fields when the complete target schema matches. At least one non-null
+constant or required non-null JSON scalar input establishes record presence.
+Connected structural inputs, competing field connectors, repeating dependencies, overlapping target
+inputs, unresolved selections and variable scope controls retain refusals.
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.

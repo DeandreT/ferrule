@@ -1,0 +1,9 @@
+[
+  {"input":"{\"Code\":\"ignored\",\"Quantity\":2}","expected":{"Code":"fixed","Quantity":2,"Stored":{"Code":"fixed","Quantity":2}}},
+  {"input":"{\"Quantity\":-17}","expected":{"Code":"fixed","Quantity":-17,"Stored":{"Code":"fixed","Quantity":-17}}},
+  {"input":"{\"Quantity\":0}","expected":{"Code":"fixed","Quantity":0,"Stored":{"Code":"fixed","Quantity":0}}},
+  {"input":"{}","expected":{"Code":"fixed","Stored":{"Code":"fixed"}}},
+  {"input":"{\"Code\":true,\"Quantity\":2}","reject":true},
+  {"input":"{\"Quantity\":1.5}","reject":true},
+  {"input":"{\"Quantity\":null}","reject":true}
+]
