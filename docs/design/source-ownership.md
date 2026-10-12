@@ -1,0 +1,112 @@
+# Explicit source ownership: contributor capability matrix
+
+This design defines explicit source ownership contracts and their semantic prerequisites. [#432](https://github.com/DeandreT/ferrule/issues/432) and [#452](https://github.com/DeandreT/ferrule/issues/452) coordinate implementation; linked issues and PRs track assignment, progress and verification.
+
+The owner/path foundation ([#433](https://github.com/DeandreT/ferrule/issues/433)) defines strict `SourceOwner`, `OwnedSourceRef` and `SourceSelector` data types. Owned field/position nodes ([#434](https://github.com/DeandreT/ferrule/issues/434)) and collection selectors ([#435](https://github.com/DeandreT/ferrule/issues/435)) add representation and typed capability gates. Interpreter execution, generated Rust/C#, native export and GUI authoring require their own qualification; wire representation alone does not enable them.
+
+## Ownership rules
+
+An owner selects immutable primary or one exact named endpoint. Preserve name bytes; reject empty named owners without trimming, alias/prefix fallback or new path restrictions. Paths are endpoint-local. Owned `[]` differs from inherited/null selection; absent-frame differs from root-frame. Preserve legacy fallback, while owned reads never borrow another endpoint. Generated item IDs, function inputs and JoinId remain separate identities.
+
+Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
+
+## Existing coordinated issues
+
+Reuse these existing scopes; the capability column concerns **explicit ownership**.
+
+| Issue / scope | Dependency | Capability contract |
+|---|---|---|
+| [#433](https://github.com/DeandreT/ferrule/issues/433) DTOs | None | Strict owner/path data types; execution qualifies separately |
+| [#434](https://github.com/DeandreT/ferrule/issues/434) owned field/position nodes | [#433](https://github.com/DeandreT/ferrule/issues/433) | Strict new kinds, schema checks and closed typed gates |
+| [#435](https://github.com/DeandreT/ferrule/issues/435) collection/root/nested selector | [#434](https://github.com/DeandreT/ferrule/issues/434) | Source slot/getters/mutators must preserve owner |
+| [#436](https://github.com/DeandreT/ferrule/issues/436) interpreter registry/basic frames | [#435](https://github.com/DeandreT/ferrule/issues/435) | exact scalar, collection and position reads; separate generated/function contexts |
+| [#437](https://github.com/DeandreT/ferrule/issues/437) Rust runtime registry/walks | [#435](https://github.com/DeandreT/ferrule/issues/435) | preserve legacy context; no emitter opening alone |
+| [#438](https://github.com/DeandreT/ferrule/issues/438) C# runtime registry/walks | [#435](https://github.com/DeandreT/ferrule/issues/435) | separate registry from legacy merged named wrapper |
+| [#439](https://github.com/DeandreT/ferrule/issues/439) paired basic lowering/emission | [#436](https://github.com/DeandreT/ferrule/issues/436),[#437](https://github.com/DeandreT/ferrule/issues/437),[#438](https://github.com/DeandreT/ferrule/issues/438) | scalar AND collection/position/nesting, checked in all three engines |
+| [#440](https://github.com/DeandreT/ferrule/issues/440) sort/filter/windows | [#439](https://github.com/DeandreT/ferrule/issues/439) | parent/item phases and frame provenance |
+| [#441](https://github.com/DeandreT/ferrule/issues/441) group-by/post-group filter | [#440](https://github.com/DeandreT/ferrule/issues/440) | grouped frame and representative item |
+| [#442](https://github.com/DeandreT/ferrule/issues/442) adjacent grouping | [#441](https://github.com/DeandreT/ferrule/issues/441) | adjacent key/item frames |
+| [#443](https://github.com/DeandreT/ferrule/issues/443) starting-boundary grouping | [#442](https://github.com/DeandreT/ferrule/issues/442) | boundary phases/positions |
+| [#444](https://github.com/DeandreT/ferrule/issues/444) ending-boundary grouping | [#443](https://github.com/DeandreT/ferrule/issues/443) | membership and frame positions |
+| [#445](https://github.com/DeandreT/ferrule/issues/445) fixed-block grouping | [#444](https://github.com/DeandreT/ferrule/issues/444) | block/window membership |
+| [#446](https://github.com/DeandreT/ferrule/issues/446) Lookup/CollectionFind | [#445](https://github.com/DeandreT/ferrule/issues/445) | parent needle, owned item predicate/value, missing result Null |
+| [#447](https://github.com/DeandreT/ferrule/issues/447) collection aggregates | [#446](https://github.com/DeandreT/ferrule/issues/446) | item predicate/value versus parent argument; excludes generated sequences |
+| [#448](https://github.com/DeandreT/ferrule/issues/448) join wire/identity | [#447](https://github.com/DeandreT/ferrule/issues/447) | owner+collection and separate JoinId; execution closed |
+| [#449](https://github.com/DeandreT/ferrule/issues/449) join tuples | [#448](https://github.com/DeandreT/ferrule/issues/448) | source-row versus flattened tuple positions |
+| [#450](https://github.com/DeandreT/ferrule/issues/450) joined aggregates/correlation | [#449](https://github.com/DeandreT/ferrule/issues/449) | active-source and argument phases |
+| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned-frame metadata; excludes dynamic loading/XML routes |
+| [#452](https://github.com/DeandreT/ferrule/issues/452) specialized matrix | Coordination | Defines focused operator contracts and semantic prerequisites |
+
+## Specialized follow-on issues
+
+[#463](https://github.com/DeandreT/ferrule/issues/463)–[#474](https://github.com/DeandreT/ferrule/issues/474) depend directly on [#439](https://github.com/DeandreT/ferrule/issues/439). [#475](https://github.com/DeandreT/ferrule/issues/475) also depends on [#439](https://github.com/DeandreT/ferrule/issues/439); [#451](https://github.com/DeandreT/ferrule/issues/451) is conditional only when an explicitly included owned document-metadata consumer needs it. An operator's special producer is a prerequisite only for combinations using that producer. Common IR/runtime/emitter file edits require coordination, not blanket serialization behind joins or metadata work.
+
+Each specialized operator qualifies owned integration, interpreter execution, lowering and Rust/C# runtime/emission before its capability opens. Native export and GUI owner authoring qualify separately. The source column identifies legacy behavior and the responsible edit boundary.
+
+| Issue / operator | Direct dependency | Source ownership / focused missing behavior |
+|---|---|---|
+| [#463](https://github.com/DeandreT/ferrule/issues/463) RecursiveCollect | [#439](https://github.com/DeandreT/ferrule/issues/439) | `mapping/model/graph.rs`, `engine/sequence.rs`, runtime recursive contexts; owned root collection, relative child/descent/value paths |
+| [#464](https://github.com/DeandreT/ferrule/issues/464) RecursiveFilter construction | [#439](https://github.com/DeandreT/ferrule/issues/439) | `engine/recursive_filter.rs`, runtime filter/context; reuse [#435](https://github.com/DeandreT/ferrule/issues/435) selector, retain copied group/items/positions |
+| [#465](https://github.com/DeandreT/ferrule/issues/465) PathHierarchy | [#439](https://github.com/DeandreT/ferrule/issues/439) | mapping plan, engine/runtime builders; qualify input collection, not generated output paths |
+| [#466](https://github.com/DeandreT/ferrule/issues/466) AdjacencyTree | [#439](https://github.com/DeandreT/ferrule/issues/439) | mapping adjacency and engine/runtime tree; qualify rows, keep key/parent relative and root expression in parent |
+| [#467](https://github.com/DeandreT/ferrule/issues/467) DynamicSourceField | [#439](https://github.com/DeandreT/ferrule/issues/439) | graph, resolver/context and emitters; exact object/key/frame lookup, not document loading |
+| [#468](https://github.com/DeandreT/ferrule/issues/468) XmlMixedContent expression | [#439](https://github.com/DeandreT/ferrule/issues/439) | expression, XML validation/runtime; exact atomization and replacement occurrence phases |
+| [#469](https://github.com/DeandreT/ferrule/issues/469) XmlSerialize expression | [#439](https://github.com/DeandreT/ferrule/issues/439) | expression and XML runtime; owned structured read, unchanged schema/options/error order |
+| [#470](https://github.com/DeandreT/ferrule/issues/470) XmlMixedContent construction | [#439](https://github.com/DeandreT/ferrule/issues/439) | scope evaluation and mixed runtime; reuse selector and actual item's XML metadata/children |
+| [#471](https://github.com/DeandreT/ferrule/issues/471) failure-rule Source iteration | [#439](https://github.com/DeandreT/ferrule/issues/439) | project, failure runtime/emitters; strict owned iteration beside legacy; first failure before publication |
+| [#472](https://github.com/DeandreT/ferrule/issues/472) SequenceExists | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/context/reducers; separate generated item from endpoint read; first-true/empty-false behavior |
+| [#473](https://github.com/DeandreT/ferrule/issues/473) SequenceItemAt | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/context; values before parent index; one-based bounds/Null/error behavior |
+| [#474](https://github.com/DeandreT/ferrule/issues/474) SequenceAggregate | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/aggregate runtimes; item predicate/value, parent argument; separate from [#447](https://github.com/DeandreT/ferrule/issues/447)/#450 |
+| [#475](https://github.com/DeandreT/ferrule/issues/475) dynamic driver loading | [#439](https://github.com/DeandreT/ferrule/issues/439); [#451](https://github.com/DeandreT/ferrule/issues/451) only if needed | dynamic path/source iteration and context walks; driver/loaded owner identity, success-only cache and laziness |
+| [#476](https://github.com/DeandreT/ferrule/issues/476) pipeline pre-input gate | [#434](https://github.com/DeandreT/ferrule/issues/434); coordinate [#435](https://github.com/DeandreT/ferrule/issues/435) | CLI `pipeline.rs`/`pipeline_preview.rs`; reject unsupported owned stages/targets before read/decode |
+
+Source shorthand omits `crates/` and `src/`; issues supply exact file lists. Reconcile callers/C# runtime helpers; registration alone is not equivalence. Key anchors: `mapping/src/source_owner.rs`, `engine/src/resolve.rs`, `codegen/src/lower.rs`.
+
+Legacy native planners have restrictions and warning/refusal paths, not explicit-owner support. DynamicSourceField warns/skips; some sequence renderers skip unexported items. Preserve that behavior and add strict owned gates without claiming universal legacy refusal or partial owned export.
+
+Ordinary sequence arguments and dynamic bindings/children use core reads/frames. Preserve Generate-only FilterMap, CopyCurrentSource/concat contexts and deliberate primary-only helpers; add no arbitrary endpoint producer.
+
+## Pipeline admission is all-stage, all-target
+
+The engine evaluates **every stage and every primary/named stage target**, including disconnected stages and targets not selected for publication (`engine/src/pipeline.rs`). Selected outputs control publication only. [#476](https://github.com/DeandreT/ferrule/issues/476) must not introduce pruning.
+
+The filesystem and preview host seams validate, then read/decode, then call the engine (`cli/src/pipeline.rs`; `pipeline_preview.rs`). Add P2 capability checks before acquisition, preserving structural/identity precedence and engine refusal before evaluation/publication. Pipeline hosts require their own all-stage and all-target admission gate.
+
+Test an unselected/disconnected owned stage or named target: refuse before reader/parser/loader/debug/trace callbacks, leave output markers unchanged and produce no preview result. Cover every engine-evaluated stage/target's called graphs and new-kind branches, preserving P2 valid-unused-storage rules and legacy laziness. [#476](https://github.com/DeandreT/ferrule/issues/476) enables neither owned execution nor pruning.
+
+## Acceptance checklist
+
+- Reconcile one focused scope/current callers and coordinate common files; add only real semantic prerequisites.
+- Specify complete expected values/errors for colliding owners, missing selected owner, root/nested/group frames, positions, phases, limits and laziness.
+- Preserve strict new wire, old-reader refusal and legacy behavior. Keep unsupported execution/emission rejected while dependencies land.
+- Split representation/gates, interpreter/runtime and paired emission into buildable PRs where needed. Compare complete three-engine results before opening only that operator.
+- Gate native export/GUI authoring separately; preserve saved owner data/IDs/wires. Run focused checks and required CI, then update status from results.
+
+```mermaid
+flowchart TD
+  P1["#433 DTOs"] --> P2["#434 owned nodes / closed gates"]
+  P2 --> P3["#435 scope selector / closed gates"]
+  P3 --> I["#436 interpreter"]
+  P3 --> R["#437 Rust runtime"]
+  P3 --> C["#438 CSharp runtime"]
+  I --> B["#439 paired basic ownership"]
+  R --> B
+  C --> B
+  B --> W["#440 sort/filter/windows"]
+  W --> G1["#441 group-by"]
+  G1 --> G2["#442 adjacent"]
+  G2 --> G3["#443 starting"]
+  G3 --> G4["#444 ending"]
+  G4 --> G5["#445 blocks"]
+  G5 --> L["#446 lookup/find"]
+  L --> A["#447 collection aggregates"]
+  A --> J0["#448 join wire"]
+  J0 --> J1["#449 tuples"]
+  J1 --> J2["#450 joined aggregates"]
+  J2 --> D["#451 document metadata"]
+  B --> S["#463–#474 independent specialized scopes"]
+  B --> LD["#475 dynamic loading"]
+  D -. "only included owned metadata behavior" .-> LD
+  P2 --> H["#476 all-stage/target pre-input gate"]
+  P3 -. "later scope composition" .-> H
+```
