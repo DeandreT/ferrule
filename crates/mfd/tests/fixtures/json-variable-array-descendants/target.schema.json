@@ -1,0 +1,1 @@
+{"title":"Report","type":"object","properties":{"Results":{"type":"array","items":{"type":"object","properties":{"Label":{"type":"string"},"Total":{"type":"integer"}},"additionalProperties":false}}},"additionalProperties":false}
