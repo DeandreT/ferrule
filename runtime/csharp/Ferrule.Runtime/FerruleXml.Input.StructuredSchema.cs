@@ -25,7 +25,7 @@ public static partial class FerruleXml
     };
     private static readonly string[] StructuredFalseMetadata =
     {
-        "nullable", "container_nullable", "json_any", "json_unique_items", "xml_type_alternatives",
+        "nullable", "container_nullable", "json_array_wrapper", "json_any", "json_unique_items", "xml_type_alternatives",
     };
     private static readonly HashSet<string> StructuredNodeProperties = new(
         StructuredNullMetadata.Concat(StructuredEmptyMetadata).Concat(StructuredFalseMetadata).Concat(new[]

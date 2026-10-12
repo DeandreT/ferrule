@@ -9,6 +9,129 @@ use super::{
 };
 
 #[test]
+fn marked_nested_json_array_ports_preserve_each_declared_level()
+-> Result<(), Box<dyn std::error::Error>> {
+    let project: mapping::Project = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/nested_array_wrappers/project.json"
+    ))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ferrule-nested-array-ports-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&root)?;
+    std::fs::write(
+        root.join("schema.json"),
+        format_json::json_schema::export(&project.source)?,
+    )?;
+    let entries = include_str!("../../../tests/fixtures/nested_array_wrappers/entry.xml");
+    let component = format!(
+        "<component name=\"Input\" library=\"json\" kind=\"31\"><data><root><entry name=\"FileInstance\"><entry name=\"document\"><entry name=\"root\">{entries}</entry></entry></entry></root><json schema=\"schema.json\"/></data></component>"
+    );
+    std::fs::write(root.join("component.xml"), &component)?;
+    let document = roxmltree::Document::parse(&component)?;
+    let mut warnings = Vec::new();
+    let actual = read_json_component(
+        &document.root_element(),
+        &root.join("mapping.mfd"),
+        &mut warnings,
+    )
+    .ok_or("authored component")?;
+    std::fs::write(
+        root.join("original.txt"),
+        format!("{:#?}\n", (&actual.schema, &actual.ports, &warnings)),
+    )?;
+    assert_eq!(actual.schema, project.source);
+    assert_eq!(
+        actual.ports,
+        BTreeMap::from([(10, Vec::new()), (11, vec!["item".to_owned()])])
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    for (id, incompatible) in [
+        (
+            "flattened",
+            "<entry name=\"array\" outkey=\"10\"><entry name=\"item\" type=\"json-item\"><entry name=\"integer\" outkey=\"11\"/></entry></entry>",
+        ),
+        (
+            "ambiguous",
+            "<entry name=\"array\" outkey=\"10\"><entry name=\"item\" type=\"json-item\"><entry name=\"array\" outkey=\"11\"/></entry><entry name=\"item\" type=\"json-item\"><entry name=\"array\"/></entry></entry>",
+        ),
+    ] {
+        let input = component.replace(entries, incompatible);
+        std::fs::write(root.join(format!("{id}-component.xml")), &input)?;
+        let parsed = roxmltree::Document::parse(&input)?;
+        let mut warnings = Vec::new();
+        let actual = read_json_component(
+            &parsed.root_element(),
+            &root.join("mapping.mfd"),
+            &mut warnings,
+        );
+        std::fs::write(
+            root.join(format!("{id}-original.txt")),
+            format!(
+                "{:#?}\n",
+                (
+                    actual.as_ref().map(|value| (&value.schema, &value.ports)),
+                    &warnings
+                )
+            ),
+        )?;
+        assert!(actual.is_none());
+        assert_eq!(
+            warnings,
+            [
+                "JSON component `Input` has incompatible nested array entries: marked array entries must contain one `item` role owning an inner `array`; skipped"
+            ]
+        );
+    }
+
+    let item = ir::SchemaNode::scalar("item", ir::ScalarType::Int).repeating();
+    let inner = ir::SchemaNode::group("item", vec![item])
+        .repeating()
+        .with_json_array_wrapper()
+        .ok_or("inner marker")?;
+    let model = ir::SchemaNode::group("Input", vec![inner])
+        .repeating()
+        .with_json_array_wrapper()
+        .ok_or("outer marker")?;
+    std::fs::write(
+        root.join("schema.json"),
+        format_json::json_schema::export(&model)?,
+    )?;
+    let component = component.replace(
+        entries,
+        include_str!("../../../tests/fixtures/nested_array_wrappers/entry-three-level.xml"),
+    );
+    std::fs::write(root.join("triple-component.xml"), &component)?;
+    let document = roxmltree::Document::parse(&component)?;
+    let mut warnings = Vec::new();
+    let actual = read_json_component(
+        &document.root_element(),
+        &root.join("mapping.mfd"),
+        &mut warnings,
+    )
+    .ok_or("authored triple component")?;
+    std::fs::write(
+        root.join("triple-original.txt"),
+        format!("{:#?}\n", (&actual.schema, &actual.ports, &warnings)),
+    )?;
+    assert_eq!(actual.schema, model);
+    assert_eq!(
+        actual.ports,
+        BTreeMap::from([
+            (10, Vec::new()),
+            (11, vec!["item".to_owned()]),
+            (12, vec!["item".to_owned(), "item".to_owned()])
+        ])
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    Ok(())
+}
+
+#[test]
 fn schema_paths_follow_recursive_group_anchors() {
     let section = SchemaNode::group(
         "Section",

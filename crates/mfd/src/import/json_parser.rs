@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaNode, Value};
 use mapping::{Node, NodeId};
@@ -16,6 +16,7 @@ pub(super) struct Recipe {
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     schema: &SchemaComponent,
+    connected_outputs: &BTreeSet<u32>,
 ) -> Result<Option<Recipe>, String> {
     let string_parser = component.descendants().any(|node| {
         node.has_tag_name("parameter") && node.attribute("usageKind") == Some("stringparse")
@@ -41,6 +42,7 @@ pub(super) fn read(
         .descendants()
         .filter(|node| node.has_tag_name("entry"))
         .filter_map(|entry| parse_u32(entry.attribute("outkey")))
+        .filter(|output| connected_outputs.contains(output))
     {
         let path = schema
             .ports

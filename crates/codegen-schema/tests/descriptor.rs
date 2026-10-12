@@ -237,7 +237,7 @@ fn marker_validation_and_string_domain_do_not_conflict() {
         Err(CodecError::InvalidFloatMarker(_))
     ));
     assert_eq!(
-        decode("FERRULE-EMBEDDED-SCHEMA/3\n{}", LIMIT),
+        decode("FERRULE-EMBEDDED-SCHEMA/4\n{}", LIMIT),
         Err(CodecError::UnsupportedVersion)
     );
 

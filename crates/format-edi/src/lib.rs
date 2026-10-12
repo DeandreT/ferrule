@@ -604,6 +604,11 @@ pub enum Dialect {
 }
 
 pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
+    if schema.contains_json_array_wrapper() {
+        return Err(EdiFormatError::UnsupportedSchema(
+            "JSON array-wrapper metadata requires a JSON boundary".to_owned(),
+        ));
+    }
     if matches!(schema.name.as_str(), "MFD-X12" | "MFD-EDIFACT") {
         return Err(EdiFormatError::UnsupportedSchema(
             "an MFD entry-tree schema has no reliable element positions; supply a complete EDI schema before execution"

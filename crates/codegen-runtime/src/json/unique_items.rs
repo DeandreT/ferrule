@@ -78,6 +78,9 @@ fn validate_array(schema: &SchemaNode, items: &[serde_json::Value]) -> Result<()
 }
 
 fn validate_node(schema: &SchemaNode, value: &serde_json::Value) -> Result<(), ValidationError> {
+    if let Some(item) = schema.json_array_wrapper_item() {
+        return validate_document(item, value);
+    }
     let (
         SchemaKind::Group {
             children, dynamic, ..
@@ -210,6 +213,77 @@ mod tests {
             serialize_json(&encoded, &distinct)?,
             "[\n  1.0,\n  2.0\n]\n"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn nested_array_output_keeps_uniqueness_at_each_declared_level()
+    -> Result<(), Box<dyn std::error::Error>> {
+        fn wrapper(inner_unique: bool, outer_unique: bool) -> Result<SchemaNode, &'static str> {
+            let mut item = SchemaNode::scalar("item", ScalarType::Int).repeating();
+            if inner_unique {
+                item = item.with_json_unique_items().ok_or("inner uniqueItems")?;
+            }
+            let mut schema = SchemaNode::group("Batches", vec![item])
+                .repeating()
+                .with_json_array_wrapper()
+                .ok_or("nested array wrapper")?;
+            if outer_unique {
+                schema = schema.with_json_unique_items().ok_or("outer uniqueItems")?;
+            }
+            Ok(schema)
+        }
+
+        fn rows(values: &[&[i64]]) -> Instance {
+            Instance::Repeated(
+                values
+                    .iter()
+                    .map(|values| {
+                        Instance::Group(
+                            vec![(
+                                "item".into(),
+                                Instance::Repeated(
+                                    values
+                                        .iter()
+                                        .map(|value| Instance::Scalar(Value::Int(*value)))
+                                        .collect(),
+                                ),
+                            )]
+                            .into(),
+                        )
+                    })
+                    .collect(),
+            )
+        }
+
+        let inner = serde_json::to_string(&wrapper(true, false)?)?;
+        assert!(matches!(
+            serialize_json(&inner, &rows(&[&[7, 7]])),
+            Err(JsonBoundaryError::InvalidOutput { message })
+                if message == "`item` requires unique JSON array items, but indexes 1 and 2 are equal"
+        ));
+        assert_eq!(
+            serialize_json(&inner, &rows(&[&[7, 9], &[7, 9]]))?,
+            "[\n  [\n    7,\n    9\n  ],\n  [\n    7,\n    9\n  ]\n]\n"
+        );
+
+        let outer = serde_json::to_string(&wrapper(false, true)?)?;
+        assert_eq!(
+            serialize_json(&outer, &rows(&[&[7, 7], &[9, 9]]))?,
+            "[\n  [\n    7,\n    7\n  ],\n  [\n    9,\n    9\n  ]\n]\n"
+        );
+        assert!(matches!(
+            serialize_json(&outer, &rows(&[&[7, 9], &[7, 9]])),
+            Err(JsonBoundaryError::InvalidOutput { message })
+                if message == "`Batches` requires unique JSON array items, but indexes 1 and 2 are equal"
+        ));
+
+        let both = serde_json::to_string(&wrapper(true, true)?)?;
+        assert!(matches!(
+            serialize_json(&both, &rows(&[&[7, 7], &[7, 7]])),
+            Err(JsonBoundaryError::InvalidOutput { message })
+                if message == "`Batches` requires unique JSON array items, but indexes 1 and 2 are equal"
+        ));
         Ok(())
     }
 
