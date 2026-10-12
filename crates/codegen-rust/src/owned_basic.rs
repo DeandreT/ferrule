@@ -376,3 +376,140 @@ fn render_entries(program: &Program) -> String {
     source.push_str("        _ => unreachable!(\"resolved private target\"),\n    }\n}\n\n");
     source
 }
+
+// Checked private prototype. The prepared entry family above is unchanged.
+// The neutral plan supplies complete generation-time metadata; the runtime
+// factory alone owns supplied-input normalization and admitted storage.
+pub(crate) fn render_checked_basic_owned_source(program: &Program) -> Result<String, EmitError> {
+    let mut source = render_basic_owned_source(program)?;
+    if !program.failure_rules.is_empty() {
+        return Err(failure_refusal(0, Capability::FailureRule));
+    }
+    let plan = codegen::legacy_named_input_admission_plan(program)?;
+    source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
+    source.push_str(&render_checked_catalogue(
+        "PRIVATE_CHECKED_ALL_INPUTS",
+        &plan.all_outputs,
+    ));
+    source.push_str(&render_checked_catalogue(
+        "PRIVATE_CHECKED_PRIMARY_INPUTS",
+        &plan.primary,
+    ));
+    for target in &plan.named_targets {
+        source.push_str(&render_checked_catalogue(
+            &format!("PRIVATE_CHECKED_NAMED_INPUTS_{}", target.target_index),
+            &target.catalogue,
+        ));
+    }
+    source.push_str(PRIVATE_CHECKED_REACH_COUNTERS);
+    source.push_str(&render_checked_entries(program));
+    Ok(source)
+}
+
+fn render_checked_catalogue(name: &str, catalogue: &codegen::NamedInputCatalogue<'_>) -> String {
+    let mut source = format!("const {name}: &[BasicNamedSourceDeclaration] = &[\n");
+    for entry in &catalogue.entries {
+        let mode = match entry.availability {
+            codegen::NamedInputAvailability::Optional => "Optional",
+            codegen::NamedInputAvailability::RequiredLegacy => "RequiredLegacy",
+            codegen::NamedInputAvailability::ReservedUnavailable => "ReservedUnavailable",
+        };
+        source.push_str(&format!(
+            "    BasicNamedSourceDeclaration {{ name: {}, mode: BasicNamedSourceMode::{mode} }}, // declaration {}\n",
+            rust_string(entry.name), entry.declaration_index,
+        ));
+    }
+    source.push_str("];\n\n");
+    source
+}
+
+// Reached-call counters are compiled only by the private generated-host tests.
+// They describe calls and supplied records, never allocation or resource use.
+const PRIVATE_CHECKED_REACH_COUNTERS: &str = r#"
+#[cfg(test)]
+std::thread_local! {
+    static PRIVATE_CHECKED_REACHES: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+}
+#[cfg(test)]
+fn private_checked_reset_reaches() { PRIVATE_CHECKED_REACHES.with(|counts| counts.set((0, 0))); }
+#[cfg(test)]
+fn private_checked_reaches() -> (usize, usize) { PRIVATE_CHECKED_REACHES.with(std::cell::Cell::get) }
+fn private_checked_factory_reached() {
+    #[cfg(test)]
+    PRIVATE_CHECKED_REACHES.with(|counts| { let (factories, items) = counts.get(); counts.set((factories + 1, items)); });
+}
+fn private_checked_input_reached() {
+    #[cfg(test)]
+    PRIVATE_CHECKED_REACHES.with(|counts| { let (factories, items) = counts.get(); counts.set((factories, items + 1)); });
+}
+"#;
+
+fn render_checked_entries(program: &Program) -> String {
+    let mut source = String::from(
+        r#"
+enum PrivateCheckedBasicOutput { All(ExecutionOutputs), Selected(SelectedTargetOutput) }
+
+pub(crate) fn execute_checked_private_owned_basic<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
+) -> Result<ExecutionOutputs, RuntimeError> {
+    private_checked_factory_reached();
+    let roots = BasicSourceRoots::try_from_named_inputs(source, PRIVATE_CHECKED_ALL_INPUTS,
+        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
+    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
+    match execute_private_checked_basic_context(&context, None)? {
+        PrivateCheckedBasicOutput::All(output) => Ok(output),
+        PrivateCheckedBasicOutput::Selected(_) => unreachable!("checked all-output route"),
+    }
+}
+
+pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, RuntimeError> {
+    let (selected, catalogue) = match selection {
+        TargetSelection::Primary => (0, PRIVATE_CHECKED_PRIMARY_INPUTS),
+        TargetSelection::Named(name) => match name {
+"#,
+    );
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        source.push_str(&format!(
+            "            {} => ({}, PRIVATE_CHECKED_NAMED_INPUTS_{index}),\n",
+            rust_string(&target.name),
+            index + 1
+        ));
+    }
+    source.push_str(r#"            _ => return Err(RuntimeError::UnknownTarget { name: name.to_string() }),
+        },
+    };
+    private_checked_factory_reached();
+    let roots = BasicSourceRoots::try_from_named_inputs(source, catalogue,
+        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
+    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
+    match execute_private_checked_basic_context(&context, Some(selected))? {
+        PrivateCheckedBasicOutput::Selected(output) => Ok(output),
+        PrivateCheckedBasicOutput::All(_) => unreachable!("checked selected-output route"),
+    }
+}
+
+// This checked-only shared context seam is the explicit later failure-bridge
+// composition point. The current prototype still closes failure-rule inventory.
+fn execute_private_checked_basic_context(
+    context: &BasicScopeContext<'_>, selected: Option<usize>,
+) -> Result<PrivateCheckedBasicOutput, RuntimeError> {
+    if let Some(selected) = selected {
+        return match selected {
+            0 => Ok(PrivateCheckedBasicOutput::Selected(SelectedTargetOutput::Primary(scope_root(context)?))),
+"#);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        source.push_str(&format!("            {} => Ok(PrivateCheckedBasicOutput::Selected(SelectedTargetOutput::Named(NamedOutput {{ name: {}.to_string(), instance: scope_extra_{index}(context)? }}))),\n", index + 1, rust_string(&target.name)));
+    }
+    source.push_str("            _ => unreachable!(\"resolved checked private target\"),\n        };\n    }\n    let primary = scope_root(context)?;\n    let extras = vec![\n");
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        source.push_str(&format!("        NamedOutput {{ name: {}.to_string(), instance: scope_extra_{index}(context)? }},\n", rust_string(&target.name)));
+    }
+    source.push_str(
+        "    ];\n    Ok(PrivateCheckedBasicOutput::All(ExecutionOutputs { primary, extras }))\n}\n",
+    );
+    source
+}
