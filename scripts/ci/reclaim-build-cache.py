@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import pwd
-import shutil
+import re
 import stat
 import sys
 
@@ -31,13 +31,23 @@ def checked_directory(path):
     return fd
 
 
-def locked_file(parent, name):
+def mount_identity(directory):
+    lines = Path(f"/proc/self/fdinfo/{directory}").read_text().splitlines()
+    values = [line.removeprefix("mnt_id:").strip()
+              for line in lines if line.startswith("mnt_id:")]
+    require(len(values) == 1 and re.fullmatch(r"[0-9]+", values[0]) is not None,
+            "Cache descriptor mount identity is unavailable")
+    return int(values[0])
+
+
+def locked_file(parent, name, mount):
     fd = os.open(name, FILE_FLAGS, 0o600, dir_fd=parent)
     try:
         current = os.fstat(fd)
         require(stat.S_ISREG(current.st_mode) and current.st_nlink == 1
                 and current.st_uid == os.getuid() and not current.st_mode & 0o022,
                 "Unsafe cache lock")
+        require(mount_identity(fd) == mount, "Mounted cache tree requires inspection")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return fd
     except BaseException:
@@ -84,8 +94,42 @@ def headroom(home):
     return space.f_bavail * space.f_frsize
 
 
-def check_tree(directory, device):
+def decode_mount_path(encoded):
+    # mountinfo quotes these characters in its root and mount-point fields.
+    require(encoded.startswith("/") and "\x00" not in encoded
+            and "\\" not in re.sub(r"\\(?:040|011|012|134)", "", encoded),
+            "Mount inventory is malformed")
+    return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), encoded)
+
+
+def reject_mounts(directory, *, mountinfo=None, descendants=True):
+    """Veto mounted roots and descendants, including same-device bind mounts."""
+    root = os.readlink(f"/proc/self/fd/{directory}")
+    require(root.startswith("/") and not root.endswith(" (deleted)"),
+            "Cache descriptor path is unavailable")
+    if mountinfo is None:
+        mountinfo = Path("/proc/self/mountinfo").read_text()
+    require(isinstance(mountinfo, str) and mountinfo.strip(),
+            "Mount inventory is unavailable")
+    for line in mountinfo.splitlines():
+        fields = line.split()
+        require(len(fields) >= 10 and "-" in fields[6:],
+                "Mount inventory is malformed")
+        separator = fields.index("-", 6)
+        require(len(fields) == separator + 4
+                and re.fullmatch(r"[0-9]+", fields[0]) is not None
+                and re.fullmatch(r"[0-9]+", fields[1]) is not None
+                and re.fullmatch(r"[0-9]+:[0-9]+", fields[2]) is not None,
+                "Mount inventory is malformed")
+        decode_mount_path(fields[3])
+        point = decode_mount_path(fields[4])
+        require(point != root and not (descendants and point.startswith(root + "/")),
+                "Mounted cache tree requires inspection")
+
+
+def check_tree(directory, device, mount):
     """Refuse mounted/foreign directories and special files before any deletion."""
+    require(mount_identity(directory) == mount, "Mounted cache tree requires inspection")
     for leaf in os.listdir(directory):
         entry = os.stat(leaf, dir_fd=directory, follow_symlinks=False)
         require(entry.st_dev == device and entry.st_uid == os.getuid(),
@@ -94,9 +138,10 @@ def check_tree(directory, device):
             child = os.open(leaf, DIR_FLAGS, dir_fd=directory)
             try:
                 current = os.fstat(child)
-                require(current.st_dev == entry.st_dev and current.st_ino == entry.st_ino,
+                require(current.st_dev == entry.st_dev and current.st_ino == entry.st_ino
+                        and current.st_uid == os.getuid(),
                         "Cache directory changed during admission")
-                check_tree(child, device)
+                check_tree(child, device, mount)
             finally:
                 os.close(child)
         else:
@@ -104,7 +149,34 @@ def check_tree(directory, device):
                     "Special cache file requires inspection")
 
 
-def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
+def remove_entry(directory, leaf, device, mount):
+    """Visit only opened descendants on the held cache descriptor's mount."""
+    require(mount_identity(directory) == mount, "Mounted cache tree requires inspection")
+    entry = os.stat(leaf, dir_fd=directory, follow_symlinks=False)
+    require(entry.st_dev == device and entry.st_uid == os.getuid(),
+            "Cache entry has foreign ownership or filesystem")
+    if stat.S_ISDIR(entry.st_mode):
+        child = os.open(leaf, DIR_FLAGS, dir_fd=directory)
+        try:
+            current = os.fstat(child)
+            require(current.st_dev == entry.st_dev and current.st_ino == entry.st_ino
+                    and current.st_uid == os.getuid(),
+                    "Cache directory changed during deletion")
+            require(mount_identity(child) == mount, "Mounted cache tree requires inspection")
+            for nested in sorted(os.listdir(child)):
+                remove_entry(child, nested, device, mount)
+        finally:
+            os.close(child)
+        os.rmdir(leaf, dir_fd=directory)
+    else:
+        require(stat.S_ISREG(entry.st_mode) or stat.S_ISLNK(entry.st_mode),
+                "Special cache file requires inspection")
+        # Unlink discards a symlink itself and refuses a mounted file.
+        os.unlink(leaf, dir_fd=directory)
+
+
+def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users,
+            mounts=reject_mounts):
     home = Path(home)
     require(home.is_absolute() and home.resolve(strict=True) == home,
             "Runner home must be canonical")
@@ -123,7 +195,9 @@ def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
     with contextlib.ExitStack() as held:
         cache_fd = checked_directory(cache)
         held.callback(os.close, cache_fd)
-        maintenance = locked_file(cache_fd, ".reclaim-lock")
+        cache_mount = mount_identity(cache_fd)
+        mounts(cache_fd, descendants=False)
+        maintenance = locked_file(cache_fd, ".reclaim-lock", cache_mount)
         held.callback(os.close, maintenance)
         plans = []
         roots = []
@@ -138,6 +212,11 @@ def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
             held.callback(os.close, target_fd)
             require(os.fstat(target_fd).st_dev == os.fstat(cache_fd).st_dev,
                     "Target cache uses another filesystem")
+            require(mount_identity(target_fd) == cache_mount,
+                    "Mounted cache tree requires inspection")
+            # A bind-mounted target can share both device and ownership. Veto
+            # every selected root/subtree before creating its Cargo leases.
+            mounts(target_fd)
             # Cargo and test harnesses may also retain tmp/timing/report roots.
             # Only known profile caches are eligible; every other entry stays.
             untouched = sorted(set(os.listdir(target_fd)) -
@@ -153,29 +232,29 @@ def reclaim(home, reserve_gib, *, available=headroom, active=live_cache_users):
                 current = os.fstat(profile_fd)
                 require(current.st_uid == os.getuid() and not current.st_mode & 0o022,
                         "Unsafe Cargo profile")
-                lease = locked_file(profile_fd, ".cargo-lock")
+                require(mount_identity(profile_fd) == cache_mount,
+                        "Mounted cache tree requires inspection")
+                lease = locked_file(profile_fd, ".cargo-lock", cache_mount)
                 held.callback(os.close, lease)
                 profiles.append(profile_fd)
             plans.append((name, target_fd, profiles))
         for _, target_fd, profiles in plans:
+            mounts(target_fd)
             for profile_fd in profiles:
-                check_tree(profile_fd, os.fstat(target_fd).st_dev)
+                check_tree(profile_fd, os.fstat(target_fd).st_dev, cache_mount)
         active(roots)
+        # Admit all targets again after the process census, before trimming any.
+        for _, target_fd, _ in plans:
+            mounts(target_fd)
         for name, target_fd, profiles in plans:
             if available(home) >= goal:
                 break
+            mounts(target_fd)
             for profile_fd in profiles:
                 for leaf in sorted(os.listdir(profile_fd)):
                     if leaf == ".cargo-lock":
                         continue
-                    entry = os.stat(leaf, dir_fd=profile_fd, follow_symlinks=False)
-                    if stat.S_ISDIR(entry.st_mode):
-                        require(shutil.rmtree.avoids_symlink_attacks,
-                                "Descriptor-safe cache cleanup unavailable")
-                        shutil.rmtree(leaf, dir_fd=profile_fd)
-                    else:
-                        # Symlinks themselves can be discarded; targets are never followed.
-                        os.unlink(leaf, dir_fd=profile_fd)
+                    remove_entry(profile_fd, leaf, os.fstat(target_fd).st_dev, cache_mount)
                 os.fsync(profile_fd)
             for leaf in (".rustc_info.json", "CACHEDIR.TAG"):
                 try:
