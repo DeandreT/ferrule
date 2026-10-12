@@ -454,7 +454,9 @@ fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
         .find(|scope| scope.target_field == "Row")
         .unwrap();
     assert_eq!(
-        rows.source().map(|path| path.to_vec()),
+        rows.source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Item".into()])
     );
     let Node::Call { function, args } = &project.graph.nodes[&rows.filter.unwrap()] else {

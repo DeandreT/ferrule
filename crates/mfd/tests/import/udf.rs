@@ -173,7 +173,10 @@ fn nullable_passthrough_udf_filters_a_nested_group_iteration() {
     let bucket = &imported.project.root.children[0];
     let result = &bucket.children[0];
     assert_eq!(result.target_field, "Result");
-    assert_eq!(result.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        result.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert!(result.filter.is_some());
 
     let source = format_xml::from_str(

@@ -314,7 +314,14 @@ fn database_primary_survives_secondary_http_iteration() -> Result<(), Box<dyn Er
     };
     assert_eq!(secondary.name, response_name);
     assert_eq!(secondary.options, project.extra_sources[0].options);
-    assert_eq!(roundtrip.project.root.source(), project.root.source());
+    assert_eq!(
+        roundtrip
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
+        project.root.source().expect("legacy fixture selector")
+    );
     assert!(engine::validate(&roundtrip.project).is_empty());
     Ok(())
 }

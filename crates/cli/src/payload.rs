@@ -940,3 +940,24 @@ mod owned_source_payload_admission_tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod owned_collection_payload_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_collection_refusal_precedes_parsing_a_malformed_payload() {
+        let project = crate::owned_collection_test_project();
+        let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON").unwrap();
+        let error = run_project_value_payloads(
+            &project,
+            Path::new("project.json"),
+            &PayloadRunOptions::new(primary),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+        ));
+    }
+}

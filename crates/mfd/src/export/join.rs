@@ -431,6 +431,7 @@ fn collect_owners(
         }
     }
     let child_anchor = match &scope.iteration {
+        ScopeIteration::OwnedSource { .. } => None,
         ScopeIteration::None => source_anchor,
         ScopeIteration::Source(path) => source_anchor
             .as_deref()

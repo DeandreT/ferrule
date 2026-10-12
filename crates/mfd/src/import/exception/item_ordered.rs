@@ -340,7 +340,11 @@ fn plan(
         );
     }
     let scope = scope_at(root, owner);
-    if scope.source() != Some(collection.as_slice()) {
+    if scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        != Some(collection.as_slice())
+    {
         return Err("target owner does not retain the exact raw primary collection");
     }
     let filter_node = scope

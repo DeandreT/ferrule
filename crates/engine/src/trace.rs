@@ -51,20 +51,27 @@ pub struct TraceScope {
     pub target: TraceTarget,
     pub target_path: Vec<String>,
     pub structural_path: Vec<usize>,
+    pub source_scope: mapping::SourceScopeLocation,
 }
 
 impl TraceScope {
     pub(crate) fn primary() -> Self {
         Self {
+            source_scope: mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
             target: TraceTarget::Primary,
             target_path: Vec::new(),
             structural_path: Vec::new(),
         }
     }
 
-    pub(crate) fn named(target: impl Into<String>) -> Self {
+    pub(crate) fn named(target: impl Into<String>, index: usize) -> Self {
+        let name = target.into();
         Self {
-            target: TraceTarget::Named(target.into()),
+            source_scope: mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Named {
+                index,
+                name: name.clone(),
+            }),
+            target: TraceTarget::Named(name),
             target_path: Vec::new(),
             structural_path: Vec::new(),
         }
@@ -76,16 +83,30 @@ impl TraceScope {
         let mut structural_path = self.structural_path.clone();
         structural_path.push(index);
         Self {
+            source_scope: self
+                .source_scope
+                .descendant(mapping::SourceScopeStep::Child(index)),
             target: self.target.clone(),
             target_path,
             structural_path,
         }
     }
 
+    pub(crate) fn dynamic_child(&self, index: usize, trace_index: usize) -> Self {
+        let mut scope = self.child("<dynamic>", trace_index);
+        scope.source_scope = self
+            .source_scope
+            .descendant(mapping::SourceScopeStep::DynamicChild(index));
+        scope
+    }
+
     pub(crate) fn segment(&self, index: usize) -> Self {
         let mut structural_path = self.structural_path.clone();
         structural_path.push(index);
         Self {
+            source_scope: self
+                .source_scope
+                .descendant(mapping::SourceScopeStep::Segment(index)),
             target: self.target.clone(),
             target_path: self.target_path.clone(),
             structural_path,
@@ -104,8 +125,11 @@ pub enum TraceIteration {
     Concatenate { segments: usize },
 }
 
-pub(crate) fn scope_iteration(iteration: &ScopeIteration) -> TraceIteration {
-    match iteration {
+pub(crate) fn scope_iteration(
+    iteration: &ScopeIteration,
+) -> Result<TraceIteration, mapping::OwnedSourceAccess> {
+    Ok(match iteration {
+        ScopeIteration::OwnedSource { .. } => return Err(mapping::OwnedSourceAccess),
         ScopeIteration::None => TraceIteration::Once,
         ScopeIteration::Source(path) => TraceIteration::Source { path: path.clone() },
         ScopeIteration::DynamicDocuments { source, .. } => TraceIteration::DynamicDocuments {
@@ -118,7 +142,7 @@ pub(crate) fn scope_iteration(iteration: &ScopeIteration) -> TraceIteration {
         ScopeIteration::Concatenate(segments) => TraceIteration::Concatenate {
             segments: segments.iter().count(),
         },
-    }
+    })
 }
 
 fn sequence_kind(sequence: &SequenceExpr) -> &'static str {

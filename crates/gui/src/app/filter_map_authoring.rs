@@ -28,7 +28,9 @@ fn compatible_scope(app: &FerruleApp) -> bool {
         if scope.construction != ScopeConstruction::Constructed
             || matches!(
                 scope.iteration,
-                ScopeIteration::InnerJoin { .. } | ScopeIteration::Concatenate(_)
+                ScopeIteration::InnerJoin { .. }
+                    | ScopeIteration::Concatenate(_)
+                    | ScopeIteration::OwnedSource { .. }
             )
         {
             return false;

@@ -743,6 +743,9 @@ mod tests {
     ) -> engine::PendingTargetWrite {
         engine::PendingTargetWrite {
             scope: engine::TraceScope {
+                source_scope: mapping::SourceScopeLocation::root(
+                    mapping::SourceScopeTarget::Primary,
+                ),
                 target: engine::TraceTarget::Primary,
                 target_path: Vec::new(),
                 structural_path: Vec::new(),

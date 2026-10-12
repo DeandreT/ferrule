@@ -173,11 +173,11 @@ fn compatible_structural_sequence_feeds_are_concatenated_in_target_port_order() 
     let segments = address.concatenated().unwrap().iter().collect::<Vec<_>>();
     assert_eq!(segments.len(), 2);
     assert_eq!(
-        segments[0].source(),
+        segments[0].source().expect("legacy fixture selector"),
         Some(["Domestic".to_string()].as_slice())
     );
     assert_eq!(
-        segments[1].source(),
+        segments[1].source().expect("legacy fixture selector"),
         Some(["International".to_string()].as_slice())
     );
 
@@ -1091,12 +1091,12 @@ fn compatible_filtered_and_direct_group_feeds_are_concatenated() {
     let segments = selected.concatenated().unwrap().iter().collect::<Vec<_>>();
     assert_eq!(segments.len(), 2);
     assert_eq!(
-        segments[0].source(),
+        segments[0].source().expect("legacy fixture selector"),
         Some(["Person".to_string()].as_slice())
     );
     assert!(segments[0].filter.is_some());
     assert_eq!(
-        segments[1].source(),
+        segments[1].source().expect("legacy fixture selector"),
         Some(["Person".to_string()].as_slice())
     );
     assert!(segments[1].filter.is_none());

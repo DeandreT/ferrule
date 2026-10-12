@@ -222,7 +222,12 @@ fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
         IterationOutput::MappedSequence,
         "{selected:#?}"
     );
-    assert!(selected.source().is_some());
+    assert!(
+        selected
+            .source()
+            .expect("legacy fixture selector")
+            .is_some()
+    );
     assert!(selected.filter.is_some());
     assert!(selected.sort_by.is_some());
     assert!(selected.sort_descending);
