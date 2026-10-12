@@ -15,6 +15,8 @@ use super::{ComponentFormat, SchemaComponent};
 mod config_source;
 #[path = "edi/idoc_text.rs"]
 mod idoc_text;
+#[path = "edi/variable.rs"]
+mod variable;
 
 /// Adds design-only ports exposed through transparent components after the
 /// reachable graph is known. The unresolved configuration reference remains
@@ -126,17 +128,23 @@ pub(super) fn read(
     let data = component
         .children()
         .find(|node| node.has_tag_name("data"))?;
+    let is_variable = data.children().any(|node| {
+        node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
+    });
+    let runtime_boundary = runtime_boundary && !is_variable;
     let text = data
         .children()
         .find(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi"))?;
     let kind = text.attribute("kind").unwrap_or_default();
-    let x12_separators = (kind == "EDIX12")
+    let x12_separators = (!is_variable && kind == "EDIX12")
         .then(|| read_x12_separators(&text, &name, warnings))
         .flatten();
-    let x12_interchange_version = (kind == "EDIX12")
+    let x12_interchange_version = (!is_variable && kind == "EDIX12")
         .then(|| read_x12_interchange_version(&text, &name, warnings))
         .flatten();
-    let edi_autocomplete = read_autocomplete(&text, kind, &name, warnings);
+    let edi_autocomplete = (!is_variable)
+        .then(|| read_autocomplete(&text, kind, &name, warnings))
+        .flatten();
     let root = data.children().find(|node| node.has_tag_name("root"))?;
     let mut entry = root.children().find(|node| node.has_tag_name("entry"))?;
     while matches!(
@@ -225,7 +233,7 @@ pub(super) fn read(
     } else {
         false
     };
-    let compiled = if runtime_boundary
+    let compiled = if (runtime_boundary || is_variable)
         && matches!(
             kind,
             "EDIX12" | "EDIFACT" | "EDIHL7" | "EDITRADACOMS" | "EDIFIXED" | "SWIFTMT"
@@ -301,6 +309,12 @@ pub(super) fn read(
         None
     };
     let has_compiled_schema = compiled.is_some();
+    if is_variable && !has_compiled_schema {
+        warnings.push(format!(
+            "EDI variable `{name}` requires a complete compiled configuration; skipped"
+        ));
+        return None;
+    }
     let edi_config_dependency = if has_compiled_schema || !runtime_boundary {
         None
     } else if retained_missing_config {
@@ -329,6 +343,17 @@ pub(super) fn read(
         embedded_lexical_formats,
         embedded_value_constraints,
     ));
+    if is_variable {
+        schema = match variable::select(data, &schema) {
+            Ok(selected) => selected,
+            Err(reason) => {
+                warnings.push(format!(
+                    "EDI variable `{name}` has an unsupported root selection: {reason}; skipped"
+                ));
+                return None;
+            }
+        };
+    }
     if has_compiled_schema && kind == "EDIX12" {
         merge_parser_error_entries(&entry, &mut schema);
     }
@@ -421,33 +446,37 @@ pub(super) fn read(
             .attribute("outputinstance")
             .map(str::to_string)
             .or_else(|| super::nested_file_instance(&root, "outputinstance")),
-        options: FormatOptions {
-            lenient_segments: true,
-            edi_kind: match kind {
-                "EDIX12" => Some(EdiBoundaryKind::X12),
-                "EDIFACT" => Some(EdiBoundaryKind::Edifact),
-                "EDIHL7" => Some(EdiBoundaryKind::Hl7),
-                "EDITRADACOMS" => Some(EdiBoundaryKind::Tradacoms),
-                "EDIFIXED" => Some(EdiBoundaryKind::Idoc),
-                "SWIFTMT" => Some(EdiBoundaryKind::SwiftMt),
-                _ => None,
-            },
-            edi_config_reference: edi_config_dependency,
-            edi_implied_decimals,
-            edi_lexical_formats,
-            edi_value_constraints,
-            edi_autocomplete,
-            x12_separators,
-            x12_interchange_version,
-            idoc,
-            idoc_native_config,
-            idoc_native_text_settings,
-            swift_mt,
-            ..FormatOptions::default()
+        options: if is_variable {
+            FormatOptions::default()
+        } else {
+            FormatOptions {
+                lenient_segments: true,
+                edi_kind: match kind {
+                    "EDIX12" => Some(EdiBoundaryKind::X12),
+                    "EDIFACT" => Some(EdiBoundaryKind::Edifact),
+                    "EDIHL7" => Some(EdiBoundaryKind::Hl7),
+                    "EDITRADACOMS" => Some(EdiBoundaryKind::Tradacoms),
+                    "EDIFIXED" => Some(EdiBoundaryKind::Idoc),
+                    "SWIFTMT" => Some(EdiBoundaryKind::SwiftMt),
+                    _ => None,
+                },
+                edi_config_reference: edi_config_dependency,
+                edi_implied_decimals,
+                edi_lexical_formats,
+                edi_value_constraints,
+                edi_autocomplete,
+                x12_separators,
+                x12_interchange_version,
+                idoc,
+                idoc_native_config,
+                idoc_native_text_settings,
+                swift_mt,
+                ..FormatOptions::default()
+            }
         },
         is_source: out_count >= in_count,
         is_default_output: super::is_default_output(component),
-        is_variable: false,
+        is_variable,
         is_pass_through: false,
         compute_when_key: None,
         ports,

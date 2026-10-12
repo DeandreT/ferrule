@@ -787,6 +787,20 @@ source fields when the complete target schema matches. At least one non-null
 constant or required non-null JSON scalar input establishes record presence.
 Connected structural inputs, competing field connectors, repeating dependencies, overlapping target
 inputs, unresolved selections and variable scope controls retain refusals.
+
+JSON variable selectors can cross a declared object array through an explicit
+`array` followed by its canonical `item` / `json-item` role, then select a
+non-repeating descendant. The selected schema remains complete; graph inputs
+establish its value and iteration context. Selected array roots, nested-array
+wrappers, malformed item roles and alternative views retain refusals.
+
+EDI structure variables resolve their flat declared parameter-root path against
+a complete compiled EDI configuration. The selected value preserves scalar types
+and cardinalities and remains an intermediate component. Scalar outputs resolve
+through their input connectors without creating a physical EDI endpoint or
+applying interchange-output settings. Missing configuration, unresolved roots,
+ambiguous selectors and scope controls retain explicit refusals.
+
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component
 would change the document syntax.
