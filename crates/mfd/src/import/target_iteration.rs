@@ -865,7 +865,7 @@ fn build_one(
 }
 
 fn plain_constructed_group_feed(output: u32, feed: &super::iteration::IterationFeed) -> bool {
-    if feed.source_key != output
+    !(feed.source_key != output
         || feed.computed_source.is_some()
         || feed.sequence_component.is_some()
         || feed.db_where_component.is_some()
@@ -883,11 +883,7 @@ fn plain_constructed_group_feed(output: u32, feed: &super::iteration::IterationF
         || feed.has_windows()
         || feed.order_issue.is_some()
         || feed.projects_whole_group
-        || !feed.projections.is_empty()
-    {
-        return false;
-    }
-    true
+        || !feed.projections.is_empty())
 }
 
 pub(super) fn literal_constant_value(output: u32, builder: &GraphBuilder<'_>) -> Option<Value> {
