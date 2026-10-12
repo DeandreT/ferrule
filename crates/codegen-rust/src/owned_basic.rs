@@ -45,6 +45,9 @@ pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, Emi
             )?);
         }
     }
+    if !program.failure_rules.is_empty() {
+        source.push_str(&failure::render_basic(program)?);
+    }
     for (name, scope, children, _) in scopes {
         source.push_str(&render_basic_scope(&name, scope, &children));
     }
@@ -158,18 +161,25 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
             }),
         )?;
     }
-    // The private prototype has no isolated function, failure, loader or
-    // specialized context bridge. Ordinary scalar Raise remains supported.
-    if !program.failure_rules.is_empty() {
-        return Err(ProgramValidationError::OwnedSource {
-            diagnostic: Box::new(Diagnostic::Capability {
-                location: Location::Iteration { scope: primary },
-                request: None,
-                reason: Capability::FailureRule,
-                origin: Origin::Failure { index: 0 },
-            }),
+    // Ordinary source-backed rules share only the legacy view of the paired
+    // context. Common validation keeps owned rule expressions closed; generated
+    // and dynamic failure sources remain unsupported in this private bridge.
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        match &rule.iteration {
+            codegen::FailureIteration::Generated(_) => {
+                return Err(failure_refusal(index, Capability::FailureRule));
+            }
+            codegen::FailureIteration::Source(source) => {
+                if source.path().first().is_some_and(|name| {
+                    program
+                        .extra_sources
+                        .iter()
+                        .any(|source| source.name == *name && source.dynamic.is_some())
+                }) {
+                    return Err(failure_refusal(index, Capability::DynamicLoader));
+                }
+            }
         }
-        .into());
     }
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".into(), &mut scopes);
@@ -231,6 +241,22 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
         }
     }
     Ok(())
+}
+
+// Failure routes have their own exact rule index; they are not target scopes.
+// Reuse the existing diagnostic family and retain its primary iteration location.
+pub(super) fn failure_refusal(index: usize, reason: Capability) -> EmitError {
+    ProgramValidationError::OwnedSource {
+        diagnostic: Box::new(Diagnostic::Capability {
+            location: Location::Iteration {
+                scope: SourceScopeLocation::root(SourceScopeTarget::Primary),
+            },
+            request: None,
+            reason,
+            origin: Origin::Failure { index },
+        }),
+    }
+    .into()
 }
 
 fn owner_literal(owner: &SourceOwner) -> String {
@@ -321,9 +347,12 @@ fn render_entries(program: &Program) -> String {
          ) -> Result<ExecutionOutputs, RuntimeError> {\n\
              let roots = BasicSourceRoots::try_new(source, declared, limits)?;\n\
              let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };\n\
-             let primary = scope_root(&context)?;\n\
-             let extras = vec![\n",
+",
     );
+    if !program.failure_rules.is_empty() {
+        source.push_str("    evaluate_basic_failure_rules(&context)?;\n");
+    }
+    source.push_str("let primary = scope_root(&context)?;\nlet extras = vec![\n");
     for (index, target) in program.extra_targets.iter().enumerate() {
         source.push_str(&format!("        NamedOutput {{ name: {}.to_string(), instance: scope_extra_{index}(&context)? }},\n", rust_string(&target.name)));
     }
@@ -336,7 +365,11 @@ fn render_entries(program: &Program) -> String {
             index + 1
         ));
     }
-    source.push_str("            _ => return Err(RuntimeError::UnknownTarget { name: name.to_string() }),\n        },\n    };\n    let roots = BasicSourceRoots::try_new(source, declared, limits)?;\n    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };\n    match selected {\n        0 => Ok(SelectedTargetOutput::Primary(scope_root(&context)?)),\n");
+    source.push_str("            _ => return Err(RuntimeError::UnknownTarget { name: name.to_string() }),\n        },\n    };\n    let roots = BasicSourceRoots::try_new(source, declared, limits)?;\n    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };\n");
+    if !program.failure_rules.is_empty() {
+        source.push_str("    evaluate_basic_failure_rules(&context)?;\n");
+    }
+    source.push_str("    match selected {\n        0 => Ok(SelectedTargetOutput::Primary(scope_root(&context)?)),\n");
     for (index, target) in program.extra_targets.iter().enumerate() {
         source.push_str(&format!("        {} => Ok(SelectedTargetOutput::Named(NamedOutput {{ name: {}.to_string(), instance: scope_extra_{index}(&context)? }})),\n", index + 1, rust_string(&target.name)));
     }
