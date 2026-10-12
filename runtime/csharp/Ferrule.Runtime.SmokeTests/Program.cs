@@ -201,6 +201,17 @@ internal static partial class Program
             ("basic source projection input refusals", BasicSourceProjectionInputRefusals),
             ("basic source projection exact slot admission", BasicSourceProjectionExactSlotAdmission),
             ("basic source projection legacy constructors and XML", BasicSourceProjectionLegacyRoutes),
+            ("paired basic typed error chains", BasicBridgeErrorFactories),
+            ("paired basic exact namespaces and fallback", BasicPairedNamespaceAndFallback),
+            ("paired basic nested and identity source walks", BasicPairedNestedAndIdentity),
+            ("paired basic plain absence and traversal", BasicPairedPlainAbsenceAndMalformed),
+            ("paired basic null identities and distinct roots", BasicPairedNullIdentityAndDistinctRoots),
+            ("paired basic flat roots and lazy access", BasicPairedFlatRootAndLazyAccess),
+            ("paired full original and current phase capture", BasicFullCohortPhasesAndCapture),
+            ("paired full phase typed refusal ordering", BasicFullCohortRefusals),
+            ("paired full phase nested and plain cursors", BasicFullCohortNestedAndPlain),
+            ("paired source sort filter and window phases", BasicPairedSortFilterWindow),
+            ("paired checked allocation controls", BasicPairedAllocationControls),
         };
 
         foreach (var test in tests)
