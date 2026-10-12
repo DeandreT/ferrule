@@ -160,6 +160,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -226,6 +228,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -2605,6 +2609,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -2725,6 +2731,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -4555,6 +4563,8 @@
         "RuntimeParameter": "Caption",
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -4802,6 +4812,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -4917,6 +4929,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
@@ -5032,6 +5046,8 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null,
         "PrimaryRoot": null
       }
     },
