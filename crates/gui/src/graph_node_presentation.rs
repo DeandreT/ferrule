@@ -409,6 +409,28 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
     Some(Header { icon, summary })
 }
 
+pub(super) fn show_endpoint_header(ui: &mut Ui, source: bool, full_title: &str) -> Response {
+    let (icon, prefix) = if source {
+        (Icon::ArrowRightFromLine, "Source: ")
+    } else {
+        (Icon::ArrowRightToLine, "Target: ")
+    };
+    let title = full_title.strip_prefix(prefix).unwrap_or(full_title);
+    let response = ui
+        .horizontal(|ui| {
+            let icon = ui.label(crate::icons::text(icon, 16.0));
+            let title = ui.add(
+                egui::Label::new(title)
+                    .truncate()
+                    .show_tooltip_when_elided(false),
+            );
+            icon.union(title)
+        })
+        .inner;
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, full_title));
+    response
+}
+
 pub(super) fn show_header(ui: &mut Ui, header: Header, full_title: &str) -> Response {
     let response = ui
         .horizontal(|ui| {
