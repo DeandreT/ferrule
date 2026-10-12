@@ -1209,7 +1209,9 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinAggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

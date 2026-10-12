@@ -145,6 +145,7 @@ pub(crate) fn validate_filter_map_contexts(project: &Project) -> Vec<ValidationI
     issues
 }
 
+/// Checks owned endpoint schema identities without opening execution capability.
 /// Checks graph integrity, source/target paths, scope references, builtin
 /// names and arities, and cycles without reading input data or evaluating
 /// expressions.

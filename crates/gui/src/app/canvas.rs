@@ -14,7 +14,9 @@ use crate::canvas_layout::arrange_snarl;
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

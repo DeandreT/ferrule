@@ -9,7 +9,8 @@ pub use format_options::{
 };
 pub use graph::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, MAX_RUNTIME_PARAMETER_NAME_BYTES,
-    Node, NodeId, RuntimeValue, SequenceExpr, XmlMixedContentReplacement,
+    Node, NodeId, OwnedPosition, OwnedSourceField, RuntimeValue, SequenceExpr,
+    XmlMixedContentReplacement,
 };
 pub use project::{
     DynamicSourcePath, FailureIteration, FailureRule, FailureSelection, FunctionId,
