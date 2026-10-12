@@ -2504,10 +2504,6 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 }
 
 #[cfg(test)]
-#[path = "graph_viewer_tests/owned_source_nodes.rs"]
-mod owned_source_nodes_tests;
-
-#[cfg(test)]
 #[path = "graph_viewer_tests.rs"]
 mod tests;
 
