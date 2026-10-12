@@ -1,0 +1,11 @@
+[
+  {"input":"{\"Payload\":\"{\\\"Title\\\":\\\"alpha\\\",\\\"Details\\\":{\\\"Code\\\":\\\"A-1\\\"},\\\"UnusedObject\\\":{\\\"Value\\\":7},\\\"UnusedRows\\\":[\\\"x\\\",\\\"y\\\"]}\"}","expected":{"Title":"alpha","Code":"A-1"}},
+  {"input":"{\"Payload\":\"{\\\"Title\\\":\\\"\\\",\\\"Details\\\":{\\\"Code\\\":\\\"😀\\\"}}\"}","expected":{"Title":"","Code":"😀"}},
+  {"input":"{\"Payload\":\"{\\\"Title\\\":\\\"only title\\\",\\\"Details\\\":{}}\"}","expected":{"Title":"only title"}},
+  {"input":"{\"Payload\":null}","expected":{}},
+  {"input":"{}","expected":{}},
+  {"input":"{\"Payload\":\"{\"}","execution_error":{"function":"json_parse_field","message":"input does not match the JSON schema"}},
+  {"input":"{\"Payload\":\"{\\\"Title\\\":true,\\\"Details\\\":{\\\"Code\\\":\\\"ok\\\"}}\"}","execution_error":{"function":"json_parse_field","message":"input does not match the JSON schema"}},
+  {"input":"{\"Payload\":\"{\\\"Title\\\":\\\"ok\\\"}\"}","execution_error":{"function":"json_parse_field","message":"field path does not resolve to a scalar"}},
+  {"input":"{\"Payload\":\"{\\\"Title\\\":\\\"ok\\\",\\\"Details\\\":{\\\"Code\\\":\\\"ok\\\"},\\\"UnusedRows\\\":[7]}\"}","execution_error":{"function":"json_parse_field","message":"input does not match the JSON schema"}}
+]

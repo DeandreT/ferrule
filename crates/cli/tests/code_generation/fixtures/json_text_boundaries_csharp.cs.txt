@@ -22,6 +22,16 @@ foreach (var test in cases.RootElement.EnumerateArray())
 
 static void Verify(Func<string> run, JsonElement test)
 {
+    if (test.TryGetProperty("execution_error", out var expectedError))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (
+            error.Error == FerruleRuntimeError.FunctionInvalidArgument &&
+            error.Function == expectedError.GetProperty("function").GetString() &&
+            error.Detail == expectedError.GetProperty("message").GetString())
+        { return; }
+        throw new Exception($"Expected execution failure was accepted: {test}");
+    }
     if (test.TryGetProperty("reject", out _) || test.TryGetProperty("reject_output", out _))
     {
         try

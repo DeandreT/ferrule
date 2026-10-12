@@ -7,6 +7,7 @@ exec /usr/bin/python3 -I - <<'PY'
 import json
 import os
 import signal
+import subprocess
 import sys
 
 
@@ -18,6 +19,16 @@ def abort_rejected_worker():
     worker = os.path.realpath("/home/ferrule-runner/actions-runner/bin/Runner.Worker")
     if executable == worker:
         os.kill(parent, signal.SIGKILL)
+
+
+def prepare_admitted_worker():
+    parent = os.getppid()
+    executable = os.path.realpath(f"/proc/{parent}/exe")
+    worker = os.path.realpath("/home/ferrule-runner/actions-runner/bin/Runner.Worker")
+    if executable == worker:
+        reserve = "8" if os.environ.get("GITHUB_WORKFLOW") == "Codegen CI" else "16"
+        subprocess.run([sys.executable, "-I", "/opt/ferrule-runner-tools/prepare-ovh-job.py",
+                        reserve], check=True, timeout=600)
 
 
 repository = "DeandreT/ferrule"
@@ -45,4 +56,10 @@ except (OSError, KeyError, ValueError, AttributeError, TypeError) as error:
     abort_rejected_worker()
     sys.exit(1)
 print("OVH job admitted for a trusted Ferrule repository event.")
+try:
+    prepare_admitted_worker()
+except (OSError, subprocess.SubprocessError) as error:
+    print(f"OVH pre-job preparation failed: {error}", file=sys.stderr, flush=True)
+    abort_rejected_worker()
+    sys.exit(1)
 PY

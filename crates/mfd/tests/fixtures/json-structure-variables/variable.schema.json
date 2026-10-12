@@ -1,0 +1,1 @@
+{"title":"Catalog","type":"object","properties":{"Unrelated":{"type":"boolean"},"Stored":{"type":"object","properties":{"Code":{"type":"string"},"Quantity":{"type":"integer"}},"additionalProperties":false}},"additionalProperties":false}

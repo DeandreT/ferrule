@@ -19,6 +19,7 @@ mod formats;
 mod item_counts;
 mod memory;
 mod multiples;
+mod nested_wrapper_constraints;
 mod nullable_composition;
 mod numeric_lexemes;
 mod object_openness;

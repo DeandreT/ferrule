@@ -91,6 +91,25 @@ pub fn run_pipeline_with_context(
     run_pipeline_with_stage_contexts(pipeline, hosts, |_| *execution)
 }
 
+/// Admit every stage in dependency order without acquiring host inputs.
+/// Each project includes all primary/named target roots; publication selection
+/// is not an execution filter.
+pub fn check_pipeline_source_ownership_capability(
+    pipeline: &Pipeline,
+) -> Result<(), PipelineError> {
+    let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
+    for index in plan.order {
+        let stage = &pipeline.stages[index];
+        crate::check_source_ownership_capability(&stage.project, None).map_err(|source| {
+            PipelineError::StageExecution {
+                stage: stage.id.clone(),
+                source,
+            }
+        })?;
+    }
+    Ok(())
+}
+
 /// Evaluate a stage DAG with a separate host context for each mapping. The
 /// provider is called in dependency order after graph and host validation.
 /// This lets stages resolve local dynamic source names independently while

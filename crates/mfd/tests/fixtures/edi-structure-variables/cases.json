@@ -1,0 +1,11 @@
+[
+  {"input":"{\"Text\":\"alpha\",\"Count\":7}","expected":{"Text":"alpha","Count":7}},
+  {"input":"{\"Text\":\"参照 é\",\"Count\":-3}","expected":{"Text":"参照 é","Count":-3}},
+  {"input":"{\"Text\":\"\",\"Count\":0}","expected":{"Text":"","Count":0}},
+  {"input":"{\"Text\":\"optional\"}","expected":{"Text":"optional"}},
+  {"input":"{}","expected":{}},
+  {"input":"{\"Text\":false}","reject":true},
+  {"input":"{\"Count\":1.5}","reject":true},
+  {"input":"{\"Unexpected\":1}","reject":true},
+  {"input":"{broken","reject":true}
+]
