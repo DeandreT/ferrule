@@ -797,3 +797,303 @@ pub fn validate_owned_emission(program: &Program) -> Result<(), ProgramValidatio
     }
     Ok(())
 }
+
+/// Validates the common, control-free Basic source context supported by both emitters.
+///
+/// General Program structure and stored ownership contexts are checked first.
+/// This additive gate does not replace the ordinary closed emission gate.
+pub fn validate_basic_owned_emission(program: &Program) -> Result<(), ProgramValidationError> {
+    super::validate_program(program)?;
+    basic_scope(
+        program,
+        &program.root,
+        SourceScopeLocation::root(SourceScopeTarget::Primary),
+    )?;
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        basic_scope(
+            program,
+            &target.root,
+            SourceScopeLocation::root(SourceScopeTarget::Named {
+                index,
+                name: target.name.clone(),
+            }),
+        )?;
+    }
+    if let Some(function) = program.user_functions.first() {
+        return Err(failure(
+            Location::Expression {
+                namespace: Namespace::Function(function.id),
+                node: function.output,
+                scope: None,
+            },
+            None,
+            Closed {
+                reason: Capability::IsolatedFunction,
+                origin: Origin::FunctionBody {
+                    function: function.id,
+                },
+            },
+        ));
+    }
+    basic_failures(program)?;
+    let retained = basic_target_expressions(program);
+    for node in &program.expressions {
+        if let Expression::SourceField { path, frame } = &node.expression
+            && retained.contains(&node.id)
+            && basic_dynamic_path(program, frame.as_ref().unwrap_or(path))
+        {
+            return Err(owned_expression_emission_error(
+                Namespace::Main,
+                node.id,
+                &node.expression,
+            ));
+        }
+        let reason = match &node.expression {
+            Expression::OwnedSourceField(_)
+            | Expression::OwnedPosition(_)
+            | Expression::SourceField { .. }
+            | Expression::Position { .. }
+            | Expression::Const { .. }
+            | Expression::Call { .. }
+            | Expression::If { .. }
+            | Expression::RuntimeValue { .. }
+            | Expression::RuntimeParameter { .. }
+            | Expression::RuntimeParameterDefault { .. }
+            | Expression::Raise { .. } => continue,
+            Expression::SourceRootXmlTypeEquals { .. }
+            | Expression::XmlSerialize { .. }
+            | Expression::XmlMixedContent { .. } => Capability::XmlOperator,
+            Expression::SourceDocumentPath => Capability::Document,
+            Expression::DynamicSourceField { .. } => Capability::DynamicLoader,
+            Expression::JoinField { .. } | Expression::JoinPosition { .. } => Capability::Join,
+            Expression::Lookup { .. }
+            | Expression::CollectionFind { .. }
+            | Expression::Aggregate { .. }
+            | Expression::JoinAggregate { .. } => Capability::AggregateLookup,
+            Expression::SequenceExists { .. }
+            | Expression::SequenceItemAt { .. }
+            | Expression::SequenceAggregate { .. } => Capability::GeneratedItem,
+            Expression::UserFunctionCall { .. } | Expression::FunctionParameter { .. } => {
+                Capability::IsolatedFunction
+            }
+            _ => Capability::UnsupportedBasicContext,
+        };
+        return Err(failure(
+            Location::Expression {
+                namespace: Namespace::Main,
+                node: node.id,
+                scope: None,
+            },
+            request(&node.expression),
+            Closed {
+                reason,
+                origin: Origin::RetainedExpression {
+                    namespace: Namespace::Main,
+                    node: node.id,
+                },
+            },
+        ));
+    }
+    Ok(())
+}
+
+fn basic_scope_refusal(
+    scope: &TargetScope,
+    route: SourceScopeLocation,
+    reason: Capability,
+) -> ProgramValidationError {
+    let query = scope
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.owned_source_iteration())
+        .map(|source| iteration_request(source.source()));
+    failure(
+        Location::Iteration {
+            scope: route.clone(),
+        },
+        query,
+        Closed {
+            reason,
+            origin: Origin::Scope { scope: route },
+        },
+    )
+}
+
+fn basic_scope(
+    program: &Program,
+    scope: &TargetScope,
+    route: SourceScopeLocation,
+) -> Result<(), ProgramValidationError> {
+    if let Some(iteration) = &scope.iteration {
+        let reason = match iteration.input() {
+            IterationSource::OwnedSource(_) | IterationSource::Source(_) => None,
+            IterationSource::Generated(_) => Some(Capability::GeneratedItem),
+            IterationSource::InnerJoin(_) => Some(Capability::Join),
+            IterationSource::Concatenate(_) => Some(Capability::Concatenate),
+            IterationSource::DynamicDocuments(_) => Some(Capability::Document),
+        };
+        if let Some(reason) = reason {
+            return Err(basic_scope_refusal(scope, route, reason));
+        }
+        if iteration.filter().is_some()
+            || iteration.sort().is_some()
+            || iteration.grouping().is_some()
+            || iteration.post_group_filter().is_some()
+            || !iteration.windows().is_empty()
+            || iteration.output() != IterationOutput::Repeated
+        {
+            return Err(basic_scope_refusal(scope, route, Capability::ScopeControl));
+        }
+    }
+    if !matches!(
+        scope.construction,
+        TargetConstruction::Group | TargetConstruction::Scalar { .. }
+    ) {
+        let reason = match scope.construction {
+            TargetConstruction::XmlMixedContent { .. } => Capability::XmlOperator,
+            TargetConstruction::DynamicGroup { .. } => Capability::DynamicTarget,
+            TargetConstruction::RecursiveFilter { .. }
+            | TargetConstruction::PathHierarchy { .. }
+            | TargetConstruction::AdjacencyTree { .. } => Capability::TreeOperator,
+            _ => Capability::SpecialConstruction,
+        };
+        return Err(basic_scope_refusal(scope, route, reason));
+    }
+    if let Some(iteration) = &scope.iteration
+        && let IterationSource::Source(source) = iteration.input()
+        && basic_dynamic_path(program, source.path())
+    {
+        return Err(basic_scope_refusal(scope, route, Capability::DynamicLoader));
+    }
+    for (index, child) in scope.children.iter().enumerate() {
+        basic_scope(
+            program,
+            child,
+            route.descendant(SourceScopeStep::Child(index)),
+        )?;
+    }
+    Ok(())
+}
+
+fn basic_dynamic_path(program: &Program, path: &[String]) -> bool {
+    path.first().is_some_and(|name| {
+        program
+            .extra_sources
+            .iter()
+            .any(|source| source.name == *name && source.dynamic.is_some())
+    })
+}
+
+fn basic_expression_nodes(
+    program: &Program,
+    roots: impl IntoIterator<Item = NodeId>,
+) -> std::collections::BTreeSet<NodeId> {
+    let mut pending = roots.into_iter().collect::<Vec<_>>();
+    let mut found = std::collections::BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !found.insert(id) {
+            continue;
+        }
+        let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
+            continue;
+        };
+        // These are precisely the potential dependency edges of the admitted
+        // ordinary scalar subset; If stays conservative and execution stays lazy.
+        if matches!(
+            node.expression,
+            Expression::Call { .. }
+                | Expression::If { .. }
+                | Expression::RuntimeParameterDefault { .. }
+                | Expression::Raise { .. }
+        ) {
+            pending.extend(graph_dependencies::of(&node.expression));
+        }
+    }
+    found
+}
+
+fn basic_target_expressions(program: &Program) -> std::collections::BTreeSet<NodeId> {
+    fn roots(scope: &TargetScope, output: &mut Vec<NodeId>) {
+        if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
+            output.push(*expression);
+        }
+        output.extend(scope.bindings.iter().map(|binding| binding.expression));
+        for child in &scope.children {
+            roots(child, output);
+        }
+    }
+    let mut pending = Vec::new();
+    roots(&program.root, &mut pending);
+    for target in &program.extra_targets {
+        roots(&target.root, &mut pending);
+    }
+    basic_expression_nodes(program, pending)
+}
+
+fn basic_failure_refusal(index: usize, reason: Capability) -> ProgramValidationError {
+    failure(
+        Location::Iteration {
+            scope: SourceScopeLocation::root(SourceScopeTarget::Primary),
+        },
+        None,
+        Closed {
+            reason,
+            origin: Origin::Failure { index },
+        },
+    )
+}
+
+fn basic_failures(program: &Program) -> Result<(), ProgramValidationError> {
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        let FailureIteration::Source(source) = &rule.iteration else {
+            return Err(basic_failure_refusal(index, Capability::FailureRule));
+        };
+        if basic_dynamic_path(program, source.path()) {
+            return Err(basic_failure_refusal(index, Capability::DynamicLoader));
+        }
+        for root in rule.selection.predicate().into_iter().chain(rule.message) {
+            let retained = basic_expression_nodes(program, [root]);
+            for node in &program.expressions {
+                if !retained.contains(&node.id) {
+                    continue;
+                }
+                let dynamic = match &node.expression {
+                    Expression::SourceField { path, frame } => {
+                        basic_dynamic_path(program, frame.as_ref().unwrap_or(path))
+                    }
+                    Expression::DynamicSourceField { .. } => true,
+                    _ => false,
+                };
+                if dynamic {
+                    return Err(failure(
+                        Location::Expression {
+                            namespace: Namespace::Main,
+                            node: node.id,
+                            scope: None,
+                        },
+                        None,
+                        Closed {
+                            reason: Capability::DynamicLoader,
+                            origin: Origin::Failure { index },
+                        },
+                    ));
+                }
+                if !matches!(
+                    &node.expression,
+                    Expression::SourceField { .. }
+                        | Expression::Position { .. }
+                        | Expression::Const { .. }
+                        | Expression::Call { .. }
+                        | Expression::If { .. }
+                        | Expression::RuntimeValue { .. }
+                        | Expression::RuntimeParameter { .. }
+                        | Expression::RuntimeParameterDefault { .. }
+                        | Expression::Raise { .. }
+                ) {
+                    return Err(basic_failure_refusal(index, Capability::FailureRule));
+                }
+            }
+        }
+    }
+    Ok(())
+}

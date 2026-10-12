@@ -86,5 +86,7 @@ pub use x12_boundary::{
     validate_x12_json_format_options,
 };
 
+pub use validate::validate_basic_owned_emission;
+
 #[cfg(test)]
 mod tests;
