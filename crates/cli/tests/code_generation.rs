@@ -59,6 +59,8 @@ mod json_text_boundaries;
 
 #[path = "code_generation/empty_constructed_scopes.rs"]
 mod empty_constructed_scopes;
+#[path = "code_generation/empty_iterated_scopes.rs"]
+mod empty_iterated_scopes;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
 mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
