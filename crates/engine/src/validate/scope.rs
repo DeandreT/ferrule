@@ -286,6 +286,7 @@ pub(super) fn validate_scope(
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
             ScopeIteration::None
             | ScopeIteration::Source(_)
+            | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
         }
     }
@@ -382,6 +383,7 @@ pub(super) fn validate_scope(
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
             ScopeIteration::None
             | ScopeIteration::Source(_)
+            | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
         }
     }
@@ -571,13 +573,19 @@ pub(super) fn validate_scope(
         }
     }
 
-    if let Some(source) = scope.source()
-        && !source_path_matches(project, source, |_| true)
-    {
-        issues.push(ValidationIssue::new(
-            &location,
-            format!("source path `{}` does not exist", display_path(source)),
-        ));
+    match scope.source_selector() {
+        Some(mapping::SourceSelectorRef::Owned(source)) => {
+            super::schema::validate_owned_collection(project, source, &location, issues);
+        }
+        Some(mapping::SourceSelectorRef::Legacy(source))
+            if !source_path_matches(project, source, |_| true) =>
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!("source path `{}` does not exist", display_path(source)),
+            ));
+        }
+        _ => {}
     }
     if let Some(sequence) = scope.sequence() {
         let mut references = match sequence {

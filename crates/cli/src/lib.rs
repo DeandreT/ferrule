@@ -2578,3 +2578,53 @@ mod owned_source_filesystem_admission_tests {
         assert_eq!(published.get(), 0);
     }
 }
+
+#[cfg(test)]
+pub(crate) fn owned_collection_test_project() -> mapping::Project {
+    let mut project = owned_source_test_project();
+    project.graph.nodes.insert(
+        9,
+        mapping::Node::Const {
+            value: ir::Value::String("legacy".into()),
+        },
+    );
+    project.root.iteration = mapping::ScopeIteration::OwnedSource {
+        source: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Primary,
+            path: vec![],
+        },
+        output_path: None,
+    };
+    project
+}
+
+#[cfg(test)]
+mod owned_collection_filesystem_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_collection_refusal_precedes_input_open_and_publication_callback() {
+        let project = owned_collection_test_project();
+        let published = std::cell::Cell::new(0);
+        let publish = || {
+            published.set(published.get() + 1);
+            true
+        };
+        let options = RunOptions {
+            before_publish: Some(&publish),
+            ..RunOptions::default()
+        };
+        let error = run_project_value_with_filesystem_policy(
+            &project,
+            Path::new("nonexistent-owned-input-parent/project.json"),
+            &options,
+            None,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+        ));
+        assert_eq!(published.get(), 0);
+    }
+}

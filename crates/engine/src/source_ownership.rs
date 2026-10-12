@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use mapping::{
     FailureIteration, FunctionId, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
+    SourceScopeLocation, SourceScopeStep, SourceScopeTarget, SourceSelectorRef,
 };
 
 use crate::{EngineError, TargetSelection};
@@ -19,6 +20,7 @@ fn has_owned_nodes(project: &Project) -> bool {
                 .flat_map(|function| function.body.nodes.values()),
         )
         .any(|node| node.owned_source_kind().is_some())
+        || mapping::first_project_owned_source_scope(project).is_some()
 }
 
 pub(crate) fn check_project(
@@ -32,22 +34,51 @@ pub(crate) fn check_project(
     match selection {
         Some(selection) => {
             let target = crate::required_sources::selected_target(project, selection)?;
+            let (root, owner) = match target {
+                None => (&project.root, SourceScopeTarget::Primary),
+                Some(target) => {
+                    let index = project
+                        .extra_targets
+                        .iter()
+                        .position(|candidate| std::ptr::eq(candidate, target))
+                        .expect("selected target belongs to this project");
+                    (
+                        &target.root,
+                        SourceScopeTarget::Named {
+                            index,
+                            name: target.name.clone(),
+                        },
+                    )
+                }
+            };
+            check_roots(project, [(root, SourceScopeLocation::root(owner))])
+        }
+        None => {
             check_roots(
                 project,
-                [target.map_or(&project.root, |target| &target.root)],
+                std::iter::once((
+                    &project.root,
+                    SourceScopeLocation::root(SourceScopeTarget::Primary),
+                ))
+                .chain(project.extra_targets.iter().enumerate().map(
+                    |(index, target)| {
+                        (
+                            &target.root,
+                            SourceScopeLocation::root(SourceScopeTarget::Named {
+                                index,
+                                name: target.name.clone(),
+                            }),
+                        )
+                    },
+                )),
             )
         }
-        None => check_roots(
-            project,
-            std::iter::once(&project.root)
-                .chain(project.extra_targets.iter().map(|target| &target.root)),
-        ),
     }
 }
 
 pub(crate) fn check_roots<'a>(
     project: &'a Project,
-    roots: impl IntoIterator<Item = &'a Scope>,
+    roots: impl IntoIterator<Item = (&'a Scope, SourceScopeLocation)>,
 ) -> Result<(), EngineError> {
     if !has_owned_nodes(project) {
         return Ok(());
@@ -59,7 +90,7 @@ pub(crate) fn check_roots<'a>(
         functions: BTreeSet::new(),
         dynamic: BTreeSet::new(),
     };
-    admission.scopes(roots);
+    admission.scopes(roots)?;
     for rule in &project.failure_rules {
         match &rule.iteration {
             FailureIteration::Source { collection } => admission.path(collection),
@@ -84,11 +115,18 @@ struct Admission<'a> {
 }
 
 impl<'a> Admission<'a> {
-    fn scopes(&mut self, roots: impl IntoIterator<Item = &'a Scope>) {
+    fn scopes(
+        &mut self,
+        roots: impl IntoIterator<Item = (&'a Scope, SourceScopeLocation)>,
+    ) -> Result<(), EngineError> {
         let mut pending: Vec<_> = roots.into_iter().collect();
-        while let Some(scope) = pending.pop() {
-            if let Some(path) = scope.source() {
-                self.path(path);
+        while let Some((scope, location)) = pending.pop() {
+            match scope.source_selector() {
+                Some(SourceSelectorRef::Legacy(path)) => self.path(path),
+                Some(SourceSelectorRef::Owned(_)) => {
+                    return Err(EngineError::UnsupportedSourceIteration { scope: location });
+                }
+                None => {}
             }
             if let Some(sequence) = scope.sequence() {
                 self.sequence(sequence, None);
@@ -99,7 +137,12 @@ impl<'a> Admission<'a> {
                 }
             }
             if let Some(segments) = scope.concatenated() {
-                pending.extend(segments.iter());
+                pending.extend(segments.iter().enumerate().map(|(index, segment)| {
+                    (
+                        segment,
+                        location.descendant(SourceScopeStep::Segment(index)),
+                    )
+                }));
             }
             self.pending.extend(scope.filter.map(|node| (None, node)));
             self.pending
@@ -141,12 +184,20 @@ impl<'a> Admission<'a> {
                 | ScopeConstruction::CopyCurrentSource
                 | ScopeConstruction::XmlMixedContent { .. } => {}
             }
-            pending.extend(scope.children.iter());
-            for child in &scope.dynamic_children {
+            pending.extend(
+                scope.children.iter().enumerate().map(|(index, child)| {
+                    (child, location.descendant(SourceScopeStep::Child(index)))
+                }),
+            );
+            for (index, child) in scope.dynamic_children.iter().enumerate() {
                 self.pending.push((None, child.key));
-                pending.push(&child.scope);
+                pending.push((
+                    &child.scope,
+                    location.descendant(SourceScopeStep::DynamicChild(index)),
+                ));
             }
         }
+        Ok(())
     }
 
     fn path(&mut self, path: &[String]) {

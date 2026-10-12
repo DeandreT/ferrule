@@ -424,7 +424,10 @@ fn imports_schemas_scopes_and_functions() {
     let person = &project.root.children[0];
     assert_eq!(person.target_field, "Person");
     assert_eq!(
-        person.source().map(|path| path.to_vec()),
+        person
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Staff".to_string()])
     );
 
@@ -534,7 +537,10 @@ fn scalar_calls_iterate_and_transform_nested_generic_element_text() {
         .find(|scope| scope.target_field == ir::XML_ELEMENTS_FIELD)
         .unwrap();
     assert_eq!(
-        outer_scope.source().map(|path| path.to_vec()),
+        outer_scope
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec![
             "Employees".to_string(),
             ir::XML_ELEMENTS_FIELD.to_string(),
@@ -552,7 +558,10 @@ fn scalar_calls_iterate_and_transform_nested_generic_element_text() {
         .find(|scope| scope.target_field == ir::XML_ELEMENTS_FIELD)
         .unwrap();
     assert_eq!(
-        inner_scope.source().map(|path| path.to_vec()),
+        inner_scope
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec![ir::XML_ELEMENTS_FIELD.to_string()])
     );
     let text_binding = inner_scope
@@ -671,7 +680,14 @@ fn export_then_import_roundtrips_semantically() {
     assert_eq!(a.target, b.target);
     // Scope shape survives.
     assert_eq!(b.root.children.len(), 1);
-    assert_eq!(b.root.children[0].source(), a.root.children[0].source());
+    assert_eq!(
+        b.root.children[0]
+            .source()
+            .expect("legacy fixture selector"),
+        a.root.children[0]
+            .source()
+            .expect("legacy fixture selector")
+    );
     assert_eq!(
         b.root.children[0].bindings.len(),
         a.root.children[0].bindings.len()
@@ -807,13 +823,20 @@ fn xml_to_json_with_ref_schema_imports_runs_and_roundtrips() {
 
     // Row iteration lands on the root scope; batches nest inside it.
     assert_eq!(
-        project.root.source().map(|path| path.to_vec()),
+        project
+            .root
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Item".to_string()])
     );
     let batches_scope = &project.root.children[0];
     assert_eq!(batches_scope.target_field, "batches");
     assert_eq!(
-        batches_scope.source().map(|path| path.to_vec()),
+        batches_scope
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Batch".to_string()])
     );
 
@@ -856,7 +879,9 @@ fn json_source_designs_import_and_run() {
     let line = &project.root.children[0];
     assert_eq!(line.target_field, "Line");
     assert_eq!(
-        line.source().map(|path| path.to_vec()),
+        line.source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["items".to_string()])
     );
 
@@ -925,7 +950,10 @@ fn csv_source_designs_import_and_run() {
     // enclosing Repeated, so the scope path is empty.
     let person = &project.root.children[0];
     assert_eq!(person.target_field, "Person");
-    assert_eq!(person.source(), Some([].as_slice()));
+    assert_eq!(
+        person.source().expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
 
     let rows = format_csv::read(&fixture("people.csv"), &project.source, Some(','), true).unwrap();
     let target = engine::run(project, &Instance::Repeated(rows)).unwrap();
@@ -958,7 +986,11 @@ fn csv_target_designs_import_run_and_roundtrip() {
 
     // Rows iterate on the root scope itself.
     assert_eq!(
-        project.root.source().map(|path| path.to_vec()),
+        project
+            .root
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Staff".to_string()])
     );
 
@@ -1021,7 +1053,11 @@ fn db_target_designs_import_run_and_roundtrip() {
     assert_eq!(project.target_path.as_deref(), Some("people-out.sqlite"));
     // Rows iterate on the root scope, like the other flat-rows formats.
     assert_eq!(
-        project.root.source().map(|path| path.to_vec()),
+        project
+            .root
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Staff".to_string()])
     );
 
@@ -1209,7 +1245,10 @@ fn group_by_designs_import_run_and_roundtrip() {
     let stats = &project.root.children[0];
     assert_eq!(stats.target_field, "YearlyStats");
     assert_eq!(
-        stats.source().map(|path| path.to_vec()),
+        stats
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Row".to_string()])
     );
     let group_key = stats.group_by.expect("scope should group");
@@ -1262,7 +1301,9 @@ fn sorted_first_items_import_run_and_roundtrip() {
         .find(|scope| scope.target_field == "Top")
         .unwrap();
     assert_eq!(
-        top.source().map(|path| path.to_vec()),
+        top.source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Score".into()])
     );
     assert!(top.sort_descending);
@@ -1357,7 +1398,10 @@ fn constructed_variables_preserve_nested_source_frames() {
     let people_scope = &project.root.children[0];
     assert_eq!(people_scope.target_field, "Person");
     assert_eq!(
-        people_scope.source().map(|path| path.to_vec()),
+        people_scope
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Office".into(), "Department".into(), "Person".into()])
     );
     assert!(people_scope.sort_by.is_some());
@@ -1443,7 +1487,10 @@ fn indexed_xml_entry_names_import_run_and_roundtrip() {
         .find(|scope| scope.target_field == "expense-item")
         .unwrap();
     assert_eq!(
-        expense_scope.source().map(|path| path.to_vec()),
+        expense_scope
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["expense-item".into()])
     );
     let filter = expense_scope

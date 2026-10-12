@@ -600,7 +600,10 @@ fn build_root_target(
     };
     if root.construction != ScopeConstruction::Constructed
         || root.iteration_output != mapping::IterationOutput::Repeated
-        || root.source().is_none()
+        || root
+            .source()
+            .expect("legacy path after ownership boundary")
+            .is_none()
         || root.sequence().is_some()
         || root.join().is_some()
         || root.filter.is_some()
@@ -622,7 +625,10 @@ fn build_root_target(
     let item_scope = &child.scope;
     if item_scope.construction != ScopeConstruction::Constructed
         || item_scope.iteration_output != mapping::IterationOutput::Repeated
-        || item_scope.source().is_none()
+        || item_scope
+            .source()
+            .expect("legacy path after ownership boundary")
+            .is_none()
         || item_scope.sequence().is_some()
         || item_scope.join().is_some()
         || item_scope.filter.is_some()
@@ -669,7 +675,11 @@ fn build_root_target(
             "root computed array item values cannot repeat",
         ));
     }
-    let outer_source = root.source().unwrap_or_default().to_vec();
+    let outer_source = root
+        .source()
+        .expect("legacy path after ownership boundary")
+        .unwrap_or_default()
+        .to_vec();
     if sources.schema_node_at(&outer_source).is_none() {
         return Err(dynamic_target_error("root source collection is missing"));
     }
@@ -678,7 +688,14 @@ fn build_root_target(
     } else {
         outer_source.clone()
     };
-    item_source.extend(item_scope.source().unwrap_or_default().iter().cloned());
+    item_source.extend(
+        item_scope
+            .source()
+            .expect("legacy path after ownership boundary")
+            .unwrap_or_default()
+            .iter()
+            .cloned(),
+    );
     if sources.schema_node_at(&item_source).is_none() {
         return Err(dynamic_target_error(
             "computed array item collection is missing",
@@ -717,7 +734,10 @@ fn collect_nested_targets(
     anchor: &[String],
     targets: &mut Vec<NestedTarget>,
 ) -> Result<(), MfdError> {
-    let current_anchor = if let Some(source) = scope.source() {
+    let current_anchor = if let Some(source) = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+    {
         if sources.is_named_extra_path(source) {
             source.to_vec()
         } else {
@@ -752,6 +772,11 @@ fn collect_nested_targets(
             ));
         }
         let driver = match &scope.iteration {
+            ScopeIteration::OwnedSource { .. } => {
+                return Err(dynamic_target_error(
+                    "owned source iteration requires unavailable ownership support",
+                ));
+            }
             ScopeIteration::Source(_) => {
                 if sources.schema_node_at(&current_anchor).is_none() {
                     return Err(dynamic_target_error(

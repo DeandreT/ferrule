@@ -26,7 +26,10 @@ fn cloned_csv_row_block_preserves_iteration_and_reducer_bindings() {
         .collect::<Vec<_>>();
     assert_eq!(segments.len(), 2);
     assert_eq!(
-        segments[1].source().map(|path| path.to_vec()),
+        segments[1]
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Item".into()])
     );
 
