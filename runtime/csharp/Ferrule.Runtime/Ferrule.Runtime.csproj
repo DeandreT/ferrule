@@ -7,4 +7,7 @@
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ferrule.Runtime.SmokeTests" />
+  </ItemGroup>
 </Project>

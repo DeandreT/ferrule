@@ -735,22 +735,28 @@ public sealed partial class ScopeContext
         _ => throw new InvalidOperationException("unknown Ferrule instance type"),
     };
 
-    private FerruleInstance? FindIterationBase(IReadOnlyList<string> path)
+    private FerruleInstance? FindIterationBase(IReadOnlyList<string> path, BasicWalkObserver? observed = null)
     {
         if (path.Count == 0)
         {
-            return _frames.Count == 0 ? null : _frames[^1];
+            if (_frames.Count == 0) return null;
+            observed?.SelectedBase(_frames.Count - 1, _frames[^1]);
+            return _frames[^1];
         }
 
         for (var index = _frames.Count - 1; index >= 0; index--)
         {
+            observed?.ProbeBase(_frames[index]);
             if (TryGetField(_frames[index], path[0], out _))
             {
+                observed?.SelectedBase(index, _frames[index]);
                 return _frames[index];
             }
         }
 
-        return _frames.Count == 0 ? null : _frames[^1];
+        if (_frames.Count == 0) return null;
+        observed?.SelectedBase(_frames.Count - 1, _frames[^1]);
+        return _frames[^1];
     }
 
     private ScopeContext GeneratedContext(FerruleValue value, int index)
@@ -827,16 +833,20 @@ public sealed partial class ScopeContext
         List<string> prefix,
         List<FerruleInstance> frames,
         List<CollectionIdentity> collections,
-        List<ScopeContext> output)
+        ICollection<ScopeContext> output,
+        BasicWalkObserver? observed = null)
     {
+        observed?.Enter(current, pathIndex, prefix, frames.Count, collections.Count);
+        try
+        {
         if (pathIndex < path.Count && current is FerruleRepeated leadingRepeated)
         {
             for (var index = 0; index < leadingRepeated.Items.Count; index++)
             {
                 var item = leadingRepeated.Items[index];
-                PushCollection(item, prefix, index + 1, frames, collections);
-                Walk(item, path, pathIndex, prefix, frames, collections, output);
-                PopCollection(frames, collections);
+                PushCollection(item, prefix, index + 1, frames, collections, observed: observed);
+                Walk(item, path, pathIndex, prefix, frames, collections, output, observed);
+                PopCollection(frames, collections, observed);
             }
             return;
         }
@@ -855,24 +865,28 @@ public sealed partial class ScopeContext
                             index + 1,
                             frames,
                             collections,
-                            document.ResolvedSourcePath ?? document.Path);
-                        AddCandidate(frames, collections, output);
-                        PopCollection(frames, collections);
+                            document.ResolvedSourcePath ?? document.Path, observed);
+                        AddCandidate(frames, collections, output, observed);
+                        PopCollection(frames, collections, observed);
                     }
                     return;
                 case FerruleRepeated repeated:
                     for (var index = 0; index < repeated.Items.Count; index++)
                     {
                         var item = repeated.Items[index];
-                        PushCollection(item, prefix, index + 1, frames, collections);
-                        AddCandidate(frames, collections, output);
-                        PopCollection(frames, collections);
+                        PushCollection(item, prefix, index + 1, frames, collections, observed: observed);
+                        AddCandidate(frames, collections, output, observed);
+                        PopCollection(frames, collections, observed);
                     }
                     return;
                 default:
+                    observed?.BeforePlain();
+                    if (observed is not null) GrowBasicList(frames, 1, observed);
+                    observed?.Plain(current);
                     frames.Add(current);
-                    AddCandidate(frames, collections, output);
+                    AddCandidate(frames, collections, output, observed);
                     frames.RemoveAt(frames.Count - 1);
+                    observed?.PlainPopped();
                     return;
             }
         }
@@ -888,58 +902,91 @@ public sealed partial class ScopeContext
                     index + 1,
                     frames,
                     collections,
-                    document.ResolvedSourcePath ?? document.Path);
-                Walk(document.Value, path, pathIndex, prefix, frames, collections, output);
-                PopCollection(frames, collections);
+                    document.ResolvedSourcePath ?? document.Path, observed);
+                Walk(document.Value, path, pathIndex, prefix, frames, collections, output, observed);
+                PopCollection(frames, collections, observed);
             }
             return;
         }
 
-        var nextPrefix = new List<string>(prefix) { path[pathIndex] };
+        List<string> nextPrefix;
+        if (observed is null)
+            nextPrefix = new List<string>(prefix) { path[pathIndex] };
+        else
+        {
+            var capacity = checked(prefix.Count + 1);
+            observed.ReserveSlots((nuint)capacity + 1); // exact backing plus nextPrefix descriptor
+            observed.ReservePath(prefix, path[pathIndex]);
+            nextPrefix = new List<string>(capacity);
+            nextPrefix.AddRange(prefix);
+            nextPrefix.Add(path[pathIndex]);
+        }
+        try
+        {
         if (!TryGetField(current, path[pathIndex], out var next))
         {
             return;
         }
+
+        observed?.ConsumedField(path[pathIndex], next);
 
         if (next is FerruleRepeated repeatedField)
         {
             for (var index = 0; index < repeatedField.Items.Count; index++)
             {
                 var item = repeatedField.Items[index];
-                PushCollection(item, nextPrefix, index + 1, frames, collections);
+                PushCollection(item, nextPrefix, index + 1, frames, collections, observed: observed);
                 if (pathIndex + 1 == path.Count)
                 {
-                    AddCandidate(frames, collections, output);
+                    AddCandidate(frames, collections, output, observed);
                 }
                 else
                 {
-                    Walk(item, path, pathIndex + 1, nextPrefix, frames, collections, output);
+                    Walk(item, path, pathIndex + 1, nextPrefix, frames, collections, output, observed);
                 }
-                PopCollection(frames, collections);
+                PopCollection(frames, collections, observed);
             }
             return;
         }
 
-        Walk(next, path, pathIndex + 1, nextPrefix, frames, collections, output);
+        Walk(next, path, pathIndex + 1, nextPrefix, frames, collections, output, observed);
+        }
+        finally
+        {
+            if (observed is not null) observed.ReleaseSlots((nuint)nextPrefix.Capacity + 1);
+        }
+        }
+        finally { observed?.Leave(); }
     }
 
     private void AddCandidate(
         IReadOnlyCollection<FerruleInstance> frames,
         IReadOnlyCollection<CollectionIdentity> collections,
-        ICollection<ScopeContext> output)
+        ICollection<ScopeContext> output,
+        BasicWalkObserver? observed = null)
     {
+        if (observed is not null)
+        {
+            observed.BeforeCandidate(frames.Count, collections.Count, output.Count);
+            observed.ReserveSlots((nuint)checked(_frames.Count + frames.Count));
+            observed.ReserveSlots((nuint)checked(_collections.Count + collections.Count));
+            observed.ReserveSlots(5); // two Lists, two readonly wrappers and the exact legacy context
+            observed.ReserveOutputCell();
+        }
         var allFrames = new List<FerruleInstance>(_frames.Count + frames.Count);
         allFrames.AddRange(_frames);
         allFrames.AddRange(frames);
         var allCollections = new List<CollectionIdentity>(_collections.Count + collections.Count);
         allCollections.AddRange(_collections);
         allCollections.AddRange(collections);
-        output.Add(new ScopeContext(
+        var candidate = new ScopeContext(
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth));
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
+        output.Add(candidate);
+        observed?.Candidate(candidate, frames.Count, collections.Count);
     }
 
     private static void PushCollection(
@@ -948,33 +995,53 @@ public sealed partial class ScopeContext
         int index,
         ICollection<FerruleInstance> frames,
         ICollection<CollectionIdentity> collections,
-        string? documentPath = null)
+        string? documentPath = null,
+        BasicWalkObserver? observed = null)
     {
+        if (observed is not null)
+        {
+            observed.BeforeCollectionPush();
+            GrowBasicList((List<FerruleInstance>)frames, 1, observed);
+            GrowBasicList((List<CollectionIdentity>)collections, 1, observed);
+            observed.ReserveSlots((nuint)path.Count);
+            observed.ReservePath(path, null);
+            observed.ReserveSlots(1); // exact legacy collection identity object
+        }
         frames.Add(item);
         collections.Add(new CollectionIdentity(
             path.ToArray(),
             item,
             index,
             DocumentPath: documentPath));
+        observed?.CollectionPushed(item, path, index);
     }
 
     private static void PopCollection(
         List<FerruleInstance> frames,
-        List<CollectionIdentity> collections)
+        List<CollectionIdentity> collections,
+        BasicWalkObserver? observed = null)
     {
+        var releasedPathSlots = observed is null ? 0 : collections[^1].Path.Count;
         frames.RemoveAt(frames.Count - 1);
         collections.RemoveAt(collections.Count - 1);
+        if (observed is not null)
+        {
+            observed.ReleaseSlots((nuint)releasedPathSlots + 1);
+            observed.CollectionPopped();
+        }
     }
 
     private static ScalarResolution TryResolveScalar(
         FerruleInstance source,
         IReadOnlyList<string> path,
         int pathIndex,
-        bool absenceAsNull = false)
+        bool absenceAsNull = false,
+        bool basicOnly = false)
     {
         var current = source;
         for (var index = pathIndex; index < path.Count; index++)
         {
+            if (basicOnly) RequireBasicScalarTraversal(current);
             if (current is FerruleRepeated repeated)
             {
                 if (repeated.Items.Count == 0)
@@ -982,6 +1049,7 @@ public sealed partial class ScopeContext
                     return ScalarResolution.Resolved(FerruleValue.Null);
                 }
                 current = repeated.Items[0];
+                if (basicOnly) RequireBasicScalarTraversal(current);
             }
 
             if (absenceAsNull && current is FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull })
@@ -1001,6 +1069,7 @@ public sealed partial class ScopeContext
             current = next;
         }
 
+        if (basicOnly) RequireBasicScalarTraversal(current);
         if (current is FerruleRepeated terminalRepeated)
         {
             if (terminalRepeated.Items.Count == 0)
@@ -1008,6 +1077,7 @@ public sealed partial class ScopeContext
                 return ScalarResolution.Resolved(FerruleValue.Null);
             }
             current = terminalRepeated.Items[0];
+            if (basicOnly) RequireBasicScalarTraversal(current);
         }
 
         return current is FerruleScalar scalar
@@ -1150,4 +1220,1797 @@ public sealed partial class ScopeContext
 
         internal static ScalarResolution Resolved(FerruleValue value) => new(true, value);
     }
+}
+
+/// <summary>An exact static source-owner query; names are never normalized.</summary>
+public readonly struct FerruleOwnedSourceOwner
+{
+    private FerruleOwnedSourceOwner(string name) { Name = name; }
+    public static FerruleOwnedSourceOwner Primary => default;
+    public static FerruleOwnedSourceOwner Named(string exactName)
+    {
+        ArgumentNullException.ThrowIfNull(exactName);
+        FerruleUnicode.RequireWellFormed(exactName, nameof(exactName));
+        return new(exactName);
+    }
+    public string? Name { get; }
+    public bool IsPrimary => Name is null;
+}
+
+/// <summary>A declared name and optional supplied immutable instance.</summary>
+public sealed class FerruleDeclaredNamedSourceRoot
+{
+    public FerruleDeclaredNamedSourceRoot(string exactName, FerruleInstance? instance)
+    {
+        ArgumentNullException.ThrowIfNull(exactName);
+        FerruleUnicode.RequireWellFormed(exactName, nameof(exactName));
+        Name = exactName; Instance = instance;
+    }
+    public string Name { get; }
+    public FerruleInstance? Instance { get; }
+}
+
+public readonly record struct FerruleOwnedSourceLimits(
+    nuint MaxRoots, nuint MaxActiveFrames, nuint MaxPathSegments,
+    nuint MaxMetadataBytes, nuint MaxWalkContexts);
+
+public enum FerruleOwnedSourceErrorKind
+{
+    InvalidNamedOwner, UnknownOwner, AmbiguousOwner, SourceUnavailable,
+    InactiveSourceFrame, IncompatibleFramePath, UniteratedRepetition,
+    UnsupportedSourceKind, Traversal, InvalidPosition, MetadataLimit,
+    MetadataArithmeticOverflow,
+}
+public enum FerruleOwnedSourceLimitKind
+{
+    Roots, Frames, PathSegments, MetadataBytes, WalkContexts, MetadataSlots,
+}
+public enum FerruleOwnedSourceInstanceKind { Scalar, Group, Repeated, DocumentSet, MappedSequence }
+public enum FerruleOwnedSourceTraversalKind { CannotTraverse, ExpectedScalar }
+
+public sealed class FerruleOwnedSourceIdentity
+{
+    internal FerruleOwnedSourceIdentity(string? name) { Name = name; }
+    public bool IsPrimary => Name is null;
+    public string? Name { get; }
+}
+public sealed class FerruleOwnedSourceTraversalException : Exception
+{
+    internal FerruleOwnedSourceTraversalException(FerruleOwnedSourceTraversalKind error,
+        IReadOnlyList<string> path, nuint? segment, FerruleOwnedSourceInstanceKind found)
+        : base("Owned source traversal failed.")
+    { Error = error; Path = path; Segment = segment; Found = found; }
+    public FerruleOwnedSourceTraversalKind Error { get; }
+    public IReadOnlyList<string> Path { get; }
+    public nuint? Segment { get; }
+    public FerruleOwnedSourceInstanceKind Found { get; }
+}
+public sealed class FerruleOwnedSourceException : Exception
+{
+    internal FerruleOwnedSourceException(FerruleOwnedSourceErrorKind error,
+        FerruleOwnedSourceIdentity? owner = null, string? requestedName = null,
+        IReadOnlyList<int>? declarationIndices = null, IReadOnlyList<string>? path = null,
+        IReadOnlyList<string>? frame = null, IReadOnlyList<string>? collection = null,
+        nuint? segment = null, FerruleOwnedSourceInstanceKind? found = null,
+        nuint? index = null, FerruleOwnedSourceLimitKind? limit = null,
+        nuint? used = null, nuint? requested = null, nuint? maximum = null,
+        FerruleOwnedSourceTraversalException? cause = null)
+        : base("Owned source operation failed.", cause)
+    {
+        Error = error; Owner = owner; RequestedName = requestedName;
+        DeclarationIndices = declarationIndices; Path = path; Frame = frame;
+        Collection = collection; Segment = segment; FoundInstance = found;
+        RequestedIndex = index; LimitKind = limit; Used = used;
+        Requested = requested; Maximum = maximum;
+    }
+    public FerruleOwnedSourceErrorKind Error { get; }
+    public FerruleOwnedSourceIdentity? Owner { get; }
+    public string? RequestedName { get; }
+    public IReadOnlyList<int>? DeclarationIndices { get; }
+    public IReadOnlyList<string>? Path { get; }
+    public IReadOnlyList<string>? Frame { get; }
+    public IReadOnlyList<string>? Collection { get; }
+    public nuint? Segment { get; }
+    public FerruleOwnedSourceInstanceKind? FoundInstance { get; }
+    public nuint? RequestedIndex { get; }
+    public FerruleOwnedSourceLimitKind? LimitKind { get; }
+    public nuint? Used { get; }
+    public nuint? Requested { get; }
+    public nuint? Maximum { get; }
+}
+
+// Counts are logical metadata slots and UTF-8 payload, never allocator/RSS bytes.
+internal static class OwnedSourceAccounting
+{
+    internal static FerruleOwnedSourceException Overflow(FerruleOwnedSourceLimitKind kind) =>
+        new(FerruleOwnedSourceErrorKind.MetadataArithmeticOverflow, limit: kind);
+    internal static nuint Add(nuint left, nuint right, FerruleOwnedSourceLimitKind kind)
+    {
+        if (right > nuint.MaxValue - left) throw Overflow(kind);
+        return left + right;
+    }
+    internal static nuint Multiply(nuint left, nuint right)
+    {
+        if (left != 0 && right > nuint.MaxValue / left)
+            throw Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+        return left * right;
+    }
+    internal static nuint CoreSlots(FerruleOwnedSourceLimits l)
+    {
+        var k = FerruleOwnedSourceLimitKind.MetadataSlots;
+        var wf = Multiply(l.MaxWalkContexts, l.MaxActiveFrames);
+        var af = Add(wf, Multiply(2, l.MaxActiveFrames), k);
+        var fs = Multiply(af, l.MaxPathSegments);
+        var tasks = Multiply(2, Add(l.MaxActiveFrames, 1, k));
+        var rr = Multiply(2, l.MaxRoots);
+        var diagnostics = Add(Multiply(2, l.MaxPathSegments), 2, k);
+        var total = Add(rr, 1, k);
+        total = Add(total, af, k); total = Add(total, fs, k);
+        total = Add(total, tasks, k); total = Add(total, l.MaxWalkContexts, k);
+        return Add(total, diagnostics, k);
+    }
+    internal static nuint CSharpSlots(FerruleOwnedSourceLimits l)
+    {
+        var k = FerruleOwnedSourceLimitKind.MetadataSlots;
+        var total = CoreSlots(l);
+        total = Add(total, Multiply(2, l.MaxWalkContexts), k);
+        total = Add(total, l.MaxActiveFrames, k);
+        total = Add(total, Multiply(l.MaxActiveFrames, l.MaxPathSegments), k);
+        return Add(total, Multiply(2, Add(l.MaxActiveFrames, 1, k)), k);
+    }
+    internal static nuint Tasks(FerruleOwnedSourceLimits l) =>
+        Multiply(2, Add(l.MaxActiveFrames, 1, FerruleOwnedSourceLimitKind.MetadataSlots));
+    internal static void Limit(nuint used, nuint requested, nuint maximum,
+        FerruleOwnedSourceLimitKind kind)
+    {
+        if (Add(used, requested, kind) > maximum)
+            throw new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.MetadataLimit,
+                limit: kind, used: used, requested: requested, maximum: maximum);
+    }
+    internal static nuint Text(string text)
+    {
+        // Count without an int-sized encoded buffer or Encoding byte-count overflow.
+        FerruleUnicode.RequireWellFormed(text, nameof(text));
+        nuint bytes = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            nuint count = ch <= 0x7f ? (nuint)1 : ch <= 0x7ff ? (nuint)2 : (nuint)3;
+            if (char.IsHighSurrogate(ch)) { count = 4; i++; }
+            bytes = Add(bytes, count, FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        return bytes;
+    }
+    internal static nuint PathText(IReadOnlyList<string> path)
+    {
+        nuint value = 0;
+        for (var i = 0; i < path.Count; i++)
+            value = Add(value, Text(path[i]), FerruleOwnedSourceLimitKind.MetadataBytes);
+        return value;
+    }
+}
+internal sealed class OwnedCounter
+{
+    internal OwnedCounter(nuint maximum, FerruleOwnedSourceLimitKind kind)
+    { Maximum = maximum; Kind = kind; }
+    internal nuint Used { get; private set; }
+    internal nuint Maximum { get; }
+    internal FerruleOwnedSourceLimitKind Kind { get; }
+    internal void Charge(nuint count)
+    {
+        OwnedSourceAccounting.Limit(Used, count, Maximum, Kind);
+        Used = OwnedSourceAccounting.Add(Used, count, Kind);
+    }
+    internal void Release(nuint count)
+    {
+        if (count > Used) throw OwnedSourceAccounting.Overflow(Kind);
+        Used -= count;
+    }
+}
+
+/// <summary>Immutable metadata snapshot sharing the supplied immutable source trees.</summary>
+public sealed class FerruleOwnedSourceRoots
+{
+    private readonly Binding[] _named;
+    private readonly FerruleInstance _primary;
+    private readonly record struct Binding(string Name, FerruleInstance? Instance);
+    internal FerruleOwnedSourceLimits Limits { get; }
+    internal nuint SlotMaximum { get; }
+    internal nuint RegistryCount => (nuint)_named.Length + 1;
+    internal nuint RegistryText { get; }
+    private FerruleOwnedSourceRoots(FerruleInstance primary, Binding[] named,
+        FerruleOwnedSourceLimits limits, nuint slots, nuint text)
+    { _primary = primary; _named = named; Limits = limits; SlotMaximum = slots; RegistryText = text; }
+    public static FerruleOwnedSourceRoots Create(FerruleInstance primary,
+        IReadOnlyList<FerruleDeclaredNamedSourceRoot> named, FerruleOwnedSourceLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(primary); ArgumentNullException.ThrowIfNull(named);
+        // All derived products precede registry allocation, even when actual inputs are small.
+        var slots = OwnedSourceAccounting.CSharpSlots(limits);
+        var roots = OwnedSourceAccounting.Add((nuint)named.Count, 1, FerruleOwnedSourceLimitKind.Roots);
+        OwnedSourceAccounting.Limit(0, roots, limits.MaxRoots, FerruleOwnedSourceLimitKind.Roots);
+        nuint bytes = 0;
+        for (var i = 0; i < named.Count; i++)
+        {
+            ArgumentNullException.ThrowIfNull(named[i]);
+            bytes = OwnedSourceAccounting.Add(bytes, OwnedSourceAccounting.Text(named[i].Name),
+                FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        OwnedSourceAccounting.Limit(0, bytes, limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+        OwnedSourceAccounting.Limit(0, roots, slots, FerruleOwnedSourceLimitKind.MetadataSlots);
+        if (named.Count > Array.MaxLength) throw OwnedSourceAccounting.Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+        var copy = new Binding[named.Count];
+        for (var i = 0; i < copy.Length; i++) copy[i] = new(named[i].Name, named[i].Instance);
+        return new(primary, copy, limits, slots, bytes);
+    }
+    public FerruleOwnedScopeContext RootContext() => FerruleOwnedScopeContext.CreateRoot(this);
+    internal int Resolve(FerruleOwnedSourceOwner owner, OwnedQuery query)
+    {
+        if (owner.IsPrimary) return 0;
+        var name = owner.Name!;
+        if (name.Length == 0) throw new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner);
+        var found = -1; var count = 0;
+        for (var i = 0; i < _named.Length; i++)
+            if (string.Equals(_named[i].Name, name, StringComparison.Ordinal)) { found = i; count++; }
+        if (count == 0) throw query.Error(FerruleOwnedSourceErrorKind.UnknownOwner);
+        if (count > 1)
+        {
+            // Query already reserved every possible matching declaration index.
+            var indices = new int[count]; var target = 0;
+            for (var i = 0; i < _named.Length; i++)
+                if (string.Equals(_named[i].Name, name, StringComparison.Ordinal)) indices[target++] = i;
+            throw query.Error(FerruleOwnedSourceErrorKind.AmbiguousOwner, declarations: Array.AsReadOnly(indices));
+        }
+        if (_named[found].Instance is null) throw query.Error(FerruleOwnedSourceErrorKind.SourceUnavailable);
+        return found + 1;
+    }
+    internal FerruleInstance Instance(int key) => key == 0 ? _primary : _named[key - 1].Instance!;
+    internal string? Name(int key) => key == 0 ? null : _named[key - 1].Name;
+}
+
+internal sealed class OwnedQuery
+{
+    internal OwnedQuery(FerruleOwnedScopeContext context, FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path, IReadOnlyList<string>? frame)
+    {
+        Roots = context.Roots; Owner = owner;
+        Slots = new(Roots.SlotMaximum, FerruleOwnedSourceLimitKind.MetadataSlots);
+        Bytes = new(Roots.Limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+        Slots.Charge(Roots.RegistryCount); Slots.Charge(1); Bytes.Charge(Roots.RegistryText);
+        for (var i = 0; i < context.FrameCount; i++)
+        {
+            var item = context.FrameAt(i);
+            Slots.Charge((nuint)item.Path.Count + 1); Bytes.Charge(OwnedSourceAccounting.PathText(item.Path));
+        }
+        CheckPath(path); if (frame is not null) CheckPath(frame);
+        // Query/error/ambiguity reserves precede namespace resolution and diagnostic copies.
+        Slots.Charge(Roots.RegistryCount);
+        Slots.Charge(OwnedSourceAccounting.Add(OwnedSourceAccounting.Add((nuint)path.Count,
+            (nuint)(frame?.Count ?? 0), FerruleOwnedSourceLimitKind.MetadataSlots),
+            2, FerruleOwnedSourceLimitKind.MetadataSlots));
+        var text = OwnedSourceAccounting.Add(OwnedSourceAccounting.PathText(path),
+            frame is null ? 0 : OwnedSourceAccounting.PathText(frame), FerruleOwnedSourceLimitKind.MetadataBytes);
+        if (owner.Name is not null) text = OwnedSourceAccounting.Add(text,
+            OwnedSourceAccounting.Text(owner.Name), FerruleOwnedSourceLimitKind.MetadataBytes);
+        Bytes.Charge(text); Bytes.Charge(text);
+        nuint longest = 0;
+        for (var i = 0; i < path.Count; i++)
+        { var size = OwnedSourceAccounting.Text(path[i]); if (size > longest) longest = size; }
+        Bytes.Charge(longest);
+    }
+    // The basic adapter admits its complete paired registry/current footprint
+    // before allocating this query. Query and diagnostic payload reserves use
+    // those same per-call counters; no per-view or per-output reset is allowed.
+    internal OwnedQuery(FerruleOwnedScopeContext context, FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path, IReadOnlyList<string>? frame,
+        OwnedCounter slots, OwnedCounter bytes)
+    {
+        Roots = context.Roots; Owner = owner; Slots = slots; Bytes = bytes;
+        CheckPath(path); if (frame is not null) CheckPath(frame);
+        Slots.Charge(Roots.RegistryCount);
+        Slots.Charge(OwnedSourceAccounting.Add(OwnedSourceAccounting.Add((nuint)path.Count,
+            (nuint)(frame?.Count ?? 0), FerruleOwnedSourceLimitKind.MetadataSlots),
+            2, FerruleOwnedSourceLimitKind.MetadataSlots));
+        var text = OwnedSourceAccounting.Add(OwnedSourceAccounting.PathText(path),
+            frame is null ? 0 : OwnedSourceAccounting.PathText(frame), FerruleOwnedSourceLimitKind.MetadataBytes);
+        if (owner.Name is not null) text = OwnedSourceAccounting.Add(text,
+            OwnedSourceAccounting.Text(owner.Name), FerruleOwnedSourceLimitKind.MetadataBytes);
+        Bytes.Charge(text); Bytes.Charge(text);
+        nuint longest = 0;
+        for (var i = 0; i < path.Count; i++)
+        { var size = OwnedSourceAccounting.Text(path[i]); if (size > longest) longest = size; }
+        Bytes.Charge(longest);
+    }
+    internal FerruleOwnedSourceRoots Roots { get; }
+    internal FerruleOwnedSourceOwner Owner { get; }
+    internal OwnedCounter Slots { get; }
+    internal OwnedCounter Bytes { get; }
+    private void CheckPath(IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        OwnedSourceAccounting.Limit(0, (nuint)path.Count, Roots.Limits.MaxPathSegments,
+            FerruleOwnedSourceLimitKind.PathSegments);
+        if (path.Count > Array.MaxLength) throw OwnedSourceAccounting.Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+        for (var i = 0; i < path.Count; i++)
+        { ArgumentNullException.ThrowIfNull(path[i]); FerruleUnicode.RequireWellFormed(path[i], nameof(path)); }
+    }
+    internal static IReadOnlyList<string> Copy(IReadOnlyList<string> path)
+    {
+        var value = new string[path.Count];
+        for (var i = 0; i < value.Length; i++) value[i] = path[i];
+        return Array.AsReadOnly(value);
+    }
+    internal FerruleOwnedSourceException Error(FerruleOwnedSourceErrorKind error,
+        IReadOnlyList<string>? path = null, IReadOnlyList<string>? frame = null,
+        IReadOnlyList<string>? collection = null, nuint? segment = null,
+        FerruleOwnedSourceInstanceKind? found = null, nuint? index = null,
+        IReadOnlyList<int>? declarations = null, FerruleOwnedSourceTraversalKind? traversal = null)
+    {
+        var copiedPath = path is null ? null : Copy(path);
+        var cause = traversal.HasValue ? new FerruleOwnedSourceTraversalException(
+            traversal.Value, copiedPath!, segment, found!.Value) : null;
+        return new(error, new FerruleOwnedSourceIdentity(Owner.Name), Owner.Name, declarations,
+            copiedPath, frame is null ? null : Copy(frame), collection is null ? null : Copy(collection),
+            segment, found, index, cause: cause);
+    }
+}
+
+// Bounded storage counts capacity, including old/new arrays during growth.
+internal sealed class OwnedBuffer<T>
+{
+    private T[] _items = Array.Empty<T>();
+    private readonly OwnedCounter _slots;
+    private readonly nuint _maximum;
+    private readonly FerruleOwnedSourceLimitKind _kind;
+    internal OwnedBuffer(OwnedCounter slots, nuint maximum, FerruleOwnedSourceLimitKind kind)
+    { _slots = slots; _maximum = maximum; _kind = kind; }
+    internal int Count { get; private set; }
+    internal bool NeedsGrowth => Count == _items.Length;
+    internal T this[int index] { get => _items[index]; set => _items[index] = value; }
+    internal void Push(T item)
+    {
+        OwnedSourceAccounting.Limit((nuint)Count, 1, _maximum, _kind);
+        if (NeedsGrowth)
+        {
+            var old = (nuint)_items.Length;
+            var desired = old == 0 ? (nuint)1 : OwnedSourceAccounting.Multiply(old, 2);
+            var capacity = desired < _maximum ? desired : _maximum;
+            if (capacity > (nuint)Array.MaxLength) throw OwnedSourceAccounting.Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+            _slots.Charge(capacity);
+            var replacement = new T[(int)capacity];
+            Array.Copy(_items, replacement, Count);
+            _items = replacement; _slots.Release(old);
+        }
+        _items[Count++] = item;
+    }
+    internal T Pop()
+    {
+        var item = _items[--Count]; _items[Count] = default!;
+        // Cleared reusable cells remain charged until their backing storage is released.
+        return item;
+    }
+    internal void ReleaseStorage()
+    { _slots.Release((nuint)_items.Length); _items = Array.Empty<T>(); Count = 0; }
+    internal IReadOnlyList<T> Retain() => new Result(_items, Count);
+    private sealed class Result(T[] items, int count) : IReadOnlyList<T>
+    {
+        public int Count => count;
+        public T this[int index] => (uint)index < (uint)count ? items[index] : throw new ArgumentOutOfRangeException(nameof(index));
+        public IEnumerator<T> GetEnumerator() { for (var i = 0; i < count; i++) yield return items[i]; }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+}
+
+/// <summary>Separate direct owned core; never substitutes for legacy ScopeContext.</summary>
+public sealed class FerruleOwnedScopeContext
+{
+    private readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index);
+    internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index);
+    private readonly Occurrence[] _frames;
+    private FerruleOwnedScopeContext(FerruleOwnedSourceRoots roots, Occurrence[] frames) { Roots = roots; _frames = frames; }
+    internal static FerruleOwnedScopeContext CreateRoot(FerruleOwnedSourceRoots roots)
+    {
+        var budget = new OwnedCounter(roots.SlotMaximum, FerruleOwnedSourceLimitKind.MetadataSlots);
+        budget.Charge(roots.RegistryCount); budget.Charge(1);
+        return new(roots, Array.Empty<Occurrence>());
+    }
+    internal FerruleOwnedSourceRoots Roots { get; }
+    internal int FrameCount => _frames.Length;
+    internal Observation FrameAt(int index)
+    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index); }
+    private static bool Prefix(IReadOnlyList<string> path, IReadOnlyList<string> prefix)
+    {
+        if (prefix.Count > path.Count) return false;
+        for (var i = 0; i < prefix.Count; i++)
+            if (!string.Equals(path[i], prefix[i], StringComparison.Ordinal)) return false;
+        return true;
+    }
+    private int Match(int owner, IReadOnlyList<string>? path, bool exact)
+    {
+        for (var i = _frames.Length - 1; i >= 0; i--)
+            if (_frames[i].Owner == owner && (path is null ||
+                (exact ? path.Count == _frames[i].Path.Count && Prefix(path, _frames[i].Path) : Prefix(path, _frames[i].Path))))
+                return i;
+        return -1;
+    }
+    private static FerruleOwnedSourceInstanceKind Kind(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar => FerruleOwnedSourceInstanceKind.Scalar,
+        FerruleGroup => FerruleOwnedSourceInstanceKind.Group,
+        FerruleRepeated => FerruleOwnedSourceInstanceKind.Repeated,
+        FerruleDocumentSet => FerruleOwnedSourceInstanceKind.DocumentSet,
+        FerruleMappedSequence => FerruleOwnedSourceInstanceKind.MappedSequence,
+        _ => throw new InvalidOperationException("Unknown immutable source instance kind."),
+    };
+    private static bool Absent(FerruleInstance value) => value is FerruleScalar
+        { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull };
+    private static bool Unsupported(FerruleInstance value) => value is FerruleDocumentSet or FerruleMappedSequence;
+    public FerruleValue ResolveField(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
+        IReadOnlyList<string>? frame = null) => ResolveFieldCore(owner, path, frame, null);
+    internal FerruleValue ResolveBasicField(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
+        IReadOnlyList<string>? frame, OwnedQuery admittedQuery) =>
+        ResolveFieldCore(owner, path, frame, admittedQuery);
+    private FerruleValue ResolveFieldCore(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
+        IReadOnlyList<string>? frame, OwnedQuery? admittedQuery)
+    {
+        var q = admittedQuery ?? new OwnedQuery(this, owner, path, frame); var key = Roots.Resolve(owner, q);
+        if (frame is not null && !Prefix(path, frame))
+            throw q.Error(FerruleOwnedSourceErrorKind.IncompatibleFramePath, path, frame);
+        var selected = Match(key, frame ?? path, frame is not null);
+        if (frame is not null && selected < 0)
+            throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: frame);
+        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
+        while (true)
+        {
+            if (current is FerruleRepeated)
+                throw q.Error(FerruleOwnedSourceErrorKind.UniteratedRepetition, path, segment: (nuint)consumed);
+            if (Unsupported(current))
+                throw q.Error(FerruleOwnedSourceErrorKind.UnsupportedSourceKind, path, found: Kind(current));
+            if (consumed == path.Count)
+            {
+                if (current is FerruleScalar scalar) return scalar.Value;
+                throw q.Error(FerruleOwnedSourceErrorKind.Traversal, path, found: Kind(current),
+                    traversal: FerruleOwnedSourceTraversalKind.ExpectedScalar);
+            }
+            if (Absent(current)) return FerruleValue.Null;
+            if (current is not FerruleGroup group)
+                throw q.Error(FerruleOwnedSourceErrorKind.Traversal, path, segment: (nuint)consumed,
+                    found: Kind(current), traversal: FerruleOwnedSourceTraversalKind.CannotTraverse);
+            if (!group.TryGetField(path[consumed], out var next)) return FerruleValue.Null;
+            current = next; consumed++;
+        }
+    }
+    public nuint Position(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection = null) =>
+        PositionCore(owner, collection, null);
+    internal nuint BasicPosition(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection,
+        OwnedQuery admittedQuery) => PositionCore(owner, collection, admittedQuery);
+    private nuint PositionCore(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection,
+        OwnedQuery? admittedQuery)
+    {
+        var q = admittedQuery ?? new OwnedQuery(this, owner, collection ?? Array.Empty<string>(), null);
+        var key = Roots.Resolve(owner, q); var selected = Match(key, collection, true);
+        if (selected < 0) throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
+        return _frames[selected].Index;
+    }
+    public FerruleOwnedScopeContext WithPosition(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string>? collection, nuint index)
+    {
+        var q = new OwnedQuery(this, owner, collection ?? Array.Empty<string>(), null);
+        var key = Roots.Resolve(owner, q); var selected = Match(key, collection, true);
+        if (selected < 0) throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
+        if (index == 0) throw q.Error(FerruleOwnedSourceErrorKind.InvalidPosition, index: index);
+        var copy = CopyFrames(q, _frames); copy[selected] = copy[selected] with { Index = index };
+        q.Slots.Charge(1); return new(Roots, copy);
+    }
+    public FerruleOwnedScopeContext CloneView()
+    {
+        var q = new OwnedQuery(this, FerruleOwnedSourceOwner.Primary, Array.Empty<string>(), null);
+        var copy = CopyFrames(q, _frames); q.Slots.Charge(1); return new(Roots, copy);
+    }
+    private static Occurrence[] CopyFrames(OwnedQuery q, IReadOnlyList<Occurrence> frames)
+    {
+        nuint slots = (nuint)frames.Count; nuint text = 0;
+        for (var i = 0; i < frames.Count; i++)
+        {
+            slots = OwnedSourceAccounting.Add(slots, (nuint)frames[i].Path.Count, FerruleOwnedSourceLimitKind.MetadataSlots);
+            text = OwnedSourceAccounting.Add(text, OwnedSourceAccounting.PathText(frames[i].Path), FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        q.Slots.Charge(slots); q.Bytes.Charge(text);
+        var copy = new Occurrence[frames.Count];
+        for (var i = 0; i < copy.Length; i++) copy[i] = frames[i];
+        return copy;
+    }
+    internal static FerruleOwnedScopeContext FromBasicObserved(FerruleOwnedSourceRoots roots,
+        ReadOnlySpan<Observation> observed, OwnedQuery query)
+    {
+        if (!ReferenceEquals(roots, query.Roots))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch);
+        OwnedSourceAccounting.Limit(0, (nuint)observed.Length, roots.Limits.MaxActiveFrames, FerruleOwnedSourceLimitKind.Frames);
+        nuint cells = (nuint)observed.Length;
+        for (var i = 0; i < observed.Length; i++)
+        {
+            var frame = observed[i];
+            if (frame.Owner < 0 || (nuint)frame.Owner >= roots.RegistryCount)
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+                    declarationIndex: frame.Owner > 0 ? (nuint?)frame.Owner - 1 : null,
+                    declaredCount: roots.RegistryCount - 1);
+            OwnedSourceAccounting.Limit(0, (nuint)frame.Path.Count, roots.Limits.MaxPathSegments, FerruleOwnedSourceLimitKind.PathSegments);
+            cells = BasicSourceAccounting.Add(cells, (nuint)frame.Path.Count);
+            query.Bytes.Charge(OwnedSourceAccounting.PathText(frame.Path));
+        }
+        query.Slots.Charge(BasicSourceAccounting.Add(cells, 1));
+        var copy = new Occurrence[observed.Length];
+        for (var i = 0; i < copy.Length; i++)
+        {
+            var f = observed[i];
+            // The scratch witness can be dropped after this publication. Each
+            // output owns its separately admitted immutable path snapshot.
+            var path = new string[f.Path.Count];
+            for (var j = 0; j < path.Length; j++) path[j] = f.Path[j];
+            copy[i] = new(f.Owner, path, f.Item, f.Index);
+        }
+        return new FerruleOwnedScopeContext(roots, copy);
+    }
+    internal FerruleOwnedScopeContext CloneBasicObserved(OwnedQuery query, int? slot = null, nuint index = 0)
+    {
+        if (!ReferenceEquals(Roots, query.Roots))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch);
+        if (slot.HasValue && (uint)slot.Value >= (uint)_frames.Length)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness);
+        var copy = CopyFrames(query, _frames);
+        if (slot.HasValue) copy[slot.Value] = copy[slot.Value] with { Index = index };
+        query.Slots.Charge(1);
+        return new FerruleOwnedScopeContext(Roots, copy);
+    }
+    private readonly record struct Task(FerruleInstance Instance, int Consumed, int Depth, int Next = -1);
+    public IReadOnlyList<FerruleOwnedScopeContext> IterateSource(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path) =>
+        IterateSourceCore(owner, path, null);
+
+    internal IReadOnlyList<FerruleOwnedScopeContext> IterateBasicSource(
+        FerruleOwnedSourceOwner owner, IReadOnlyList<string> path, BasicOwnedWalkObserver observed) =>
+        IterateSourceCore(owner, path, observed);
+
+    private IReadOnlyList<FerruleOwnedScopeContext> IterateSourceCore(
+        FerruleOwnedSourceOwner owner, IReadOnlyList<string> path, BasicOwnedWalkObserver? observed)
+    {
+        var q = observed is null ? new OwnedQuery(this, owner, path, null) : observed.CreateQuery(this, owner, path);
+        var key = Roots.Resolve(owner, q);
+        var identity = Match(key, path, true);
+        if (identity >= 0)
+        {
+            var identityItem = _frames[identity].Item;
+            observed?.SelectedBase(key, identityItem, _frames[identity].Path.Count, true);
+            // Legacy source walking can witness null occurrences. Only the paired
+            // bridge can transfer those; it must prune before the identity shortcut.
+            if (observed is not null && Absent(identityItem))
+                return Array.Empty<FerruleOwnedScopeContext>();
+            observed?.BeforePublication(_frames.Length, identityItem, path, true);
+            OwnedSourceAccounting.Limit(0, 1, Roots.Limits.MaxWalkContexts, FerruleOwnedSourceLimitKind.WalkContexts);
+            var copy = CopyFrames(q, _frames); q.Slots.Charge(observed is null ? (nuint)2 : 1);
+            var identityContext = new FerruleOwnedScopeContext(Roots, copy);
+            observed?.Published(identityContext, identityItem, path, true);
+            return observed is null ? Array.AsReadOnly(new[] { identityContext }) : Array.Empty<FerruleOwnedScopeContext>();
+        }
+        var selected = Match(key, path, false);
+        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
+        observed?.SelectedBase(key, current, consumed, false);
+        observed?.BeforeWalkBuffers();
+        var frames = new OwnedBuffer<Occurrence>(q.Slots, Roots.Limits.MaxActiveFrames, FerruleOwnedSourceLimitKind.Frames);
+        var tasks = new OwnedBuffer<Task>(q.Slots, OwnedSourceAccounting.Tasks(Roots.Limits), FerruleOwnedSourceLimitKind.MetadataSlots);
+        var output = new OwnedBuffer<FerruleOwnedScopeContext>(q.Slots, Roots.Limits.MaxWalkContexts, FerruleOwnedSourceLimitKind.WalkContexts);
+        void PushFrame(Occurrence item)
+        {
+            OwnedSourceAccounting.Limit((nuint)frames.Count, 1, Roots.Limits.MaxActiveFrames, FerruleOwnedSourceLimitKind.Frames);
+            if (frames.NeedsGrowth)
+                for (var i = 0; i < frames.Count; i++) q.Bytes.Charge(OwnedSourceAccounting.PathText(frames[i].Path));
+            q.Slots.Charge((nuint)item.Path.Count); q.Bytes.Charge(OwnedSourceAccounting.PathText(item.Path));
+            frames.Push(item);
+        }
+        void Truncate(int depth)
+        {
+            while (frames.Count > depth) { var item = frames.Pop(); q.Slots.Release((nuint)item.Path.Count); }
+        }
+        void Emit(FerruleInstance actualTerminal)
+        {
+            observed?.BeforePublication(frames.Count, actualTerminal, path, false);
+            OwnedSourceAccounting.Limit((nuint)output.Count, 1, Roots.Limits.MaxWalkContexts, FerruleOwnedSourceLimitKind.WalkContexts);
+            nuint slots = (nuint)frames.Count; nuint text = 0;
+            for (var i = 0; i < frames.Count; i++)
+            { slots = OwnedSourceAccounting.Add(slots, (nuint)frames[i].Path.Count, FerruleOwnedSourceLimitKind.MetadataSlots);
+              text = OwnedSourceAccounting.Add(text, OwnedSourceAccounting.PathText(frames[i].Path), FerruleOwnedSourceLimitKind.MetadataBytes); }
+            q.Slots.Charge(slots); q.Bytes.Charge(text); q.Slots.Charge(1);
+            var snapshot = new Occurrence[frames.Count];
+            for (var i = 0; i < snapshot.Length; i++) snapshot[i] = frames[i];
+            var actualContext = new FerruleOwnedScopeContext(Roots, snapshot);
+            output.Push(actualContext);
+            observed?.Published(actualContext, actualTerminal, path, false);
+        }
+        try
+        {
+            for (var i = 0; i < _frames.Length; i++) PushFrame(_frames[i]);
+            tasks.Push(new(current, consumed, frames.Count));
+            while (tasks.Count != 0)
+            {
+                var task = tasks.Pop(); Truncate(task.Depth);
+                var item = task.Instance; var offset = task.Consumed;
+                if (task.Next >= 0)
+                {
+                    var repeated = (FerruleRepeated)item;
+                    if (task.Next == repeated.Items.Count) continue;
+                    tasks.Push(task with { Next = task.Next + 1 });
+                    // Frame/path admission precedes the new retained path array.
+                    OwnedSourceAccounting.Limit((nuint)frames.Count, 1, Roots.Limits.MaxActiveFrames, FerruleOwnedSourceLimitKind.Frames);
+                    q.Slots.Charge((nuint)offset); nuint text = 0;
+                    for (var i = 0; i < offset; i++) text = OwnedSourceAccounting.Add(text,
+                        OwnedSourceAccounting.Text(path[i]), FerruleOwnedSourceLimitKind.MetadataBytes);
+                    q.Bytes.Charge(text);
+                    var prefix = new string[offset]; for (var i = 0; i < offset; i++) prefix[i] = path[i];
+                    // Prefix slots/text already charged; only capacity/growth costs remain.
+                    if (frames.NeedsGrowth)
+                        for (var i = 0; i < frames.Count; i++) q.Bytes.Charge(OwnedSourceAccounting.PathText(frames[i].Path));
+                    frames.Push(new(key, Array.AsReadOnly(prefix), repeated.Items[task.Next], (nuint)task.Next + 1));
+                    tasks.Push(new(repeated.Items[task.Next], offset, frames.Count));
+                    continue;
+                }
+                while (true)
+                {
+                    if (Absent(item)) break;
+                    if (Unsupported(item)) throw q.Error(FerruleOwnedSourceErrorKind.UnsupportedSourceKind, path, found: Kind(item));
+                    if (item is FerruleRepeated) { tasks.Push(new(item, offset, frames.Count, 0)); break; }
+                    if (offset == path.Count) { Emit(item); break; }
+                    if (item is not FerruleGroup group)
+                        throw q.Error(FerruleOwnedSourceErrorKind.Traversal, path, segment: (nuint)offset,
+                            found: Kind(item), traversal: FerruleOwnedSourceTraversalKind.CannotTraverse);
+                    if (!group.TryGetField(path[offset], out var next)) break;
+                    item = next; offset++;
+                }
+            }
+            return observed is null ? output.Retain() : Array.Empty<FerruleOwnedScopeContext>();
+        }
+        finally
+        {
+            Truncate(0); frames.ReleaseStorage(); tasks.ReleaseStorage();
+            if (observed is not null) output.ReleaseStorage();
+        }
+    }
+    internal interface BasicOwnedWalkObserver
+    {
+        OwnedQuery CreateQuery(FerruleOwnedScopeContext current,
+            FerruleOwnedSourceOwner owner, IReadOnlyList<string> path);
+        void BeforeWalkBuffers();
+        void SelectedBase(int ownerKey, FerruleInstance actual,
+            int consumed, bool identity);
+        void BeforePublication(int frameCount, FerruleInstance actualTerminal,
+            IReadOnlyList<string> fullCanonicalPath, bool identity);
+        void Published(FerruleOwnedScopeContext actualContext,
+            FerruleInstance actualTerminal, IReadOnlyList<string> fullCanonicalPath, bool identity);
+    }
+
+}
+
+
+public sealed partial class ScopeContext
+{
+    internal abstract class BasicWalkObserver
+    {
+        internal abstract nuint LegacyCapacityMaximum { get; }
+        internal abstract void ReserveSlots(nuint slots);
+        internal abstract void ReserveOutputCell();
+        internal abstract void ReleaseSlots(nuint slots);
+        internal abstract void ReservePath(IReadOnlyList<string> path, string? appended);
+        internal abstract void ProbeBase(FerruleInstance current);
+        internal abstract void SelectedBase(int frameIndex, FerruleInstance current);
+        internal abstract void Enter(FerruleInstance current, int consumed,
+            IReadOnlyList<string> relativePrefix, int frameCount, int collectionCount);
+        internal abstract void Leave();
+        internal abstract void ConsumedField(string actualField, FerruleInstance actualChild);
+        internal abstract void BeforeCollectionPush();
+        internal abstract void BeforePlain();
+        internal abstract void CollectionPushed(FerruleInstance item, IReadOnlyList<string> legacyPath, int rawPosition);
+        internal abstract void CollectionPopped();
+        internal abstract void Plain(FerruleInstance item);
+        internal abstract void PlainPopped();
+        internal abstract void BeforeCandidate(int newFrames, int newCollections, int count);
+        internal abstract void Candidate(ScopeContext actual, int newFrames, int newCollections);
+    }
+
+    private static void GrowBasicList<T>(List<T> list, int additional, BasicWalkObserver observed)
+    {
+        var required = (nuint)list.Count + (nuint)additional;
+        OwnedSourceAccounting.Limit(0, required, observed.LegacyCapacityMaximum,
+            FerruleOwnedSourceLimitKind.MetadataSlots);
+        if (required > (nuint)Array.MaxLength)
+            throw OwnedSourceAccounting.Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+        if ((nuint)list.Capacity >= required) return;
+        var oldCapacity = list.Capacity;
+        observed.ReserveSlots(required);
+        list.Capacity = (int)required;
+        observed.ReleaseSlots((nuint)oldCapacity);
+    }
+
+    internal void IterateBasicSource(IReadOnlyList<string> path, BasicWalkObserver observed,
+        ICollection<ScopeContext> output)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(observed);
+        ValidatePath(path);
+        var current = FindIterationBase(path, observed);
+        if (current is null) return;
+        // The opaque holder is the output sink; it never publishes a mutable array.
+        observed.ReserveSlots(3);
+        var prefix = new List<string>();
+        var frames = new List<FerruleInstance>();
+        var collections = new List<CollectionIdentity>();
+        try { Walk(current, path, 0, prefix, frames, collections, output, observed); }
+        finally
+        {
+            observed.ReleaseSlots((nuint)prefix.Capacity + 1);
+            observed.ReleaseSlots((nuint)frames.Capacity + 1);
+            observed.ReleaseSlots((nuint)collections.Capacity + 1);
+        }
+    }
+
+}
+
+public enum FerruleBasicSourceBridgeErrorKind
+{
+    RegistryMismatch,
+    InvalidDeclarationWitness,
+    UnsupportedBasicContext,
+    PairedMetadataLimit,
+    PairedMetadataArithmeticOverflow,
+    LegacyPositionRange,
+    InvalidCohortWitness,
+    DuplicatePhaseCandidate,
+}
+
+public enum FerruleBasicSourceBridgeComponent
+{
+    MetadataSlots,
+    LegacyFrames,
+    CanonicalPaths,
+    PathSegments,
+    RecursionDepth,
+    ActiveFrames,
+    WalkContexts,
+    RootProjection,
+    PhaseInput,
+    MetadataBytes,
+}
+
+public sealed class FerruleBasicSourceBridgeException : Exception
+{
+    internal FerruleBasicSourceBridgeException(
+        FerruleBasicSourceBridgeErrorKind error,
+        FerruleBasicSourceBridgeComponent? component = null,
+        nuint? used = null,
+        nuint? requested = null,
+        nuint? maximum = null,
+        nuint? inputOrdinal = null,
+        nuint? candidateOrdinal = null,
+        nuint? declarationIndex = null,
+        nuint? declaredCount = null,
+        FerruleOwnedSourceInstanceKind? found = null)
+        : base("basic source bridge refused")
+    {
+        Error = error;
+        Component = component;
+        Used = used;
+        Requested = requested;
+        Maximum = maximum;
+        InputOrdinal = inputOrdinal;
+        CandidateOrdinal = candidateOrdinal;
+        DeclarationIndex = declarationIndex;
+        DeclaredCount = declaredCount;
+        Found = found;
+    }
+
+    public FerruleBasicSourceBridgeErrorKind Error { get; }
+    public FerruleBasicSourceBridgeComponent? Component { get; }
+    public nuint? Used { get; }
+    public nuint? Requested { get; }
+    public nuint? Maximum { get; }
+    public nuint? InputOrdinal { get; }
+    public nuint? CandidateOrdinal { get; }
+    public nuint? DeclarationIndex { get; }
+    public nuint? DeclaredCount { get; }
+    public FerruleOwnedSourceInstanceKind? Found { get; }
+}
+
+
+internal static class BasicSourceAccounting
+{
+    internal static FerruleBasicSourceBridgeException Overflow() => new(
+        FerruleBasicSourceBridgeErrorKind.PairedMetadataArithmeticOverflow,
+        FerruleBasicSourceBridgeComponent.MetadataSlots);
+    internal static nuint Add(nuint left, nuint right)
+    {
+        if (right > nuint.MaxValue - left) throw Overflow();
+        return left + right;
+    }
+    internal static nuint Multiply(nuint left, nuint right)
+    {
+        if (left != 0 && right > nuint.MaxValue / left) throw Overflow();
+        return left * right;
+    }
+    internal static nuint ThreeSets(nuint maximum) => Multiply(3, maximum);
+    internal static void Limit(nuint used, nuint requested, nuint maximum,
+        FerruleBasicSourceBridgeComponent component)
+    {
+        if (Add(used, requested) > maximum)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+                component, used, requested, maximum);
+    }
+    internal static int ArrayLength(nuint count)
+    {
+        if (count > (nuint)Array.MaxLength) throw Overflow();
+        return (int)count;
+    }
+    internal static nuint LegacyFrames(FerruleOwnedSourceLimits limits) =>
+        Add(Add(Multiply(2, limits.MaxActiveFrames), Multiply(2, limits.MaxPathSegments)), 4);
+    internal static nuint Recursion(FerruleOwnedSourceLimits limits) =>
+        Add(Add(limits.MaxActiveFrames, limits.MaxPathSegments), 1);
+    internal static nuint Maximum(FerruleOwnedSourceLimits limits, bool fullPhase)
+    {
+        var k = fullPhase ? ThreeSets(limits.MaxWalkContexts) : limits.MaxWalkContexts;
+        var f = limits.MaxActiveFrames; var s = limits.MaxPathSegments; var r = limits.MaxRoots;
+        var wf = Multiply(k, f); var af = Add(wf, Multiply(2, f)); var fs = Multiply(af, s);
+        var tasks = Multiply(2, Add(f, 1)); var rr = Multiply(2, r); var d = Add(Multiply(2, s), 2);
+        var core = Add(Add(Add(Add(Add(Add(rr, 1), af), fs), tasks), k), d);
+        var csharpCore = Add(Add(Add(Add(core, Multiply(2, k)), f), Multiply(f, s)), tasks);
+        var l = LegacyFrames(limits); var a = Recursion(limits); var n = Add(k, 1);
+        var bl = Multiply(n, l); var bo = bl; var bp = Multiply(bo, s);
+        var lc = Multiply(n, f); var lp = Multiply(lc, Add(s, 1)); var bt = Multiply(5, r);
+        var q = Multiply(Multiply(Multiply(2, a), Add(Add(l, f), 2)), Add(s, 2));
+        var bc = Multiply(2, n);
+        var m = Add(Add(Add(Add(Add(Add(Add(bl, bo), bp), lc), lp), bt), q), bc);
+        var j = Add(Add(Add(k, 1), Multiply(4, n)), Add(a, 4));
+        var result = Add(Add(Add(csharpCore, m), d), Multiply(2, m));
+        if (fullPhase) result = Add(Add(result, Multiply(2, limits.MaxWalkContexts)), 5);
+        return Add(result, j);
+    }
+    internal static void Charge(OwnedCounter slots, nuint count)
+    {
+        try { slots.Charge(count); }
+        catch (FerruleOwnedSourceException e) when (e.LimitKind == FerruleOwnedSourceLimitKind.MetadataSlots)
+        {
+            if (e.Error == FerruleOwnedSourceErrorKind.MetadataArithmeticOverflow) throw Overflow();
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+                FerruleBasicSourceBridgeComponent.MetadataSlots, e.Used, e.Requested, e.Maximum);
+        }
+    }
+}
+
+internal readonly struct BasicSourceBudget
+{
+    internal BasicSourceBudget(FerruleOwnedSourceLimits limits, bool phase)
+    {
+        Slots = new OwnedCounter(BasicSourceAccounting.Maximum(limits, phase), FerruleOwnedSourceLimitKind.MetadataSlots);
+        Bytes = new OwnedCounter(limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+        Phase = phase;
+    }
+    internal OwnedCounter Slots { get; }
+    internal OwnedCounter Bytes { get; }
+    internal bool Phase { get; }
+    internal void Charge(nuint slots) => BasicSourceAccounting.Charge(Slots, slots);
+    internal void Release(nuint slots) => Slots.Release(slots);
+    internal void Path(IReadOnlyList<string> path) => Text(OwnedSourceAccounting.PathText(path));
+    internal void Text(nuint bytes)
+    {
+        if (!Phase) { Bytes.Charge(bytes); return; }
+        try { Bytes.Charge(bytes); }
+        catch (FerruleOwnedSourceException e) when (e.LimitKind == FerruleOwnedSourceLimitKind.MetadataBytes)
+        {
+            if (e.Error == FerruleOwnedSourceErrorKind.MetadataArithmeticOverflow) throw BasicSourceAccounting.Overflow();
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+                FerruleBasicSourceBridgeComponent.MetadataBytes, e.Used, e.Requested, e.Maximum);
+        }
+    }
+}
+
+internal readonly record struct BasicFrameOrigin(int OwnerKey, IReadOnlyList<string> Canonical,
+    nuint? RawOrdinal = null, bool Projection = false);
+internal readonly record struct BasicOccurrenceCursor(int OwnedSlot, int LegacySlot, int OwnerKey,
+    IReadOnlyList<string> Canonical, nuint RawOrdinal);
+
+
+public sealed partial class ScopeContext
+{
+    internal int BasicCollectionCount => _collections.Count;
+    internal object BasicRunStateIdentity => _filterMapRunState;
+    internal IReadOnlyList<string> BasicCollectionPath(int index) => _collections[index].Path;
+    internal int BasicCollectionIndex(int index) => _collections[index].Index;
+    internal void RequireBasicContext()
+    {
+        if (_dynamicSourceLoader is not null || _filterMapBoundary is not null || _filterMapCallDepth != 0)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext);
+        for (var i = 0; i < _collections.Count; i++)
+            if (_collections[i].Join.HasValue || _collections[i].Grouped || _collections[i].DocumentPath is not null)
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext);
+    }
+    internal void SeedBasicLegacy(BasicSourceBudget budget)
+    {
+        budget.Charge((nuint)_frames.Count);
+        budget.Charge((nuint)_collections.Count * 2);
+        for (var i = 0; i < _collections.Count; i++)
+        {
+            budget.Charge((nuint)_collections[i].Path.Count);
+            budget.Path(_collections[i].Path);
+        }
+        // The calling paired view supplies its exact container-descriptor count.
+        budget.Charge(1);
+    }
+    internal static ScopeContext CreateBasicRoot(FerruleInstance primary, FerruleGroup projection,
+        FerruleExecutionContext? execution, BasicSourceBudget budget)
+    {
+        budget.Charge(5); // two frame cells, read-only wrapper, legacy view and root helper state
+        var frames = new FerruleInstance[] { projection, primary };
+        return new ScopeContext(primary, new ReadOnlyCollection<FerruleInstance>(frames),
+            Array.Empty<CollectionIdentity>(), execution);
+    }
+    internal ScopeContext CloneBasicLegacy(BasicSourceBudget budget, int? slot = null, int index = 0)
+    {
+        RequireBasicContext();
+        if (slot.HasValue && (uint)slot.Value >= (uint)_collections.Count)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness);
+        budget.Charge((nuint)_frames.Count);
+        budget.Charge((nuint)_collections.Count);
+        budget.Charge(3); // two exact read-only wrappers and new legacy context
+        if (slot.HasValue) budget.Charge(1); // replacement association record
+        for (var i = 0; i < _collections.Count; i++) budget.Path(_collections[i].Path);
+        var frames = new FerruleInstance[_frames.Count];
+        var collections = new CollectionIdentity[_collections.Count];
+        for (var i = 0; i < frames.Length; i++) frames[i] = _frames[i];
+        for (var i = 0; i < collections.Length; i++) collections[i] = _collections[i];
+        if (slot.HasValue) collections[slot.Value] = collections[slot.Value] with { Index = index };
+        return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+            new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
+    }
+    internal ScopeContext ProjectBasicOwned(FerruleOwnedScopeContext observed, int inheritedOwnedFrames,
+        FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity, BasicSourceBudget budget)
+    {
+        RequireBasicContext();
+        if (identity) return this;
+        var extra = observed.FrameCount - inheritedOwnedFrames;
+        if (extra < 0) throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness);
+        var plain = extra == 0 || observed.FrameAt(observed.FrameCount - 1).Path.Count != canonical.Count;
+        var totalFrames = BasicSourceAccounting.Add((nuint)_frames.Count, (nuint)extra + (plain ? (nuint)1 : 0));
+        var totalCollections = BasicSourceAccounting.Add((nuint)_collections.Count, (nuint)extra);
+        BasicSourceAccounting.Limit(0, totalFrames, BasicSourceAccounting.LegacyFrames(observed.Roots.Limits),
+            FerruleBasicSourceBridgeComponent.LegacyFrames);
+        BasicSourceAccounting.Limit(0, totalCollections, observed.Roots.Limits.MaxActiveFrames,
+            FerruleBasicSourceBridgeComponent.ActiveFrames);
+        for (var i = inheritedOwnedFrames; i < observed.FrameCount; i++)
+            if (observed.FrameAt(i).Index > int.MaxValue)
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.LegacyPositionRange,
+                    requested: observed.FrameAt(i).Index, maximum: int.MaxValue);
+        budget.Charge(BasicSourceAccounting.Add(totalFrames, totalCollections));
+        budget.Charge(3);
+        for (var i = 0; i < _collections.Count; i++) budget.Path(_collections[i].Path);
+        // New collection path cells and association objects are admitted individually below.
+        var frames = new FerruleInstance[BasicSourceAccounting.ArrayLength(totalFrames)];
+        var collections = new CollectionIdentity[BasicSourceAccounting.ArrayLength(totalCollections)];
+        for (var i = 0; i < _frames.Count; i++) frames[i] = _frames[i];
+        for (var i = 0; i < _collections.Count; i++) collections[i] = _collections[i];
+        for (var i = 0; i < extra; i++)
+        {
+            var f = observed.FrameAt(inheritedOwnedFrames + i);
+            var name = observed.Roots.Name(f.Owner);
+            var length = BasicSourceAccounting.Add((nuint)f.Path.Count, name is null ? 0 : (nuint)1);
+            budget.Charge(BasicSourceAccounting.Add(length, 1));
+            budget.Path(f.Path); if (name is not null) budget.Text(OwnedSourceAccounting.Text(name));
+            var path = new string[BasicSourceAccounting.ArrayLength(length)];
+            var offset = name is null ? 0 : 1;
+            if (name is not null) path[0] = name;
+            for (var j = 0; j < f.Path.Count; j++) path[j + offset] = f.Path[j];
+            frames[_frames.Count + i] = f.Item;
+            collections[_collections.Count + i] = new CollectionIdentity(path, f.Item, checked((int)f.Index));
+        }
+        if (plain) frames[^1] = terminal;
+        return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+            new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
+    }
+}
+
+
+/// <summary>Static roots for the paired basic source view; limits are supplied by the caller.</summary>
+public sealed class FerruleBasicSourceRoots
+{
+    private readonly FerruleOwnedSourceRoots _owned;
+    private readonly FerruleGroup _projection;
+    private readonly int[] _supplied;
+    private readonly int[] _unique;
+    private readonly nuint _retainedSlots;
+    private FerruleBasicSourceRoots(FerruleOwnedSourceRoots owned, FerruleGroup projection,
+        int[] supplied, int[] unique, nuint retainedSlots)
+    { _owned = owned; _projection = projection; _supplied = supplied; _unique = unique; _retainedSlots = retainedSlots; }
+    internal FerruleOwnedSourceRoots OwnedRoots => _owned;
+    internal FerruleOwnedSourceLimits Limits => _owned.Limits;
+    internal int SuppliedCount => _supplied.Length;
+    internal int SuppliedIndex(int index) => _supplied[index];
+    internal int UniqueCount => _unique.Length;
+    internal int UniqueIndex(int index) => _unique[index];
+    public static FerruleBasicSourceRoots Create(FerruleInstance primary,
+        IReadOnlyList<FerruleDeclaredNamedSourceRoot> declared, FerruleOwnedSourceLimits limits)
+    {
+        ArgumentNullException.ThrowIfNull(primary); ArgumentNullException.ThrowIfNull(declared);
+        try
+        {
+            // Preserve the direct-core arithmetic precedence before new bridge derivation.
+            _ = OwnedSourceAccounting.CSharpSlots(limits);
+            var budget = new BasicSourceBudget(limits, false);
+            var count = OwnedSourceAccounting.Add((nuint)declared.Count, 1, FerruleOwnedSourceLimitKind.Roots);
+            OwnedSourceAccounting.Limit(0, count, limits.MaxRoots, FerruleOwnedSourceLimitKind.Roots);
+            budget.Charge(count); // owned immutable binding cells and its roots descriptor
+            var owned = FerruleOwnedSourceRoots.Create(primary, declared, limits);
+            var suppliedCount = 0; var uniqueCount = 0;
+            for (var i = 1; (nuint)i < owned.RegistryCount; i++)
+            {
+                if (owned.Instance(i) is null) continue;
+                suppliedCount++;
+                var first = true;
+                for (var j = 1; j < i; j++)
+                    if (owned.Instance(j) is not null && StringComparer.Ordinal.Equals(owned.Name(j), owned.Name(i)))
+                    { first = false; break; }
+                if (first) uniqueCount++;
+            }
+            // All arrays have exact capacities. The temporary fields coexist with
+            // the factory snapshot; field objects reuse admitted immutable names.
+            budget.Charge((nuint)suppliedCount);
+            budget.Charge((nuint)uniqueCount * 2);
+            var supplied = new int[suppliedCount]; var unique = new int[uniqueCount];
+            var fields = new FerruleField[uniqueCount];
+            var a = 0; var u = 0;
+            for (var i = 1; (nuint)i < owned.RegistryCount; i++)
+            {
+                var value = owned.Instance(i); if (value is null) continue;
+                supplied[a++] = i - 1;
+                var first = true;
+                for (var j = 0; j < u; j++)
+                    if (StringComparer.Ordinal.Equals(owned.Name(unique[j] + 1), owned.Name(i)))
+                    { first = false; break; }
+                if (!first) continue;
+                unique[u] = i - 1;
+                budget.Charge(1);
+                fields[u++] = new FerruleField(owned.Name(i)!, value);
+            }
+            var projection = FerruleGroup.FromBasicSourceProjection(fields, count - 1, budget.Slots);
+            fields = Array.Empty<FerruleField>();
+            budget.Release((nuint)uniqueCount); // the sole temporary array is no longer retained
+            budget.Charge(1);
+            return new FerruleBasicSourceRoots(owned, projection, supplied, unique, budget.Slots.Used);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public FerruleBasicScopeContext RootContext(FerruleExecutionContext? execution = null)
+    {
+        try
+        {
+            var budget = new BasicSourceBudget(Limits, false);
+            Seed(budget, includeRootState: false);
+            var legacy = ScopeContext.CreateBasicRoot(_owned.Instance(0), _projection, execution, budget);
+            budget.Charge(3); // two origin cells and one paired view
+            var origins = new[] { new BasicFrameOrigin(-1, Array.Empty<string>(), Projection: true),
+                new BasicFrameOrigin(0, Array.Empty<string>()) };
+            budget.Charge(1);
+            var owned = FerruleOwnedScopeContext.CreateRoot(_owned);
+            return FerruleBasicScopeContext.Create(this, legacy, owned, origins, legacyContainers: 1);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    internal void Seed(BasicSourceBudget budget, bool includeRootState = true)
+    {
+        budget.Charge(_retainedSlots);
+        budget.Text(_owned.RegistryText);
+        if (includeRootState) budget.Charge(1); // the one shared root filter-map state, never charged from projection slack
+    }
+    internal int ProjectionKey(string actualField)
+    {
+        for (var i = 0; i < _unique.Length; i++)
+            if (StringComparer.Ordinal.Equals(_owned.Name(_unique[i] + 1), actualField)) return _unique[i] + 1;
+        throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+            declaredCount: _owned.RegistryCount - 1);
+    }
+}
+
+
+/// <summary>An immutable paired basic view; it cannot be reconstructed from an arbitrary legacy view.</summary>
+public sealed class FerruleBasicScopeContext
+{
+    private readonly BasicFrameOrigin[] _origins;
+    private readonly int _legacyContainers;
+    private readonly FerruleOwnedScopeContext _owned;
+    private FerruleBasicScopeContext(FerruleBasicSourceRoots roots, ScopeContext legacy,
+        FerruleOwnedScopeContext owned, BasicFrameOrigin[] origins, int legacyContainers)
+    { Roots = roots; LegacyView = legacy; _owned = owned; _origins = origins; _legacyContainers = legacyContainers; }
+    internal static FerruleBasicScopeContext Create(FerruleBasicSourceRoots roots, ScopeContext legacy,
+        FerruleOwnedScopeContext owned, BasicFrameOrigin[] origins, int legacyContainers) =>
+        new(roots, legacy, owned, origins, legacyContainers);
+    public ScopeContext LegacyView { get; }
+    internal FerruleBasicSourceRoots Roots { get; }
+    internal FerruleOwnedScopeContext OwnedView => _owned;
+    internal int OriginCount => _origins.Length;
+    internal int LegacyContainerCost => _legacyContainers;
+    internal BasicFrameOrigin OriginAt(int index) => _origins[index];
+    internal void Seed(BasicSourceBudget budget)
+    {
+        LegacyView.RequireBasicContext();
+        budget.Charge(2); // paired and owned view descriptors
+        budget.Charge((nuint)_owned.FrameCount);
+        for (var i = 0; i < _owned.FrameCount; i++)
+        { var f = _owned.FrameAt(i); budget.Charge((nuint)f.Path.Count); budget.Path(f.Path); }
+        budget.Charge((nuint)_origins.Length);
+        for (var i = 0; i < _origins.Length; i++)
+        { budget.Charge((nuint)_origins[i].Canonical.Count); budget.Path(_origins[i].Canonical); }
+        LegacyView.SeedBasicLegacy(budget);
+        budget.Charge((nuint)_legacyContainers);
+    }
+    internal BasicSourceBudget Begin(bool phase = false)
+    {
+        var budget = new BasicSourceBudget(Roots.Limits, phase);
+        Roots.Seed(budget); Seed(budget); return budget;
+    }
+    internal OwnedQuery Query(BasicSourceBudget budget, FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path, IReadOnlyList<string>? frame = null) =>
+        new(_owned, owner, path, frame, budget.Slots, budget.Bytes);
+    public FerruleValue ResolveOwnedField(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
+        IReadOnlyList<string>? frame = null)
+    {
+        try { var b = Begin(); return _owned.ResolveBasicField(owner, path, frame, Query(b, owner, path, frame)); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public nuint OwnedPosition(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection = null)
+    {
+        try { var b = Begin(); return _owned.BasicPosition(owner, collection,
+            Query(b, owner, collection ?? Array.Empty<string>())); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public FerruleValue ResolveLegacyField(IReadOnlyList<string> path, IReadOnlyList<string>? frame = null)
+    {
+        try
+        {
+            var b = Begin(); _ = Query(b, FerruleOwnedSourceOwner.Primary, path, frame);
+            return frame is null ? LegacyView.ResolveBasicSourceField(path) : LegacyView.ResolveBasicSourceFieldInFrame(frame, path);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public long LegacyPosition(IReadOnlyList<string> collection)
+    {
+        try { var b = Begin(); _ = Query(b, FerruleOwnedSourceOwner.Primary, collection); return LegacyView.Position(collection); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public IReadOnlyList<FerruleBasicSourceCandidate> IterateSource(IReadOnlyList<string> path) => WalkSourceCohort(path);
+    public IReadOnlyList<FerruleBasicSourceCandidate> IterateOwnedSource(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path) => WalkOwnedSourceCohort(owner, path);
+    public FerruleRetainedSourceCohort WalkSourceCohort(IReadOnlyList<string> path)
+    {
+        try { return FerruleRetainedSourceCohort.Walk(this, path, null); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public FerruleRetainedSourceCohort WalkOwnedSourceCohort(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path)
+    {
+        try { return FerruleRetainedSourceCohort.Walk(this, path, owner); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    internal FerruleBasicScopeContext CloneBudgeted(BasicSourceBudget budget, BasicOccurrenceCursor? cursor = null,
+        nuint index = 0)
+    {
+        var owner = cursor.HasValue && cursor.Value.OwnerKey != 0 ?
+            FerruleOwnedSourceOwner.Named(Roots.OwnedRoots.Name(cursor.Value.OwnerKey)!) : FerruleOwnedSourceOwner.Primary;
+        var q = Query(budget, owner, Array.Empty<string>());
+        var owned = _owned.CloneBasicObserved(q, cursor?.OwnedSlot, index);
+        var legacy = LegacyView.CloneBasicLegacy(budget, cursor?.LegacySlot, cursor.HasValue ? (int)index : 0);
+        budget.Charge((nuint)_origins.Length + 1);
+        var origins = new BasicFrameOrigin[_origins.Length];
+        for (var i = 0; i < origins.Length; i++)
+        { budget.Charge((nuint)_origins[i].Canonical.Count); budget.Path(_origins[i].Canonical); origins[i] = _origins[i]; }
+        return new FerruleBasicScopeContext(Roots, legacy, owned, origins, 2);
+    }
+    public FerruleBasicScopeContext CloneView()
+    {
+        try { var budget = Begin(); return CloneBudgeted(budget); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    public FerruleCompletePhaseCohort ReindexRetainedPhase(FerruleRetainedSourceCohort original,
+        FerrulePhaseSelection selection)
+    {
+        try { return FerruleCompletePhaseCohort.Reindex(this, original, selection); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+}
+
+
+internal interface BasicSourceIds
+{
+    int Count { get; }
+    nuint SourceIdAt(int index);
+}
+internal interface BasicPhaseIndices
+{
+    int Count { get; }
+    nuint IndexAt(int index);
+}
+internal interface BasicCompleteRows : BasicSourceIds
+{
+    FerruleBasicSourceCandidate At(int index);
+    FerruleRetainedSourceCohort.Witness SourceWitness { get; }
+}
+
+/// <summary>A complete original source walk with read-only candidate access.</summary>
+public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSourceCandidate>, BasicCompleteRows
+{
+    private FerruleBasicSourceCandidate[] _items = Array.Empty<FerruleBasicSourceCandidate>();
+    private int _count;
+    private bool _sealed;
+    private readonly Witness _witness;
+    private FerruleRetainedSourceCohort(FerruleBasicScopeContext parent, BasicSourceBudget budget)
+    { _witness = new Witness(this, parent, budget); }
+    public int Count { get { RequireSealed(); return _count; } }
+    public FerruleBasicSourceCandidate this[int index]
+    { get { RequireSealed(); return (uint)index < (uint)_count ? _items[index] : throw new ArgumentOutOfRangeException(nameof(index)); } }
+    private void RequireSealed()
+    { if (!_sealed) throw new InvalidOperationException("Source cohort is not published."); }
+    FerruleBasicSourceCandidate BasicCompleteRows.At(int index) => this[index];
+    nuint BasicSourceIds.SourceIdAt(int index) => this[index].SourceId;
+    Witness BasicCompleteRows.SourceWitness => _witness;
+    public IEnumerator<FerruleBasicSourceCandidate> GetEnumerator()
+    { RequireSealed(); for (var i = 0; i < _count; i++) yield return _items[i]; }
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    internal Witness SourceWitness => _witness;
+    internal static FerruleRetainedSourceCohort Walk(FerruleBasicScopeContext parent,
+        IReadOnlyList<string> path, FerruleOwnedSourceOwner? owner)
+    {
+        var budget = parent.Begin();
+        budget.Charge(2); // original holder and shared per-walk witness, replacing the native output containers
+        var result = new FerruleRetainedSourceCohort(parent, budget);
+        try
+        {
+            if (owner.HasValue)
+                _ = parent.OwnedView.IterateBasicSource(owner.Value, path, result._witness);
+            else
+            {
+                result._witness.SetLegacyQuery(path);
+                parent.LegacyView.IterateBasicSource(path, result._witness, result._witness);
+            }
+            result._sealed = true;
+            result._witness.Seal(result._count);
+            return result;
+        }
+        finally { result._witness.ReleaseScratch(); }
+    }
+    private void ReserveOutput(BasicSourceBudget budget)
+    {
+        BasicSourceAccounting.Limit(0, (nuint)_count + 1, _witness.Parent.Roots.Limits.MaxWalkContexts,
+            FerruleBasicSourceBridgeComponent.WalkContexts);
+        if (_count < _items.Length) return;
+        var capacity = (nuint)_count + 1;
+        budget.Charge(capacity);
+        var next = new FerruleBasicSourceCandidate[BasicSourceAccounting.ArrayLength(capacity)];
+        Array.Copy(_items, next, _count);
+        var old = _items.Length; _items = next; budget.Release((nuint)old);
+    }
+    private void Append(FerruleBasicScopeContext context, BasicOccurrenceCursor? cursor, BasicSourceBudget budget)
+    {
+        budget.Charge(1);
+        _items[_count] = new FerruleBasicSourceCandidate(context, _witness, (nuint)_count, cursor);
+        _count++;
+    }
+
+    internal sealed class Witness : ScopeContext.BasicWalkObserver,
+        FerruleOwnedScopeContext.BasicOwnedWalkObserver, ICollection<ScopeContext>
+    {
+        private FerruleRetainedSourceCohort? _building;
+        private readonly BasicSourceBudget _budget;
+        private readonly record struct State(int Owner, IReadOnlyList<string> Canonical, bool CanonicalOwned, bool Projection,
+            FerruleInstance? Plain, int ScratchDepth);
+        private State[] _states = Array.Empty<State>();
+        private int _stateDepth;
+        private FerruleOwnedScopeContext.Observation[] _scratch = Array.Empty<FerruleOwnedScopeContext.Observation>();
+        private int _scratchCount;
+        private int _inheritedOwned;
+        private int _owner;
+        private IReadOnlyList<string> _canonical = Array.Empty<string>();
+        private bool _projection;
+        private bool _canonicalOwned;
+        private FerruleInstance? _plain;
+        private ScopeContext? _pendingLegacy;
+        private OwnedQuery? _query;
+        private bool _finished;
+        internal Witness(FerruleRetainedSourceCohort building, FerruleBasicScopeContext parent, BasicSourceBudget budget)
+        { _building = building; Parent = parent; _budget = budget; }
+        internal FerruleBasicScopeContext Parent { get; }
+        internal int OriginalCount { get; private set; }
+        internal int SelectionCalls { get; private set; }
+        internal bool IsComplete => _finished;
+        internal void Seal(int count) { OriginalCount = count; _finished = true; _building = null; }
+        internal void SetLegacyQuery(IReadOnlyList<string> path)
+        {
+            _query = Parent.Query(_budget, FerruleOwnedSourceOwner.Primary, path);
+            _inheritedOwned = Parent.OwnedView.FrameCount;
+            _budget.Charge((nuint)_inheritedOwned);
+            for (var i = 0; i < _inheritedOwned; i++)
+            { var f = Parent.OwnedView.FrameAt(i); _budget.Charge((nuint)f.Path.Count); _budget.Path(f.Path); }
+            _scratch = new FerruleOwnedScopeContext.Observation[_inheritedOwned];
+            for (var i = 0; i < _scratch.Length; i++) _scratch[i] = Parent.OwnedView.FrameAt(i);
+            _scratchCount = _inheritedOwned;
+        }
+        internal override nuint LegacyCapacityMaximum => BasicSourceAccounting.LegacyFrames(Parent.Roots.Limits);
+        internal override void ReserveSlots(nuint slots) => _budget.Charge(slots);
+        internal override void ReleaseSlots(nuint slots) => _budget.Release(slots);
+        internal override void ReserveOutputCell() => _building!.ReserveOutput(_budget);
+        internal override void ReservePath(IReadOnlyList<string> path, string? appended)
+        { _budget.Path(path); if (appended is not null) _budget.Text(OwnedSourceAccounting.Text(appended)); }
+        internal override void ProbeBase(FerruleInstance current)
+        {
+            if (current is FerruleDocumentSet or FerruleMappedSequence)
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
+                    found: InstanceKind(current));
+        }
+        internal override void SelectedBase(int frameIndex, FerruleInstance current)
+        {
+            SelectionCalls++;
+            var origin = Parent.OriginAt(frameIndex);
+            _owner = origin.OwnerKey; _canonical = origin.Canonical; _canonicalOwned = false; _projection = origin.Projection;
+        }
+        private static FerruleOwnedSourceInstanceKind InstanceKind(FerruleInstance current) => current switch
+        {
+            FerruleScalar => FerruleOwnedSourceInstanceKind.Scalar,
+            FerruleGroup => FerruleOwnedSourceInstanceKind.Group,
+            FerruleRepeated => FerruleOwnedSourceInstanceKind.Repeated,
+            FerruleDocumentSet => FerruleOwnedSourceInstanceKind.DocumentSet,
+            FerruleMappedSequence => FerruleOwnedSourceInstanceKind.MappedSequence,
+            _ => throw new InvalidOperationException("Unknown immutable source kind."),
+        };
+        internal override void Enter(FerruleInstance current, int consumed,
+            IReadOnlyList<string> relativePrefix, int frameCount, int collectionCount)
+        {
+            if (current is FerruleDocumentSet or FerruleMappedSequence)
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
+                    found: InstanceKind(current));
+            BasicSourceAccounting.Limit((nuint)_stateDepth, 1, BasicSourceAccounting.Recursion(Parent.Roots.Limits),
+                FerruleBasicSourceBridgeComponent.RecursionDepth);
+            if (_stateDepth == _states.Length)
+            {
+                var capacity = (nuint)_stateDepth + 1; _budget.Charge(capacity);
+                var next = new State[BasicSourceAccounting.ArrayLength(capacity)];
+                Array.Copy(_states, next, _stateDepth); var old = _states.Length; _states = next; _budget.Release((nuint)old);
+            }
+            _states[_stateDepth++] = new(_owner, _canonical, _canonicalOwned, _projection, _plain, _scratchCount);
+        }
+        internal override void Leave()
+        {
+            var state = _states[--_stateDepth]; _states[_stateDepth] = default;
+            var released = _canonicalOwned && !ReferenceEquals(_canonical, state.Canonical) ? (nuint)_canonical.Count : 0;
+            _owner = state.Owner; _canonical = state.Canonical; _canonicalOwned = state.CanonicalOwned;
+            _projection = state.Projection; _plain = state.Plain;
+            if (released != 0) _budget.Release(released);
+            // The collection push/pop callbacks own occurrence lifetime; this is the recursion state only.
+        }
+        private IReadOnlyList<string> CopyCanonical(IReadOnlyList<string> path)
+        {
+            BasicSourceAccounting.Limit(0, (nuint)path.Count, Parent.Roots.Limits.MaxPathSegments,
+                FerruleBasicSourceBridgeComponent.PathSegments);
+            _budget.Charge((nuint)path.Count); _budget.Path(path);
+            var copy = new string[path.Count]; for (var i = 0; i < copy.Length; i++) copy[i] = path[i];
+            return copy;
+        }
+        internal override void ConsumedField(string actualField, FerruleInstance actualChild)
+        {
+            if (_projection)
+            { _owner = Parent.Roots.ProjectionKey(actualField); _canonical = Array.Empty<string>(); _canonicalOwned = false; _projection = false; return; }
+            var count = BasicSourceAccounting.Add((nuint)_canonical.Count, 1);
+            BasicSourceAccounting.Limit(0, count, Parent.Roots.Limits.MaxPathSegments, FerruleBasicSourceBridgeComponent.PathSegments);
+            _budget.Charge(count); _budget.Path(_canonical); _budget.Text(OwnedSourceAccounting.Text(actualField));
+            var path = new string[BasicSourceAccounting.ArrayLength(count)];
+            for (var i = 0; i < _canonical.Count; i++) path[i] = _canonical[i];
+            path[^1] = actualField; _canonical = path; _canonicalOwned = true;
+        }
+        internal override void BeforeCollectionPush()
+        {
+            BasicSourceAccounting.Limit((nuint)_scratchCount, 1, Parent.Roots.Limits.MaxActiveFrames,
+                FerruleBasicSourceBridgeComponent.ActiveFrames);
+            BasicSourceAccounting.Limit(0, (nuint)Parent.OriginCount + (nuint)(_scratchCount - _inheritedOwned) + 1,
+                LegacyCapacityMaximum, FerruleBasicSourceBridgeComponent.LegacyFrames);
+        }
+        internal override void BeforePlain()
+        {
+            BasicSourceAccounting.Limit(0, (nuint)Parent.OriginCount + (nuint)(_scratchCount - _inheritedOwned) + 1,
+                LegacyCapacityMaximum, FerruleBasicSourceBridgeComponent.LegacyFrames);
+        }
+        internal override void CollectionPushed(FerruleInstance item, IReadOnlyList<string> legacyPath, int rawPosition)
+        {
+            BasicSourceAccounting.Limit((nuint)_scratchCount, 1, Parent.Roots.Limits.MaxActiveFrames,
+                FerruleBasicSourceBridgeComponent.ActiveFrames);
+            if (_scratchCount == _scratch.Length)
+            {
+                var capacity = (nuint)_scratchCount + 1; _budget.Charge(capacity);
+                var next = new FerruleOwnedScopeContext.Observation[BasicSourceAccounting.ArrayLength(capacity)];
+                Array.Copy(_scratch, next, _scratchCount); var old = _scratch.Length; _scratch = next; _budget.Release((nuint)old);
+            }
+            _scratch[_scratchCount++] = new(_owner, CopyCanonical(_canonical), item, (nuint)rawPosition);
+        }
+        internal override void CollectionPopped()
+        {
+            var f = _scratch[--_scratchCount]; _scratch[_scratchCount] = default;
+            _budget.Release((nuint)f.Path.Count);
+        }
+        internal override void Plain(FerruleInstance item) => _plain = item;
+        internal override void PlainPopped() => _plain = null;
+        internal override void BeforeCandidate(int newFrames, int newCollections, int count)
+        {
+            BasicSourceAccounting.Limit(0, (nuint)count + 1, Parent.Roots.Limits.MaxWalkContexts,
+                FerruleBasicSourceBridgeComponent.WalkContexts);
+            BasicSourceAccounting.Limit(0, (nuint)Parent.OriginCount + (nuint)newFrames,
+                LegacyCapacityMaximum, FerruleBasicSourceBridgeComponent.LegacyFrames);
+        }
+        internal override void Candidate(ScopeContext actual, int newFrames, int newCollections)
+        {
+            if (!ReferenceEquals(_pendingLegacy, actual)) throw BasicPhaseAdmission.Invalid(0);
+            var q = _query!;
+            var owned = FerruleOwnedScopeContext.FromBasicObserved(Parent.Roots.OwnedRoots,
+                _scratch.AsSpan(0, _scratchCount), q);
+            var origins = CopyOrigins(newFrames, owned, _plain is not null, _canonical);
+            _budget.Charge(1);
+            var paired = FerruleBasicScopeContext.Create(Parent.Roots, actual, owned, origins, 4);
+            BasicOccurrenceCursor? cursor = newCollections == 0 ? null : new(
+                owned.FrameCount - 1, actual.BasicCollectionCount - 1, _owner,
+                owned.FrameAt(owned.FrameCount - 1).Path, owned.FrameAt(owned.FrameCount - 1).Index);
+            _building!.Append(paired, cursor, _budget); _pendingLegacy = null;
+        }
+        private BasicFrameOrigin[] CopyOrigins(int extraFrames, FerruleOwnedScopeContext owned,
+            bool plain, IReadOnlyList<string> terminal)
+        {
+            var total = BasicSourceAccounting.Add((nuint)Parent.OriginCount, (nuint)extraFrames);
+            _budget.Charge(total); var result = new BasicFrameOrigin[BasicSourceAccounting.ArrayLength(total)];
+            for (var i = 0; i < Parent.OriginCount; i++)
+            { var o = Parent.OriginAt(i); _budget.Charge((nuint)o.Canonical.Count); _budget.Path(o.Canonical); result[i] = o; }
+            var extraOwned = owned.FrameCount - Parent.OwnedView.FrameCount;
+            for (var i = 0; i < extraOwned; i++)
+            {
+                var f = owned.FrameAt(Parent.OwnedView.FrameCount + i);
+                result[Parent.OriginCount + i] = new(f.Owner, CopyCanonical(f.Path), f.Index);
+            }
+            if (plain) result[^1] = new(_owner, CopyCanonical(terminal));
+            return result;
+        }
+        OwnedQuery FerruleOwnedScopeContext.BasicOwnedWalkObserver.CreateQuery(FerruleOwnedScopeContext current,
+            FerruleOwnedSourceOwner owner, IReadOnlyList<string> path)
+        { _inheritedOwned = current.FrameCount; return _query = Parent.Query(_budget, owner, path); }
+        void FerruleOwnedScopeContext.BasicOwnedWalkObserver.BeforeWalkBuffers() => _budget.Charge(3);
+        void FerruleOwnedScopeContext.BasicOwnedWalkObserver.SelectedBase(int ownerKey, FerruleInstance actual,
+            int consumed, bool identity)
+        { SelectionCalls++; _owner = ownerKey; }
+        void FerruleOwnedScopeContext.BasicOwnedWalkObserver.BeforePublication(int frameCount,
+            FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity) => _building!.ReserveOutput(_budget);
+        void FerruleOwnedScopeContext.BasicOwnedWalkObserver.Published(FerruleOwnedScopeContext actual,
+            FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity)
+        {
+            var legacy = Parent.LegacyView.ProjectBasicOwned(actual, _inheritedOwned, terminal, canonical, identity, _budget);
+            var extraOwned = actual.FrameCount - _inheritedOwned;
+            var plain = !identity && (extraOwned == 0 || actual.FrameAt(actual.FrameCount - 1).Path.Count != canonical.Count);
+            var origins = identity ? CopyOrigins(0, actual, false, canonical) :
+                CopyOrigins(extraOwned + (plain ? 1 : 0), actual, plain, canonical);
+            _budget.Charge(1);
+            var paired = FerruleBasicScopeContext.Create(Parent.Roots, legacy, actual, origins,
+                identity ? Parent.LegacyContainerCost : 2);
+            BasicOccurrenceCursor? cursor = identity || extraOwned == 0 ? null : new(
+                actual.FrameCount - 1, legacy.BasicCollectionCount - 1, _owner,
+                actual.FrameAt(actual.FrameCount - 1).Path, actual.FrameAt(actual.FrameCount - 1).Index);
+            _building!.Append(paired, cursor, _budget);
+        }
+        int ICollection<ScopeContext>.Count => _building?._count ?? OriginalCount;
+        bool ICollection<ScopeContext>.IsReadOnly => true;
+        void ICollection<ScopeContext>.Add(ScopeContext item)
+        { if (_finished) throw new NotSupportedException("Source cohort is immutable."); _pendingLegacy = item; }
+        void ICollection<ScopeContext>.Clear() => throw new NotSupportedException("Source cohort is immutable.");
+        bool ICollection<ScopeContext>.Remove(ScopeContext item) => throw new NotSupportedException("Source cohort is immutable.");
+        bool ICollection<ScopeContext>.Contains(ScopeContext item) => false;
+        void ICollection<ScopeContext>.CopyTo(ScopeContext[] array, int arrayIndex) => throw new NotSupportedException("Source cohort is opaque.");
+        IEnumerator<ScopeContext> IEnumerable<ScopeContext>.GetEnumerator() => throw new NotSupportedException("Source cohort is opaque.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new NotSupportedException("Source cohort is opaque.");
+        internal void ReleaseScratch()
+        {
+            nuint released = (nuint)_states.Length + (nuint)_scratch.Length;
+            for (var i = 0; i < _scratchCount; i++) released = BasicSourceAccounting.Add(released, (nuint)_scratch[i].Path.Count);
+            if (_canonicalOwned) released = BasicSourceAccounting.Add(released, (nuint)_canonical.Count);
+            _pendingLegacy = null; _query = null; _canonical = Array.Empty<string>(); _canonicalOwned = false;
+            _plain = null; _states = Array.Empty<State>(); _scratch = Array.Empty<FerruleOwnedScopeContext.Observation>();
+            _stateDepth = 0; _scratchCount = 0;
+            if (released != 0) _budget.Release(released);
+        }
+    }
+}
+
+
+/// <summary>One witnessed source candidate; source ordinals are separate from effective phase positions.</summary>
+public sealed class FerruleBasicSourceCandidate
+{
+    private readonly BasicOccurrenceCursor? _cursor;
+    internal FerruleBasicSourceCandidate(FerruleBasicScopeContext context,
+        FerruleRetainedSourceCohort.Witness witness, nuint sourceId, BasicOccurrenceCursor? cursor)
+    { Context = context; SourceWitness = witness; SourceId = sourceId; _cursor = cursor; }
+    public FerruleBasicScopeContext Context { get; }
+    internal FerruleRetainedSourceCohort.Witness SourceWitness { get; }
+    internal nuint SourceId { get; }
+    internal nuint? RawSourceOrdinal => _cursor?.RawOrdinal;
+    internal bool HasNewCursor => _cursor.HasValue;
+    internal FerruleBasicSourceCandidate Copy(BasicSourceBudget budget, nuint position)
+    {
+        if (position == 0)
+        {
+            var owner = _cursor.HasValue && _cursor.Value.OwnerKey != 0 ?
+                FerruleOwnedSourceOwner.Named(Context.Roots.OwnedRoots.Name(_cursor.Value.OwnerKey)!) : FerruleOwnedSourceOwner.Primary;
+            throw Context.Query(budget, owner, Array.Empty<string>()).Error(
+                FerruleOwnedSourceErrorKind.InvalidPosition, index: position);
+        }
+        if (position > int.MaxValue)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.LegacyPositionRange,
+                requested: position, maximum: int.MaxValue);
+        var context = Context.CloneBudgeted(budget, _cursor, position);
+        budget.Charge(1);
+        return new FerruleBasicSourceCandidate(context, SourceWitness, SourceId, _cursor);
+    }
+    /// <summary>
+    /// Copies this explicitly supplied candidate and its parent. This legacy
+    /// convenience does not account for source or prior cohorts retained elsewhere.
+    /// Use ReindexRetainedPhase when the complete original/current holders coexist.
+    /// </summary>
+    public FerruleBasicSourceCandidate WithPhasePosition(nuint oneBased)
+    {
+        try
+        {
+            var budget = SourceWitness.Parent.Begin(); Context.Seed(budget);
+            return Copy(budget, oneBased);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+}
+
+internal static class BasicPhaseAdmission
+{
+    internal static void ValidateIds(int originalCount, BasicSourceIds original,
+        BasicSourceIds current, BasicPhaseIndices indices)
+    {
+        // This is also the strict internal corrupted-ID test boundary. Production
+        // uses allocation-free accessors over its private complete candidate arrays.
+        for (var i = 0; i < original.Count; i++)
+        {
+            var id = original.SourceIdAt(i);
+            for (var j = 0; j < i; j++)
+                if (original.SourceIdAt(j) == id) throw Duplicate((nuint)i, id);
+            if (id != (nuint)i || id >= (nuint)originalCount) throw Invalid((nuint)i);
+        }
+        if (original.Count != originalCount) throw Invalid((nuint)original.Count);
+        for (var i = 0; i < current.Count; i++)
+        {
+            var id = current.SourceIdAt(i);
+            for (var j = 0; j < i; j++) if (current.SourceIdAt(j) == id) throw Duplicate((nuint)i, id);
+            if (id >= (nuint)originalCount) throw Invalid((nuint)i);
+        }
+        for (var i = 0; i < indices.Count; i++)
+        {
+            var index = indices.IndexAt(i);
+            if (index >= (nuint)current.Count) throw Invalid((nuint)i);
+            var id = current.SourceIdAt((int)index);
+            for (var j = 0; j < i; j++)
+                if (current.SourceIdAt((int)indices.IndexAt(j)) == id) throw Duplicate((nuint)i, id);
+        }
+    }
+    internal static FerruleBasicSourceBridgeException Invalid(nuint input) =>
+        new(FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness, inputOrdinal: input);
+    internal static FerruleBasicSourceBridgeException Duplicate(nuint input, nuint candidate) =>
+        new(FerruleBasicSourceBridgeErrorKind.DuplicatePhaseCandidate,
+            inputOrdinal: input, candidateOrdinal: candidate);
+
+}
+
+/// <summary>Immutable ordered indices into one complete original or current phase holder.</summary>
+public sealed class FerrulePhaseSelection : BasicPhaseIndices
+{
+    private readonly nuint[] _indices;
+    private readonly BasicCompleteRows _current;
+    private FerrulePhaseSelection(BasicCompleteRows current, nuint[] indices)
+    { _current = current; _indices = indices; }
+    internal BasicCompleteRows Current => _current;
+    internal int Count => _indices.Length;
+    internal nuint Index(int index) => _indices[index];
+    int BasicPhaseIndices.Count => _indices.Length;
+    nuint BasicPhaseIndices.IndexAt(int index) => _indices[index];
+    public static FerrulePhaseSelection FromOriginal(FerruleRetainedSourceCohort current, ReadOnlySpan<nuint> indices) =>
+        Capture(current, indices);
+    public static FerrulePhaseSelection FromPhase(FerruleCompletePhaseCohort current, ReadOnlySpan<nuint> indices) =>
+        Capture(current, indices);
+    private static FerrulePhaseSelection Capture(BasicCompleteRows current, ReadOnlySpan<nuint> indices)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        try
+        {
+            var witness = current.SourceWitness;
+            var budget = new BasicSourceBudget(witness.Parent.Roots.Limits, true);
+            var maximum = witness.Parent.Roots.Limits.MaxWalkContexts;
+            BasicSourceAccounting.Limit(0, (nuint)indices.Length, maximum, FerruleBasicSourceBridgeComponent.WalkContexts);
+            BasicSourceAccounting.Limit(0, (nuint)current.Count, maximum, FerruleBasicSourceBridgeComponent.WalkContexts);
+            if (!witness.IsComplete) throw BasicPhaseAdmission.Invalid(0);
+            witness.Parent.Roots.Seed(budget); witness.Parent.Seed(budget);
+            budget.Charge((nuint)current.Count + 2); // current backing, witness and current holder
+            for (var i = 0; i < current.Count; i++) { current.At(i).Context.Seed(budget); budget.Charge(1); }
+            budget.Charge(BasicSourceAccounting.Multiply(2, (nuint)indices.Length));
+            budget.Charge(1);
+            var snapshot = new nuint[BasicSourceAccounting.ArrayLength((nuint)indices.Length)]; indices.CopyTo(snapshot);
+            // Validate exactly the completed private snapshot, never the mutable caller's span.
+            for (var i = 0; i < snapshot.Length; i++)
+            {
+                if (snapshot[i] >= (nuint)current.Count) throw BasicPhaseAdmission.Invalid((nuint)i);
+                var id = current.At((int)snapshot[i]).SourceId;
+                for (var j = 0; j < i; j++)
+                    if (current.At((int)snapshot[j]).SourceId == id)
+                        throw BasicPhaseAdmission.Duplicate((nuint)i, id);
+            }
+            return new FerrulePhaseSelection(current, snapshot);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+}
+
+/// <summary>One complete immutable phase output, retaining its original source witness.</summary>
+public sealed class FerruleCompletePhaseCohort : IReadOnlyList<FerruleBasicSourceCandidate>, BasicCompleteRows
+{
+    private readonly FerruleBasicSourceCandidate[] _items;
+    private readonly FerruleRetainedSourceCohort.Witness _witness;
+    private FerruleCompletePhaseCohort(FerruleBasicSourceCandidate[] items, FerruleRetainedSourceCohort.Witness witness)
+    { _items = items; _witness = witness; }
+    public int Count => _items.Length;
+    public FerruleBasicSourceCandidate this[int index] => _items[index];
+    FerruleBasicSourceCandidate BasicCompleteRows.At(int index) => _items[index];
+    nuint BasicSourceIds.SourceIdAt(int index) => _items[index].SourceId;
+    FerruleRetainedSourceCohort.Witness BasicCompleteRows.SourceWitness => _witness;
+    public IEnumerator<FerruleBasicSourceCandidate> GetEnumerator()
+    { for (var i = 0; i < _items.Length; i++) yield return _items[i]; }
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    internal static FerruleCompletePhaseCohort Reindex(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, FerrulePhaseSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(selection);
+        var current = selection.Current; var witness = original.SourceWitness;
+        var limits = parent.Roots.Limits;
+        var budget = new BasicSourceBudget(limits, true);
+        if (!ReferenceEquals(parent.Roots, witness.Parent.Roots) ||
+            !ReferenceEquals(parent.Roots, current.SourceWitness.Parent.Roots))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch);
+        if (!ReferenceEquals(parent, witness.Parent) || !ReferenceEquals(witness, current.SourceWitness))
+            throw BasicPhaseAdmission.Invalid(0);
+        BasicSourceAccounting.Limit(0, (nuint)original.Count, limits.MaxWalkContexts, FerruleBasicSourceBridgeComponent.WalkContexts);
+        BasicSourceAccounting.Limit(0, (nuint)current.Count, limits.MaxWalkContexts, FerruleBasicSourceBridgeComponent.WalkContexts);
+        BasicSourceAccounting.Limit(0, (nuint)selection.Count, limits.MaxWalkContexts, FerruleBasicSourceBridgeComponent.WalkContexts);
+        // Upfront opaque checks require no membership set or second ID snapshot.
+        for (var i = 0; i < original.Count; i++)
+            if (!ReferenceEquals(original[i].SourceWitness, witness)) throw BasicPhaseAdmission.Invalid((nuint)i);
+        for (var i = 0; i < current.Count; i++)
+            if (!ReferenceEquals(current.At(i).SourceWitness, witness)) throw BasicPhaseAdmission.Invalid((nuint)i);
+        if (!witness.IsComplete) throw BasicPhaseAdmission.Invalid(0);
+        BasicPhaseAdmission.ValidateIds(witness.OriginalCount, original, current, selection);
+        parent.Roots.Seed(budget); parent.Seed(budget);
+        budget.Charge(5); // complete original/current/output holders, witness and selection
+        budget.Charge((nuint)original.Count + (nuint)current.Count + (nuint)selection.Count);
+        for (var i = 0; i < original.Count; i++) { original[i].Context.Seed(budget); budget.Charge(1); }
+        for (var i = 0; i < current.Count; i++) { current.At(i).Context.Seed(budget); budget.Charge(1); }
+        // Both explicitly held logical sets are charged, even when their immutable backing aliases.
+        budget.Charge((nuint)selection.Count);
+        var output = new FerruleBasicSourceCandidate[selection.Count];
+        for (var i = 0; i < output.Length; i++) output[i] = current.At((int)selection.Index(i)).Copy(budget, (nuint)i + 1);
+        return new FerruleCompletePhaseCohort(output, witness);
+    }
+}
+
+
+public sealed partial class ScopeContext
+{
+    private static void RequireBasicScalarTraversal(FerruleInstance current)
+    {
+        if (current is FerruleDocumentSet or FerruleMappedSequence)
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
+                found: current is FerruleDocumentSet ? FerruleOwnedSourceInstanceKind.DocumentSet :
+                    FerruleOwnedSourceInstanceKind.MappedSequence);
+    }
+    internal FerruleValue ResolveBasicSourceField(IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(path);
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (collection.Path.Count == 0 || !StartsWith(path, collection.Path))
+            {
+                continue;
+            }
+            var resolved = TryResolveScalar(collection.Item, path, collection.Path.Count, true, basicOnly: true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.MissingSourceField,
+                $"Source scalar '{string.Join('/', path)}' does not exist in the active scope context.");
+        }
+
+        FerruleInstance? firstOwner = null;
+        FerruleInstance? firstAbsence = null;
+        for (var index = _frames.Count - 1; index >= 0; index--)
+        {
+            var instance = _frames[index];
+            var resolved = TryResolveScalar(instance, path, 0, basicOnly: true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            var candidate = instance is FerruleRepeated { Items.Count: > 0 } repeated
+                ? repeated.Items[0]
+                : instance;
+            if (firstOwner is null &&
+                (path.Count == 0 || TryGetField(candidate, path[0], out _)))
+            {
+                firstOwner = instance;
+            }
+            if (firstAbsence is null && resolved.MissingField)
+            {
+                firstAbsence = instance;
+            }
+        }
+        var selected = firstOwner ?? firstAbsence;
+        if (selected is not null)
+        {
+            var resolved = TryResolveScalar(selected, path, 0, true, basicOnly: true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+        }
+        return ResolveScalar(path);
+    }
+
+    /// <summary>
+    /// Reads a validated field in its exact frame. Missing groups and an
+    /// intermediate Null/JsonNull yield Null; malformed values and inactive frames fail.
+    /// </summary>
+    internal FerruleValue ResolveBasicSourceFieldInFrame(
+        IReadOnlyList<string> frame,
+        IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(frame);
+        ValidatePath(path);
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (!FrameMatches(frame, collection.Path))
+            {
+                continue;
+            }
+            var resolved = TryResolveScalar(collection.Item, path, 0, true, basicOnly: true);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            break;
+        }
+        return ResolveScalarInFrame(frame, path);
+    }
+
 }
