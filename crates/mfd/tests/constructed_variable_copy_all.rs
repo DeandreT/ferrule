@@ -328,3 +328,46 @@ fn constructed_copy_all_refuses_unproved_cardinality_shapes_and_facets() {
         );
     }
 }
+
+#[test]
+fn literal_only_copy_all_records_refuse_controlled_parent_scopes() {
+    let original = std::fs::read_to_string(fixture("nested-edi-array.mfd")).unwrap();
+    let parent_edge = "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"40\"/></edges></vertex>";
+    let count_edge = "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"24\"/></edges></vertex>";
+    let functions = r#"<component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="120"/><datapoint pos="1" key="121"/></sources><targets><datapoint pos="0" key="110"/></targets></component><component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="105"/></targets><data><constant value="true" datatype="boolean"/></data></component><component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="106"/></targets><data><constant value="0" datatype="integer"/></data></component>"#;
+    assert!(original.contains(parent_edge) && original.contains(count_edge));
+    let design = original.replace("</children>", &format!("{functions}</children>"))
+        .replace(parent_edge, r#"<vertex vertexkey="10"><edges><edge vertexkey="120"/></edges></vertex><vertex vertexkey="105"><edges><edge vertexkey="121"/></edges></vertex><vertex vertexkey="110"><edges><edge vertexkey="40"/></edges></vertex>"#)
+        .replace(count_edge, r#"<vertex vertexkey="106"><edges><edge vertexkey="24"/></edges></vertex>"#);
+    let directory = std::env::temp_dir().join(format!(
+        "ferrule-copy-all-literal-parent-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    for resources in [
+        fixture("edi-array.mfd")
+            .parent()
+            .unwrap()
+            .join("../constructed-variable-drivers"),
+        fixture("edi-array.mfd").parent().unwrap().to_path_buf(),
+    ] {
+        for entry in std::fs::read_dir(resources).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), directory.join(entry.file_name())).unwrap();
+        }
+    }
+    let path = directory.join("mapping.mfd");
+    std::fs::write(
+        &path,
+        design.replace("../constructed-variable-drivers/", ""),
+    )
+    .unwrap();
+    let imported = mfd::import(&path).unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        imported.warnings.iter().any(|warning| warning
+            == "iteration into `Batches/Records` comes from an unsupported feed; skipped"),
+        "{:?}",
+        imported.warnings
+    );
+}

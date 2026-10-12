@@ -64,7 +64,8 @@ fn recognize_record(
     let SchemaKind::Group { children, .. } = &record.kind else {
         return false;
     };
-    if record.repeating && !singleton_collection
+    if scopes.is_some_and(|scopes| !plain_parent_chain(target_path, scopes))
+        || record.repeating && !singleton_collection
         || record
             .item_count_range
             .is_some_and(|range| !range.contains_count(1))
