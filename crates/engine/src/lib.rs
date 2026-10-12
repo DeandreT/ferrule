@@ -30,6 +30,7 @@ mod required_sources;
 mod resolve;
 mod sequence;
 mod source_iteration;
+mod source_ownership;
 mod trace;
 mod user_function;
 mod validate;
@@ -113,6 +114,15 @@ pub fn required_sources_for_target<'a>(
     required_sources::required_for_target(project, selection)
 }
 
+/// Refuses unsupported owned operations in the potential selected target closure.
+/// None selects all target roots. Legacy expressions and lazy evaluation are unchanged.
+pub fn check_source_ownership_capability(
+    project: &Project,
+    selection: Option<TargetSelection<'_>>,
+) -> Result<(), EngineError> {
+    source_ownership::check_project(project, selection)
+}
+
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
 pub const MAX_RUNTIME_PARAMETER_STRING_BYTES: usize = 8 * 1024 * 1024;
 
@@ -188,6 +198,12 @@ impl RuntimeParameters {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("source ownership for {kind} node {node} (function {function:?}) is not supported")]
+    UnsupportedSourceOwnership {
+        node: NodeId,
+        function: Option<FunctionId>,
+        kind: &'static str,
+    },
     #[error("project has no named target `{name}`")]
     UnknownTarget { name: String },
     #[error("project has more than one named target `{name}`")]
@@ -672,6 +688,7 @@ fn run_outputs_internal(
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
+    check_source_ownership_capability(project, None)?;
     evaluate_run(project, source, extras, execution, |program, context| {
         let primary = eval_scope(
             program,
@@ -714,6 +731,10 @@ fn run_selected_target_internal(
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
     let named_target = required_sources::selected_target(project, selection)?;
+    source_ownership::check_roots(
+        project,
+        [named_target.map_or(&project.root, |target| &target.root)],
+    )?;
     evaluate_run(
         project,
         source,
@@ -816,6 +837,10 @@ fn evaluate_run<R>(
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }
+
+#[cfg(test)]
+#[path = "tests/source_ownership.rs"]
+mod source_ownership_tests;
 
 #[cfg(test)]
 #[path = "tests/adjacency_tree.rs"]

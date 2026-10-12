@@ -390,6 +390,7 @@ fn run_project_value_with_pdf_reader(
     )?;
     let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
     output_documents::reject_protected_static_targets(&targets, options.protected_output_paths)?;
+    engine::check_source_ownership_capability(project, options.target)?;
     let required_sources = options
         .target
         .map(|selection| engine::required_sources_for_target(project, selection))
@@ -2498,5 +2499,82 @@ fn xml_write_options(options: &FormatOptions) -> format_xml::XmlWriteOptions {
     format_xml::XmlWriteOptions {
         schema_hints: options.xml_schema_hints.clone(),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn owned_source_test_project() -> mapping::Project {
+    mapping::Project {
+        source: ir::SchemaNode::group(
+            "Input",
+            vec![ir::SchemaNode::scalar("Value", ir::ScalarType::String)],
+        ),
+        target: ir::SchemaNode::group(
+            "Output",
+            vec![ir::SchemaNode::scalar("Value", ir::ScalarType::String)],
+        ),
+        source_path: Some("input.json".into()),
+        target_path: Some("output.json".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: mapping::Graph {
+            nodes: [(
+                9,
+                mapping::Node::OwnedSourceField(mapping::OwnedSourceField {
+                    source: mapping::OwnedSourceRef {
+                        owner: mapping::SourceOwner::Primary,
+                        path: vec!["Value".into()],
+                    },
+                    frame: None,
+                }),
+            )]
+            .into(),
+        },
+        root: mapping::Scope {
+            bindings: vec![mapping::Binding {
+                target_field: "Value".into(),
+                node: 9,
+            }],
+            ..mapping::Scope::default()
+        },
+    }
+}
+
+#[cfg(test)]
+mod owned_source_filesystem_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_refusal_precedes_input_open_and_publication_callback() {
+        let project = owned_source_test_project();
+        let published = std::cell::Cell::new(0);
+        let publish = || {
+            published.set(published.get() + 1);
+            true
+        };
+        let options = RunOptions {
+            before_publish: Some(&publish),
+            ..RunOptions::default()
+        };
+        let error = run_project_value_with_filesystem_policy(
+            &project,
+            Path::new("nonexistent-owned-input-parent/project.json"),
+            &options,
+            None,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_source_field"
+            })
+        ));
+        assert_eq!(published.get(), 0);
     }
 }

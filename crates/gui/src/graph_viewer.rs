@@ -1213,7 +1213,9 @@ impl GraphViewer<'_> {
             | Node::JoinAggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
-            Node::SourceField { .. }
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
@@ -1416,7 +1418,9 @@ impl GraphViewer<'_> {
 
     fn input_count(node: &Node) -> usize {
         match node {
-            Node::SourceField { .. }
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
@@ -1507,6 +1511,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 let title = match self.graph.nodes.get(id) {
+                    Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
+                    Some(Node::OwnedPosition(_)) => "Owned position".into(),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(

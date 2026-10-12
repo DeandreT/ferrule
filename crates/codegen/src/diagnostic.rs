@@ -42,6 +42,8 @@ pub enum ScopeFeature {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
+    OwnedSourceField,
+    OwnedPosition,
     CorrelatedJoinAggregate,
 }
 
@@ -136,6 +138,8 @@ impl fmt::Display for ScopeFeature {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::OwnedSourceField => "an unsupported owned source field",
+            Self::OwnedPosition => "an unsupported owned position",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }

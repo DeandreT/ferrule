@@ -198,6 +198,13 @@ fn evaluate_body_node_inner(
             node: node_id,
         })?;
     let result = match node {
+        Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+            Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: Some(function_id),
+                kind: node.owned_source_kind().expect("owned node kind"),
+            })
+        }
         Node::Unconnected => Ok(Value::Null),
         Node::Const { value } => Ok(value.clone()),
         Node::FunctionParameter { parameter } => parameters

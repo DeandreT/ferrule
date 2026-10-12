@@ -913,6 +913,14 @@ fn binding_node_picker(
 
 fn node_label(node: &mapping::Node) -> String {
     match node {
+        mapping::Node::OwnedSourceField(field) => format!(
+            "owned field {:?} {:?}; frame {:?} (unavailable)",
+            field.source.owner, field.source.path, field.frame
+        ),
+        mapping::Node::OwnedPosition(position) => format!(
+            "owned position {:?} {:?} (unavailable)",
+            position.owner, position.collection
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {
