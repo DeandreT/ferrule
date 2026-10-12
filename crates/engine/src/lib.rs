@@ -23,6 +23,7 @@ mod filter_map;
 mod grouping;
 mod iteration_output;
 mod join;
+mod owned_context;
 mod path_hierarchy;
 mod pipeline;
 mod recursive_filter;
@@ -52,6 +53,8 @@ pub use filter_map::{
     FilterMapLimitError, FilterMapLimits, FilterMapPhase, MAX_FILTER_MAP_SOURCE_ITEMS,
     MAX_FILTER_MAP_WORK,
 };
+pub use owned_context::OwnedSourceError;
+
 pub use pipeline::{
     PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue,
     check_pipeline_source_ownership_capability, run_pipeline, run_pipeline_with_context,
@@ -197,8 +200,45 @@ impl RuntimeParameters {
     }
 }
 
+/// Execution domains that remain closed for new owned source access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OwnedCapabilityContext {
+    Basic,
+    IsolatedFunction,
+    FailureRule,
+    GeneratedItem,
+    Grouping,
+    Join,
+    AggregateLookup,
+    XmlOperator,
+    TreeOperator,
+    DynamicOwner,
+    DynamicLoader,
+    Document,
+    DynamicTarget,
+    Concatenate,
+    SpecialConstruction,
+    Tracing,
+    Debugging,
+}
+
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("owned source access (node {node:?}, scope {scope:?}): {source}")]
+    OwnedSourceAccess {
+        node: Option<NodeId>,
+        scope: Option<Box<mapping::SourceScopeLocation>>,
+        source: OwnedSourceError,
+    },
+    #[error(
+        "owned source context {context:?} is unsupported (node {node:?}, function {function:?}, scope {scope:?})"
+    )]
+    UnsupportedOwnedContext {
+        node: Option<NodeId>,
+        function: Option<FunctionId>,
+        scope: Option<mapping::SourceScopeLocation>,
+        context: OwnedCapabilityContext,
+    },
     #[error("owned source iteration at {scope:?} is not supported")]
     UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
     #[error("source ownership for {kind} node {node} (function {function:?}) is not supported")]
@@ -691,39 +731,47 @@ fn run_outputs_internal(
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
-    check_source_ownership_capability(project, None)?;
-    evaluate_run(project, source, extras, execution, |program, context| {
-        let primary = eval_scope(
-            program,
-            &project.root,
-            Some(&project.target),
-            context,
-            &[],
-            &project.extra_sources,
-            execution.and_then(|execution| execution.dynamic_source_loader),
-            &TraceScope::primary(),
-        )?;
-        let mut targets = Vec::with_capacity(project.extra_targets.len());
-        for (index, target) in project.extra_targets.iter().enumerate() {
-            targets.push(NamedOutput {
-                name: target.name.clone(),
-                instance: eval_scope(
-                    program,
-                    &target.root,
-                    Some(&target.schema),
-                    context,
-                    &[],
-                    &project.extra_sources,
-                    execution.and_then(|execution| execution.dynamic_source_loader),
-                    &TraceScope::named(&target.name, index),
-                )?,
-            });
-        }
-        Ok(ExecutionOutputs {
-            primary,
-            extras: targets,
-        })
-    })
+    let admission = source_ownership::admit_project(project, None)?;
+    check_owned_execution_options(admission, execution)?;
+    evaluate_run(
+        project,
+        source,
+        extras,
+        execution,
+        admission.used_owned,
+        |program, context| {
+            let primary = eval_scope(
+                program,
+                &project.root,
+                Some(&project.target),
+                context,
+                &[],
+                &project.extra_sources,
+                execution.and_then(|execution| execution.dynamic_source_loader),
+                &TraceScope::primary(),
+            )?;
+            let mut targets = Vec::with_capacity(project.extra_targets.len());
+            for (index, target) in project.extra_targets.iter().enumerate() {
+                targets.push(NamedOutput {
+                    name: target.name.clone(),
+                    instance: eval_scope(
+                        program,
+                        &target.root,
+                        Some(&target.schema),
+                        context,
+                        &[],
+                        &project.extra_sources,
+                        execution.and_then(|execution| execution.dynamic_source_loader),
+                        &TraceScope::named(&target.name, index),
+                    )?,
+                });
+            }
+            Ok(ExecutionOutputs {
+                primary,
+                extras: targets,
+            })
+        },
+    )
 }
 
 fn run_selected_target_internal(
@@ -734,12 +782,14 @@ fn run_selected_target_internal(
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
     let named_target = required_sources::selected_target(project, selection)?;
-    source_ownership::check_project(project, Some(selection))?;
+    let admission = source_ownership::admit_project(project, Some(selection))?;
+    check_owned_execution_options(admission, execution)?;
     evaluate_run(
         project,
         source,
         extras,
         execution,
+        admission.used_owned,
         |program, context| match named_target {
             None => eval_scope(
                 program,
@@ -779,11 +829,36 @@ fn run_selected_target_internal(
     )
 }
 
+fn check_owned_execution_options(
+    admission: source_ownership::AdmissionSummary,
+    execution: Option<&ExecutionContext<'_>>,
+) -> Result<(), EngineError> {
+    if admission.used_owned {
+        let context = if execution.is_some_and(|execution| execution.trace_sink.is_some()) {
+            Some(OwnedCapabilityContext::Tracing)
+        } else if execution.is_some_and(|execution| execution.debug_hook.is_some()) {
+            Some(OwnedCapabilityContext::Debugging)
+        } else {
+            None
+        };
+        if let Some(context) = context {
+            return Err(EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: None,
+                context,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn evaluate_run<R>(
     project: &Project,
     source: &Instance,
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
+    used_owned: bool,
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
     project.validate_filter_map_v1()?;
@@ -824,6 +899,22 @@ fn evaluate_run<R>(
     );
     let extras_frame = Instance::Group((extras).into());
     let context = [&runtime_frame, &extras_frame, source];
+    let roots = used_owned
+        .then(|| {
+            owned_context::SourceRoots::new(
+                project,
+                source,
+                &extras_frame,
+                owned_context::OwnedLimits::default(),
+            )
+        })
+        .transpose()
+        .map_err(|source| EngineError::OwnedSourceAccess {
+            node: None,
+            scope: None,
+            source,
+        })?;
+    let owned = roots.as_ref().map(owned_context::OwnedContext::new);
     let first_failure_reported = Cell::new(false);
     let filter_map_run_state = filter_map::FilterMapRunState::new(
         execution.map_or_else(FilterMapLimits::default, |execution| {
@@ -841,6 +932,10 @@ fn evaluate_run<R>(
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
+    let program = match owned.as_ref() {
+        Some(owned) => program.with_owned_context(owned),
+        None => program,
+    };
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }
@@ -952,3 +1047,7 @@ mod user_function_tests;
 #[cfg(test)]
 #[path = "tests/owned_collection.rs"]
 mod owned_collection_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_source_basic.rs"]
+mod owned_source_basic_tests;

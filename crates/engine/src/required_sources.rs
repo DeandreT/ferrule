@@ -82,11 +82,10 @@ impl<'a> Analysis<'a> {
     }
 
     fn inspect_scope(&mut self, scope: &Scope) {
-        if let Some(source) = scope
-            .source()
-            .expect("ownership admission precedes source analysis")
-        {
-            self.inspect_path(source);
+        match scope.source_selector() {
+            Some(mapping::SourceSelectorRef::Legacy(source)) => self.inspect_path(source),
+            Some(mapping::SourceSelectorRef::Owned(source)) => self.inspect_owner(&source.owner),
+            None => {}
         }
         if let Some(sequence) = scope.sequence() {
             self.inspect_sequence(sequence);
@@ -213,9 +212,9 @@ impl<'a> Analysis<'a> {
                     self.inspect_path(source.collection());
                 }
             }
-            Node::OwnedSourceField(_)
-            | Node::OwnedPosition(_)
-            | Node::SourceDocumentPath
+            Node::OwnedSourceField(field) => self.inspect_owner(&field.source.owner),
+            Node::OwnedPosition(position) => self.inspect_owner(&position.owner),
+            Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::JoinPosition { .. }
@@ -230,6 +229,19 @@ impl<'a> Analysis<'a> {
             | Node::If { .. }
             | Node::Raise { .. }
             | Node::ValueMap { .. } => {}
+        }
+    }
+
+    fn inspect_owner(&mut self, owner: &mapping::SourceOwner) {
+        if let mapping::SourceOwner::Named { name } = owner {
+            self.required.extend(
+                self.project
+                    .extra_sources
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, source)| source.name == *name && source.dynamic_path.is_none())
+                    .map(|(index, _)| index),
+            );
         }
     }
 

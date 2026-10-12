@@ -266,3 +266,355 @@ mod tests {
         assert_eq!(walked[2].positions[1].index, 1);
     }
 }
+
+/// Candidate ownership metadata is separate from the unchanged legacy frame layout.
+pub(crate) struct ObservedExtension<'a> {
+    pub extension: WalkExtension<'a>,
+    pub frames: Vec<crate::owned_context::SourceFrame<'a>>,
+    pub origins: Vec<crate::owned_context::SourceOrigin<'a>>,
+}
+
+pub(crate) fn reserve_observed_copy(
+    budget: &crate::owned_context::WorkBudget,
+    frames: &[crate::owned_context::SourceFrame<'_>],
+    origins: &[crate::owned_context::SourceOrigin<'_>],
+    positions: &[PositionFrame],
+    instances: usize,
+) -> Result<(), crate::OwnedSourceError> {
+    let paths = frames
+        .iter()
+        .map(|frame| frame.collection.as_slice())
+        .chain(origins.iter().map(|origin| origin.path.as_slice()))
+        .chain(
+            positions
+                .iter()
+                .map(|position| position.collection.as_slice()),
+        );
+    let mut bytes = 0usize;
+    let mut slots = instances
+        .checked_add(frames.len())
+        .and_then(|n| n.checked_add(origins.len()))
+        .and_then(|n| n.checked_add(positions.len()))
+        .ok_or_else(|| budget.slot_overflow())?;
+    for path in paths {
+        budget.path(path)?;
+        slots = slots
+            .checked_add(path.len())
+            .ok_or_else(|| budget.slot_overflow())?;
+        bytes = path
+            .iter()
+            .try_fold(bytes, |sum, part| sum.checked_add(part.len()))
+            .ok_or_else(|| budget.overflow())?;
+    }
+    budget.reserve(slots)?;
+    budget.charge(bytes)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn walk_observed<'a>(
+    base: &'a Instance,
+    path: &[String],
+    raw_prefix: &[String],
+    canonical_prefix: &[String],
+    owner: Option<crate::owned_context::OwnerKey>,
+    context: &crate::owned_context::OwnedContext<'a>,
+    position_offset: usize,
+    strict_collection: bool,
+    budget: &crate::owned_context::WorkBudget,
+) -> Result<Vec<ObservedExtension<'a>>, crate::OwnedSourceError> {
+    let identity = strict_collection
+        && path.is_empty()
+        && owner.is_some_and(|owner| context.active_identity(owner, canonical_prefix, base));
+    let mut output = Vec::new();
+    observe_walk(
+        base,
+        path,
+        raw_prefix,
+        canonical_prefix,
+        owner,
+        position_offset,
+        &[],
+        &[],
+        &context.frames,
+        &context.origins,
+        strict_collection,
+        identity,
+        budget,
+        &mut output,
+    )?;
+    Ok(output)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observe_walk<'a>(
+    base: &'a Instance,
+    path: &[String],
+    raw_prefix: &[String],
+    canonical_prefix: &[String],
+    owner: Option<crate::owned_context::OwnerKey>,
+    position_offset: usize,
+    instances: &[&'a Instance],
+    positions: &[PositionFrame],
+    frames: &[crate::owned_context::SourceFrame<'a>],
+    origins: &[crate::owned_context::SourceOrigin<'a>],
+    strict: bool,
+    identity: bool,
+    budget: &crate::owned_context::WorkBudget,
+    output: &mut Vec<ObservedExtension<'a>>,
+) -> Result<(), crate::OwnedSourceError> {
+    use crate::OwnedSourceError;
+    use crate::owned_context::{SourceFrame, SourceOrigin};
+    budget.path(canonical_prefix)?;
+    budget.path(raw_prefix)?;
+    // New owned walks prune absent/null items before identity or terminal publication.
+    // The observed legacy walk intentionally retains its original null-item behavior.
+    if strict
+        && matches!(
+            base,
+            Instance::Scalar(ir::Value::Null | ir::Value::JsonNull(_))
+        )
+    {
+        return Ok(());
+    }
+    if identity {
+        budget.emit()?;
+        reserve_observed_copy(budget, frames, origins, positions, instances.len())?;
+        budget.reserve(1)?;
+        output.push(ObservedExtension {
+            extension: WalkExtension {
+                instances: instances.to_vec(),
+                positions: positions.to_vec(),
+            },
+            frames: frames.to_vec(),
+            origins: origins.to_vec(),
+        });
+        return Ok(());
+    }
+    if let Instance::Repeated(items) = base {
+        for (index, item) in items.iter().enumerate() {
+            if strict
+                && matches!(
+                    item,
+                    Instance::Scalar(ir::Value::Null | ir::Value::JsonNull(_))
+                )
+            {
+                continue;
+            }
+            if owner.is_some()
+                && (frames.len() >= budget.limits.depth || origins.len() >= budget.limits.depth)
+            {
+                return Err(OwnedSourceError::ResourceLimit {
+                    resource: "frame depth",
+                    limit: budget.limits.depth,
+                });
+            }
+            let slot = position_offset
+                .checked_add(positions.len())
+                .ok_or_else(|| budget.slot_overflow())?;
+            let position = index.checked_add(1).ok_or_else(|| budget.slot_overflow())?;
+            if path.is_empty() {
+                budget.emit()?;
+                budget.reserve(1)?;
+            }
+            reserve_observed_copy(budget, frames, origins, positions, instances.len())?;
+            let path_slots = canonical_prefix
+                .len()
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(raw_prefix.len()))
+                .and_then(|n| n.checked_add(4))
+                .ok_or_else(|| budget.slot_overflow())?;
+            budget.reserve(path_slots)?;
+            let bytes = canonical_prefix
+                .iter()
+                .try_fold(0usize, |sum, part| {
+                    part.len().checked_mul(2).and_then(|n| sum.checked_add(n))
+                })
+                .and_then(|sum| {
+                    raw_prefix
+                        .iter()
+                        .try_fold(sum, |sum, part| sum.checked_add(part.len()))
+                })
+                .ok_or_else(|| budget.overflow())?;
+            budget.charge(bytes)?;
+            let mut next_instances = instances.to_vec();
+            next_instances.push(item);
+            let mut next_positions = positions.to_vec();
+            next_positions.push(PositionFrame {
+                collection: raw_prefix.to_vec(),
+                index: position,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: None,
+            });
+            let mut next_frames = frames.to_vec();
+            let mut next_origins = origins.to_vec();
+            if let Some(owner) = owner {
+                next_frames.push(SourceFrame {
+                    owner,
+                    collection: canonical_prefix.to_vec(),
+                    item,
+                    position_slot: slot,
+                });
+                next_origins.push(SourceOrigin {
+                    owner,
+                    path: canonical_prefix.to_vec(),
+                    item,
+                });
+            }
+            if path.is_empty() {
+                output.push(ObservedExtension {
+                    extension: WalkExtension {
+                        instances: next_instances,
+                        positions: next_positions,
+                    },
+                    frames: next_frames,
+                    origins: next_origins,
+                });
+            } else {
+                observe_walk(
+                    item,
+                    path,
+                    raw_prefix,
+                    canonical_prefix,
+                    owner,
+                    position_offset,
+                    &next_instances,
+                    &next_positions,
+                    &next_frames,
+                    &next_origins,
+                    strict,
+                    false,
+                    budget,
+                    output,
+                )?;
+            }
+        }
+        return Ok(());
+    }
+    if matches!(base, Instance::DocumentSet(_) | Instance::MappedSequence(_)) {
+        return Err(OwnedSourceError::UnsupportedSourceDomain {
+            found: crate::resolve::owned_shape(base),
+        });
+    }
+    match path.split_first() {
+        Some((segment, rest)) => {
+            let next = match base {
+                Instance::Group(fields) => fields
+                    .iter()
+                    .find(|(name, _)| name == segment)
+                    .map(|(_, value)| value),
+                _ if !strict => None,
+                _ => {
+                    return Err(OwnedSourceError::MalformedOwnedTraversal {
+                        path: canonical_prefix.to_vec(),
+                        found: crate::resolve::owned_shape(base),
+                    });
+                }
+            };
+            if let Some(next) = next {
+                let lengths = raw_prefix
+                    .len()
+                    .checked_add(canonical_prefix.len())
+                    .and_then(|n| n.checked_add(2))
+                    .ok_or_else(|| budget.slot_overflow())?;
+                budget.reserve(lengths)?;
+                let copied = raw_prefix
+                    .iter()
+                    .chain(canonical_prefix)
+                    .try_fold(0usize, |sum, part| sum.checked_add(part.len()))
+                    .and_then(|bytes| {
+                        segment
+                            .len()
+                            .checked_mul(2)
+                            .and_then(|n| bytes.checked_add(n))
+                    })
+                    .ok_or_else(|| budget.overflow())?;
+                budget.charge(copied)?;
+                let mut raw = raw_prefix.to_vec();
+                raw.push(segment.clone());
+                let mut canonical = canonical_prefix.to_vec();
+                canonical.push(segment.clone());
+                observe_walk(
+                    next,
+                    rest,
+                    &raw,
+                    &canonical,
+                    owner,
+                    position_offset,
+                    instances,
+                    positions,
+                    frames,
+                    origins,
+                    strict,
+                    false,
+                    budget,
+                    output,
+                )?;
+            }
+        }
+        None => {
+            // Root [] over a singleton Group is an identity, never a position frame.
+            if strict && (!canonical_prefix.is_empty() || !matches!(base, Instance::Group(_))) {
+                return Err(OwnedSourceError::MalformedOwnedTraversal {
+                    path: canonical_prefix.to_vec(),
+                    found: crate::resolve::owned_shape(base),
+                });
+            }
+            let add_origin = !raw_prefix.is_empty()
+                && owner.is_some_and(|owner| {
+                    !origins.last().is_some_and(|origin| {
+                        origin.owner == owner
+                            && origin.path == canonical_prefix
+                            && std::ptr::eq(origin.item, base)
+                    })
+                });
+            if add_origin && origins.len() >= budget.limits.depth {
+                return Err(OwnedSourceError::ResourceLimit {
+                    resource: "source provenance depth",
+                    limit: budget.limits.depth,
+                });
+            }
+            budget.emit()?;
+            budget.reserve(1)?;
+            reserve_observed_copy(budget, frames, origins, positions, instances.len())?;
+            if add_origin {
+                budget.reserve(
+                    canonical_prefix
+                        .len()
+                        .checked_add(2)
+                        .ok_or_else(|| budget.slot_overflow())?,
+                )?;
+                budget.charge(
+                    canonical_prefix
+                        .iter()
+                        .try_fold(0usize, |sum, part| sum.checked_add(part.len()))
+                        .ok_or_else(|| budget.overflow())?,
+                )?;
+            } else if !raw_prefix.is_empty() {
+                budget.reserve(1)?;
+            }
+            let mut instances = instances.to_vec();
+            let mut origins = origins.to_vec();
+            if !raw_prefix.is_empty() {
+                instances.push(base);
+            }
+            if add_origin && let Some(owner) = owner {
+                origins.push(SourceOrigin {
+                    owner,
+                    path: canonical_prefix.to_vec(),
+                    item: base,
+                });
+            }
+            output.push(ObservedExtension {
+                extension: WalkExtension {
+                    instances,
+                    positions: positions.to_vec(),
+                },
+                frames: frames.to_vec(),
+                origins,
+            });
+        }
+    }
+    Ok(())
+}

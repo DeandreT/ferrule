@@ -1249,16 +1249,43 @@ mod source_ownership_admission {
         project
     }
 
+    fn isolated(mut project: Project, node: u32, output_type: ScalarType) -> Project {
+        let function = mapping::FunctionId::new(7);
+        let owned = project.graph.nodes[&node].clone();
+        project.user_functions.insert(
+            function,
+            mapping::UserFunction {
+                library: "tests".into(),
+                name: "closed_owned_value".into(),
+                description: None,
+                parameters: vec![],
+                output_name: "value".into(),
+                output_type,
+                body: Graph {
+                    nodes: [(node, owned)].into(),
+                },
+                output: node,
+            },
+        );
+        project.graph.nodes.insert(
+            node,
+            Node::UserFunctionCall {
+                function,
+                args: vec![],
+            },
+        );
+        project
+    }
+
     fn cases() -> Vec<Case> {
-        let mut direct = unused_owned_project(false);
+        let mut direct = isolated(unused_owned_project(false), 47, ScalarType::String);
         direct.root = bound(47);
         let expected = || engine::EngineError::UnsupportedSourceOwnership {
             node: 47,
-            function: None,
+            function: Some(mapping::FunctionId::new(7)),
             kind: "owned_source_field",
         };
-        let field_display =
-            "source ownership for owned_source_field node 47 (function None) is not supported";
+        let field_display = "source ownership for owned_source_field node 47 (function Some(FunctionId(7))) is not supported";
         let mut position = copy_project();
         position.target =
             SchemaNode::group("Record", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
@@ -1270,8 +1297,9 @@ mod source_ownership_admission {
             }),
         );
         position.root = bound(48);
+        position = isolated(position, 48, ScalarType::Int);
 
-        let mut hidden = unused_owned_project(false);
+        let mut hidden = isolated(unused_owned_project(false), 47, ScalarType::String);
         hidden.extra_targets.push(NamedTarget {
             name: "hidden".into(),
             path: Some("hidden.json".into()),
@@ -1316,7 +1344,7 @@ mod source_ownership_admission {
         );
         called.root = bound(61);
 
-        let mut potential = unused_owned_project(false);
+        let mut potential = isolated(unused_owned_project(false), 47, ScalarType::String);
         potential.graph.nodes.insert(
             62,
             Node::Const {
@@ -1363,10 +1391,10 @@ mod source_ownership_admission {
                 published_stage: "one",
                 expected: engine::EngineError::UnsupportedSourceOwnership {
                     node: 48,
-                    function: None,
+                    function: Some(mapping::FunctionId::new(7)),
                     kind: "owned_position",
                 },
-                display: "source ownership for owned_position node 48 (function None) is not supported",
+                display: "source ownership for owned_position node 48 (function Some(FunctionId(7))) is not supported",
             },
             Case {
                 name: "unselected-named-target",
@@ -1592,6 +1620,131 @@ mod source_ownership_admission {
             );
             assert_eq!(output_after.as_slice(), b"old-output".as_slice());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn supported_basic_field_preview_accepts_metadata_before_payload_parse_and_cancel()
+    -> anyhow::Result<()> {
+        let dir = TempDir::new()?;
+        let mut project = unused_owned_project(false);
+        project.root = bound(47);
+        let pipeline = one(project);
+        let pipeline_path = dir.0.join("pipeline.json");
+        let sentinel = dir.0.join("result.json");
+        std::fs::write(&sentinel, b"old-output")?;
+        let hosts = [host(
+            "input",
+            Path::new("absent/input.json"),
+            br#"{"Value":"supported"}"#,
+        )?];
+        let options = PipelinePreviewOptions::new(&hosts);
+        validate_pipeline_preview(&pipeline, &pipeline_path, &options)?;
+        let outcome = preview_pipeline_value_payloads(&pipeline, &pipeline_path, &options)?;
+        assert_eq!(outcome.stages_executed, vec!["one".to_owned()]);
+        assert_eq!(outcome.artifacts.len(), 1);
+        let artifact = &outcome.artifacts[0];
+        assert_eq!(artifact.stage.as_str(), "one");
+        assert!(artifact.target.is_none());
+        assert_eq!(artifact.path, sentinel);
+        assert_eq!(artifact.records_written, 1);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&artifact.bytes)?,
+            serde_json::json!({"Value":"supported"})
+        );
+        assert_eq!(
+            std::fs::read(&sentinel)?.as_slice(),
+            b"old-output".as_slice()
+        );
+        let debug_calls = RefCell::new(0usize);
+        let trace_calls = RefCell::new(0usize);
+        let debug = |_: &str, _: &engine::PendingTargetWrite| {
+            *debug_calls.borrow_mut() += 1;
+            DebugDecision::Resume
+        };
+        let trace = |_: &str, _: engine::TraceEvent| {
+            *trace_calls.borrow_mut() += 1;
+        };
+        let cancellation = AtomicBool::new(false);
+        for (label, requested, expected_context) in [
+            (
+                "debug",
+                PipelinePreviewOptions::new(&hosts).with_stage_debug_hook(&debug),
+                engine::OwnedCapabilityContext::Debugging,
+            ),
+            (
+                "cancellation",
+                PipelinePreviewOptions::new(&hosts).with_cancellation(&cancellation),
+                engine::OwnedCapabilityContext::Debugging,
+            ),
+            (
+                "trace",
+                PipelinePreviewOptions::new(&hosts).with_stage_trace_sink(&trace),
+                engine::OwnedCapabilityContext::Tracing,
+            ),
+        ] {
+            validate_pipeline_preview(&pipeline, &pipeline_path, &requested)?;
+            let error = preview_pipeline_value_payloads(&pipeline, &pipeline_path, &requested)
+                .expect_err("requested owned observer contexts must remain unsupported");
+            eprintln!("{label} requested_context_result={error:?}");
+            match error.downcast_ref::<engine::PipelineError>() {
+                Some(engine::PipelineError::StageExecution { stage, source }) => {
+                    assert_eq!(stage.as_str(), "one");
+                    assert_eq!(
+                        source,
+                        &engine::EngineError::UnsupportedOwnedContext {
+                            context: expected_context,
+                            node: None,
+                            function: None,
+                            scope: None,
+                        }
+                    );
+                }
+                other => panic!("expected typed owned observer context refusal, got {other:?}"),
+            }
+            assert_eq!(*debug_calls.borrow(), 0);
+            assert_eq!(*trace_calls.borrow(), 0);
+            assert_eq!(
+                std::fs::read(&sentinel)?.as_slice(),
+                b"old-output".as_slice()
+            );
+        }
+        let malformed = [host("input", Path::new("absent/input.json"), b"not-json")?];
+        let options = PipelinePreviewOptions::new(&malformed);
+        validate_pipeline_preview(&pipeline, &pipeline_path, &options)?;
+        let error = preview_pipeline_value_payloads(&pipeline, &pipeline_path, &options)
+            .expect_err(
+                "metadata accepts Basic capability; its malformed payload must reach the parser",
+            );
+        assert!(format!("{error:#}").to_ascii_lowercase().contains("json"));
+        assert!(error.downcast_ref::<engine::EngineError>().is_none());
+        assert!(!matches!(
+            error.downcast_ref::<engine::PipelineError>(),
+            Some(engine::PipelineError::StageExecution {
+                source: engine::EngineError::UnsupportedSourceOwnership { .. }
+                    | engine::EngineError::UnsupportedOwnedContext { .. },
+                ..
+            })
+        ));
+        assert_eq!(
+            std::fs::read(&sentinel)?.as_slice(),
+            b"old-output".as_slice()
+        );
+        let cancelled = AtomicBool::new(true);
+        let error = preview_pipeline_value_payloads(
+            &pipeline,
+            &pipeline_path,
+            &options.with_cancellation(&cancelled),
+        )
+        .expect_err("pre-decode cancellation must still precede malformed Basic input");
+        assert_eq!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(&engine::EngineError::DebugCancelled)
+        );
+        assert_eq!(
+            std::fs::read(&sentinel)?.as_slice(),
+            b"old-output".as_slice()
+        );
         Ok(())
     }
 }

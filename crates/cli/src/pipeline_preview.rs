@@ -432,7 +432,16 @@ fn execute_preview(
     }
     check_cancelled(options.cancellation)?;
     let callbacks = &options.callbacks;
-    let debug = PreviewDebugHook {
+    let debug = (options.cancellation.is_some()
+        || callbacks.stage_debug_hook.is_some()
+        || callbacks.stage_node_debug_hook.is_some()
+        || callbacks.stage_function_node_debug_hook.is_some()
+        || callbacks.stage_input_debug_hook.is_some()
+        || callbacks.stage_function_input_debug_hook.is_some()
+        || callbacks.stage_node_failure_debug_hook.is_some()
+        || callbacks.stage_function_failure_debug_hook.is_some()
+        || callbacks.stage_source_field_probe.is_some())
+    .then(|| PreviewDebugHook {
         inner: StageDebugHook {
             stage: RefCell::new(String::new()),
             hook: callbacks.stage_debug_hook,
@@ -445,7 +454,7 @@ fn execute_preview(
             probe: callbacks.stage_source_field_probe,
         },
         cancellation: options.cancellation,
-    };
+    });
     let trace = callbacks.stage_trace_sink.map(|sink| StageTraceSink {
         stage: RefCell::new(String::new()),
         sink,
@@ -455,12 +464,14 @@ fn execute_preview(
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
     let outputs = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
-        debug.inner.stage.replace(stage.to_owned());
         let mut context =
             ExecutionContext::with_main_mapping_file_path(&mapping_paths[stage], &main_path)
                 .with_purpose(ExecutionPurpose::Preview)
-                .with_current_datetime(&current_datetime)
-                .with_debug_hook(&debug);
+                .with_current_datetime(&current_datetime);
+        if let Some(debug) = &debug {
+            debug.inner.stage.replace(stage.to_owned());
+            context = context.with_debug_hook(debug);
+        }
         if let Some(parameters) = callbacks.runtime_parameters {
             context = context.with_parameters(parameters);
         }

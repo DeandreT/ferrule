@@ -91,6 +91,17 @@ fn refuse(
         })
     );
 }
+fn refuse_context(
+    project: &Project,
+    selection: Option<TargetSelection<'_>>,
+    node: u32,
+    context: crate::OwnedCapabilityContext,
+) {
+    assert!(
+        matches!(check_source_ownership_capability(project, selection),
+        Err(EngineError::UnsupportedOwnedContext { node: Some(actual), context: actual_context, .. }) if actual == node && actual_context == context)
+    );
+}
 fn named(name: &str) -> SourceOwner {
     SourceOwner::Named { name: name.into() }
 }
@@ -185,7 +196,14 @@ fn no_other_owner_or_frame_prefix_rescues_an_invalid_scalar() {
         .insert(2, owned(SourceOwner::Primary, &["Value"], Some(&["Rows"])));
     assert!(validate(&project).is_empty());
     project.root = scope(2);
-    refuse(&project, None, 2, None, "owned_source_field");
+    assert!(matches!(
+        check_source_ownership_capability(&project, None),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            source: crate::OwnedSourceError::UnsupportedFramePathCombination { .. },
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -208,7 +226,14 @@ fn scalar_root_and_flat_group_root_collection_are_present_and_valid() {
         );
         assert!(validate(&project).is_empty());
         project.root = scope(2);
-        refuse(&project, None, 2, None, "owned_position");
+        assert!(check_source_ownership_capability(&project, None).is_ok());
+        assert!(matches!(
+            run(&project, &Instance::Group(Default::default())),
+            Err(EngineError::OwnedSourceAccess {
+                source: crate::OwnedSourceError::InactiveSourceFrame { .. },
+                ..
+            })
+        ));
     }
 }
 
@@ -227,17 +252,10 @@ fn disconnected_and_unselected_nodes_do_not_close_legacy_execution() {
         root: scope(2),
     });
     assert!(run_selected_target(&project, &input, TargetSelection::Primary).is_ok());
-    refuse(
-        &project,
-        Some(TargetSelection::Named("Other")),
-        2,
-        None,
-        "owned_source_field",
+    assert!(
+        check_source_ownership_capability(&project, Some(TargetSelection::Named("Other"))).is_ok()
     );
-    assert!(matches!(
-        run_outputs(&project, &input),
-        Err(EngineError::UnsupportedSourceOwnership { node: 2, .. })
-    ));
+    assert!(run_outputs(&project, &input).is_ok());
     assert!(matches!(
         required_sources_for_target(&project, TargetSelection::Named("Missing")),
         Err(EngineError::UnknownTarget { .. })
@@ -252,21 +270,19 @@ fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
         selection: FailureSelection::WhenTrue { predicate: 2 },
         message: None,
     });
-    refuse(
+    refuse_context(
         &project,
         Some(TargetSelection::Primary),
         2,
-        None,
-        "owned_source_field",
+        crate::OwnedCapabilityContext::FailureRule,
     );
     project.failure_rules[0].selection = FailureSelection::All;
     project.failure_rules[0].message = Some(2);
-    refuse(
+    refuse_context(
         &project,
         Some(TargetSelection::Primary),
         2,
-        None,
-        "owned_source_field",
+        crate::OwnedCapabilityContext::FailureRule,
     );
     project.failure_rules.clear();
     project.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
@@ -282,7 +298,12 @@ fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
         },
     );
     project.root = scope(3);
-    refuse(&project, None, 2, None, "owned_source_field");
+    refuse_context(
+        &project,
+        None,
+        2,
+        crate::OwnedCapabilityContext::DynamicLoader,
+    );
     struct Loader(Cell<usize>);
     impl DynamicSourceLoader for Loader {
         fn load(&self, _: &str, _: &str) -> Result<Arc<Instance>, String> {
@@ -295,7 +316,10 @@ fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
         ExecutionContext::new(Path::new("project.json")).with_dynamic_source_loader(&loader);
     assert!(matches!(
         run_with_context(&project, &Instance::Group(Default::default()), &execution),
-        Err(EngineError::UnsupportedSourceOwnership { .. })
+        Err(EngineError::UnsupportedOwnedContext {
+            context: crate::OwnedCapabilityContext::DynamicLoader,
+            ..
+        })
     ));
     assert_eq!(loader.0.get(), 0);
 }
@@ -378,7 +402,15 @@ fn potential_if_admission_does_not_change_legacy_lazy_evaluation() {
         },
     );
     project.root = scope(4);
-    refuse(&project, None, 2, None, "owned_source_field");
+    assert!(check_source_ownership_capability(&project, None).is_ok());
+    assert_eq!(
+        run(&project, &Instance::Group(Default::default()))
+            .unwrap()
+            .field("Value")
+            .unwrap()
+            .as_scalar(),
+        Some(&Value::String("legacy".into()))
+    );
     project.graph.nodes.insert(2, Node::Raise { message: None });
     assert_eq!(
         run(&project, &Instance::Group(Default::default()))
@@ -394,34 +426,26 @@ fn potential_if_admission_does_not_change_legacy_lazy_evaluation() {
 fn selected_scope_children_dynamic_children_and_concat_segments_are_roots() {
     let mut project = project();
     project.root.children.push(scope(2));
-    refuse(
-        &project,
-        Some(TargetSelection::Primary),
-        2,
-        None,
-        "owned_source_field",
-    );
+    assert!(check_source_ownership_capability(&project, Some(TargetSelection::Primary)).is_ok());
     project.root.children.clear();
     project.root.dynamic_children.push(mapping::DynamicChild {
         key: 1,
         scope: scope(2),
     });
-    refuse(
+    refuse_context(
         &project,
         Some(TargetSelection::Primary),
         2,
-        None,
-        "owned_source_field",
+        crate::OwnedCapabilityContext::DynamicTarget,
     );
     project.root.dynamic_children.clear();
     project.root.iteration =
         mapping::ScopeIteration::Concatenate(mapping::ScopeSequence::new(scope(1), vec![scope(2)]));
-    refuse(
+    refuse_context(
         &project,
         Some(TargetSelection::Primary),
         2,
-        None,
-        "owned_source_field",
+        crate::OwnedCapabilityContext::Concatenate,
     );
 }
 

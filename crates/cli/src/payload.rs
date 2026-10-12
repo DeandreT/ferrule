@@ -922,7 +922,7 @@ mod owned_source_payload_admission_tests {
 
     #[test]
     fn owned_refusal_precedes_parsing_a_malformed_payload() {
-        let project = crate::owned_source_test_project();
+        let project = crate::closed_owned_source_test_project();
         let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON").unwrap();
         let error = run_project_value_payloads(
             &project,
@@ -934,9 +934,9 @@ mod owned_source_payload_admission_tests {
             error.downcast_ref::<engine::EngineError>(),
             Some(engine::EngineError::UnsupportedSourceOwnership {
                 node: 9,
-                function: None,
+                function: Some(function),
                 kind: "owned_source_field"
-            })
+            }) if *function == mapping::FunctionId::new(7)
         ));
     }
 }
@@ -947,7 +947,7 @@ mod owned_collection_payload_admission_tests {
 
     #[test]
     fn owned_collection_refusal_precedes_parsing_a_malformed_payload() {
-        let project = crate::owned_collection_test_project();
+        let project = crate::closed_owned_collection_test_project();
         let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON").unwrap();
         let error = run_project_value_payloads(
             &project,
@@ -957,7 +957,58 @@ mod owned_collection_payload_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+            Some(engine::EngineError::UnsupportedOwnedContext {
+                node: Some(9),
+                function: None,
+                scope: None,
+                context: engine::OwnedCapabilityContext::IsolatedFunction
+            })
         ));
+    }
+}
+
+#[cfg(test)]
+mod owned_basic_payload_transition_tests {
+    use super::*;
+    #[test]
+    fn basic_field_and_collection_payloads_execute_then_malformed_input_is_parsed()
+    -> anyhow::Result<()> {
+        for collection in [false, true] {
+            let project = if collection {
+                crate::owned_collection_host_positive_project()
+            } else {
+                crate::owned_source_test_project()
+            };
+            let bytes: &[u8] = if collection {
+                br#"[{"Value":"one"},{"Value":"two"}]"#
+            } else {
+                br#"{"Value":"supported"}"#
+            };
+            let primary = PayloadDocument::new(Path::new("input.json"), bytes)?;
+            let outcome = run_project_value_payloads(
+                &project,
+                Path::new("project.json"),
+                &PayloadRunOptions::new(primary),
+            )?;
+            assert_eq!(outcome.artifacts.len(), 1);
+            assert_eq!(outcome.records_written, if collection { 2 } else { 1 });
+            let actual: serde_json::Value = serde_json::from_slice(&outcome.artifacts[0].bytes)?;
+            let expected = if collection {
+                serde_json::json!([{"Value":"legacy"},{"Value":"legacy"}])
+            } else {
+                serde_json::json!({"Value":"supported"})
+            };
+            assert_eq!(actual, expected);
+            let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON")?;
+            let error = run_project_value_payloads(
+                &project,
+                Path::new("project.json"),
+                &PayloadRunOptions::new(primary),
+            )
+            .unwrap_err();
+            assert_eq!(error.to_string(), "reading primary input payload");
+            assert!(error.downcast_ref::<engine::EngineError>().is_none());
+        }
+        Ok(())
     }
 }

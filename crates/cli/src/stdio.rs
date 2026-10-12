@@ -374,7 +374,7 @@ mod owned_source_stdio_admission_tests {
         let path = directory.join("project.json");
         std::fs::write(
             &path,
-            serde_json::to_vec(&crate::owned_source_test_project())?,
+            serde_json::to_vec(&crate::closed_owned_source_test_project())?,
         )?;
         let mut input = Input(0);
         let error = run_project_with_standard_streams(
@@ -387,7 +387,7 @@ mod owned_source_stdio_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, .. })
+            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, function: Some(function), .. }) if *function == mapping::FunctionId::new(7)
         ));
         assert_eq!(input.0, 0);
         std::fs::remove_file(path)?;
@@ -420,7 +420,7 @@ mod owned_collection_stdio_admission_tests {
         let path = directory.join("project.json");
         std::fs::write(
             &path,
-            serde_json::to_vec(&crate::owned_collection_test_project())?,
+            serde_json::to_vec(&crate::closed_owned_collection_test_project())?,
         )?;
         let mut input = Input(0);
         let error = run_project_with_standard_streams(
@@ -433,11 +433,71 @@ mod owned_collection_stdio_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+            Some(engine::EngineError::UnsupportedOwnedContext {
+                node: Some(9),
+                function: None,
+                scope: None,
+                context: engine::OwnedCapabilityContext::IsolatedFunction
+            })
         ));
         assert_eq!(input.0, 0);
         std::fs::remove_file(path)?;
         std::fs::remove_dir(directory)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod owned_basic_stdio_transition_tests {
+    use super::*;
+    #[test]
+    fn basic_field_and_collection_read_stdin_and_preserve_output_policy() -> anyhow::Result<()> {
+        for collection in [false, true] {
+            let directory = crate::owned_host_test_directory("stdio")?;
+            let path = directory.join("project.json");
+            let project = if collection {
+                crate::owned_collection_host_positive_project()
+            } else {
+                crate::owned_source_test_project()
+            };
+            std::fs::write(&path, serde_json::to_vec(&project)?)?;
+            let bytes: &[u8] = if collection {
+                br#"[{"Value":"one"},{"Value":"two"}]"#
+            } else {
+                br#"{"Value":"supported"}"#
+            };
+            let options = StandardIoRunOptions::new()
+                .with_input_path(Path::new("-"))
+                .with_output_path(Path::new("-"));
+            let mut input = std::io::Cursor::new(bytes);
+            let outcome = run_project_with_standard_streams(&path, &options, &mut input)?;
+            assert_eq!(input.position() as usize, bytes.len());
+            assert_eq!(outcome.artifacts.len(), 1);
+            assert_eq!(outcome.records_written, if collection { 2 } else { 1 });
+            let actual: serde_json::Value = serde_json::from_slice(&outcome.artifacts[0].bytes)?;
+            let expected = if collection {
+                serde_json::json!([{"Value":"legacy"},{"Value":"legacy"}])
+            } else {
+                serde_json::json!({"Value":"supported"})
+            };
+            assert_eq!(actual, expected);
+            let mut input = std::io::Cursor::new(b"not JSON".as_slice());
+            let error = run_project_with_standard_streams(&path, &options, &mut input).unwrap_err();
+            assert_eq!(input.position(), 8);
+            assert_eq!(error.to_string(), "reading primary input payload");
+            assert!(error.downcast_ref::<engine::EngineError>().is_none());
+            let mut input = std::io::Cursor::new(bytes);
+            let error = run_project_with_standard_streams(
+                &path,
+                &StandardIoRunOptions::new().with_input_path(Path::new("-")),
+                &mut input,
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("requires `--output -`"));
+            assert_eq!(input.position(), 0);
+            std::fs::remove_file(path)?;
+            std::fs::remove_dir(directory)?;
+        }
         Ok(())
     }
 }

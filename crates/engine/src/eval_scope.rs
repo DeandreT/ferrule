@@ -68,6 +68,31 @@ pub(crate) fn eval_scope(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
+    if let Some(owned) = program.owned_context {
+        if owned.owned_ancestry || scope_needs_owned(program, scope) {
+            return eval_basic_owned_scope(
+                program,
+                scope,
+                target,
+                context,
+                positions,
+                extra_sources,
+                source_loader,
+                trace_scope,
+            );
+        }
+        // An unrelated legacy subtree keeps its complete original evaluator.
+        return eval_scope(
+            program.without_owned_context(),
+            scope,
+            target,
+            context,
+            positions,
+            extra_sources,
+            source_loader,
+            trace_scope,
+        );
+    }
     if matches!(
         scope.source_selector(),
         Some(mapping::SourceSelectorRef::Owned(_))
@@ -722,6 +747,436 @@ pub(crate) fn eval_scope(
         kind: TraceOutputKind::of(&result),
     });
     Ok(result)
+}
+
+fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
+    if matches!(
+        scope.source_selector(),
+        Some(mapping::SourceSelectorRef::Owned(_))
+    ) {
+        return true;
+    }
+    let mut pending: Vec<_> = scope
+        .bindings
+        .iter()
+        .map(|binding| binding.node)
+        .chain(scope.filter)
+        .chain(scope.sort_keys().map(|key| key.node))
+        .chain(
+            scope
+                .windows
+                .iter()
+                .copied()
+                .flat_map(|window| window.nodes()),
+        )
+        .collect();
+    let mut visited = HashSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        if let Some(node) = program.graph.nodes.get(&id) {
+            if node.owned_source_kind().is_some() {
+                return true;
+            }
+            pending.extend(node.dependencies());
+        }
+    }
+    scope
+        .children
+        .iter()
+        .any(|child| scope_needs_owned(program, child))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn eval_basic_owned_scope<'a>(
+    program: EvalProgram<'a>,
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    extra_sources: &[NamedSource],
+    source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
+) -> Result<Instance, EngineError> {
+    use crate::owned_context::OwnedContext;
+    use crate::source_iteration::{ObservedExtension, reserve_observed_copy, walk_observed};
+    let state = program
+        .owned_context
+        .expect("basic owned route has a context");
+    let access = |source| match source {
+        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+            EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: Some(trace_scope.source_scope.clone()),
+                context: if found == "a document set" {
+                    crate::OwnedCapabilityContext::Document
+                } else {
+                    crate::OwnedCapabilityContext::GeneratedItem
+                },
+            }
+        }
+        source => EngineError::OwnedSourceAccess {
+            node: None,
+            scope: Some(Box::new(trace_scope.source_scope.clone())),
+            source,
+        },
+    };
+    let domain = crate::source_ownership::scope_context(scope);
+    if domain != crate::OwnedCapabilityContext::Basic {
+        return Err(EngineError::UnsupportedOwnedContext {
+            node: None,
+            function: None,
+            scope: Some(trace_scope.source_scope.clone()),
+            context: domain,
+        });
+    }
+    let (mut extensions, budget, own) = match scope.source_selector() {
+        Some(mapping::SourceSelectorRef::Owned(source)) => {
+            let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
+            let extensions = walk_observed(
+                base,
+                tail,
+                prefix,
+                prefix,
+                Some(owner),
+                state,
+                positions.len(),
+                true,
+                &budget,
+            )
+            .map_err(access)?;
+            (extensions, budget, true)
+        }
+        Some(mapping::SourceSelectorRef::Legacy(path)) => {
+            let budget = state
+                .roots
+                .budget
+                .work(None, path, None, &state.frames, &state.origins)
+                .map_err(access)?;
+            let base = context
+                .iter()
+                .rev()
+                .find(|frame| match path.first() {
+                    Some(first) => frame.field(first).is_some(),
+                    None => true,
+                })
+                .copied()
+                .or_else(|| context.last().copied());
+            let extensions = if let Some(base) = base {
+                if let Some((owner, actual, canonical, tail)) = state.legacy_origin(base, path) {
+                    let consumed = path.len() - tail.len();
+                    // Only the actually consumed extra-source wrapper segment enters the raw legacy path.
+                    let raw = &path[..consumed];
+                    walk_observed(
+                        actual,
+                        tail,
+                        raw,
+                        canonical,
+                        Some(owner),
+                        state,
+                        positions.len(),
+                        false,
+                        &budget,
+                    )
+                    .map_err(access)?
+                } else {
+                    walk_observed(
+                        base,
+                        path,
+                        &[],
+                        &[],
+                        None,
+                        state,
+                        positions.len(),
+                        false,
+                        &budget,
+                    )
+                    .map_err(access)?
+                }
+            } else {
+                Vec::new()
+            };
+            (extensions, budget, false)
+        }
+        None => {
+            let budget = state
+                .roots
+                .budget
+                .work(None, &[], None, &state.frames, &state.origins)
+                .map_err(access)?;
+            budget.emit().map_err(access)?;
+            budget.reserve(1).map_err(access)?;
+            reserve_observed_copy(&budget, &state.frames, &state.origins, &[], 0)
+                .map_err(access)?;
+            (
+                vec![ObservedExtension {
+                    extension: WalkExtension {
+                        instances: Vec::new(),
+                        positions: Vec::new(),
+                    },
+                    frames: state.frames.clone(),
+                    origins: state.origins.clone(),
+                }],
+                budget,
+                false,
+            )
+        }
+    };
+    let ancestry = state.owned_ancestry || own;
+    let filter_before_sort = scope.filter.is_some()
+        && scope.has_sort()
+        && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
+    let selection_phase = if scope.has_sort() {
+        TraceFilterPhase::AfterSort
+    } else {
+        TraceFilterPhase::Selection
+    };
+    if filter_before_sort {
+        budget.reserve(extensions.len()).map_err(access)?;
+        let mut filtered = Vec::new();
+        for extension in extensions {
+            reserve_observed_copy(
+                &budget,
+                &extension.frames,
+                &extension.origins,
+                positions,
+                context.len(),
+            )
+            .map_err(access)?;
+            reserve_observed_copy(
+                &budget,
+                &[],
+                &[],
+                &extension.extension.positions,
+                extension.extension.instances.len(),
+            )
+            .map_err(access)?;
+            let item_state = OwnedContext {
+                roots: state.roots,
+                frames: extension.frames.clone(),
+                origins: extension.origins.clone(),
+                owned_ancestry: ancestry,
+            };
+            let mut item_context = context.to_vec();
+            item_context.extend(extension.extension.instances.iter().copied());
+            let mut item_positions = positions.to_vec();
+            item_positions.extend(extension.extension.positions.iter().cloned());
+            if passes_scope_filter(
+                program.with_owned_context(&item_state),
+                scope.filter,
+                TraceFilterPhase::BeforeSort,
+                trace_scope,
+                &item_context,
+                &item_positions,
+            )? {
+                filtered.push(extension);
+            }
+        }
+        extensions = filtered;
+    }
+    budget.reserve(scope.sort_keys().count()).map_err(access)?;
+    let sort_keys = scope.sort_keys().collect::<Vec<_>>();
+    if !sort_keys.is_empty() {
+        budget.reserve(extensions.len()).map_err(access)?;
+        let mut keyed = Vec::new();
+        for extension in extensions {
+            reserve_observed_copy(
+                &budget,
+                &extension.frames,
+                &extension.origins,
+                positions,
+                context.len(),
+            )
+            .map_err(access)?;
+            reserve_observed_copy(
+                &budget,
+                &[],
+                &[],
+                &extension.extension.positions,
+                extension.extension.instances.len(),
+            )
+            .map_err(access)?;
+            budget.reserve(sort_keys.len()).map_err(access)?;
+            let item_state = OwnedContext {
+                roots: state.roots,
+                frames: extension.frames.clone(),
+                origins: extension.origins.clone(),
+                owned_ancestry: ancestry,
+            };
+            let mut item_context = context.to_vec();
+            item_context.extend(extension.extension.instances.iter().copied());
+            let mut item_positions = positions.to_vec();
+            item_positions.extend(extension.extension.positions.iter().cloned());
+            let values = sort_keys
+                .iter()
+                .map(|key| {
+                    eval_expr(
+                        program.with_owned_context(&item_state),
+                        key.node,
+                        &item_context,
+                        &item_positions,
+                        &mut HashSet::new(),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            keyed.push((extension, values));
+        }
+        keyed.sort_by(|(_, left), (_, right)| {
+            for ((left, right), key) in left.iter().zip(right).zip(&sort_keys) {
+                let order = sort_value_ordering(left, right);
+                let order = if key.descending {
+                    order.reverse()
+                } else {
+                    order
+                };
+                if order != std::cmp::Ordering::Equal {
+                    return order;
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
+        budget.reserve(keyed.len()).map_err(access)?;
+        extensions = keyed
+            .into_iter()
+            .enumerate()
+            .map(|(index, (mut extension, _))| {
+                renumber_extension(&mut extension.extension.positions, index + 1);
+                extension
+            })
+            .collect();
+    }
+    budget
+        .reserve(
+            scope
+                .windows
+                .len()
+                .checked_add(1)
+                .ok_or_else(|| access(budget.slot_overflow()))?,
+        )
+        .map_err(access)?;
+    let mut windows = scope
+        .windows
+        .iter()
+        .copied()
+        .map(|window| eval_sequence_window(program, window, context, positions))
+        .collect::<Result<Vec<_>, _>>()?;
+    if scope.iteration_output == IterationOutput::First {
+        windows.push(EvaluatedWindow::First(1));
+    }
+    if !windows.is_empty() && !filter_before_sort {
+        budget.reserve(extensions.len()).map_err(access)?;
+        let mut filtered = Vec::new();
+        for extension in extensions {
+            reserve_observed_copy(
+                &budget,
+                &extension.frames,
+                &extension.origins,
+                positions,
+                context.len(),
+            )
+            .map_err(access)?;
+            reserve_observed_copy(
+                &budget,
+                &[],
+                &[],
+                &extension.extension.positions,
+                extension.extension.instances.len(),
+            )
+            .map_err(access)?;
+            let item_state = OwnedContext {
+                roots: state.roots,
+                frames: extension.frames.clone(),
+                origins: extension.origins.clone(),
+                owned_ancestry: ancestry,
+            };
+            let mut item_context = context.to_vec();
+            item_context.extend(extension.extension.instances.iter().copied());
+            let mut item_positions = positions.to_vec();
+            item_positions.extend(extension.extension.positions.iter().cloned());
+            if passes_scope_filter(
+                program.with_owned_context(&item_state),
+                scope.filter,
+                selection_phase,
+                trace_scope,
+                &item_context,
+                &item_positions,
+            )? {
+                filtered.push(extension);
+            }
+        }
+        extensions = filtered;
+    }
+    for _ in &windows {
+        budget.reserve(extensions.len()).map_err(access)?;
+    }
+    extensions = apply_sequence_windows(extensions, &windows, None, trace_scope);
+    budget.reserve(extensions.len()).map_err(access)?;
+    let mut produced = Vec::new();
+    let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
+    let mut compact = 0usize;
+    for extension in &extensions {
+        reserve_observed_copy(
+            &budget,
+            &extension.frames,
+            &extension.origins,
+            positions,
+            context.len(),
+        )
+        .map_err(access)?;
+        reserve_observed_copy(
+            &budget,
+            &[],
+            &[],
+            &extension.extension.positions,
+            extension.extension.instances.len(),
+        )
+        .map_err(access)?;
+        let item_state = OwnedContext {
+            roots: state.roots,
+            frames: extension.frames.clone(),
+            origins: extension.origins.clone(),
+            owned_ancestry: ancestry,
+        };
+        let mut item_context = context.to_vec();
+        item_context.extend(extension.extension.instances.iter().copied());
+        let mut candidate_positions = positions.to_vec();
+        candidate_positions.extend(extension.extension.positions.iter().cloned());
+        reserve_observed_copy(&budget, &[], &[], &candidate_positions, 0).map_err(access)?;
+        let mut output_positions = candidate_positions.clone();
+        let next = compact
+            .checked_add(1)
+            .ok_or_else(|| access(budget.slot_overflow()))?;
+        // An identity walk retains every enclosing occurrence and its phase position.
+        if renumber_output && !extension.extension.positions.is_empty() {
+            renumber_extension(&mut output_positions, next);
+        }
+        let evaluator = ItemEvaluator {
+            program: program.with_owned_context(&item_state),
+            scope,
+            trace_scope,
+            target,
+            extra_sources,
+            source_loader,
+        };
+        if let Some(item) = evaluator.produce(
+            &item_context,
+            &candidate_positions,
+            &output_positions,
+            !filter_before_sort && windows.is_empty(),
+        )? {
+            if !extension.extension.positions.is_empty() {
+                compact = next;
+            }
+            produced.push(item.instance);
+        }
+    }
+    finalize_scope_output(
+        scope,
+        target.is_some_and(|target| target.repeating),
+        produced,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
