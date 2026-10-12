@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import socket
 import stat
 import tempfile
 import unittest
@@ -82,9 +83,62 @@ class JobEvidenceTests(unittest.TestCase):
         for number, suite in enumerate(("codegen-crates", "codegen-mappings")):
             settings = self.begin(str(number) * 32, FERRULE_CI_SUITE="codegen",
                                   FERRULE_CI_EVIDENCE_SUITE=suite)
-            self.assertIn(suite, settings["FERRULE_CI_EVIDENCE_ID"])
+            record = json.loads(Path(settings["FERRULE_CI_EVIDENCE_CANARY"]).read_bytes())
+            self.assertEqual(record["identity"]["suite"], suite)
+            self.assertEqual(settings["FERRULE_CI_EVIDENCE_ID"], str(number) * 32)
         with self.assertRaises(ValueError):
             self.begin("2" * 32, FERRULE_CI_SUITE="codegen")
+
+    def test_maximum_identity_keeps_real_unix_socket_usable(self):
+        environment = self.environment | {"GITHUB_RUN_ID": "9" * 20,
+            "GITHUB_RUN_ATTEMPT": "9" * 20, "GITHUB_JOB": "g" * 80,
+            "FERRULE_CI_SUITE": "codegen", "FERRULE_CI_EVIDENCE_SUITE": "codegen-mappings"}
+        with tempfile.TemporaryDirectory(prefix="f-") as directory:
+            home = Path(directory) / "r"
+            home.mkdir(mode=0o700)
+            settings = evidence.begin(home, environment, nonce="a" * 32)
+            configured = Path("/home/ferrule-runner/ci-tmp/jobs") / settings["FERRULE_CI_EVIDENCE_ID"] / "tmp/sccache.socket"
+            self.assertLess(len(os.fsencode(configured)), 108)
+            endpoint = str(Path(settings["TMPDIR"]) / "sccache.socket")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                server.bind(endpoint)
+                server.listen(1)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(endpoint)
+                    accepted, _ = server.accept()
+                    with accepted:
+                        client.sendall(b"complete socket exchange")
+                        self.assertEqual(accepted.recv(64), b"complete socket exchange")
+            evidence.observe(home, environment | settings | {"FERRULE_CI_OBSERVED_JOB_STATE": "success"})
+
+    def test_short_identity_still_refuses_another_matrix_job(self):
+        settings = self.begin(FERRULE_CI_SUITE="codegen", FERRULE_CI_EVIDENCE_SUITE="codegen-crates")
+        before = self.snapshot()
+        with self.assertRaises(ValueError):
+            evidence.observe(self.home, self.observer_environment(settings,
+                FERRULE_CI_SUITE="codegen", FERRULE_CI_EVIDENCE_SUITE="codegen-mappings"))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_existing_long_identity_record_can_still_be_observed(self):
+        settings = self.begin()
+        root = Path(settings["FERRULE_CI_EVIDENCE_ROOT"])
+        legacy_id = "123-1-test-native-" + settings["FERRULE_CI_EVIDENCE_ID"]
+        legacy_root = root.with_name(legacy_id)
+        root.rename(legacy_root)
+        # Author the historical record literally; the production observer must
+        # validate it rather than rebuilding or renaming it.
+        record_path = legacy_root / "receipts/UNARCHIVED.json"
+        record = json.loads(record_path.read_bytes())
+        record["job_id"] = legacy_id
+        record_path.chmod(0o600)
+        record_path.write_text(json.dumps(record))
+        record_path.chmod(0o444)
+        original = record_path.read_bytes()
+        settings |= {"FERRULE_CI_EVIDENCE_ID": legacy_id,
+                     "FERRULE_CI_EVIDENCE_ROOT": str(legacy_root)}
+        evidence.observe(self.home, self.observer_environment(settings))
+        self.assertEqual(record_path.read_bytes(), original)
+        self.assertEqual(len(list(record_path.parent.glob("observation-*.json"))), 1)
 
     def test_symlinked_parent_refuses_and_preserves_outside(self):
         outside = self.home.parent / "outside"
