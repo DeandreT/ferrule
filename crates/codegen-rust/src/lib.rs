@@ -1969,6 +1969,7 @@ fn render_iteration_scope(
     } else {
         "&item_context"
     };
+    output.push_str(&format!("        let _ = {item_context};\n"));
     output.push_str(&render_scope_item(
         scope,
         child_names,
