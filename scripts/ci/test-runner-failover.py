@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Qualify outage/recovery decisions and API/state failure boundaries."""
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -103,6 +106,52 @@ class FailoverTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     failover.reconcile(repository, state, 130)
             self.assertEqual(state.read_text(), original)
+
+    def test_partial_label_update_reports_incomplete_reconciliation(self):
+        repository = "DeandreT/ferrule"
+        for primary_status, method in [("offline", "POST"), ("online", "DELETE")]:
+            with self.subTest(method=method), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "DeandreT-ferrule.json"
+                previous = json.dumps(dict(availability="over", consecutive=1, observed_at=100))
+                state.write_text(previous)
+                pages = snapshot(repository, primary_status=primary_status)
+                backup = pages[0]["runners"][-1]
+                scheduling = set(failover.POOLS[repository][2])
+                if method == "DELETE":
+                    backup["labels"] += [dict(name=label) for label in scheduling]
+                original_labels = {label["name"] for label in backup["labels"]}
+                requests = []
+
+                def api(arguments, payload=None):
+                    if "--paginate" in arguments:
+                        return copy.deepcopy(pages)
+                    requests.append(arguments[1])
+                    if len(requests) == 2:
+                        raise RuntimeError("second label update failed")
+                    label = payload["labels"][0] if method == "POST" else arguments[-1].split("/")[-1]
+                    if method == "POST":
+                        backup["labels"].append(dict(name=label))
+                    else:
+                        backup["labels"] = [entry for entry in backup["labels"] if entry["name"] != label]
+                    return {}
+
+                output = io.StringIO()
+                with (patch.object(failover, "POOLS", {repository: failover.POOLS[repository]}),
+                      patch.object(failover, "api", side_effect=api),
+                      patch.object(failover.time, "time", return_value=130),
+                      patch.object(failover.os, "getuid", return_value=root.stat().st_uid, create=True),
+                      patch.object(failover.fcntl, "flock"),
+                      patch.object(sys, "argv", ["runner-failover", "--state-dir", directory]),
+                      contextlib.redirect_stdout(output)):
+                    self.assertEqual(failover.main(), 1)
+                changed_labels = {label["name"] for label in backup["labels"]}
+                self.assertEqual(requests, [method, method])
+                self.assertEqual(len(original_labels.symmetric_difference(changed_labels)), 1)
+                self.assertEqual(original_labels - scheduling, changed_labels - scheduling)
+                self.assertEqual(state.read_text(), previous)
+                self.assertIn("reconciliation incomplete; scheduling labels may have changed", output.getvalue())
+                self.assertNotIn("existing runner labels preserved", output.getvalue())
 
     def test_dry_run_never_mutates_api_or_state(self):
         repository = "DeandreT/ferrule"

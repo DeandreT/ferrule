@@ -112,7 +112,7 @@ def main():
                 reconcile(repository, args.state_dir / (repository.replace("/", "-") + ".json"),
                           time.time(), args.dry_run)
             except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError):
-                print(f"{repository}: reconciliation refused; existing runner labels preserved", flush=True)
+                print(f"{repository}: reconciliation incomplete; scheduling labels may have changed", flush=True)
                 failed = True
     return int(failed)
 
