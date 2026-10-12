@@ -94,7 +94,7 @@ internal static partial class Program
                      lowRange.Replace("0031fa182c40c60d", "0031fa182c40c60", StringComparison.Ordinal),
                      lowRange.Replace("0031fa182c40c60d", "7ff0000000000000", StringComparison.Ordinal),
                      lowRange.Replace(LowBits, "1e-307", StringComparison.Ordinal),
-                     lowRange.Replace(EmbeddedV2Prefix, "FERRULE-EMBEDDED-SCHEMA/3\n", StringComparison.Ordinal),
+                     lowRange.Replace(EmbeddedV2Prefix, "FERRULE-EMBEDDED-SCHEMA/4\n", StringComparison.Ordinal),
                  })
         {
             Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(malformed, "1e-307"));

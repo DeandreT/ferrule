@@ -1,0 +1,1 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output" ><xs:simpleType><xs:list itemType="xs:string"/></xs:simpleType></xs:element></xs:schema>

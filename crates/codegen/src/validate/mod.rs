@@ -18,6 +18,7 @@ mod graph_dependencies;
 mod grouping;
 mod joins;
 mod lookup;
+mod owned_sources;
 mod path_hierarchy;
 mod primary_root;
 mod recursive_sequence;
@@ -31,7 +32,13 @@ pub use context::{
     GroupingExpressionRole, JoinKeySide, RecursiveSequencePathRole, SequenceExpressionRole,
     SequenceOwner,
 };
-pub use error::ProgramValidationError;
+pub use error::{
+    OwnedSourceCapabilityOrigin, OwnedSourceCapabilityReason, OwnedSourceDiagnostic,
+    OwnedSourceDiagnosticLocation, OwnedSourceDiagnosticOwner, OwnedSourceDiagnosticRequest,
+    OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
+    ProgramValidationError,
+};
+pub use owned_sources::{owned_expression_emission_error, validate_owned_emission};
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
 
@@ -89,7 +96,9 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     // Preserve existing reached lexical-error precedence, then defensively
     // admit private inputs of every retained new reducer, including reducers
     // that no target/failure root reaches in a directly constructed Program.
-    sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)
+    sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
+    owned_sources::validate_structure(program)?;
+    owned_sources::validate_closed_contexts(program)
 }
 
 fn validate_schema_metadata(
@@ -451,6 +460,11 @@ fn validate_scope(
         let grouping_expression =
             grouping::validate(iteration, expressions, target_path.as_slice())?;
         match iteration.input() {
+            IterationSource::OwnedSource(source) => {
+                // Keep new requests intact for the final typed structural pass.
+                scope_source = schemas.sources.owned_schema_at(source.source());
+                active_source = scope_source;
+            }
             IterationSource::Source(source_iteration) => {
                 if !schemas
                     .sources

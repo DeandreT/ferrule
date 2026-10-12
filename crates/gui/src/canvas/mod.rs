@@ -95,6 +95,83 @@ pub fn source_blocks(schema: &SchemaNode) -> Vec<SourceBlock> {
     vec![source_block(schema, common_frame, leaves)]
 }
 
+/// Project endpoints keep the primary schema catalog at block zero. Named
+/// boundaries use the same frame/path convention as the native source loader.
+pub(crate) fn project_source_blocks(project: &mapping::Project) -> Vec<SourceBlock> {
+    let mut blocks = source_blocks(&project.source);
+    for source in &project.extra_sources {
+        let mut block = source_blocks(&source.schema)
+            .pop()
+            .expect("schema source catalog always has one endpoint");
+        block.title = format!("Source: {}", source.name);
+        if let Some(frame) = &mut block.frame {
+            frame.insert(0, source.name.clone());
+        }
+        for leaf in &mut block.leaves {
+            if let Some(frame) = &mut leaf.frame {
+                frame.insert(0, source.name.clone());
+            } else {
+                leaf.path.insert(0, source.name.clone());
+            }
+        }
+        blocks.push(block);
+    }
+    blocks
+}
+
+fn schema_can_shadow_alias(schema: &SchemaNode, alias: &str) -> bool {
+    if schema.recursive_ref.is_some() {
+        return true;
+    }
+    match &schema.kind {
+        SchemaKind::Group {
+            children, dynamic, ..
+        } => {
+            dynamic.is_some()
+                || children
+                    .iter()
+                    .any(|child| child.name == alias || schema_can_shadow_alias(child, alias))
+        }
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
+    }
+}
+
+/// Native lookup falls outward through active items before the named namespace.
+/// Until explicit source ownership exists (#432), an alias which another item
+/// can define cannot promise an independently addressable named output.
+pub(crate) fn source_alias_conflict(
+    primary: &SchemaNode,
+    sources: &[mapping::NamedSource],
+    index: usize,
+) -> Option<&'static str> {
+    let source = sources.get(index)?;
+    if source.name.trim().is_empty()
+        || sources
+            .iter()
+            .enumerate()
+            .any(|(other, candidate)| other != index && candidate.name.trim() == source.name.trim())
+    {
+        return Some("another named input or an invalid input name");
+    }
+    if schema_can_shadow_alias(primary, &source.name) {
+        return Some("the primary input or its runtime fields");
+    }
+    sources
+        .iter()
+        .any(|candidate| schema_can_shadow_alias(&candidate.schema, &source.name))
+        .then_some("a named input or its runtime fields")
+}
+
+pub(crate) fn source_conflicts(
+    primary: &SchemaNode,
+    sources: &[mapping::NamedSource],
+) -> std::collections::BTreeSet<usize> {
+    (0..sources.len())
+        .filter(|&index| source_alias_conflict(primary, sources, index).is_some())
+        .map(|index| index + 1)
+        .collect()
+}
+
 fn source_block(
     schema: &SchemaNode,
     frame: Option<Vec<String>>,

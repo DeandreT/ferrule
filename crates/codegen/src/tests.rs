@@ -23,6 +23,7 @@ mod failures;
 mod filter_map_model;
 mod grouping;
 mod joins;
+mod owned_admission;
 mod path_hierarchy;
 mod raise;
 mod recursive_filter;
@@ -1654,9 +1655,67 @@ fn owned_lowering_is_closed_only_at_existing_reachable_visits() {
                 .any(|expression| expression.id == 99)
         );
         project.root.bindings[1].node = 99;
+        let result = lower(&project);
+        eprintln!("A-V07 reached project={project:#?} lower={result:#?}");
+        let program = result.unwrap();
+        let actual = &program
+            .expressions
+            .iter()
+            .find(|node| node.id == 99)
+            .unwrap()
+            .expression;
+        match (position, actual) {
+            (false, Expression::OwnedSourceField(field)) => assert_eq!(
+                field,
+                &mapping::OwnedSourceField {
+                    source: mapping::OwnedSourceRef {
+                        owner: mapping::SourceOwner::Primary,
+                        path: vec!["First".into()]
+                    },
+                    frame: None
+                }
+            ),
+            (true, Expression::OwnedPosition(position)) => assert_eq!(
+                position,
+                &mapping::OwnedPosition {
+                    owner: mapping::SourceOwner::Primary,
+                    collection: Some(vec![])
+                }
+            ),
+            _ => panic!("exact retained owned kind {kind:?}: {actual:?}"),
+        }
+        let gate = crate::validate_owned_emission(&program);
+        eprintln!("A-V07 complete closed gate={gate:#?}");
+        let query = if position {
+            crate::OwnedSourceDiagnosticRequest::Position {
+                owner: crate::OwnedSourceDiagnosticOwner::Primary,
+                collection: Some(vec![]),
+            }
+        } else {
+            crate::OwnedSourceDiagnosticRequest::Field {
+                owner: crate::OwnedSourceDiagnosticOwner::Primary,
+                path: vec!["First".into()],
+                frame: None,
+            }
+        };
         assert_eq!(
-            lower(&project).unwrap_err().diagnostics(),
-            [Diagnostic::UnsupportedNode { node: 99, kind }]
+            gate,
+            Err(ProgramValidationError::OwnedSource {
+                diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                    location: crate::OwnedSourceDiagnosticLocation::Expression {
+                        namespace: crate::OwnedSourceNamespace::Main,
+                        node: 99,
+                        scope: None
+                    },
+                    request: Some(query),
+                    reason: crate::OwnedSourceCapabilityReason::UnsupportedBasicContext,
+                    origin: crate::OwnedSourceCapabilityOrigin::RetainedExpression {
+                        namespace: crate::OwnedSourceNamespace::Main,
+                        node: 99
+                    },
+                }
+                .into()
+            })
         );
     }
 }
@@ -1698,14 +1757,26 @@ fn owned_lowering_called_function_and_dynamic_path_roots_preserve_namespace() {
     project.root.bindings[1].node = 40;
     assert!(lower(&project).is_ok());
     project.user_functions.get_mut(&id).unwrap().output = 99;
+    let result = lower(&project);
+    eprintln!("A516 called function complete project={project:#?} result={result:#?}");
     assert_eq!(
-        lower(&project).unwrap_err().diagnostics(),
-        [Diagnostic::UserFunction {
-            function: id,
-            diagnostic: Box::new(Diagnostic::UnsupportedNode {
-                node: 99,
-                kind: crate::UnsupportedNodeKind::OwnedSourceField
-            })
+        result.unwrap_err().diagnostics(),
+        [Diagnostic::OwnedSource {
+            diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                location: crate::OwnedSourceDiagnosticLocation::Expression {
+                    namespace: crate::OwnedSourceNamespace::Function(id),
+                    node: 99,
+                    scope: None
+                },
+                request: Some(crate::OwnedSourceDiagnosticRequest::Field {
+                    owner: crate::OwnedSourceDiagnosticOwner::Primary,
+                    path: vec!["First".into()],
+                    frame: None
+                }),
+                reason: crate::OwnedSourceCapabilityReason::IsolatedFunction,
+                origin: crate::OwnedSourceCapabilityOrigin::FunctionBody { function: id },
+            }
+            .into()
         }]
     );
     project.root.bindings[1].node = 20;
@@ -1725,11 +1796,29 @@ fn owned_lowering_called_function_and_dynamic_path_roots_preserve_namespace() {
         .nodes
         .insert(99, owned_source_test_node(false));
     // Lowering deliberately roots every stored dynamic path, unlike engine demand.
+    let result = lower(&project);
+    eprintln!("A516 stored dynamic complete project={project:#?} result={result:#?}");
     assert_eq!(
-        lower(&project).unwrap_err().diagnostics(),
-        [Diagnostic::UnsupportedNode {
-            node: 99,
-            kind: crate::UnsupportedNodeKind::OwnedSourceField
+        result.unwrap_err().diagnostics(),
+        [Diagnostic::OwnedSource {
+            diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                location: crate::OwnedSourceDiagnosticLocation::Expression {
+                    namespace: crate::OwnedSourceNamespace::Main,
+                    node: 99,
+                    scope: None
+                },
+                request: Some(crate::OwnedSourceDiagnosticRequest::Field {
+                    owner: crate::OwnedSourceDiagnosticOwner::Primary,
+                    path: vec!["First".into()],
+                    frame: None
+                }),
+                reason: crate::OwnedSourceCapabilityReason::DynamicLoader,
+                origin: crate::OwnedSourceCapabilityOrigin::DynamicSource {
+                    index: 0,
+                    name: "UnusedDynamic".into()
+                },
+            }
+            .into()
         }]
     );
 }
@@ -1757,43 +1846,34 @@ fn owned_metadata_is_not_a_new_reachability_edge() {
             args: vec![20, 99, 41],
         },
     );
-    let reachable = crate::lower::owned_test_reachable_nodes(&project.graph, [40]);
-    assert!(reachable.contains(&20));
-    assert!(!reachable.contains(&99));
-    assert!(!reachable.contains(&41));
-    let reachable = crate::lower::owned_test_reachable_nodes(&project.graph, [40, 99]);
-    assert!(reachable.contains(&99));
-    // Invalid metadata still refuses through the preexisting descriptor checks.
-    assert!(
-        lower(&project)
-            .unwrap_err()
-            .diagnostics()
-            .iter()
-            .all(|diagnostic| !matches!(
-                diagnostic,
-                Diagnostic::UnsupportedNode {
-                    kind: crate::UnsupportedNodeKind::OwnedSourceField,
-                    ..
-                }
-            ))
-    );
+    let metadata_only_project = project.clone();
+    let metadata_only_result = lower(&metadata_only_project);
+    let runtime_input_reachable =
+        crate::lower::owned_test_reachable_nodes(&metadata_only_project.graph, [40]);
+    let explicit_roots_reachable =
+        crate::lower::owned_test_reachable_nodes(&metadata_only_project.graph, [40, 99]);
     project.root.bindings.push(MappingBinding {
         target_field: "FirstOut".into(),
         node: 99,
     });
-    assert!(
-        lower(&project)
-            .unwrap_err()
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| matches!(
-                diagnostic,
-                Diagnostic::UnsupportedNode {
-                    node: 99,
-                    kind: crate::UnsupportedNodeKind::OwnedSourceField
-                }
-            ))
+    let runtime_bound_result = lower(&project);
+    eprintln!(
+        "A-V metadata-only complete Project={metadata_only_project:#?} Result={metadata_only_result:#?} runtime-input reachable={runtime_input_reachable:#?} explicit-roots reachable={explicit_roots_reachable:#?}; runtime-bound complete Project={project:#?} Result={runtime_bound_result:#?}"
     );
+    assert!(runtime_input_reachable.contains(&20));
+    assert!(!runtime_input_reachable.contains(&99));
+    assert!(!runtime_input_reachable.contains(&41));
+    assert!(explicit_roots_reachable.contains(&99));
+    // The nonliteral layout descriptor keeps the old exact function refusal.
+    // Binding the now-supported owned field adds no obsolete node refusal.
+    let expected = [Diagnostic::UnsupportedFunction {
+        node: 40,
+        function: "flextext_parse_field".into(),
+    }];
+    assert_eq!(metadata_only_result.unwrap_err().diagnostics(), &expected);
+    assert_eq!(runtime_bound_result.unwrap_err().diagnostics(), &expected);
 }
 
 mod owned_collection;
+
+mod owned_basic;

@@ -1518,3 +1518,5 @@ impl Drop for TempDir {
         let _ = fs::remove_dir_all(&self.0);
     }
 }
+
+mod owned_basic;

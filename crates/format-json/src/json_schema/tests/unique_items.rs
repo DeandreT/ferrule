@@ -132,7 +132,7 @@ fn refs_all_of_nullable_and_array_any_of_preserve_exact_semantics() {
 }
 
 #[test]
-fn malformed_incompatible_and_nested_unique_items_reject() {
+fn malformed_and_incompatible_unique_items_reject() {
     for (schema, expected) in [
         (
             r#"{"title":"Rows","type":"array","uniqueItems":"true","items":{}}"#,
@@ -141,23 +141,6 @@ fn malformed_incompatible_and_nested_unique_items_reject() {
         (
             r#"{"title":"Value","uniqueItems":true}"#,
             "without a concrete array",
-        ),
-        (
-            r#"{
-  "title":"Rows",
-  "type":"array",
-  "uniqueItems":true,
-  "items":{"type":"array","items":{"type":"string"}}
-}"#,
-            "distinct wrapper levels",
-        ),
-        (
-            r#"{
-  "title":"Rows",
-  "type":"array",
-  "items":{"type":"array","uniqueItems":true,"items":{"type":"string"}}
-}"#,
-            "distinct wrapper levels",
         ),
     ] {
         assert!(

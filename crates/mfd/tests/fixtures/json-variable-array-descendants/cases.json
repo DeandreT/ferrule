@@ -1,0 +1,11 @@
+[
+  {"input":"{\"Rows\":[{\"Header\":{\"Label\":\"first\",\"Total\":7}},{\"Header\":{\"Label\":\"second\",\"Total\":-3}}]}","expected":{"Results":[{"Label":"first","Total":7},{"Label":"second","Total":-3}]}},
+  {"input":"{\"Rows\":[{\"Header\":{\"Label\":\"参照 é\",\"Total\":0}}]}","expected":{"Results":[{"Label":"参照 é","Total":0}]}},
+  {"input":"{\"Rows\":[{\"Header\":{\"Label\":\"\"}},{\"Header\":{}}]}","expected":{"Results":[{"Label":""},{}]}},
+  {"input":"{\"Rows\":[]}","expected":{"Results":[]}},
+  {"input":"{}","expected":{"Results":[]}},
+  {"input":"{\"Rows\":[{\"Header\":{\"Label\":false}}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Header\":{\"Total\":1.5}}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Header\":{\"Unexpected\":1}}]}","reject":true},
+  {"input":"{broken","reject":true}
+]

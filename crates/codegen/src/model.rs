@@ -874,6 +874,8 @@ impl std::error::Error for DelimitedTextFieldError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
+    OwnedSourceField(mapping::OwnedSourceField),
+    OwnedPosition(mapping::OwnedPosition),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,
@@ -1322,6 +1324,7 @@ impl ScopeSequence {
 /// Exactly one candidate source for an iterating scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IterationSource {
+    OwnedSource(OwnedSourceIteration),
     Source(SourceIteration),
     DynamicDocuments(DynamicDocumentIteration),
     Generated(GeneratedSequence),
@@ -1394,6 +1397,12 @@ impl GroupingPlan {
             | Self::StartingWith { .. }
             | Self::EndingWith { .. } => None,
         }
+    }
+}
+
+impl From<OwnedSourceIteration> for IterationSource {
+    fn from(source: OwnedSourceIteration) -> Self {
+        Self::OwnedSource(source)
     }
 }
 
@@ -1575,6 +1584,37 @@ pub struct IterationPlan {
 }
 
 impl IterationPlan {
+    pub fn owned_source(source: mapping::OwnedSourceRef) -> Self {
+        Self::new(
+            OwnedSourceIteration::new(source),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )
+    }
+
+    pub const fn owned_source_iteration(&self) -> Option<&OwnedSourceIteration> {
+        match &self.input {
+            IterationSource::OwnedSource(source) => Some(source),
+            _ => None,
+        }
+    }
+
+    pub fn source_selector(&self) -> Option<mapping::SourceSelectorRef<'_>> {
+        match &self.input {
+            IterationSource::OwnedSource(source) => {
+                Some(mapping::SourceSelectorRef::Owned(source.source()))
+            }
+            IterationSource::Source(source) => {
+                Some(mapping::SourceSelectorRef::Legacy(source.path()))
+            }
+            IterationSource::DynamicDocuments(source) => {
+                Some(mapping::SourceSelectorRef::Legacy(source.source().path()))
+            }
+            _ => None,
+        }
+    }
     pub fn source(path: Vec<String>) -> Self {
         Self::new(
             SourceIteration::new(path),
@@ -1666,6 +1706,7 @@ impl IterationPlan {
 
     pub const fn source_iteration(&self) -> Option<&SourceIteration> {
         match &self.input {
+            IterationSource::OwnedSource(_) => None,
             IterationSource::Source(source) => Some(source),
             IterationSource::DynamicDocuments(iteration) => Some(iteration.source()),
             IterationSource::Generated(_)
@@ -1676,6 +1717,7 @@ impl IterationPlan {
 
     pub const fn dynamic_document_iteration(&self) -> Option<&DynamicDocumentIteration> {
         match &self.input {
+            IterationSource::OwnedSource(_) => None,
             IterationSource::DynamicDocuments(iteration) => Some(iteration),
             IterationSource::Source(_)
             | IterationSource::Generated(_)
@@ -1686,6 +1728,7 @@ impl IterationPlan {
 
     pub const fn generated_sequence(&self) -> Option<&GeneratedSequence> {
         match &self.input {
+            IterationSource::OwnedSource(_) => None,
             IterationSource::Source(_) | IterationSource::DynamicDocuments(_) => None,
             IterationSource::Generated(sequence) => Some(sequence),
             IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => None,
@@ -1694,6 +1737,7 @@ impl IterationPlan {
 
     pub const fn inner_join(&self) -> Option<&InnerJoin> {
         match &self.input {
+            IterationSource::OwnedSource(_) => None,
             IterationSource::InnerJoin(join) => Some(join),
             IterationSource::Source(_)
             | IterationSource::DynamicDocuments(_)
@@ -1704,6 +1748,7 @@ impl IterationPlan {
 
     pub const fn concatenated(&self) -> Option<&ScopeSequence> {
         match &self.input {
+            IterationSource::OwnedSource(_) => None,
             IterationSource::Concatenate(sequence) => Some(sequence),
             IterationSource::Source(_)
             | IterationSource::DynamicDocuments(_)
@@ -1754,6 +1799,21 @@ impl IterationPlan {
                 self.dynamic_document_iteration()
                     .map(DynamicDocumentIteration::output_path),
             )
+    }
+}
+
+/// A distinct endpoint-owned static source iteration; never a path-only source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedSourceIteration {
+    source: mapping::OwnedSourceRef,
+}
+
+impl OwnedSourceIteration {
+    pub fn new(source: mapping::OwnedSourceRef) -> Self {
+        Self { source }
+    }
+    pub const fn source(&self) -> &mapping::OwnedSourceRef {
+        &self.source
     }
 }
 

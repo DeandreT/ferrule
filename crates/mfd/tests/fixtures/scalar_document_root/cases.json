@@ -1,0 +1,565 @@
+[
+  {
+    "name": "source-String-modern",
+    "accepted": true,
+    "type": "String",
+    "feed": 10,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-String-modern",
+    "accepted": true,
+    "type": "String",
+    "feed": 80,
+    "constant": [
+      "birch & Ω",
+      "string"
+    ],
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Bool-modern",
+    "accepted": true,
+    "type": "Bool",
+    "feed": 11,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Bool",
+      "value": true
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>true</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Bool-modern",
+    "accepted": true,
+    "type": "Bool",
+    "feed": 80,
+    "constant": [
+      "true",
+      "boolean"
+    ],
+    "expected_scalar": {
+      "kind": "Bool",
+      "value": true
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>true</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Int-modern",
+    "accepted": true,
+    "type": "Int",
+    "feed": 12,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Int",
+      "value": -7
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>-7</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Int-modern",
+    "accepted": true,
+    "type": "Int",
+    "feed": 80,
+    "constant": [
+      "-7",
+      "long"
+    ],
+    "expected_scalar": {
+      "kind": "Int",
+      "value": -7
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>-7</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Float-modern",
+    "accepted": true,
+    "type": "Float",
+    "feed": 13,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Float",
+      "bits": "3ff4000000000000"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>1.25</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Float-modern",
+    "accepted": true,
+    "type": "Float",
+    "feed": 80,
+    "constant": [
+      "1.25",
+      "double"
+    ],
+    "expected_scalar": {
+      "kind": "Float",
+      "bits": "3ff4000000000000"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>1.25</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-String-legacy",
+    "accepted": true,
+    "type": "String",
+    "feed": 10,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-String-legacy",
+    "accepted": true,
+    "type": "String",
+    "feed": 80,
+    "constant": [
+      "birch & Ω",
+      "string"
+    ],
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Bool-legacy",
+    "accepted": true,
+    "type": "Bool",
+    "feed": 11,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Bool",
+      "value": true
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>true</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Bool-legacy",
+    "accepted": true,
+    "type": "Bool",
+    "feed": 80,
+    "constant": [
+      "true",
+      "boolean"
+    ],
+    "expected_scalar": {
+      "kind": "Bool",
+      "value": true
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>true</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Int-legacy",
+    "accepted": true,
+    "type": "Int",
+    "feed": 12,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Int",
+      "value": -7
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>-7</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Int-legacy",
+    "accepted": true,
+    "type": "Int",
+    "feed": 80,
+    "constant": [
+      "-7",
+      "long"
+    ],
+    "expected_scalar": {
+      "kind": "Int",
+      "value": -7
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>-7</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-Float-legacy",
+    "accepted": true,
+    "type": "Float",
+    "feed": 13,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "Float",
+      "bits": "3ff4000000000000"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>1.25</Output>",
+    "warnings": []
+  },
+  {
+    "name": "constant-Float-legacy",
+    "accepted": true,
+    "type": "Float",
+    "feed": 80,
+    "constant": [
+      "1.25",
+      "double"
+    ],
+    "expected_scalar": {
+      "kind": "Float",
+      "bits": "3ff4000000000000"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>1.25</Output>",
+    "warnings": []
+  },
+  {
+    "name": "empty-string",
+    "accepted": true,
+    "type": "String",
+    "feed": 80,
+    "constant": [
+      "",
+      "string"
+    ],
+    "expected_scalar": {
+      "kind": "String",
+      "value": ""
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output></Output>",
+    "warnings": []
+  },
+  {
+    "name": "idempotent",
+    "accepted": true,
+    "type": "String",
+    "feed": 80,
+    "constant": [
+      "birch & Ω",
+      "string"
+    ],
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "source-optional",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-repeated",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-nillable",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-ancestor",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-wrong-domain",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source and target scalar kinds differ"
+    ]
+  },
+  {
+    "name": "target-nillable",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-default",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-datetime",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-node-default",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-node-functions",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "constant-invalid",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "constant-wrong-domain",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "constant-NaN",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "constant-inf",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "constant-negative-inf",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "unproved-root-view",
+    "accepted": false,
+    "warnings": [
+      "component `Output` UID 3: unproved XML document-root view `{}Output` (declared `{}Output`, role target, type condition `<unresolved/non-type condition>`, default `<none/unresolved>`); connected document-root sibling ownership/construction is not proved on inpkey=21 at <root>; branch ancestry/condition is unrepresented. Best-effort projection is retained; executable import requires explicit root-view ownership and condition/construction support"
+    ]
+  },
+  {
+    "name": "constant-invalid-boolean",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: constant is invalid, null or has a different scalar kind"
+    ]
+  },
+  {
+    "name": "source-root-min0",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-root-min2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-root-max0",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-root-max2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-root-unbounded",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-root-min0",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-root-min2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-root-max0",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-root-max2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "target-root-unbounded",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: target is not a required non-null singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-leaf-min2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-sequence-min2",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-explicit-one",
+    "accepted": true,
+    "type": "String",
+    "feed": 10,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "target-explicit-one",
+    "accepted": true,
+    "type": "String",
+    "feed": 10,
+    "constant": null,
+    "expected_scalar": {
+      "kind": "String",
+      "value": "birch & Ω"
+    },
+    "wire": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>birch &amp; Ω</Output>",
+    "warnings": []
+  },
+  {
+    "name": "target-int-subdomain",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-float-subdomain",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-positive-integer",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-facet",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-list",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-union",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "target-unresolved-type",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: root metadata requires an unqualified transformation"
+    ]
+  },
+  {
+    "name": "source-facet",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-attribute",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  },
+  {
+    "name": "source-simple-content",
+    "accepted": false,
+    "warnings": [
+      "connection into a scalar document root is not supported; binding skipped: `Output`: source path is not a required singleton XML scalar"
+    ]
+  }
+]

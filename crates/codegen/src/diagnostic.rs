@@ -5,6 +5,9 @@ use mapping::{FunctionId, NodeId};
 /// Why lowering could not produce backend-neutral code-generation IR.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Diagnostic {
+    OwnedSource {
+        diagnostic: Box<crate::OwnedSourceDiagnostic>,
+    },
     UnsupportedSourceIteration {
         scope: mapping::SourceScopeLocation,
     },
@@ -88,6 +91,7 @@ impl std::error::Error for LowerError {}
 impl fmt::Display for Diagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OwnedSource { diagnostic } => write!(formatter, "owned source: {diagnostic:?}"),
             Self::UnsupportedSourceIteration { scope } => write!(
                 formatter,
                 "owned source iteration at {scope:?}: code generation is unsupported"
