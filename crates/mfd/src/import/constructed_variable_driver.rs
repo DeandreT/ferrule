@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use ir::SchemaKind;
+use ir::{SchemaKind, SchemaNode};
 use mapping::{ScopeConstruction, ScopeIteration};
 
 use super::graph::GraphBuilder;
@@ -94,11 +94,105 @@ pub(super) fn recognize(
                 .any(|component| component.output_keys.contains(&feed))
         {
             present = true;
-        } else if !direct_parent_scalar(feed, target_path, builder, scopes) {
+        } else if !parent_scalar(feed, target_path, builder, scopes) {
             return false;
         }
     }
     present
+}
+
+const MAX_SCALAR_ALIAS_HOPS: usize = 64;
+
+fn parent_scalar(
+    mut feed: u32,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    scopes: &ScopeBuilder,
+) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut expected: Option<&SchemaNode> = None;
+    for hop in 0..=MAX_SCALAR_ALIAS_HOPS {
+        if !seen.insert(feed) {
+            return false;
+        }
+        if direct_parent_scalar(feed, target_path, builder, scopes) {
+            let source = builder.sources[0];
+            let node = schema_node_at(&source.schema, &source.ports[&feed]);
+            return expected.is_none_or(|expected| {
+                node.is_some_and(|node| same_scalar_schema(expected, node))
+            });
+        }
+        if hop == MAX_SCALAR_ALIAS_HOPS
+            || builder
+                .sources
+                .iter()
+                .any(|source| source.ports.contains_key(&feed))
+            || builder.fn_by_output.contains_key(&feed)
+            || builder.udf_by_output.contains_key(&feed)
+            || builder.has_source_node_functions(feed)
+        {
+            return false;
+        }
+        let mut owners = builder
+            .intermediates
+            .iter()
+            .filter(|owner| owner.output_keys.contains(&feed));
+        let Some(alias) = owners.next() else {
+            return false;
+        };
+        if owners.next().is_some()
+            || !alias.is_variable
+            || alias.is_pass_through
+            || alias.compute_when_key.is_some()
+            || !matches!(alias.format, ComponentFormat::Json | ComponentFormat::Edi)
+        {
+            return false;
+        }
+        let Some(path) = alias.ports.get(&feed) else {
+            return false;
+        };
+        let Some(node) = schema_node_at(&alias.schema, path) else {
+            return false;
+        };
+        if !node.is_scalar()
+            || node.repeating
+            || !node.alternatives().is_empty()
+            || expected.is_some_and(|expected| !same_scalar_schema(expected, node))
+            || (0..path.len()).any(|length| {
+                schema_node_at(&alias.schema, &path[..length]).is_none_or(|ancestor| {
+                    ancestor.repeating
+                        || ancestor.dynamic_fields().is_some()
+                        || !ancestor.alternatives().is_empty()
+                })
+            })
+        {
+            return false;
+        }
+        let mut inputs = alias.ports.iter().filter(|(key, candidate)| {
+            alias.input_keys.contains(key)
+                && builder.edge_from.contains_key(key)
+                && (path.starts_with(candidate) || candidate.starts_with(path))
+        });
+        let Some((input, input_path)) = inputs.next() else {
+            return false;
+        };
+        // Only exact scalar pass-throughs qualify. A structural ancestor or
+        // descendant override needs a separate complete structural proof.
+        if inputs.next().is_some() || input_path != path {
+            return false;
+        }
+        expected = Some(node);
+        feed = builder.edge_from[input];
+    }
+    false
+}
+
+fn same_scalar_schema(left: &SchemaNode, right: &SchemaNode) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    left.name.clear();
+    right.name.clear();
+    left == right
 }
 
 fn direct_parent_scalar(

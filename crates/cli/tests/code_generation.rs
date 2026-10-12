@@ -58,6 +58,8 @@ mod json_structure_variables;
 #[path = "code_generation/literal_group_drivers.rs"]
 mod literal_group_drivers;
 
+#[path = "code_generation/constructed_variable_aliases.rs"]
+mod constructed_variable_aliases;
 #[path = "code_generation/constructed_variable_drivers.rs"]
 mod constructed_variable_drivers;
 #[path = "code_generation/edi_structure_variables.rs"]

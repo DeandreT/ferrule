@@ -812,8 +812,12 @@ existing admission diagnostics.
 A closed, non-repeating JSON or compiled EDI variable record can also drive one
 repeating target group through its structural output. Require one connected
 target connector, a valid direct literal that establishes presence, and
-unambiguous scalar assignments. Other inputs must be direct primary JSON/XML
-fields whose repeated ancestors belong to plain source scopes enclosing the
+unambiguous scalar assignments. Other inputs must resolve to primary JSON/XML
+fields through direct ports or at most 64 exact scalar aliases in uncontrolled
+JSON/EDI variables. Each alias has one connected scalar input at its output path
+and preserves the complete selected scalar schema apart from its local name.
+Cycles, connected ancestor drivers, overrides and changed scalar facets retain
+their refusals. The physical fields' repeated ancestors belong to plain source scopes enclosing the
 target. A sibling's frame is insufficient. Preserve complete physical schemas
 and the inherited context; this rule constructs target bindings and introduces
 no collection or structural copy. Computed inputs, competing connectors,

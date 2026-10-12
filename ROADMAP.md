@@ -695,7 +695,8 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 Bounded flat variable records can establish one repeating target group through a
 valid direct literal and scalar inputs in an existing plain parent frame. The
 [import contract](docs/mfd-interop.md#import) preserves full physical schemas and
-keeps competing connectors, structural copy and new collection frames refused.
+admits bounded exact scalar aliases that retain their selected schema. Competing
+connectors, structural copy and new collection frames retain their refusals.
 
 - [x] Support nested cloned target groups with unique declared ancestor owners
   and exact binding provenance in [#239](https://github.com/DeandreT/ferrule/issues/239),
