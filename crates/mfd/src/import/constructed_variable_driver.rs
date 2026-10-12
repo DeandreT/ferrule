@@ -43,7 +43,8 @@ pub(super) fn recognize(
     let SchemaKind::Group { children, .. } = &record.kind else {
         return false;
     };
-    if record.repeating
+    if !plain_parent_chain(target_path, scopes)
+        || record.repeating
         || (0..output_path.len()).any(|length| {
             schema_node_at(&variable.schema, &output_path[..length])
                 .is_none_or(|node| node.repeating)
