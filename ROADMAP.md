@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-11
+Updated: 2026-10-12
 
 ## Goal
 
