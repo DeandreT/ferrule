@@ -187,86 +187,6 @@ pub(super) fn walk<'a>(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use ir::{DocumentMember, Instance, Value};
-
-    use super::walk;
-
-    #[test]
-    fn walks_descendants_across_a_document_set_and_retains_paths() {
-        let document = |path: &str, value: &str| {
-            DocumentMember::new(
-                path,
-                Instance::Group(
-                    (vec![(
-                        "items".into(),
-                        Instance::Repeated(vec![Instance::Scalar(Value::String(value.into()))]),
-                    )])
-                    .into(),
-                ),
-            )
-        };
-        let Some(first) = document("a.xml", "a") else {
-            panic!("valid first document member")
-        };
-        let Some(second) = document("b.xml", "b") else {
-            panic!("valid second document member")
-        };
-        let source = Instance::DocumentSet(vec![first, second]);
-
-        let walked = walk(&source, &["items".into()], &[], &[], &[]);
-
-        assert_eq!(walked.len(), 2);
-        assert_eq!(walked[0].instances.len(), 2);
-        assert_eq!(walked[1].instances.len(), 2);
-        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
-        assert_eq!(walked[0].positions[0].index, 1);
-        assert_eq!(walked[1].positions[0].index, 2);
-        assert_eq!(
-            walked[0].positions[0].document_path.as_deref(),
-            Some("a.xml")
-        );
-        assert_eq!(
-            walked[1].positions[0].document_path.as_deref(),
-            Some("b.xml")
-        );
-        assert_eq!(walked[0].positions[1].collection, ["items"]);
-        assert_eq!(walked[1].positions[1].index, 1);
-    }
-
-    #[test]
-    fn walks_named_descendants_across_an_unnamed_repeating_root() {
-        let child = |value: &str| {
-            Instance::Group(
-                (vec![(
-                    "value".into(),
-                    Instance::Scalar(Value::String(value.into())),
-                )])
-                .into(),
-            )
-        };
-        let parent = |children| {
-            Instance::Group((vec![("children".into(), Instance::Repeated(children))]).into())
-        };
-        let source = Instance::Repeated(vec![
-            parent(vec![child("a"), child("b")]),
-            parent(vec![child("c")]),
-        ]);
-
-        let walked = walk(&source, &["children".into()], &[], &[], &[]);
-
-        assert_eq!(walked.len(), 3);
-        assert_eq!(walked[0].instances.len(), 2);
-        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
-        assert_eq!(walked[0].positions[0].index, 1);
-        assert_eq!(walked[1].positions[1].collection, ["children"]);
-        assert_eq!(walked[1].positions[1].index, 2);
-        assert_eq!(walked[2].positions[0].index, 2);
-        assert_eq!(walked[2].positions[1].index, 1);
-    }
-}
-
 /// Candidate ownership metadata is separate from the unchanged legacy frame layout.
 pub(crate) struct ObservedExtension<'a> {
     pub extension: WalkExtension<'a>,
@@ -617,4 +537,84 @@ fn observe_walk<'a>(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::{DocumentMember, Instance, Value};
+
+    use super::walk;
+
+    #[test]
+    fn walks_descendants_across_a_document_set_and_retains_paths() {
+        let document = |path: &str, value: &str| {
+            DocumentMember::new(
+                path,
+                Instance::Group(
+                    (vec![(
+                        "items".into(),
+                        Instance::Repeated(vec![Instance::Scalar(Value::String(value.into()))]),
+                    )])
+                    .into(),
+                ),
+            )
+        };
+        let Some(first) = document("a.xml", "a") else {
+            panic!("valid first document member")
+        };
+        let Some(second) = document("b.xml", "b") else {
+            panic!("valid second document member")
+        };
+        let source = Instance::DocumentSet(vec![first, second]);
+
+        let walked = walk(&source, &["items".into()], &[], &[], &[]);
+
+        assert_eq!(walked.len(), 2);
+        assert_eq!(walked[0].instances.len(), 2);
+        assert_eq!(walked[1].instances.len(), 2);
+        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
+        assert_eq!(walked[0].positions[0].index, 1);
+        assert_eq!(walked[1].positions[0].index, 2);
+        assert_eq!(
+            walked[0].positions[0].document_path.as_deref(),
+            Some("a.xml")
+        );
+        assert_eq!(
+            walked[1].positions[0].document_path.as_deref(),
+            Some("b.xml")
+        );
+        assert_eq!(walked[0].positions[1].collection, ["items"]);
+        assert_eq!(walked[1].positions[1].index, 1);
+    }
+
+    #[test]
+    fn walks_named_descendants_across_an_unnamed_repeating_root() {
+        let child = |value: &str| {
+            Instance::Group(
+                (vec![(
+                    "value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                )])
+                .into(),
+            )
+        };
+        let parent = |children| {
+            Instance::Group((vec![("children".into(), Instance::Repeated(children))]).into())
+        };
+        let source = Instance::Repeated(vec![
+            parent(vec![child("a"), child("b")]),
+            parent(vec![child("c")]),
+        ]);
+
+        let walked = walk(&source, &["children".into()], &[], &[], &[]);
+
+        assert_eq!(walked.len(), 3);
+        assert_eq!(walked[0].instances.len(), 2);
+        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
+        assert_eq!(walked[0].positions[0].index, 1);
+        assert_eq!(walked[1].positions[1].collection, ["children"]);
+        assert_eq!(walked[1].positions[1].index, 2);
+        assert_eq!(walked[2].positions[0].index, 2);
+        assert_eq!(walked[2].positions[1].index, 1);
+    }
 }
