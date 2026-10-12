@@ -68,6 +68,8 @@ public enum FerruleRuntimeError
     MappingException,
     UserFunctionDepth,
     UnknownTarget,
+    OwnedSource,
+    BasicSourceBridge,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -177,6 +179,36 @@ public sealed class FerruleRuntimeException : Exception
         PrimaryRoot = primaryRoot;
         MappingExceptionMessage = mappingExceptionMessage;
     }
+
+    private FerruleRuntimeException(FerruleOwnedSourceException owned)
+        : base("owned source access failed", owned)
+    {
+        Error = FerruleRuntimeError.OwnedSource;
+        OwnedSourceFailure = owned;
+    }
+
+    private FerruleRuntimeException(FerruleBasicSourceBridgeException bridge)
+        : base("basic source bridge failed", bridge)
+    {
+        Error = FerruleRuntimeError.BasicSourceBridge;
+        BasicSourceBridgeFailure = bridge;
+    }
+
+    public static FerruleRuntimeException FromOwnedSource(FerruleOwnedSourceException owned)
+    {
+        ArgumentNullException.ThrowIfNull(owned);
+        return new FerruleRuntimeException(owned);
+    }
+
+    public static FerruleRuntimeException FromBasicSourceBridge(FerruleBasicSourceBridgeException bridge)
+    {
+        ArgumentNullException.ThrowIfNull(bridge);
+        return new FerruleRuntimeException(bridge);
+    }
+
+    public FerruleOwnedSourceException? OwnedSourceFailure { get; }
+
+    public FerruleBasicSourceBridgeException? BasicSourceBridgeFailure { get; }
 
     public FerruleRuntimeError Error { get; }
 
