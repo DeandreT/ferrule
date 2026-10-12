@@ -55,6 +55,9 @@ pub(super) struct FnComponent {
     /// Declared output positions, retaining keyless pins so a secondary
     /// output cannot be mistaken for the primary result.
     pub(super) output_pins: Vec<Option<u32>>,
+    /// Exact raw pin metadata for bounded scalar constants and conditionals.
+    /// The general pin reader may normalize malformed positions; this proof may not.
+    pub(super) bounded_scalar_pins_valid: bool,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
     /// Public host parameter declaration of a kind=6 input component.
@@ -147,6 +150,30 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
     let inputs = pins("sources");
     let output_pins = pins("targets");
     let outputs: Vec<u32> = output_pins.iter().flatten().copied().collect();
+    let bounded_scalar_pins_valid = library == "core"
+        && match (kind, name.as_str()) {
+            (2, "constant") => Some(0),
+            (4, "if-else") => Some(3),
+            _ => None,
+        }
+        .is_some_and(|count| {
+            exact_pin_keys(component, "sources", count).is_some_and(|input_keys| {
+                exact_pin_keys(component, "targets", 1).is_some_and(|output_keys| {
+                    input_keys
+                        .iter()
+                        .copied()
+                        .map(Some)
+                        .eq(inputs.iter().copied())
+                        && output_keys == outputs
+                        && output_keys
+                            .iter()
+                            .copied()
+                            .map(Some)
+                            .eq(output_pins.iter().copied())
+                        && !input_keys.contains(&output_keys[0])
+                })
+            })
+        });
 
     let data = component
         .children()
@@ -281,6 +308,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         inputs,
         outputs,
         output_pins,
+        bounded_scalar_pins_valid,
         input_type,
         input_parameter_name,
         input_preview,
@@ -290,6 +318,41 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         db_where,
         recursive: None,
     }
+}
+
+fn exact_pin_keys(component: &roxmltree::Node, tag: &str, count: usize) -> Option<Vec<u32>> {
+    let mut containers = component.children().filter(|node| node.has_tag_name(tag));
+    let Some(container) = containers.next() else {
+        return (count == 0).then(Vec::new);
+    };
+    if containers.next().is_some() {
+        return None;
+    }
+    let points: Vec<_> = container
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    if points.len() != count {
+        return None;
+    }
+    let mut keys = vec![0; count];
+    let mut seen_keys = std::collections::BTreeSet::new();
+    let mut positions = std::collections::BTreeSet::new();
+    for (index, point) in points.iter().enumerate() {
+        if !point.has_tag_name("datapoint") {
+            return None;
+        }
+        let position = match point.attribute("pos") {
+            Some(raw) => usize::try_from(parse_u32(Some(raw))?).ok()?,
+            None => index,
+        };
+        let key = parse_u32(point.attribute("key"))?;
+        if position >= count || !positions.insert(position) || !seen_keys.insert(key) {
+            return None;
+        }
+        keys[position] = key;
+    }
+    Some(keys)
 }
 
 fn parse_db_where(
@@ -952,5 +1015,128 @@ mod tests {
 
         let value_map = read(&document.root_element()).valuemap.unwrap();
         assert_eq!(value_map.default, Some(Value::Bool(false)));
+    }
+
+    #[test]
+    fn scalar_constant_pin_proof_keeps_raw_metadata_refusals() {
+        let original = r#"<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="4"/></targets><data><constant datatype="string" value="created"/></data></component>"#;
+        for valid in [
+            original.to_string(),
+            original.replace("<targets>", "<sources/><targets>"),
+            original.replace(" pos=\"0\"", ""),
+        ] {
+            let document = roxmltree::Document::parse(&valid).unwrap();
+            let component = read(&document.root_element());
+            assert!(component.bounded_scalar_pins_valid, "{valid}");
+            assert!(component.inputs.is_empty());
+            assert_eq!(component.outputs, [4]);
+            assert_eq!(component.output_pins, [Some(4)]);
+        }
+        for invalid in [
+            original.replace("pos=\"0\"", "pos=\"bad\""),
+            original.replace("pos=\"0\"", "pos=\"64\""),
+            original.replace("pos=\"0\"", "pos=\"1\""),
+            original.replace("key=\"4\"", "key=\"bad\""),
+            original.replace("key=\"4\"", "key=\"4294967296\""),
+            original.replace(" key=\"4\"", ""),
+            original.replace("<datapoint pos=\"0\" key=\"4\"/>", ""),
+            original.replace("<targets>", "<sources/><sources/><targets>"),
+            original.replace(
+                "<targets>",
+                "<sources><datapoint pos=\"0\" key=\"1\"/></sources><targets>",
+            ),
+            original.replace("<targets>", "<sources><other/></sources><targets>"),
+            original.replace("</targets>", "</targets><targets/>"),
+            original.replace("<datapoint", "<other"),
+            original.replace("kind=\"2\"", "kind=\"4\""),
+            original.replace("library=\"core\"", "library=\"foreign\""),
+            original.replace("name=\"constant\"", "name=\"other\""),
+        ] {
+            let document = roxmltree::Document::parse(&invalid).unwrap();
+            assert!(
+                !read(&document.root_element()).bounded_scalar_pins_valid,
+                "{invalid}"
+            );
+        }
+
+        // Duplicate positions collapse to one output in the general reader.
+        let duplicate = original.replace(
+            "<datapoint pos=\"0\" key=\"4\"/>",
+            "<datapoint pos=\"0\" key=\"4\"/><datapoint pos=\"0\" key=\"5\"/>",
+        );
+        let document = roxmltree::Document::parse(&duplicate).unwrap();
+        let component = read(&document.root_element());
+        assert!(component.inputs.is_empty());
+        assert_eq!(component.outputs, [4]);
+        assert_eq!(component.output_pins, [Some(4)]);
+        assert!(!component.bounded_scalar_pins_valid);
+    }
+
+    #[test]
+    fn scalar_conditional_pin_proof_keeps_raw_metadata_refusals() {
+        let original = r#"<component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="1"/><datapoint pos="1" key="2"/><datapoint pos="2" key="3"/></sources><targets><datapoint pos="0" key="4"/></targets></component>"#;
+        for valid in [
+            original.to_string(),
+            original.replace(" pos=\"0\"", "").replace(" pos=\"1\"", "").replace(" pos=\"2\"", ""),
+            original.replace(
+                "<datapoint pos=\"0\" key=\"1\"/><datapoint pos=\"1\" key=\"2\"/><datapoint pos=\"2\" key=\"3\"/>",
+                "<datapoint pos=\"2\" key=\"3\"/><datapoint pos=\"0\" key=\"1\"/><datapoint pos=\"1\" key=\"2\"/>",
+            ),
+        ] {
+            let document = roxmltree::Document::parse(&valid).unwrap();
+            let component = read(&document.root_element());
+            assert!(component.bounded_scalar_pins_valid, "{valid}");
+            assert_eq!(component.inputs, [Some(1), Some(2), Some(3)]);
+            assert_eq!(component.outputs, [4]);
+            assert_eq!(component.output_pins, [Some(4)]);
+        }
+        for invalid in [
+            original.replace("pos=\"2\"", "pos=\"bad\""),
+            original.replace("pos=\"2\"", "pos=\"64\""),
+            original.replace("pos=\"2\"", "pos=\"1\""),
+            original.replace("key=\"3\"", "key=\"bad\""),
+            original.replace("key=\"4\"", "key=\"bad\""),
+            original.replace(" key=\"3\"", ""),
+            original.replace(" key=\"4\"", ""),
+            original.replace("<datapoint pos=\"2\" key=\"3\"/>", ""),
+            original.replace("<datapoint pos=\"0\" key=\"4\"/>", ""),
+            original.replace(
+                "<datapoint pos=\"2\" key=\"3\"/>",
+                "<datapoint pos=\"2\" key=\"3\"/><datapoint pos=\"2\" key=\"5\"/>",
+            ),
+            original.replace(
+                "<datapoint pos=\"0\" key=\"4\"/>",
+                "<datapoint pos=\"0\" key=\"4\"/><datapoint pos=\"0\" key=\"5\"/>",
+            ),
+            original.replace("key=\"3\"", "key=\"2\""),
+            original.replace("key=\"4\"", "key=\"1\""),
+            original.replace("</sources>", "</sources><sources/>"),
+            original.replace("</targets>", "</targets><targets/>"),
+            original.replace("name=\"if-else\"", "name=\"other\""),
+            original.replace("kind=\"4\"", "kind=\"5\""),
+            original.replace("library=\"core\"", "library=\"foreign\""),
+        ] {
+            let document = roxmltree::Document::parse(&invalid).unwrap();
+            assert!(
+                !read(&document.root_element()).bounded_scalar_pins_valid,
+                "{invalid}"
+            );
+        }
+
+        // General pin normalization preserves a valid-looking three-input shape.
+        for malformed in [
+            original.replace("pos=\"2\"", "pos=\"bad\""),
+            original.replace(
+                "<datapoint pos=\"2\" key=\"3\"/>",
+                "<datapoint pos=\"2\" key=\"3\"/><datapoint pos=\"2\" key=\"5\"/>",
+            ),
+        ] {
+            let document = roxmltree::Document::parse(&malformed).unwrap();
+            let component = read(&document.root_element());
+            assert_eq!(component.inputs, [Some(1), Some(2), Some(3)]);
+            assert_eq!(component.outputs, [4]);
+            assert_eq!(component.output_pins, [Some(4)]);
+            assert!(!component.bounded_scalar_pins_valid, "{malformed}");
+        }
     }
 }

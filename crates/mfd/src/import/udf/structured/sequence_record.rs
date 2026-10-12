@@ -560,6 +560,7 @@ mod tests {
             inputs: input_keys.into_iter().map(Some).collect(),
             outputs: vec![output],
             output_pins: vec![Some(output)],
+            bounded_scalar_pins_valid: false,
             input_type: None,
             input_parameter_name: None,
             input_preview: None,

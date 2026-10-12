@@ -1412,3 +1412,6 @@ mod xml_mixed_named_outputs;
 
 #[path = "code_generation/constructed_variable_copy_all.rs"]
 mod constructed_variable_copy_all;
+
+#[path = "code_generation/constructed_variable_conditionals.rs"]
+mod constructed_variable_conditionals;

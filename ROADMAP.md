@@ -698,6 +698,8 @@ valid direct literal and scalar inputs in an existing plain parent frame. The
 admits bounded exact scalar aliases that retain their selected schema. Copy-All
 projects matching complete scalar item schemas in the existing frame when the
 declared collections permit a singleton, preserving explicit target bindings.
+Scalar assignments also admit bounded three-input core conditionals after
+proving all operands in that frame; direct literals still establish presence.
 Competing connectors, incompatible facets and new collection frames retain
 their refusals.
 

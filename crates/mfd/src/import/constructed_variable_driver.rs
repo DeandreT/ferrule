@@ -102,24 +102,11 @@ fn recognize_record(
         {
             return false;
         }
-        if literal_constant_value(feed, builder).is_some()
-            && builder
-                .fn_components
-                .iter()
-                .filter(|component| component.outputs.contains(&feed))
-                .count()
-                == 1
-            && !builder
-                .sources
-                .iter()
-                .any(|source| source.ports.contains_key(&feed))
-            && !builder
-                .intermediates
-                .iter()
-                .any(|component| component.output_keys.contains(&feed))
-        {
+        if direct_scalar_literal(feed, builder) {
             present = true;
-        } else if scopes.is_some_and(|scopes| !parent_scalar(feed, target_path, builder, scopes)) {
+        } else if scopes.is_some_and(|scopes| {
+            !ScalarAssignmentProof::default().prove(feed, target_path, builder, scopes, 0)
+        }) {
             return false;
         }
     }
@@ -187,6 +174,117 @@ pub(super) fn projection(
 }
 
 const MAX_SCALAR_ALIAS_HOPS: usize = 64;
+
+fn direct_scalar_literal(feed: u32, builder: &GraphBuilder<'_>) -> bool {
+    literal_constant_value(feed, builder).is_some()
+        && builder
+            .fn_components
+            .iter()
+            .filter(|owner| owner.outputs.contains(&feed))
+            .count()
+            == 1
+        && builder.fn_by_output.get(&feed).is_some_and(|index| {
+            builder.fn_components[*index].output_pins.as_slice() == [Some(feed)]
+                && builder.fn_components[*index].bounded_scalar_pins_valid
+        })
+        && !builder
+            .sources
+            .iter()
+            .any(|owner| owner.ports.contains_key(&feed))
+        && !builder
+            .intermediates
+            .iter()
+            .any(|owner| owner.output_keys.contains(&feed))
+        && !builder.udf_by_output.contains_key(&feed)
+        && !builder.has_source_node_functions(feed)
+}
+
+const MAX_CONDITIONAL_DEPTH: usize = 32;
+const MAX_SCALAR_OPERANDS: usize = 256;
+
+#[derive(Default)]
+struct ScalarAssignmentProof {
+    active: BTreeSet<u32>,
+    visited: usize,
+}
+
+impl ScalarAssignmentProof {
+    fn prove(
+        &mut self,
+        feed: u32,
+        target_path: &[String],
+        builder: &GraphBuilder<'_>,
+        scopes: &ScopeBuilder,
+        depth: usize,
+    ) -> bool {
+        self.visited += 1;
+        if self.visited > MAX_SCALAR_OPERANDS || !self.active.insert(feed) {
+            return false;
+        }
+        let admitted = self.prove_operand(feed, target_path, builder, scopes, depth);
+        self.active.remove(&feed);
+        admitted
+    }
+
+    fn prove_operand(
+        &mut self,
+        feed: u32,
+        target_path: &[String],
+        builder: &GraphBuilder<'_>,
+        scopes: &ScopeBuilder,
+        depth: usize,
+    ) -> bool {
+        if builder.udf_by_output.contains_key(&feed) {
+            return false;
+        }
+        if parent_scalar(feed, target_path, builder, scopes) {
+            return true;
+        }
+        if builder
+            .sources
+            .iter()
+            .any(|source| source.ports.contains_key(&feed))
+            || builder
+                .intermediates
+                .iter()
+                .any(|owner| owner.output_keys.contains(&feed))
+            || builder.udf_by_output.contains_key(&feed)
+            || builder.has_source_node_functions(feed)
+        {
+            return false;
+        }
+        let mut owners = builder
+            .fn_components
+            .iter()
+            .filter(|owner| owner.outputs.contains(&feed));
+        let Some(function) = owners.next() else {
+            return false;
+        };
+        if owners.next().is_some() || function.output_pins.as_slice() != [Some(feed)] {
+            return false;
+        }
+        if literal_constant_value(feed, builder).is_some() {
+            return function.bounded_scalar_pins_valid;
+        }
+        if depth == MAX_CONDITIONAL_DEPTH
+            || !function.bounded_scalar_pins_valid
+            || function.library != "core"
+            || function.name != "if-else"
+            || function.kind != 4
+            || function.outputs.as_slice() != [feed]
+        {
+            return false;
+        }
+        let [Some(condition), Some(then), Some(otherwise)] = function.inputs.as_slice() else {
+            return false;
+        };
+        [condition, then, otherwise].into_iter().all(|input| {
+            builder.edge_from.get(input).is_some_and(|operand| {
+                self.prove(*operand, target_path, builder, scopes, depth + 1)
+            })
+        })
+    }
+}
 
 fn parent_scalar(
     mut feed: u32,
@@ -305,6 +403,7 @@ fn direct_parent_scalar(
             .skip(1)
             .any(|source| source.ports.contains_key(&feed))
         || builder.fn_by_output.contains_key(&feed)
+        || builder.udf_by_output.contains_key(&feed)
         || builder.has_source_node_functions(feed)
         || builder
             .intermediates

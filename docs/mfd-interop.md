@@ -827,8 +827,16 @@ same bounded record proof, including a declared record collection that permits
 one item. Compare complete item schemas apart from local names and separately
 proved cardinality/uniqueness metadata; retain the original selected and target
 schemas. Explicit target scalar bindings take precedence over projected fields.
+Scalar assignments may also use exact core kind-4 `if-else` components with
+three unambiguous connected inputs and one declared output. Prove every operand
+as a valid scalar literal, a qualified parent field or scalar alias, or another
+such conditional. Each assignment permits at most 32 nested conditionals and
+256 visited operands, including repeated references; branch evaluation remains
+lazy. A conditional result does not establish record presence. Cycles, malformed
+raw pin metadata, structural branches and unsupported computed operands retain
+refusals even when their branch would be unselected.
 Collection `contains` constraints, incompatible facets and singleton-excluding
-cardinality retain refusals. Computed inputs, competing connectors,
+cardinality retain refusals. Other computed inputs, competing connectors,
 uniterated collection crossings, controlled parent scopes and variable controls
 retain their refusals.
 

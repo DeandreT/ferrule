@@ -1,0 +1,91 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Count\":7},{\"Choose\":false,\"Count\":-2},{\"Choose\":true},{\"Choose\":false}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Count\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Count\":\"7\"}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{}],\"Other\":1}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{},{},{},{},{}]}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{}]}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  }
+]
