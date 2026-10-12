@@ -212,6 +212,18 @@ internal static partial class Program
             ("paired full phase nested and plain cursors", BasicFullCohortNestedAndPlain),
             ("paired source sort filter and window phases", BasicPairedSortFilterWindow),
             ("paired checked allocation controls", BasicPairedAllocationControls),
+            ("checked named input primary names and ordinals", NamedAdmissionPrimaryNamesAndOrdinals),
+            ("checked named input optional and required errors", NamedAdmissionOptionalAndRequiredFailures),
+            ("checked named input supplied error ordering", NamedAdmissionSuppliedOrderFailures),
+            ("checked named input catalogue refusals", NamedAdmissionCatalogueFailures),
+            ("checked named input root and byte budgets", NamedAdmissionRootAndByteLimits),
+            ("checked named input repeated roots and owner keys", NamedAdmissionRepeatedRootsAndSharedInstances),
+            ("checked named input retained complete phases", NamedAdmissionCompletePhaseStorage),
+            ("checked named input registry seed snapshots", NamedAdmissionRegistrySeedSnapshots),
+            ("checked named input null argument order", NamedAdmissionNullArgumentOrder),
+            ("checked named input malformed UTF16", NamedAdmissionMalformedUtf16),
+            ("checked named input once-only caller consumption", NamedAdmissionFrozenCountAndCallerErrors),
+            ("checked named input negative Count", NamedAdmissionNegativeCount),
         };
 
         foreach (var test in tests)
