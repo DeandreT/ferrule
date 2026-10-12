@@ -59,6 +59,8 @@ mod json_structure_variables;
 mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/json_variable_array_descendants.rs"]
+mod json_variable_array_descendants;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
 mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
