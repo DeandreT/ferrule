@@ -4,7 +4,11 @@ use egui_snarl::{InPinId, OutPinId, Snarl};
 use mapping::{Node, NodeId, Project, Scope, UserFunction};
 
 use super::{CanvasLayout, CanvasNode, PersistedCanvasNode};
-use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
+#[cfg(test)]
+use crate::canvas::source_blocks;
+use crate::canvas::{
+    SourceBlock, TargetBlock, project_source_blocks, source_conflicts, target_blocks,
+};
 use crate::canvas_endpoints::EndpointScrollState;
 use crate::canvas_layout::arrange_snarl;
 
@@ -114,8 +118,12 @@ fn source_pin_for_field(
     blocks: &[SourceBlock],
     frame: &Option<Vec<String>>,
     path: &[String],
+    unavailable_blocks: &std::collections::BTreeSet<usize>,
 ) -> Option<(usize, usize)> {
     let exact = blocks.iter().enumerate().find_map(|(block, section)| {
+        if unavailable_blocks.contains(&block) {
+            return None;
+        }
         section
             .leaves
             .iter()
@@ -126,14 +134,20 @@ fn source_pin_for_field(
         return exact;
     }
 
-    let mut legacy_matches = blocks.iter().enumerate().flat_map(|(block, section)| {
-        section
-            .leaves
-            .iter()
-            .enumerate()
-            .filter(|(_, leaf)| leaf.path == path)
-            .map(move |(pin, _)| (block, pin))
-    });
+    // Legacy unframed paths belonged to the primary catalog before named
+    // endpoints existed. Additional catalogs must not redirect those nodes.
+    let mut legacy_matches = blocks
+        .iter()
+        .take(1)
+        .enumerate()
+        .flat_map(|(block, section)| {
+            section
+                .leaves
+                .iter()
+                .enumerate()
+                .filter(|(_, leaf)| leaf.path == path)
+                .map(move |(pin, _)| (block, pin))
+        });
     let first = legacy_matches.next()?;
     legacy_matches.next().is_none().then_some(first)
 }
@@ -210,7 +224,8 @@ fn build_boundary_snarl(
     root_scope: &Scope,
     saved_nodes: Option<&[super::CanvasNodeLayout]>,
 ) -> Snarl<CanvasNode> {
-    let source_blocks = source_blocks(&project.source);
+    let source_blocks = project_source_blocks(project);
+    let unavailable_blocks = source_conflicts(&project.source, &project.extra_sources);
     let target_blocks = target_blocks(target_schema);
     let owned_items = crate::graph_viewer::project_sequence_item_ids(project);
 
@@ -226,7 +241,8 @@ fn build_boundary_snarl(
         .iter()
         .filter_map(|(&id, node)| match node {
             Node::SourceField { path, frame } if !owned_items.contains(&id) => {
-                source_pin_for_field(&source_blocks, frame, path).map(|pin| (id, pin))
+                source_pin_for_field(&source_blocks, frame, path, &unavailable_blocks)
+                    .map(|pin| (id, pin))
             }
             _ => None,
         })
@@ -287,14 +303,17 @@ fn build_boundary_snarl(
         }
     }
 
-    sync_endpoint_wires_with_owned_items(
+    sync_endpoint_wires_with_policy(
         &project.graph,
         root_scope,
         &source_blocks,
         &target_blocks,
         &EndpointScrollState::default(),
         &mut snarl,
-        &owned_items,
+        SourcePinPolicy {
+            owned_items: &owned_items,
+            unavailable_blocks: &unavailable_blocks,
+        },
     );
 
     let mut initial_sizes = std::collections::BTreeMap::new();
@@ -339,6 +358,46 @@ pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::V
     )
 }
 
+/// Rebuilds one project canvas while migrating source positions by alias,
+/// rather than lending a removed source's ordinal to its successor.
+pub(super) fn rebuild_source_snarl(
+    project: &Project,
+    previous_names: &[String],
+    previous: &Snarl<CanvasNode>,
+    target: Option<usize>,
+) -> Snarl<CanvasNode> {
+    let nodes = CanvasLayout::capture_nodes(previous)
+        .into_iter()
+        .filter_map(|mut entry| {
+            if let PersistedCanvasNode::Source { block } = &mut entry.node
+                && *block != 0
+            {
+                let name = previous_names.get(*block - 1)?;
+                *block = project
+                    .extra_sources
+                    .iter()
+                    .position(|source| &source.name == name)?
+                    + 1;
+            }
+            Some(entry)
+        })
+        .collect::<Vec<_>>();
+    match target {
+        Some(index) => project
+            .extra_targets
+            .get(index)
+            .map_or_else(Snarl::new, |target| {
+                build_boundary_snarl(project, &target.schema, &target.root, Some(&nodes))
+            }),
+        None => build_boundary_snarl(project, &project.target, &project.root, Some(&nodes)),
+    }
+}
+
+pub(crate) struct SourcePinPolicy<'a> {
+    pub(crate) owned_items: &'a std::collections::BTreeSet<NodeId>,
+    pub(crate) unavailable_blocks: &'a std::collections::BTreeSet<usize>,
+}
+
 /// Reconciles the visual endpoint wires with the graph for the currently
 /// visible source and target field windows. Mapping nodes remain the source
 /// of truth, so scrolling never changes a binding.
@@ -374,6 +433,29 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
     snarl: &mut Snarl<CanvasNode>,
     owned_items: &std::collections::BTreeSet<NodeId>,
 ) {
+    sync_endpoint_wires_with_policy(
+        graph,
+        root_scope,
+        source_blocks,
+        target_blocks,
+        scroll,
+        snarl,
+        SourcePinPolicy {
+            owned_items,
+            unavailable_blocks: &Default::default(),
+        },
+    );
+}
+
+pub(crate) fn sync_endpoint_wires_with_policy(
+    graph: &mapping::Graph,
+    root_scope: &Scope,
+    source_blocks: &[SourceBlock],
+    target_blocks: &[TargetBlock],
+    scroll: &EndpointScrollState,
+    snarl: &mut Snarl<CanvasNode>,
+    policy: SourcePinPolicy<'_>,
+) {
     let mut source_nodes = std::collections::BTreeMap::new();
     let mut target_nodes = std::collections::BTreeMap::new();
     let mut graph_nodes = std::collections::BTreeMap::new();
@@ -395,8 +477,9 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { path, frame } if !owned_items.contains(&id) => {
-                source_pin_for_field(source_blocks, frame, path).map(|pin| (id, pin))
+            Node::SourceField { path, frame } if !policy.owned_items.contains(&id) => {
+                source_pin_for_field(source_blocks, frame, path, policy.unavailable_blocks)
+                    .map(|pin| (id, pin))
             }
             _ => None,
         })

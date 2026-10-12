@@ -284,6 +284,50 @@ fn visible_texts(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     found
 }
 
+fn source_picker_labels(output: &egui::FullOutput) -> Vec<String> {
+    fn visit(
+        shape: &egui::epaint::Shape,
+        clip: egui::Rect,
+        labels: &mut Vec<(String, egui::Rect, egui::Rect)>,
+    ) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                labels.push((
+                    text.galley.text().to_owned(),
+                    clip,
+                    text.visual_bounding_rect(),
+                ));
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    visit(shape, clip, labels);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut labels = Vec::new();
+    for shape in &output.shapes {
+        visit(&shape.shape, shape.clip_rect, &mut labels);
+    }
+    eprintln!("XML source picker complete clipped labels before assertions={labels:?}");
+    let roots = labels
+        .iter()
+        .filter(|(label, clip, rect)| label == "<source root>" && clip.contains(rect.center()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        roots.len(),
+        1,
+        "one visible source-root choice in the picker"
+    );
+    let picker_clip = roots[0].1;
+    labels
+        .into_iter()
+        .filter(|(_, clip, rect)| *clip == picker_clip && clip.contains(rect.center()))
+        .map(|(label, _, _)| label)
+        .collect()
+}
+
 fn node_rect(
     app: &FerruleApp,
     context: &egui::Context,
@@ -745,10 +789,11 @@ fn xml_serializer_real_menu_refusals_and_created_node_keep_missing_lazy_and_writ
             .center(),
     );
     let choices = settle(&mut nested, &nested_context, true);
+    let source_choices = source_picker_labels(&choices);
     observe(&nested, MappingDocument::Main);
-    assert!(text_rect(&choices, "<source root>").is_some());
-    assert!(text_rect(&choices, "Row").is_none());
-    assert!(text_rect(&choices, "Row / Detail").is_none());
+    assert!(source_choices.iter().any(|label| label == "<source root>"));
+    assert!(!source_choices.iter().any(|label| label == "Row"));
+    assert!(!source_choices.iter().any(|label| label == "Row / Detail"));
     frame(
         &mut nested,
         &nested_context,

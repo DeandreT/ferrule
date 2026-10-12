@@ -313,7 +313,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null
+        "PrimaryRoot": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null
       },
       "inner_type": null
     }
@@ -457,7 +459,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null
+        "PrimaryRoot": null,
+        "OwnedSourceFailure": null,
+        "BasicSourceBridgeFailure": null
       },
       "inner_type": null
     }

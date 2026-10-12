@@ -183,6 +183,8 @@ pub enum JsonFormatError {
     InvalidRecursiveReference { node: String },
     #[error("XML attribute-use metadata on `{node}` requires one named singular scalar attribute")]
     InvalidXmlAttributeRequired { node: String },
+    #[error("JSON array-wrapper metadata on `{name}` is invalid")]
+    InvalidArrayWrapperMetadata { name: String },
     #[error(
         "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
     )]
@@ -202,6 +204,11 @@ impl<'a> RecursiveSchemas<'a> {
         let mut references = Vec::new();
         let mut pending = vec![root];
         while let Some(node) = pending.pop() {
+            if !node.json_array_wrapper_is_valid() {
+                return Err(JsonFormatError::InvalidArrayWrapperMetadata {
+                    name: node.name.clone(),
+                });
+            }
             if !node.xml_attribute_required_is_valid() {
                 return Err(JsonFormatError::InvalidXmlAttributeRequired {
                     node: node.name.clone(),
@@ -574,6 +581,10 @@ fn read_node_with_patterns(
     } else {
         (schema, recursion_depth)
     };
+    if let Some(item) = schema.json_array_wrapper_item() {
+        let value = read_repeated(value, item, recursive, recursion_depth, patterns)?;
+        return Ok(Instance::Group(vec![(item.name.clone(), value)].into()));
+    }
     if schema.json_any {
         return Ok(Instance::Scalar(Value::String(serde_json::to_string(
             value,
@@ -1056,6 +1067,30 @@ fn write_single_node_with_patterns(
         },
         item => item,
     };
+    if let Some(item) = schema.json_array_wrapper_item() {
+        let Instance::Group(fields) = instance else {
+            return Err(write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                instance_type_name(instance),
+            ));
+        };
+        if fields.len() != 1 {
+            return Err(write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                instance_type_name(instance),
+            ));
+        }
+        let Some((_, value)) = fields.iter().find(|(name, _)| name == &item.name) else {
+            return Err(write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                instance_type_name(instance),
+            ));
+        };
+        return write_node_with_patterns(item, value, recursive, recursion_depth, patterns);
+    }
     if schema.json_any {
         return write_json_any(schema, instance);
     }

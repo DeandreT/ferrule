@@ -29,6 +29,9 @@ const MAX_HTTP_RESPONSE_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_REDIRECTS: u32 = 5;
 
 mod code_generation;
+mod filesystem_pdf_reader;
+#[cfg(test)]
+mod filesystem_pdf_reader_tests;
 mod output_documents;
 mod payload;
 mod pdf_worker_policy;
@@ -36,6 +39,7 @@ mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
 mod project_paths;
+pub use filesystem_pdf_reader::FilesystemPdfReader;
 pub use pdf_worker_policy::FilesystemRunPolicy;
 mod rest_json;
 mod stdio;
@@ -67,6 +71,7 @@ pub use payload::{
 pub use pipeline::{
     PipelineArtifact, PipelineHostFile, PipelineOutputFile, PipelineRunOptions, PipelineRunOutcome,
     run_pipeline_file, run_pipeline_file_with_options,
+    run_pipeline_file_with_options_and_pdf_reader,
 };
 pub use pipeline_preview::{
     PipelineHostPayload, PipelinePreviewArtifact, PipelinePreviewOptions, PipelinePreviewOutcome,
@@ -313,8 +318,28 @@ pub fn run_project_value_with_options(
     run_project_value_with_filesystem_policy(project, project_path, options, None)
 }
 
+/// Loads a filesystem project with a caller-owned PDF reader.
+pub fn run_project_with_options_and_pdf_reader(
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    reader: &dyn FilesystemPdfReader,
+) -> anyhow::Result<RunOutcome> {
+    let project = load_project(project_path)?;
+    run_project_value_with_options_and_pdf_reader(&project, project_path, options, reader)
+}
+
+/// Runs an in-memory project with a borrowed reader for configured filesystem PDF inputs.
+pub fn run_project_value_with_options_and_pdf_reader(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    reader: &dyn FilesystemPdfReader,
+) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_pdf_reader(project, project_path, options, Some(reader))
+}
+
 /// Loads a filesystem project with an explicit owned-PDF policy. Payload and
-/// pipeline entrypoints retain their existing in-process behavior.
+/// default pipeline entrypoints retain their existing in-process behavior.
 pub fn run_project_with_options_and_filesystem_policy(
     project_path: &Path,
     options: &RunOptions<'_>,
@@ -338,6 +363,20 @@ fn run_project_value_with_filesystem_policy(
     project_path: &Path,
     options: &RunOptions<'_>,
     policy: Option<&FilesystemRunPolicy>,
+) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_pdf_reader(
+        project,
+        project_path,
+        options,
+        policy.map(|policy| policy as &dyn FilesystemPdfReader),
+    )
+}
+
+fn run_project_value_with_pdf_reader(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    reader: Option<&dyn FilesystemPdfReader>,
 ) -> anyhow::Result<RunOutcome> {
     require_valid(project)?;
 
@@ -368,11 +407,11 @@ fn run_project_value_with_filesystem_policy(
         .map(|target| target.destination.path().to_path_buf())
         .context("project run selected no targets")?;
 
-    let source_instance = read_instance_with_policy(
+    let source_instance = read_instance_with_pdf_reader(
         &input_path,
         &project.source,
         &project.source_options,
-        policy,
+        reader,
     )?;
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
@@ -391,7 +430,7 @@ fn run_project_value_with_filesystem_policy(
         };
         extras.push((
             extra.name.clone(),
-            read_instance_with_policy(&path, &extra.schema, &extra.options, policy)
+            read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader)
                 .with_context(|| format!("loading extra source `{}`", extra.name))?,
         ));
     }
@@ -401,7 +440,7 @@ fn run_project_value_with_filesystem_policy(
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
     let dynamic_loader =
-        ProjectDynamicSourceLoader::with_policy(project_dir, &project.extra_sources, policy)
+        ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader)
             .with_trace_sink(options.trace_sink);
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
@@ -715,7 +754,7 @@ struct ProjectDynamicSourceLoader<'a> {
     project_dir: &'a Path,
     sources: &'a [mapping::NamedSource],
     cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
-    policy: Option<&'a FilesystemRunPolicy>,
+    reader: Option<&'a dyn FilesystemPdfReader>,
     trace_sink: Option<&'a dyn TraceSink>,
 }
 
@@ -729,11 +768,23 @@ impl<'a> ProjectDynamicSourceLoader<'a> {
         sources: &'a [mapping::NamedSource],
         policy: Option<&'a FilesystemRunPolicy>,
     ) -> Self {
+        Self::with_pdf_reader(
+            project_dir,
+            sources,
+            policy.map(|policy| policy as &dyn FilesystemPdfReader),
+        )
+    }
+
+    fn with_pdf_reader(
+        project_dir: &'a Path,
+        sources: &'a [mapping::NamedSource],
+        reader: Option<&'a dyn FilesystemPdfReader>,
+    ) -> Self {
         Self {
             project_dir,
             sources,
             cache: RefCell::new(BTreeMap::new()),
-            policy,
+            reader,
             trace_sink: None,
         }
     }
@@ -765,7 +816,7 @@ impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
             self.project_dir.join(path)
         };
         let instance = Arc::new(
-            read_instance_with_policy(&resolved, &source.schema, &source.options, self.policy)
+            read_instance_with_pdf_reader(&resolved, &source.schema, &source.options, self.reader)
                 .map_err(|error| error.to_string())?,
         );
         self.cache.borrow_mut().insert(key, Arc::clone(&instance));
@@ -1378,6 +1429,20 @@ fn read_instance_with_policy(
     options: &FormatOptions,
     policy: Option<&FilesystemRunPolicy>,
 ) -> anyhow::Result<Instance> {
+    read_instance_with_pdf_reader(
+        path,
+        schema,
+        options,
+        policy.map(|policy| policy as &dyn FilesystemPdfReader),
+    )
+}
+
+fn read_instance_with_pdf_reader(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    reader: Option<&dyn FilesystemPdfReader>,
+) -> anyhow::Result<Instance> {
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;
@@ -1436,8 +1501,8 @@ fn read_instance_with_policy(
 
     if let Some(pdf) = &options.pdf {
         reject_pdf_conflicts(options, "input")?;
-        let instance = match policy {
-            Some(policy) => policy.read_pdf(path, pdf),
+        let instance = match reader {
+            Some(reader) => reader.read_pdf(path, pdf),
             None => format_pdf::read(path, pdf).map_err(anyhow::Error::new),
         };
         return instance.with_context(|| format!("reading input {}", path.display()));

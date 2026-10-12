@@ -561,6 +561,11 @@ pub struct SchemaNode {
     /// array wrapper.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub container_nullable: bool,
+    /// This repeating group preserves an outer JSON array whose items are
+    /// themselves arrays. Its sole repeating `item` child owns the complete
+    /// inner array schema; JSON boundaries make this group frame transparent.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json_array_wrapper: bool,
     /// This string scalar stores one arbitrary JSON value as canonical JSON
     /// text. JSON boundaries use it for unconstrained dynamic object fields;
     /// other formats and the mapping graph continue to see an ordinary string.
@@ -759,6 +764,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             container_nullable: bool,
             #[serde(default)]
+            json_array_wrapper: bool,
+            #[serde(default)]
             json_any: bool,
             #[serde(default)]
             fixed: Option<String>,
@@ -828,6 +835,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             xml_attribute_required: repr.xml_attribute_required,
             nullable: repr.nullable,
             container_nullable: repr.container_nullable,
+            json_array_wrapper: repr.json_array_wrapper,
             json_any: repr.json_any,
             fixed: repr.fixed,
             json_allowed_values: repr.json_allowed_values,
@@ -855,6 +863,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
             database_relation: repr.database_relation,
             kind: repr.kind,
         };
+        if guard.is_root && !node.json_array_wrappers_tree_is_valid() {
+            return Err(serde::de::Error::custom(
+                "invalid JSON array-wrapper metadata",
+            ));
+        }
         if guard.is_root
             && (!node.metadata_tree_without_pattern_evaluation_is_valid()
                 || !node.json_pattern_budget_is_valid())
@@ -945,6 +958,8 @@ pub enum SchemaKind {
 /// Maximum number of items inspected by one exact JSON `uniqueItems`
 /// assertion.
 pub const MAX_JSON_UNIQUE_ITEMS: usize = 1_000_000;
+/// The declared item role of an explicit nested JSON array frame.
+pub const JSON_ARRAY_ITEM_FIELD: &str = "item";
 /// Maximum number of scalar/container nodes canonicalized by one exact JSON
 /// `uniqueItems` assertion.
 pub const MAX_JSON_UNIQUE_KEY_NODES: usize = 1_000_000;
@@ -1079,6 +1094,7 @@ impl SchemaNode {
     /// Checks every cross-field schema metadata invariant.
     pub fn metadata_is_valid(&self) -> bool {
         self.alternatives_are_valid()
+            && self.json_array_wrapper_is_valid()
             && self.required_fields_are_valid()
             && self.xml_name_alternatives_are_valid()
             && self.recursive_ref_is_valid()
@@ -1117,6 +1133,7 @@ impl SchemaNode {
 
     fn metadata_without_pattern_evaluation_is_valid(&self) -> bool {
         self.alternatives_are_valid()
+            && self.json_array_wrapper_is_valid()
             && self.required_fields_are_valid()
             && self.xml_name_alternatives_are_valid()
             && self.recursive_ref_is_valid()
@@ -1170,6 +1187,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_array_wrapper: false,
             json_any: false,
             fixed: None,
             json_allowed_values: None,
@@ -1221,6 +1239,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_array_wrapper: false,
             json_any: false,
             fixed: None,
             json_allowed_values: None,
@@ -1304,6 +1323,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_array_wrapper: false,
             json_any: false,
             fixed: None,
             json_allowed_values: None,
@@ -2463,6 +2483,122 @@ impl SchemaNode {
     /// Checks that JSON container nullability belongs to an object or array.
     pub fn container_nullable_is_valid(&self) -> bool {
         !self.container_nullable || self.repeating || matches!(self.kind, SchemaKind::Group { .. })
+    }
+
+    /// Validates the distinct array frame without copying its child tree.
+    pub fn json_array_wrapper_is_valid(&self) -> bool {
+        if !self.json_array_wrapper {
+            return true;
+        }
+        let SchemaKind::Group {
+            children,
+            alternatives,
+            required,
+            xml_restricted_alternatives,
+            dynamic,
+        } = &self.kind
+        else {
+            return false;
+        };
+        self.repeating
+            && matches!(children.as_slice(), [item] if item.name == JSON_ARRAY_ITEM_FIELD && item.repeating)
+            && alternatives.is_empty()
+            && required.is_empty()
+            && xml_restricted_alternatives.is_empty()
+            && dynamic.is_none()
+            && self.xml_namespace.is_none()
+            && self.xml_name_alternatives.is_empty()
+            && self.xml_wildcard_namespace.is_none()
+            && self.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+            && self.recursive_ref.is_none()
+            && !self.attribute
+            && !self.text
+            && !self.nillable
+            && !self.xml_optional
+            && !self.xml_attribute_required
+            && !self.nullable
+            && !self.json_any
+            && self.fixed.is_none()
+            && self.json_allowed_values.is_none()
+            && self.numeric_range.is_none()
+            && self.json_multiple_of.is_none()
+            && self.json_dependent_schemas.is_none()
+            && self.property_count_range.is_none()
+            && self.json_property_dependencies.is_none()
+            && self.json_pattern_property_names.is_none()
+            && self.json_property_names.is_none()
+            && self.string_length_range.is_none()
+            && self.json_patterns.is_none()
+            && self.json_formats.is_empty()
+            && self.default.is_none()
+            && self.value_generation.is_none()
+            && self.alternative_mode == GroupAlternativeMode::Exclusive
+            && self.xml_alternative_kind == XmlAlternativeKind::XsiType
+            && !self.xml_type_alternatives
+            && self.xml_default_type.is_none()
+            && self.xml_repeating_sequences.is_empty()
+            && self.xml_repeating_choices.is_empty()
+            && self.database_relation.is_none()
+    }
+
+    /// The complete inner array schema of a validated distinct array frame.
+    pub fn json_array_wrapper_item(&self) -> Option<&SchemaNode> {
+        if !self.json_array_wrapper || !self.json_array_wrapper_is_valid() {
+            return None;
+        }
+        let SchemaKind::Group { children, .. } = &self.kind else {
+            return None;
+        };
+        children.first()
+    }
+
+    pub fn with_json_array_wrapper(mut self) -> Option<Self> {
+        self.json_array_wrapper = true;
+        self.json_array_wrapper_is_valid().then_some(self)
+    }
+
+    pub fn json_array_wrappers_tree_is_valid(&self) -> bool {
+        self.walk_json_schema_nodes(|node| node.json_array_wrapper_is_valid())
+    }
+
+    /// Physical non-JSON boundaries must not reinterpret these group frames.
+    pub fn contains_json_array_wrapper(&self) -> bool {
+        !self.walk_json_schema_nodes(|node| !node.json_array_wrapper)
+    }
+
+    fn walk_json_schema_nodes(&self, mut accept: impl FnMut(&SchemaNode) -> bool) -> bool {
+        let mut pending = vec![self];
+        while let Some(node) = pending.pop() {
+            if !accept(node) {
+                return false;
+            }
+            if let SchemaKind::Group {
+                children, dynamic, ..
+            } = &node.kind
+            {
+                pending.extend(children.iter());
+                if let Some(dynamic) = dynamic {
+                    pending.push(dynamic);
+                }
+            }
+            if let Some(contains) = &node.json_contains {
+                pending.extend(
+                    contains
+                        .as_slice()
+                        .iter()
+                        .filter_map(|term| term.predicate().as_schema()),
+                );
+            }
+            if let Some(dependent) = &node.json_dependent_schemas {
+                pending.extend(
+                    dependent
+                        .as_slice()
+                        .iter()
+                        .filter_map(|term| term.predicate().as_schema()),
+                );
+            }
+        }
+        true
     }
 
     /// Checks that arbitrary JSON values use the graph's canonical string domain.

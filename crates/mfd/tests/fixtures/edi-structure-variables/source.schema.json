@@ -1,0 +1,1 @@
+{"title":"Source","type":"object","properties":{"Text":{"type":"string"},"Count":{"type":"integer"}},"additionalProperties":false}

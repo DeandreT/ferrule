@@ -201,7 +201,7 @@ mod tests {
             }
         }
         assert!(
-            matches!(serialize_xml(19, "FERRULE-EMBEDDED-SCHEMA/3\n{}", &instance, false, false, None),
+            matches!(serialize_xml(19, "FERRULE-EMBEDDED-SCHEMA/4\n{}", &instance, false, false, None),
             Err(RuntimeError::XmlSerialization { node: 19, message }) if message.contains("unsupported"))
         );
     }
