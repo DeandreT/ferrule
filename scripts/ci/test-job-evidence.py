@@ -80,12 +80,15 @@ class JobEvidenceTests(unittest.TestCase):
         self.assertFalse((self.home / "ci-tmp").exists())
 
     def test_codegen_matrix_identity_is_separate(self):
+        roots = []
         for number, suite in enumerate(("codegen-crates", "codegen-mappings")):
             settings = self.begin(str(number) * 32, FERRULE_CI_SUITE="codegen",
                                   FERRULE_CI_EVIDENCE_SUITE=suite)
             record = json.loads(Path(settings["FERRULE_CI_EVIDENCE_CANARY"]).read_bytes())
             self.assertEqual(record["identity"]["suite"], suite)
             self.assertEqual(settings["FERRULE_CI_EVIDENCE_ID"], str(number) * 32)
+            roots.append(Path(settings["FERRULE_CI_EVIDENCE_ROOT"]))
+        self.assertNotEqual(*roots)
         with self.assertRaises(ValueError):
             self.begin("2" * 32, FERRULE_CI_SUITE="codegen")
 
@@ -93,13 +96,17 @@ class JobEvidenceTests(unittest.TestCase):
         environment = self.environment | {"GITHUB_RUN_ID": "9" * 20,
             "GITHUB_RUN_ATTEMPT": "9" * 20, "GITHUB_JOB": "g" * 80,
             "FERRULE_CI_SUITE": "codegen", "FERRULE_CI_EVIDENCE_SUITE": "codegen-mappings"}
-        with tempfile.TemporaryDirectory(prefix="f-") as directory:
+        # Model one runner home; inheriting TMPDIR nests that home inside an
+        # existing runner scratch root and tests an artificial double prefix.
+        with tempfile.TemporaryDirectory(prefix="f-", dir="/tmp") as directory:
             home = Path(directory) / "r"
             home.mkdir(mode=0o700)
             settings = evidence.begin(home, environment, nonce="a" * 32)
-            configured = Path("/home/ferrule-runner/ci-tmp/jobs") / settings["FERRULE_CI_EVIDENCE_ID"] / "tmp/sccache.socket"
+            configured = Path("/home/ferrule-runner/ci-tmp/jobs") / settings["FERRULE_CI_EVIDENCE_ID"] / "tmp/sccacheABC123/sock"
             self.assertLess(len(os.fsencode(configured)), 108)
-            endpoint = str(Path(settings["TMPDIR"]) / "sccache.socket")
+            startup = Path(settings["TMPDIR"]) / "sccacheABC123"
+            startup.mkdir()
+            endpoint = str(startup / "sock")
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                 server.bind(endpoint)
                 server.listen(1)
