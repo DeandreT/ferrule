@@ -29,6 +29,7 @@ mod reachable;
 mod recursive;
 mod runtime_dependency;
 mod scope_serde;
+mod source_owner;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -100,6 +101,7 @@ pub use pipeline::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage};
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
+pub use source_owner::{OwnedSourceRef, SourceOwner, SourceSelector};
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
     SwiftValueExpr,
