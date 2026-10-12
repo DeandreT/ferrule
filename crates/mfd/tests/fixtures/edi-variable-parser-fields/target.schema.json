@@ -1,0 +1,1 @@
+{"title":"Report","type":"object","properties":{"Text":{"type":"string"},"Count":{"type":"integer"},"ParserErrors_Code":{"type":"string"}},"additionalProperties":false}

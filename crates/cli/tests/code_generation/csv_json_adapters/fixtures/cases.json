@@ -160,9 +160,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "routes": [
@@ -228,9 +228,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "routes": [
@@ -2609,9 +2609,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "routes": [
@@ -2731,9 +2731,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "routes": [
@@ -4563,9 +4563,9 @@
         "RuntimeParameter": "Caption",
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "expected_no_output": true,
@@ -4812,9 +4812,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "expected_no_output": true,
@@ -4929,9 +4929,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "expected_no_output": true,
@@ -5046,9 +5046,9 @@
         "RuntimeParameter": null,
         "SourceField": null,
         "FoundInstance": null,
-        "PrimaryRoot": null,
         "OwnedSourceFailure": null,
-        "BasicSourceBridgeFailure": null
+        "BasicSourceBridgeFailure": null,
+        "PrimaryRoot": null
       }
     },
     "expected_no_output": true,

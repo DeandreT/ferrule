@@ -1,0 +1,94 @@
+[
+  {
+    "input": "{}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"OtherChoose\":true,\"Count\":7}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 7
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"OtherChoose\":false,\"Count\":7}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"OtherChoose\":true,\"Count\":-2}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"OtherChoose\":true}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Count\":7}",
+    "boolean_error": {
+      "node": 4,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"OtherChoose\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"OtherChoose\":\"true\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"Count\":\"7\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Unknown\":1}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"Count\":7}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  }
+]

@@ -791,8 +791,54 @@ inputs, unresolved selections and variable scope controls retain refusals.
 JSON variable selectors can cross a declared object array through an explicit
 `array` followed by its canonical `item` / `json-item` role, then select a
 non-repeating descendant. The selected schema remains complete; graph inputs
-establish its value and iteration context. Selected array roots, nested-array
-wrappers, malformed item roles and alternative views retain refusals.
+establish its value and iteration context. Selecting an item as a variable root
+does not remove repetition. Nested-array wrappers, malformed item roles and
+alternative views retain refusals.
+
+A terminal `array` view can select a complete array of records for transparent
+forwarding. One explicit structural input supplies the collection; descendant
+outputs retain its item frame, ordering and scalar paths. Array and item facets
+remain intact. A separate bounded singleton proof admits literal-established
+scalar assignments when the selected and target item schemas match completely.
+Other descendant overrides, competing structural drivers and variable scope
+controls retain refusals.
+
+A single direct core constant can drive a repeating group once in the existing parent
+context. Its declared literal must be a string, Boolean, integer or finite
+floating-point value. Empty strings, false and zero each supply one item; they
+are not filter predicates. The constructed scope retains the target schema and
+parent frame, including empty groups and nested source-row bindings. Malformed
+constants, competing structural connectors, computed feeds, structural copy and sequence controls keep their
+existing admission diagnostics.
+
+A closed, non-repeating JSON or compiled EDI variable record can also drive one
+repeating target group through its structural output. Require one connected
+target connector, a valid direct literal that establishes presence, and
+unambiguous scalar assignments. Other inputs must resolve to primary JSON/XML
+fields through direct ports or at most 64 exact scalar aliases in uncontrolled
+JSON/EDI variables. Each alias has one connected scalar input at its output path
+and preserves the complete selected scalar schema apart from its local name.
+Cycles, connected ancestor drivers, overrides and changed scalar facets retain
+their refusals. The physical fields' repeated ancestors belong to plain source scopes enclosing the
+target. A sibling's frame is insufficient. Preserve complete physical schemas
+and the inherited context; this rule constructs target bindings and introduces
+no collection frame. Copy-All can project at most 256 scalar fields from the
+same bounded record proof, including a declared record collection that permits
+one item. Compare complete item schemas apart from local names and separately
+proved cardinality/uniqueness metadata; retain the original selected and target
+schemas. Explicit target scalar bindings take precedence over projected fields.
+Scalar assignments may also use exact core kind-4 `if-else` components with
+three unambiguous connected inputs and one declared output. Prove every operand
+as a valid scalar literal, a qualified parent field or scalar alias, or another
+such conditional. Each assignment permits at most 32 nested conditionals and
+256 visited operands, including repeated references; branch evaluation remains
+lazy. A conditional result does not establish record presence. Cycles, malformed
+raw pin metadata, structural branches and unsupported computed operands retain
+refusals even when their branch would be unselected.
+Collection `contains` constraints, incompatible facets and singleton-excluding
+cardinality retain refusals. Other computed inputs, competing connectors,
+uniterated collection crossings, controlled parent scopes and variable controls
+retain their refusals.
 
 EDI structure variables resolve their flat declared parameter-root path against
 a complete compiled EDI configuration. The selected value preserves scalar types
@@ -800,6 +846,10 @@ and cardinalities and remains an intermediate component. Scalar outputs resolve
 through their input connectors without creating a physical EDI endpoint or
 applying interchange-output settings. Missing configuration, unresolved roots,
 ambiguous selectors and scope controls retain explicit refusals.
+Parser-generated X12 acknowledgement branches belong to physical endpoints.
+An X12 variable cannot introduce parser-error ports absent from its selected
+configuration; configured fields whose names begin with `ParserErrors_` remain
+ordinary data.
 
 JSON5 endpoint syntax currently rejects before export because the native
 component setting has not been verified; emitting an ordinary JSON component

@@ -1,0 +1,1 @@
+{"title":"Dictionary","type":"object","properties":{"Unrelated":{"type":"boolean"},"Batches":{"type":"array","maxItems":3,"uniqueItems":true,"items":{"type":"object","properties":{"Label":{"type":"string"},"Total":{"type":"integer"}},"additionalProperties":false}}},"additionalProperties":false}

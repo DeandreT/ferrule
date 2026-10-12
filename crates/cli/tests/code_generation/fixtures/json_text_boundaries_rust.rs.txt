@@ -22,6 +22,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
+    if let Some(expected) = case.get("boolean_error") {
+        assert!(matches!(
+            result,
+            Err(JsonBoundaryError::Execution(codegen_runtime::RuntimeError::NotABool { node, found }))
+                if node == expected["node"].as_u64().unwrap() as u32
+                    && found == expected["found"].as_str().unwrap()
+        ), "{case}: Boolean condition error differs");
+        return;
+    }
     if let Some(expected) = case.get("execution_error") {
         assert!(matches!(
             result,

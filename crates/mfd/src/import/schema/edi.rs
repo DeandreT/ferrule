@@ -354,7 +354,7 @@ pub(super) fn read(
             }
         };
     }
-    if has_compiled_schema && kind == "EDIX12" {
+    if !is_variable && has_compiled_schema && kind == "EDIX12" {
         merge_parser_error_entries(&entry, &mut schema);
     }
     // External configuration compilation is authoritative. Embedded Ferrule
@@ -403,14 +403,24 @@ pub(super) fn read(
     let mut in_count = 0usize;
     let (input_keys, output_keys) = super::entry_key_sets(&root);
     let input_ancestors = super::input_port_ancestors(&entry, &input_keys);
+    let mut declarations = super::PortDeclarationCensus::default();
+    declarations.record(entry, &[]);
     super::record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
-    super::collect_entry_ports(
+    super::collect_entry_ports_with_declarations(
         &entry,
         &mut Vec::new(),
         &mut ports,
         &mut out_count,
         &mut in_count,
+        Some(&mut declarations),
     );
+    if is_variable
+        && kind == "EDIX12"
+        && let Err(reason) = variable::validate_parser_error_ports(&schema, &ports)
+    {
+        warnings.push(format!("EDI variable `{name}` {reason}; skipped"));
+        return None;
+    }
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
@@ -483,6 +493,7 @@ pub(super) fn read(
         input_keys,
         output_keys,
         input_ancestors,
+        port_declarations: Some(declarations.finish(root)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

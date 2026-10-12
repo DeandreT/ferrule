@@ -4,8 +4,8 @@ use mapping::{ExternalPayloadFormat, ExternalSourceOptions, FormatOptions};
 
 use super::function::FnComponent;
 use super::schema::{
-    ComponentFormat, SchemaComponent, collect_json_ports, json_entry_value_schema, parse_u32,
-    record_entry_keys,
+    ComponentFormat, PortDeclarationCensus, SchemaComponent, collect_json_ports_with_declarations,
+    json_entry_value_schema, parse_u32, record_entry_keys,
 };
 
 pub(super) struct Candidate {
@@ -141,14 +141,17 @@ fn read_json_output_source(
     let mut ports = BTreeMap::new();
     let mut output_count = 0usize;
     let mut input_count = 0usize;
+    let mut declarations = PortDeclarationCensus::default();
+    declarations.record(entry, &[]);
     record_entry_keys(&entry, &[], &mut ports, &mut output_count, &mut input_count);
-    collect_json_ports(
+    collect_json_ports_with_declarations(
         &entry,
         &mut Vec::new(),
         &mut ports,
         &mut output_count,
         &mut input_count,
         warnings,
+        Some(&mut declarations),
     );
     if output_count == 0 || input_count != 0 {
         return None;
@@ -171,6 +174,7 @@ fn read_json_output_source(
         input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys,
+        port_declarations: Some(declarations.finish(*root)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

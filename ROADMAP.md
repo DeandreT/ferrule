@@ -121,6 +121,17 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 #### A1. Executable `.mfd` Common Profile
 
+Bounded flat variable records can establish one repeating target group through a
+valid direct literal and scalar inputs in an existing plain parent frame. The
+[import contract](docs/mfd-interop.md#import) preserves full physical schemas and
+admits bounded exact scalar aliases that retain their selected schema. Copy-All
+projects matching complete scalar item schemas in the existing frame when the
+declared collections permit a singleton, preserving explicit target bindings.
+Scalar assignments also admit bounded three-input core conditionals after
+proving all operands in that frame; direct literals still establish presence.
+Competing connectors, incompatible facets and new collection frames retain
+their refusals.
+
 - [ ] Extend one concrete supported-path mismatch at a time, with a self-authored
   triggering design and preserved refusal controls.
 - [ ] Close remaining XML root/type/namespace and JSON composition boundaries
