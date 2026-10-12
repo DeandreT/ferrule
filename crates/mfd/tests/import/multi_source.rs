@@ -26,7 +26,10 @@ fn primary_scoring_and_named_secondary_frames_are_executable() {
         .find(|scope| scope.target_field == "B")
         .unwrap();
     assert_eq!(
-        secondary.source().map(|path| path.to_vec()),
+        secondary
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Beta".into(), "Rows".into()])
     );
     let binding = secondary

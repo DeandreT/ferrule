@@ -614,6 +614,8 @@ fn validate_body_cycles(function: FunctionId, graph: &Graph) -> Result<(), Filte
 
 fn unsupported_kind(node: &Node) -> &'static str {
     match node {
+        Node::OwnedSourceField(_) => "owned_source_field",
+        Node::OwnedPosition(_) => "owned_position",
         Node::Position { .. } => "position",
         Node::SourceField { .. } => "source_field",
         Node::RuntimeValue { .. } => "runtime_value",

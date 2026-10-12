@@ -53,6 +53,7 @@ pub(crate) fn inactive_target_scopes<'a>(
 pub(crate) struct ProjectGraphReferences<'a> {
     failure_rules: &'a [FailureRule],
     extra_sources: &'a [NamedSource],
+    primary_source: Option<&'a ir::SchemaNode>,
     user_functions: Option<&'a crate::filter_map_editor::Functions>,
 }
 
@@ -69,10 +70,30 @@ impl<'a> ProjectGraphReferences<'a> {
         self.user_functions
     }
 
+    pub(crate) fn with_primary_source(mut self, source: &'a ir::SchemaNode) -> Self {
+        self.primary_source = Some(source);
+        self
+    }
+
+    pub(crate) fn named_source(self, index: usize) -> Option<&'a NamedSource> {
+        self.extra_sources.get(index)
+    }
+
+    pub(crate) fn source_alias_conflict(self, index: usize) -> Option<&'static str> {
+        crate::canvas::source_alias_conflict(self.primary_source?, self.extra_sources, index)
+    }
+
+    pub(crate) fn source_conflicts(self) -> std::collections::BTreeSet<usize> {
+        self.primary_source.map_or_else(Default::default, |source| {
+            crate::canvas::source_conflicts(source, self.extra_sources)
+        })
+    }
+
     pub(crate) fn new(failure_rules: &'a [FailureRule], extra_sources: &'a [NamedSource]) -> Self {
         Self {
             failure_rules,
             extra_sources,
+            primary_source: None,
             user_functions: None,
         }
     }
@@ -112,7 +133,9 @@ impl ReferenceCollector {
 
 pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

@@ -30,6 +30,7 @@ mod required_sources;
 mod resolve;
 mod sequence;
 mod source_iteration;
+mod source_ownership;
 mod trace;
 mod user_function;
 mod validate;
@@ -52,8 +53,9 @@ pub use filter_map::{
     MAX_FILTER_MAP_WORK,
 };
 pub use pipeline::{
-    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
-    run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
+    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue,
+    check_pipeline_source_ownership_capability, run_pipeline, run_pipeline_with_context,
+    run_pipeline_with_stage_contexts, validate_pipeline,
 };
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
@@ -111,6 +113,15 @@ pub fn required_sources_for_target<'a>(
     selection: TargetSelection<'_>,
 ) -> Result<RequiredTargetSources<'a>, EngineError> {
     required_sources::required_for_target(project, selection)
+}
+
+/// Refuses unsupported owned operations in the potential selected target closure.
+/// None selects all target roots. Legacy expressions and lazy evaluation are unchanged.
+pub fn check_source_ownership_capability(
+    project: &Project,
+    selection: Option<TargetSelection<'_>>,
+) -> Result<(), EngineError> {
+    source_ownership::check_project(project, selection)
 }
 
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
@@ -188,6 +199,14 @@ impl RuntimeParameters {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("owned source iteration at {scope:?} is not supported")]
+    UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
+    #[error("source ownership for {kind} node {node} (function {function:?}) is not supported")]
+    UnsupportedSourceOwnership {
+        node: NodeId,
+        function: Option<FunctionId>,
+        kind: &'static str,
+    },
     #[error("project has no named target `{name}`")]
     UnknownTarget { name: String },
     #[error("project has more than one named target `{name}`")]
@@ -672,6 +691,7 @@ fn run_outputs_internal(
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
+    check_source_ownership_capability(project, None)?;
     evaluate_run(project, source, extras, execution, |program, context| {
         let primary = eval_scope(
             program,
@@ -684,7 +704,7 @@ fn run_outputs_internal(
             &TraceScope::primary(),
         )?;
         let mut targets = Vec::with_capacity(project.extra_targets.len());
-        for target in &project.extra_targets {
+        for (index, target) in project.extra_targets.iter().enumerate() {
             targets.push(NamedOutput {
                 name: target.name.clone(),
                 instance: eval_scope(
@@ -695,7 +715,7 @@ fn run_outputs_internal(
                     &[],
                     &project.extra_sources,
                     execution.and_then(|execution| execution.dynamic_source_loader),
-                    &TraceScope::named(&target.name),
+                    &TraceScope::named(&target.name, index),
                 )?,
             });
         }
@@ -714,6 +734,7 @@ fn run_selected_target_internal(
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
     let named_target = required_sources::selected_target(project, selection)?;
+    source_ownership::check_project(project, Some(selection))?;
     evaluate_run(
         project,
         source,
@@ -731,22 +752,29 @@ fn run_selected_target_internal(
                 &TraceScope::primary(),
             )
             .map(SelectedTargetOutput::Primary),
-            Some(target) => eval_scope(
-                program,
-                &target.root,
-                Some(&target.schema),
-                context,
-                &[],
-                &project.extra_sources,
-                execution.and_then(|execution| execution.dynamic_source_loader),
-                &TraceScope::named(&target.name),
-            )
-            .map(|instance| {
-                SelectedTargetOutput::Named(NamedOutput {
-                    name: target.name.clone(),
-                    instance,
+            Some(target) => {
+                let index = project
+                    .extra_targets
+                    .iter()
+                    .position(|candidate| std::ptr::eq(candidate, target))
+                    .expect("selected target belongs to this project");
+                eval_scope(
+                    program,
+                    &target.root,
+                    Some(&target.schema),
+                    context,
+                    &[],
+                    &project.extra_sources,
+                    execution.and_then(|execution| execution.dynamic_source_loader),
+                    &TraceScope::named(&target.name, index),
+                )
+                .map(|instance| {
+                    SelectedTargetOutput::Named(NamedOutput {
+                        name: target.name.clone(),
+                        instance,
+                    })
                 })
-            }),
+            }
         },
     )
 }
@@ -816,6 +844,10 @@ fn evaluate_run<R>(
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }
+
+#[cfg(test)]
+#[path = "tests/source_ownership.rs"]
+mod source_ownership_tests;
 
 #[cfg(test)]
 #[path = "tests/adjacency_tree.rs"]
@@ -916,3 +948,7 @@ mod trace_tests;
 #[cfg(test)]
 #[path = "tests/user_function.rs"]
 mod user_function_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_collection.rs"]
+mod owned_collection_tests;

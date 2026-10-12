@@ -260,7 +260,10 @@ fn literal_four_plus_output(fifth: bool) -> Instance {
 
 fn validate_four_plus_owner(project: &Project, fifth: bool) -> Result<(), Box<dyn Error>> {
     let order = child(&project.root, "Order").ok_or("missing Order scope")?;
-    assert_eq!(order.source(), Some(["Order".to_string()].as_slice()));
+    assert_eq!(
+        order.source().expect("legacy fixture selector"),
+        Some(["Order".to_string()].as_slice())
+    );
     let matches = child(order, "Match").ok_or("missing Match scope")?;
     let (owner, plan) = matches.join().ok_or("missing nested join owner")?;
     assert_eq!(plan, &four_plus_plan(fifth)?);

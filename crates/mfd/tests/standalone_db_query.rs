@@ -97,7 +97,14 @@ fn run(dir: &Path, design: &Path) -> (mapping::Project, Instance) {
         imported.project.root.iteration_output,
         IterationOutput::First
     );
-    assert_eq!(imported.project.root.source(), Some([].as_slice()));
+    assert_eq!(
+        imported
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
     assert!(matches!(
         imported.project.root.windows.last(),
         Some(SequenceWindow::First { .. })

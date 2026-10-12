@@ -5,6 +5,9 @@ use mapping::{FunctionId, NodeId};
 /// Why lowering could not produce backend-neutral code-generation IR.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Diagnostic {
+    UnsupportedSourceIteration {
+        scope: mapping::SourceScopeLocation,
+    },
     Validation {
         location: String,
         message: String,
@@ -33,6 +36,7 @@ pub enum Diagnostic {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeFeature {
+    OwnedSourceIteration,
     Iteration,
     CorrelatedInnerJoin,
     DynamicBindings,
@@ -42,6 +46,8 @@ pub enum ScopeFeature {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
+    OwnedSourceField,
+    OwnedPosition,
     CorrelatedJoinAggregate,
 }
 
@@ -82,6 +88,10 @@ impl std::error::Error for LowerError {}
 impl fmt::Display for Diagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedSourceIteration { scope } => write!(
+                formatter,
+                "owned source iteration at {scope:?}: code generation is unsupported"
+            ),
             Self::Validation { location, message } => write!(formatter, "{location}: {message}"),
             Self::UnsupportedScope {
                 target_path,
@@ -122,6 +132,7 @@ fn display_target_path(path: &[String]) -> String {
 impl fmt::Display for ScopeFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OwnedSourceIteration => formatter.write_str("owned source iteration"),
             Self::Iteration => formatter.write_str("scope iteration"),
             Self::CorrelatedInnerJoin => {
                 formatter.write_str("an unsupported correlated inner join")
@@ -136,6 +147,8 @@ impl fmt::Display for ScopeFeature {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::OwnedSourceField => "an unsupported owned source field",
+            Self::OwnedPosition => "an unsupported owned position",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }

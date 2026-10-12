@@ -301,7 +301,10 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
         .iter()
         .find(|scope| scope.target_field == "Available")
         .unwrap();
-    assert_eq!(available.source(), Some(&["Availability".to_string()][..]));
+    assert_eq!(
+        available.source().expect("legacy fixture selector"),
+        Some(&["Availability".to_string()][..])
+    );
     assert!(available.merge_dynamic_fields);
     assert_eq!(available.dynamic_bindings.len(), 1);
 
@@ -608,7 +611,7 @@ fn late_dynamic_resolution_failure_leaves_root_scope_unchanged() {
             && warning.contains("computed item property value input is not connected")
     }));
     let root = &imported.project.root;
-    assert!(root.source().is_none());
+    assert!(root.source().expect("legacy fixture selector").is_none());
     assert!(root.group_by.is_none());
     assert!(!root.merge_dynamic_fields);
     assert!(root.dynamic_bindings.is_empty());
@@ -630,7 +633,7 @@ fn group_starting_control_rejects_computed_json_properties() {
             && warning.contains("support only plain iteration and one outer group-by")
     }));
     let root = &imported.project.root;
-    assert!(root.source().is_none());
+    assert!(root.source().expect("legacy fixture selector").is_none());
     assert!(root.group_starting_with.is_none());
     assert!(!root.merge_dynamic_fields);
     assert!(root.dynamic_children.is_empty());

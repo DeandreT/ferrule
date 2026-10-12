@@ -94,6 +94,7 @@ pub fn run_project_with_standard_streams(
         )?
     };
     let output_path = stream_target_identity(project_path, &project, options.target)?;
+    engine::check_source_ownership_capability(&project, options.target)?;
     let primary_bytes = if input_from_stdin {
         read_bounded(stdin, "stdin")?
     } else {
@@ -345,6 +346,98 @@ mod tests {
 
         assert!(error.to_string().contains("exactly one output artifact"));
         std::fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod owned_source_stdio_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_refusal_leaves_stdin_unread() -> anyhow::Result<()> {
+        struct Input(usize);
+        impl Read for Input {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                panic!("stdin must remain unread")
+            }
+        }
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule-owned-stdio-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory)?;
+        let path = directory.join("project.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&crate::owned_source_test_project())?,
+        )?;
+        let mut input = Input(0);
+        let error = run_project_with_standard_streams(
+            &path,
+            &StandardIoRunOptions::new()
+                .with_input_path(Path::new("-"))
+                .with_output_path(Path::new("-")),
+            &mut input,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, .. })
+        ));
+        assert_eq!(input.0, 0);
+        std::fs::remove_file(path)?;
+        std::fs::remove_dir(directory)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod owned_collection_stdio_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_collection_refusal_leaves_stdin_unread() -> anyhow::Result<()> {
+        struct Input(usize);
+        impl Read for Input {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                panic!("stdin must remain unread")
+            }
+        }
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule-owned-collection-stdio-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory)?;
+        let path = directory.join("project.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&crate::owned_collection_test_project())?,
+        )?;
+        let mut input = Input(0);
+        let error = run_project_with_standard_streams(
+            &path,
+            &StandardIoRunOptions::new()
+                .with_input_path(Path::new("-"))
+                .with_output_path(Path::new("-")),
+            &mut input,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+        ));
+        assert_eq!(input.0, 0);
+        std::fs::remove_file(path)?;
+        std::fs::remove_dir(directory)?;
         Ok(())
     }
 }

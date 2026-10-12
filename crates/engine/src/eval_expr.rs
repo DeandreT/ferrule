@@ -137,6 +137,13 @@ fn eval_expr_inner(
         .ok_or(EngineError::MissingNode(node_id))?;
 
     let result = match node {
+        Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+            Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: None,
+                kind: node.owned_source_kind().expect("owned node kind"),
+            })
+        }
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)

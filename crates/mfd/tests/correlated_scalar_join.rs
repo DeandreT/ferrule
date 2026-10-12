@@ -188,7 +188,10 @@ fn nested_scalar_join_correlates_and_roundtrips() -> Result<(), Box<dyn Error>> 
     assert!(engine::validate(&imported.project).is_empty());
 
     let orders = child(&imported.project.root, "Order").ok_or("missing Order scope")?;
-    assert_eq!(orders.source(), Some(["Order".to_string()].as_slice()));
+    assert_eq!(
+        orders.source().expect("legacy fixture selector"),
+        Some(["Order".to_string()].as_slice())
+    );
     let matches = child(orders, "Match").ok_or("missing Match scope")?;
     let ScopeIteration::InnerJoin { plan, .. } = &matches.iteration else {
         return Err("Match does not use an inner join".into());
@@ -494,7 +497,10 @@ fn retain(
 
 fn validate_three_owner(project: &Project) -> Result<(), Box<dyn Error>> {
     let orders = child(&project.root, "Order").ok_or("missing Order scope")?;
-    assert_eq!(orders.source(), Some(["Order".to_string()].as_slice()));
+    assert_eq!(
+        orders.source().expect("legacy fixture selector"),
+        Some(["Order".to_string()].as_slice())
+    );
     let matches = child(orders, "Match").ok_or("missing Match scope")?;
     let (owner, plan) = matches.join().ok_or("missing nested join owner")?;
     assert_eq!(plan, &three_plan()?);

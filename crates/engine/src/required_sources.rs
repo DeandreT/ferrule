@@ -33,6 +33,7 @@ pub(crate) fn required_for_target<'a>(
     selection: TargetSelection<'_>,
 ) -> Result<crate::RequiredTargetSources<'a>, EngineError> {
     let selected = selected_target(project, selection)?;
+    crate::source_ownership::check_project(project, Some(selection))?;
     let mut analysis = Analysis::new(project);
     analysis.inspect_scope(selected.map_or(&project.root, |target| &target.root));
     analysis.inspect_failure_rules();
@@ -81,7 +82,10 @@ impl<'a> Analysis<'a> {
     }
 
     fn inspect_scope(&mut self, scope: &Scope) {
-        if let Some(source) = scope.source() {
+        if let Some(source) = scope
+            .source()
+            .expect("ownership admission precedes source analysis")
+        {
             self.inspect_path(source);
         }
         if let Some(sequence) = scope.sequence() {
@@ -209,7 +213,9 @@ impl<'a> Analysis<'a> {
                     self.inspect_path(source.collection());
                 }
             }
-            Node::SourceDocumentPath
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::JoinPosition { .. }
