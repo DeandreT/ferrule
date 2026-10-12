@@ -658,8 +658,10 @@ fn compact_primary_nodes_settle_with_long_unicode_identities_and_keep_pin_drag_a
             let before = state(&fx, &snarl);
             let context = egui::Context::default();
             crate::icons::install(&context);
+            let root = fx.call;
             let mut recent = Vec::new();
             let mut output = None;
+            let mut root_frame = None;
             for _ in 0..8 {
                 let mut sizes = std::collections::BTreeMap::new();
                 let mut senses = Vec::new();
@@ -688,6 +690,21 @@ fn compact_primary_nodes_settle_with_long_unicode_identities_and_keep_pin_drag_a
                                     .map(|response| response.sense.senses_drag())
                             })
                             .collect();
+                        root_frame = viewer
+                            .pin_interaction_ids
+                            .iter()
+                            .filter_map(|id| ui.ctx().read_response(*id))
+                            .find_map(|pin| {
+                                ui.ctx().read_response(
+                                    pin.layer_id.id.with(("snarl-node", root)).with("frame"),
+                                )
+                            })
+                            .map(|response| {
+                                ui.ctx()
+                                    .layer_transform_to_global(response.layer_id)
+                                    .unwrap_or_default()
+                                    * response.rect
+                            });
                     },
                 );
                 eprintln!(
@@ -728,12 +745,23 @@ fn compact_primary_nodes_settle_with_long_unicode_identities_and_keep_pin_drag_a
                 lucide_icons::Icon::ArrowRightFromLine
             })
             .to_string();
-            let hover = visible_positions(&output, &glyph)
-                .first()
+            let root_frame = root_frame.expect("registered primary root node frame");
+            let glyph_positions = visible_positions(&output, &glyph);
+            let hover_positions = glyph_positions
+                .iter()
                 .copied()
-                .expect("root header icon visible");
+                .filter(|position| root_frame.contains(*position))
+                .collect::<Vec<_>>();
+            eprintln!(
+                "Primary header locator original: root={root:?}; frame={root_frame:?}; glyph={glyph:?}; all={glyph_positions:?}; scoped={hover_positions:?}"
+            );
+            assert_eq!(
+                hover_positions.len(),
+                1,
+                "one visible root header icon inside its exact native node frame"
+            );
+            let hover = hover_positions[0];
             let mut detected = None;
-            let root = fx.call;
             for _ in 0..2 {
                 let _ = context.run_ui(
                     egui::RawInput {
