@@ -408,14 +408,73 @@ fn stage_canvas_real_property_wire_history_and_apply_leave_parent_and_other_stag
         })
         .collect::<Vec<_>>();
     eprintln!("stage wire pin originals: {pins:?}");
+    // This fixture exposes primary Value and lookup.Value as separate endpoints.
+    // The recorded drag IDs are auto IDs, so bind their geometry to the real
+    // single-field source catalogs and semantic canvas nodes before selecting.
+    let stage = child(&app);
+    let sources = crate::canvas::project_source_blocks(&stage.project);
+    let targets = crate::canvas::target_blocks(&stage.project.target);
+    assert_eq!(stage.project.extra_sources.len(), 1);
+    assert_eq!(stage.project.extra_sources[0].name, "lookup");
+    assert_eq!(sources.len(), 2);
+    assert!(sources.iter().all(|source| source.leaves.len() == 1));
+    assert_eq!(sources[0].leaves[0].path, vec!["Value".to_string()]);
+    assert_eq!(
+        sources[1].leaves[0].path,
+        vec!["lookup".to_string(), "Value".to_string()]
+    );
+    assert!(
+        sources
+            .iter()
+            .all(|source| source.leaves[0].frame.is_none())
+    );
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].leaves.len(), 1);
+    assert!(targets[0].leaves[0].chain.is_empty());
+    assert_eq!(targets[0].leaves[0].field, "Value");
+    let node_position = |wanted: CanvasNode| {
+        let ids = stage
+            .main_canvas
+            .snarl
+            .node_ids()
+            .filter_map(|(id, node)| (node == &wanted).then_some(id))
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), 1, "one semantic canvas node for {wanted:?}");
+        stage.main_canvas.snarl.get_node_info(ids[0]).unwrap().pos
+    };
+    let primary = node_position(CanvasNode::SourceBlock(0));
+    let lookup = node_position(CanvasNode::SourceBlock(1));
+    let constant = node_position(CanvasNode::Graph(1));
+    let target = node_position(CanvasNode::TargetBlock(0));
+    assert_eq!(stage.main_canvas.snarl.node_ids().count(), 4);
+    assert_eq!(primary.x, lookup.x, "source endpoints share one column");
+    assert_ne!(primary.y, lookup.y, "source endpoints occupy separate rows");
+    assert!(primary.x < constant.x && constant.x < target.x);
+    let source_pin_count = sources
+        .iter()
+        .map(|source| source.leaves.len())
+        .sum::<usize>();
+    let target_pin_count = targets[0].leaves.len();
     assert_eq!(
         pins.len(),
-        3,
-        "one source output, constant output and target input"
+        source_pin_count + 1 + target_pin_count,
+        "both source outputs, the constant output and the target input"
     );
-    pins.sort_by(|left, right| left.1.x.total_cmp(&right.1.x));
-    let from = pins[0].1;
-    let to = pins[2].1;
+    pins.sort_by(|left, right| {
+        left.1
+            .x
+            .total_cmp(&right.1.x)
+            .then(left.1.y.total_cmp(&right.1.y))
+    });
+    assert_eq!(
+        pins[0].1.x, pins[1].1.x,
+        "two source drag widgets in one column"
+    );
+    assert!(pins[0].1.y < pins[1].1.y);
+    assert!(pins[1].1.x < pins[2].1.x && pins[2].1.x < pins[3].1.x);
+    let primary_pin = usize::from(primary.y > lookup.y);
+    let from = pins[primary_pin].1;
+    let to = pins[3].1;
     frame(
         &mut app,
         &context,

@@ -23,6 +23,7 @@ mod failures;
 mod filter_map_model;
 mod grouping;
 mod joins;
+mod owned_admission;
 mod path_hierarchy;
 mod raise;
 mod recursive_filter;

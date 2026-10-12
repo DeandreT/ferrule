@@ -127,6 +127,9 @@ fn validate_json_single_node(
     recursive: &RecursiveSchemas<'_>,
     recursion_depth: usize,
 ) -> Result<(), JsonFormatError> {
+    if let Some(item) = schema.json_array_wrapper_item() {
+        return validate_json_node(item, value, recursive, recursion_depth);
+    }
     if schema.json_any || schema.container_nullable && value.is_null() {
         return Ok(());
     }
@@ -255,6 +258,9 @@ fn validate_raw_single_node(
     recursive: &RecursiveSchemas<'_>,
     recursion_depth: usize,
 ) -> Result<(), JsonFormatError> {
+    if let Some(item) = schema.json_array_wrapper_item() {
+        return validate_raw_node(item, raw, recursive, recursion_depth);
+    }
     if schema.json_any
         || schema.container_nullable && raw.get().trim() == "null"
         || !matches!(schema.kind, SchemaKind::Group { .. })

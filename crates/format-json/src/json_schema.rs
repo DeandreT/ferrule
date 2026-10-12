@@ -646,25 +646,30 @@ fn parse_array_schema(
         formats::validate(name, schema)?;
         return Ok(node);
     };
-    let item = parse(name, items, doc, active_refs)?;
-    if item.repeating
-        && (item.item_count_range.is_some()
-            || item.json_multiple_of.is_some()
-            || item.json_allowed_values.is_some()
-            || item.string_length_range.is_some()
-            || item.json_patterns.is_some()
-            || item.json_contains.is_some()
-            || item.json_unique_items
-            || item_counts::has_keywords(schema)
-            || contains::has_keyword(schema)
-            || unique_items::selected(name, schema)?)
-    {
-        return Err(unsupported_union(
-            name,
-            "nested arrays with item-count, contains, unique-items, allowed-value, multipleOf, string-length, or pattern constraints require distinct wrapper levels",
-        ));
+    let nested_array = array_shape(items, doc, &mut Vec::new(), 0);
+    if nested_array {
+        finite_array_items(name, items, doc, &mut active_refs.clone(), 0)?;
     }
-    let mut node = item.repeating();
+    let item_name = if nested_array {
+        ir::JSON_ARRAY_ITEM_FIELD
+    } else {
+        name
+    };
+    let item = parse(item_name, items, doc, active_refs)?;
+    let mut node = if item.repeating {
+        if !nested_array {
+            return Err(unsupported_union(
+                name,
+                "nested array items require one declared array shape",
+            ));
+        }
+        SchemaNode::group(name, vec![item])
+            .repeating()
+            .with_json_array_wrapper()
+            .ok_or_else(|| unsupported_union(name, "nested array wrapper metadata is invalid"))?
+    } else {
+        item.repeating()
+    };
     node.container_nullable = nullable;
     ranges::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
@@ -676,6 +681,128 @@ fn parse_array_schema(
     patterns::validate_ignored(name, schema)?;
     formats::validate(name, schema)?;
     Ok(node)
+}
+
+// This inspection only selects the stable role name. Admission and every
+// assertion are still handled by `parse`; it never synthesizes an array type.
+fn array_shape(
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    refs: &mut Vec<String>,
+    depth: usize,
+) -> bool {
+    if depth >= files::MAX_REFERENCE_DEPTH {
+        return false;
+    }
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        if refs.iter().any(|active| active == reference) {
+            return false;
+        }
+        let Some(target) = resolve_ref(doc, reference) else {
+            return false;
+        };
+        refs.push(reference.to_owned());
+        let result = array_shape(target, doc, refs, depth + 1);
+        refs.pop();
+        return result;
+    }
+    if schema.get("type").is_some_and(|ty| {
+        ty == "array"
+            || ty
+                .as_array()
+                .is_some_and(|types| types.iter().any(|ty| ty == "array"))
+    }) {
+        return true;
+    }
+    for keyword in ["anyOf", "oneOf"] {
+        if let Some(branches) = schema.get(keyword).and_then(serde_json::Value::as_array) {
+            let content = branches
+                .iter()
+                .filter(|branch| branch.get("type").is_none_or(|ty| ty != "null"))
+                .collect::<Vec<_>>();
+            return !content.is_empty()
+                && content
+                    .iter()
+                    .all(|branch| array_shape(branch, doc, refs, depth + 1));
+        }
+    }
+    schema
+        .get("allOf")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|branches| {
+            branches
+                .iter()
+                .any(|branch| array_shape(branch, doc, refs, depth + 1))
+        })
+}
+
+// The ordinary reference importer retains its legacy repair fallback. A
+// declared nested-array role instead requires a finite complete item schema;
+// replacing a recursive or unresolved level with that fallback loses a level.
+fn finite_array_items(
+    name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    refs: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), JsonFormatError> {
+    if depth >= files::MAX_REFERENCE_DEPTH {
+        return Err(unsupported_union(
+            name,
+            "nested array item schema exceeds the reference depth limit",
+        ));
+    }
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        let target = if refs.iter().any(|active| active == reference) {
+            None
+        } else {
+            resolve_ref(doc, reference)
+        };
+        let Some(target) = target else {
+            return Err(unsupported_union(
+                name,
+                "nested array items require resolved acyclic schema references",
+            ));
+        };
+        refs.push(reference.to_owned());
+        let result = finite_array_items(name, target, doc, refs, depth + 1);
+        refs.pop();
+        result?;
+        if !files::ref_siblings_apply(schema) {
+            return Ok(());
+        }
+    }
+    for keyword in [
+        "items",
+        "additionalProperties",
+        "contains",
+        "propertyNames",
+        "if",
+        "then",
+        "else",
+    ] {
+        if let Some(child) = schema
+            .get(keyword)
+            .filter(|child| child.is_object() || child.is_boolean())
+        {
+            finite_array_items(name, child, doc, refs, depth + 1)?;
+        }
+    }
+    for keyword in ["anyOf", "oneOf", "allOf", "prefixItems"] {
+        if let Some(children) = schema.get(keyword).and_then(serde_json::Value::as_array) {
+            for child in children {
+                finite_array_items(name, child, doc, refs, depth + 1)?;
+            }
+        }
+    }
+    for keyword in ["properties", "patternProperties", "dependentSchemas"] {
+        if let Some(children) = schema.get(keyword).and_then(serde_json::Value::as_object) {
+            for child in children.values() {
+                finite_array_items(name, child, doc, refs, depth + 1)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn apply_nullable_composition_ranges(
@@ -1136,6 +1263,11 @@ fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
 /// `title` so the name survives a roundtrip.
 pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
+    if !schema.json_array_wrappers_tree_is_valid() {
+        return Err(JsonFormatError::InvalidArrayWrapperMetadata {
+            name: schema.name.clone(),
+        });
+    }
     if !schema.json_allowed_values_tree_is_valid() {
         return Err(JsonFormatError::InvalidAllowedValuesMetadata {
             reason: "allowed values are incompatible with their scalar domains or nullability"

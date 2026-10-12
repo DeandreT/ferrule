@@ -288,7 +288,7 @@ fn dialect_bytes(
 }
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
-    if schema.repeating {
+    if schema.repeating || schema.contains_json_array_wrapper() {
         return Err(CsvFormatError::UnsupportedSchema);
     }
     match &schema.kind {

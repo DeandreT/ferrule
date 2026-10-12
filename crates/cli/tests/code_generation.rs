@@ -50,10 +50,28 @@ mod iteration_metadata;
 mod joins;
 #[path = "code_generation/json5_companions.rs"]
 mod json5_companions;
+#[path = "code_generation/json_parser_ports.rs"]
+mod json_parser_ports;
+#[path = "code_generation/json_structure_variables.rs"]
+mod json_structure_variables;
+
+#[path = "code_generation/edi_structure_variables.rs"]
+mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/json_variable_array_descendants.rs"]
+mod json_variable_array_descendants;
+
+#[path = "code_generation/empty_constructed_scopes.rs"]
+mod empty_constructed_scopes;
+#[path = "code_generation/empty_iterated_scopes.rs"]
+mod empty_iterated_scopes;
+#[path = "code_generation/lexical_numeric_bounds.rs"]
+mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
+#[path = "code_generation/nested_array_wrappers.rs"]
+mod nested_array_wrappers;
 #[path = "code_generation/nested_clone_owners.rs"]
 mod nested_clone_owners;
 #[path = "code_generation/optional_runtime_defaults.rs"]
@@ -76,6 +94,8 @@ mod required_ref_boundaries;
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
 mod scalar_algorithms;
+#[path = "code_generation/scalar_document_root.rs"]
+mod scalar_document_root;
 #[path = "code_generation/scalar_functions.rs"]
 mod scalar_functions;
 #[path = "code_generation/scalar_total_corpus.rs"]

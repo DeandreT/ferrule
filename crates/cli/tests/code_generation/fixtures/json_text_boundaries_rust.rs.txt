@@ -22,6 +22,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
+    if let Some(expected) = case.get("execution_error") {
+        assert!(matches!(
+            result,
+            Err(JsonBoundaryError::Execution(codegen_runtime::RuntimeError::Function(
+                codegen_runtime::FunctionError::InvalidArgument { function, message }
+            ))) if function == expected["function"].as_str().unwrap()
+                && message == expected["message"].as_str().unwrap()
+        ), "{case}: execution error differs");
+        return;
+    }
     if case["reject_output"] == true {
         assert!(matches!(result, Err(JsonBoundaryError::InvalidOutput { .. })), "{case}: {result:?}");
         return;

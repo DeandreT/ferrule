@@ -55,9 +55,9 @@ impl std::error::Error for BasicSourceBridgeError {}
 // Fixed slots bound metadata cells; UTF-8 payload is charged separately. Neither
 // bound includes source/output trees, allocator overhead or total process RSS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PairedBounds {
-    core: usize,
-    total: usize,
+pub(super) struct PairedBounds {
+    pub(super) core: usize,
+    pub(super) total: usize,
     legacy: usize,
     depth: usize,
 }
@@ -72,7 +72,7 @@ fn add(a: usize, b: usize) -> Result<usize, OwnedSourceError> {
 fn mul(a: usize, b: usize) -> Result<usize, OwnedSourceError> {
     a.checked_mul(b).ok_or_else(overflow)
 }
-fn paired_bounds(l: OwnedSourceLimits) -> Result<PairedBounds, OwnedSourceError> {
+pub(super) fn paired_bounds(l: OwnedSourceLimits) -> Result<PairedBounds, OwnedSourceError> {
     let core = owned_slot_bound(l)?;
     let legacy = add(
         add(mul(2, l.max_active_frames)?, mul(2, l.max_path_segments)?)?,
@@ -105,7 +105,7 @@ fn paired_bounds(l: OwnedSourceLimits) -> Result<PairedBounds, OwnedSourceError>
 
 // Native Vec byte-capacity representability is a prerequisite, separate from
 // the logical slot and UTF-8 payload policies. This is not an RSS limit.
-fn paired_capacity<T>(count: usize) -> Result<(), RuntimeError> {
+pub(super) fn paired_capacity<T>(count: usize) -> Result<(), RuntimeError> {
     let width = std::mem::size_of::<T>();
     if width != 0
         && count
@@ -295,6 +295,131 @@ impl<'src> BasicSourceRoots<'src> {
         })
     }
 
+    /// Normalizes exact generated declarations without retaining supplied names.
+    /// All limits are explicit; no loader or specialized context is enabled.
+    pub fn try_from_named_inputs<'name, I>(
+        primary: &'src Instance,
+        catalogue: &'static [super::BasicNamedSourceDeclaration],
+        supplied: I,
+        limits: OwnedSourceLimits,
+    ) -> Result<Self, RuntimeError>
+    where
+        I: IntoIterator<Item = super::BasicNamedSourceInput<'name, 'src>>,
+    {
+        let (roots, bounds) =
+            super::named_input_admission::normalize(primary, catalogue, supplied, limits)?;
+        Self::from_admitted_registry(roots, bounds)
+    }
+
+    // The registry/table footprint is already admitted, retained and included
+    // once in Core. This counter seeds that footprint and the existing BT
+    // projection reserve together; it is not a second independent allowance.
+    fn from_admitted_registry(
+        roots: SourceRoots<'src>,
+        bounds: PairedBounds,
+    ) -> Result<Self, RuntimeError> {
+        let limits = roots.registry.limits;
+        let mut bytes = roots.registry.name_bytes;
+        let mut projection_bytes = 0;
+        let mut supplied = 0;
+        for declaration in roots.registry.named.iter() {
+            if declaration.instance.is_some() {
+                bytes = owned_charge(
+                    OwnedSourceLimitKind::MetadataBytes,
+                    bytes,
+                    declaration.name.len(),
+                    limits.max_metadata_bytes,
+                )?;
+                projection_bytes = owned_charge(
+                    OwnedSourceLimitKind::MetadataBytes,
+                    projection_bytes,
+                    declaration.name.len(),
+                    limits.max_metadata_bytes,
+                )?;
+                supplied = add(supplied, 1)?;
+            }
+        }
+        let mut budget = PairedBudget {
+            slots: bounds.core,
+            maximum: bounds.total,
+            bytes,
+            byte_maximum: limits.max_metadata_bytes,
+        };
+        budget.slots(mul(5, limits.max_roots)?)?;
+        paired_capacity::<NamedInput<'_>>(supplied)?;
+        paired_capacity::<usize>(supplied)?;
+        #[cfg(test)]
+        eprintln!(
+            "RAW NAMED_ADMISSION projection_before_allocation named={:?} storage={} core={} slots={} maximum={} bytes={} projection_bytes={projection_bytes} supplied={supplied}",
+            roots.registry.named,
+            roots.registry.storage_count,
+            bounds.core,
+            budget.slots,
+            budget.maximum,
+            budget.bytes
+        );
+        let mut inputs = Vec::with_capacity(supplied);
+        let mut declarations = Vec::with_capacity(supplied);
+        for (index, declaration) in roots.registry.named.iter().enumerate() {
+            if let Some(instance) = declaration.instance {
+                inputs.push(NamedInput {
+                    name: declaration.name,
+                    instance,
+                });
+                declarations.push(index);
+            }
+        }
+        Ok(Self {
+            roots,
+            inputs,
+            declarations,
+            projection_bytes,
+            bounds,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn log_admission(&self, label: &str) {
+        eprintln!(
+            "RAW {label} ROOTS primary={:?} named={:?} inputs={:?} declarations={:?} name_bytes={} projection_bytes={} root_count={} storage_count={} slot_bound={} core={} total={}",
+            self.roots.registry.primary,
+            self.roots.registry.named,
+            self.inputs,
+            self.declarations,
+            self.roots.registry.name_bytes,
+            self.projection_bytes,
+            self.roots.registry.root_count,
+            self.roots.registry.storage_count,
+            self.roots.registry.slot_bound,
+            self.bounds.core,
+            self.bounds.total
+        );
+    }
+
+    #[cfg(test)]
+    pub(super) fn admission_names(&self) -> impl Iterator<Item = &'src str> + '_ {
+        self.roots
+            .registry
+            .named
+            .iter()
+            .map(|declaration| declaration.name)
+    }
+
+    #[cfg(test)]
+    pub(super) fn admission_indices(&self) -> &[usize] {
+        &self.declarations
+    }
+
+    #[cfg(test)]
+    pub(super) fn admission_facts(&self) -> (usize, usize, usize, usize) {
+        (
+            self.roots.registry.root_count,
+            self.roots.registry.storage_count,
+            self.roots.registry.named.len(),
+            self.roots.registry.name_bytes,
+        )
+    }
+
     pub fn root_context<'ctx>(&'ctx self) -> Result<BasicScopeContext<'ctx>, RuntimeError>
     where
         'src: 'ctx,
@@ -382,6 +507,46 @@ pub struct BasicSourceCandidate<'ctx> {
     cursor: Option<PhaseCursor>,
 }
 impl<'ctx> BasicScopeContext<'ctx> {
+    #[cfg(test)]
+    pub(super) fn log_admission(&self, label: &str) {
+        eprintln!(
+            "RAW {label} CONTEXT named={:?} root_count={} storage_count={} name_bytes={} projection_bytes={} bindings={:?} legacy_primary={:?} legacy_named={:?} execution_present={} loader_present={} filter_map_present={}",
+            self.owned.registry.named,
+            self.owned.registry.root_count,
+            self.owned.registry.retained_slots(),
+            self.owned.registry.name_bytes,
+            self.projection_bytes,
+            self.bindings,
+            self.legacy.primary_source,
+            self.legacy.named_inputs,
+            self.legacy.execution.is_some(),
+            self.legacy.dynamic_source_loader.is_some(),
+            self.legacy.filter_map.is_some()
+        );
+        for (index, frame) in self.owned.frames.iter().enumerate() {
+            eprintln!(
+                "RAW {label} OWNED_FRAME {index} owner={:?} collection={:?} instance={:?} index={}",
+                frame.owner, frame.collection, frame.instance, frame.index
+            );
+        }
+        for (index, frame) in self.legacy.frames.iter().enumerate() {
+            let collection = frame.collection.as_ref().map(|c| (c.path(), c.index()));
+            eprintln!(
+                "RAW {label} LEGACY_FRAME {index} instance={:?} collection={collection:?} document_path={:?} join_present={} join_position={:?}",
+                frame.instance,
+                frame.document_path,
+                frame.join.is_some(),
+                frame.join_position
+            );
+        }
+        for (index, origin) in self.origins.iter().enumerate() {
+            eprintln!(
+                "RAW {label} ORIGIN {index} owner={:?} path={:?} owned_frame={:?} raw_index={:?}",
+                origin.owner, origin.path, origin.owned_frame, origin.raw_index
+            );
+        }
+    }
+
     pub fn legacy_view(&self) -> &ScopeContext<'ctx> {
         &self.legacy
     }

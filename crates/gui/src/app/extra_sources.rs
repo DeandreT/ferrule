@@ -408,13 +408,20 @@ impl FerruleApp {
         }
     }
 
-    fn finish_extra_source(&mut self) {
+    pub(super) fn finish_extra_source(&mut self) {
         let Some(draft) = self.extra_source_draft.as_ref() else {
             return;
         };
         match draft.clone().build(&self.project.extra_sources) {
             Ok(source) => {
+                let previous_names = self
+                    .project
+                    .extra_sources
+                    .iter()
+                    .map(|source| source.name.clone())
+                    .collect::<Vec<_>>();
                 self.project.extra_sources.push(source);
+                self.refresh_source_canvases(&previous_names);
                 self.extra_source_draft = None;
                 self.status = "extra source added".to_string();
                 self.diagnostics.clear();
@@ -423,6 +430,27 @@ impl FerruleApp {
                 self.status = "extra source is incomplete".to_string();
                 self.diagnostics
                     .error("Extra source not added", error.to_string());
+            }
+        }
+    }
+
+    pub(super) fn remove_project_extra_source(&mut self, index: usize) {
+        let previous_names = self
+            .project
+            .extra_sources
+            .iter()
+            .map(|source| source.name.clone())
+            .collect::<Vec<_>>();
+        let removed = remove_extra_source(&mut self.project.extra_sources, index);
+        self.pending_extra_source_removal = None;
+        if let Some(source) = removed {
+            self.refresh_source_canvases(&previous_names);
+            self.status = format!("removed extra source {}", source.name);
+            let issues = cli::validate(&self.project);
+            if issues.is_empty() {
+                self.diagnostics.clear();
+            } else {
+                self.diagnostics.validation(&self.project, issues);
             }
         }
     }
@@ -453,19 +481,7 @@ impl FerruleApp {
                 });
             });
         match remove {
-            Some(true) => {
-                let removed = remove_extra_source(&mut self.project.extra_sources, index);
-                self.pending_extra_source_removal = None;
-                if let Some(source) = removed {
-                    self.status = format!("removed extra source {}", source.name);
-                    let issues = cli::validate(&self.project);
-                    if issues.is_empty() {
-                        self.diagnostics.clear();
-                    } else {
-                        self.diagnostics.validation(&self.project, issues);
-                    }
-                }
-            }
+            Some(true) => self.remove_project_extra_source(index),
             Some(false) => self.pending_extra_source_removal = None,
             None => {}
         }

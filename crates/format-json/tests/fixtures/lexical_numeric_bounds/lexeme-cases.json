@@ -1,0 +1,110 @@
+[
+  {
+    "raw": "1.0",
+    "canonical_integer": "1"
+  },
+  {
+    "raw": "1e0",
+    "canonical_integer": "1"
+  },
+  {
+    "raw": "10e-1",
+    "canonical_integer": "1"
+  },
+  {
+    "raw": "100.000e-2",
+    "canonical_integer": "1"
+  },
+  {
+    "raw": "-2.000",
+    "canonical_integer": "-2"
+  },
+  {
+    "raw": "-0.0",
+    "canonical_integer": "0"
+  },
+  {
+    "raw": "-0.0e12",
+    "canonical_integer": "0"
+  },
+  {
+    "raw": "500e-2",
+    "canonical_integer": "5"
+  },
+  {
+    "raw": "1e+3",
+    "canonical_integer": "1000"
+  },
+  {
+    "raw": "9007199254740993.0",
+    "canonical_integer": "9007199254740993"
+  },
+  {
+    "raw": "9.007199254740993e15",
+    "canonical_integer": "9007199254740993"
+  },
+  {
+    "raw": "9223372036854775807.0",
+    "canonical_integer": "9223372036854775807"
+  },
+  {
+    "raw": "-9223372036854775808e0",
+    "canonical_integer": "-9223372036854775808"
+  },
+  {
+    "raw": "9.223372036854775807e18",
+    "canonical_integer": "9223372036854775807"
+  },
+  {
+    "raw": "18446744073709551615.0",
+    "canonical_integer": "18446744073709551615"
+  },
+  {
+    "raw": "1.8446744073709551615e19",
+    "canonical_integer": "18446744073709551615"
+  },
+  {
+    "raw": "1.00000000000000001",
+    "canonical_integer": null
+  },
+  {
+    "raw": "0.99999999999999999",
+    "canonical_integer": null
+  },
+  {
+    "raw": "9007199254740993.0000000001",
+    "canonical_integer": null
+  },
+  {
+    "raw": "12.50",
+    "canonical_integer": null
+  },
+  {
+    "raw": "5e-1",
+    "canonical_integer": null
+  },
+  {
+    "raw": "-9223372036854775809.0",
+    "canonical_integer": null
+  },
+  {
+    "raw": "18446744073709551616.0",
+    "canonical_integer": null
+  },
+  {
+    "raw": "1e9999999999999999999999",
+    "canonical_integer": null
+  },
+  {
+    "raw": "1e-9999999999999999999999",
+    "canonical_integer": null
+  },
+  {
+    "raw": "0e9999999999999999999999",
+    "canonical_integer": "0"
+  },
+  {
+    "raw": "-0.000e-9999999999999999999999",
+    "canonical_integer": "0"
+  }
+]
