@@ -1250,7 +1250,7 @@ mod tests {
             .into_iter()
             .flat_map(ScopeSequence::iter)
             .filter_map(|segment| segment.children.first())
-            .filter_map(Scope::source)
+            .filter_map(|scope| scope.source().expect("fixture has legacy source selectors"))
             .collect::<Vec<_>>();
         assert_eq!(
             sources,
