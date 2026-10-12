@@ -28,12 +28,10 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
-    // Every declared target scope is represented by lowering; expression
-    // reachability and metadata-only expression omissions remain unchanged.
-    if let Some(scope) = mapping::first_project_owned_source_scope(project) {
-        return Err(LowerError::new(vec![
-            Diagnostic::UnsupportedSourceIteration { scope },
-        ]));
+    // Owned document outputs remain closed at their complete original route.
+    // All static Basic selectors continue through unchanged lowering reachability.
+    if let Some(diagnostic) = owned_document_diagnostic(project) {
+        return Err(LowerError::new(vec![diagnostic]));
     }
     let primary_xml = project.source_options.xml_root_view_read_policy;
     // Ordinary XML format identity does not make adapter support mandatory.
@@ -399,6 +397,9 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
 
 fn portable_context_error(error: &ProgramValidationError) -> Option<Diagnostic> {
     match error {
+        ProgramValidationError::OwnedSource { diagnostic } => Some(Diagnostic::OwnedSource {
+            diagnostic: diagnostic.clone(),
+        }),
         ProgramValidationError::JoinRequiresRootContext { target_path, .. } => {
             Some(Diagnostic::UnsupportedScope {
                 target_path: target_path.clone(),
@@ -738,12 +739,14 @@ fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
 
 fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
     let input: IterationSource = match &scope.iteration {
-        ScopeIteration::OwnedSource { .. } => {
-            return Err(Diagnostic::UnsupportedScope {
-                target_path: vec![scope.target_field.clone()],
-                feature: ScopeFeature::OwnedSourceIteration,
-            });
-        }
+        ScopeIteration::OwnedSource {
+            source,
+            output_path: None,
+        } => crate::OwnedSourceIteration::new(source.clone()).into(),
+        ScopeIteration::OwnedSource {
+            output_path: Some(_),
+            ..
+        } => unreachable!("owned document output preflight"),
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
         ScopeIteration::DynamicDocuments {
             source,
@@ -1046,18 +1049,8 @@ fn lower_user_function(
 
 fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<ExpressionNode, Diagnostic> {
     let expression = match node {
-        Node::OwnedSourceField(_) => {
-            return Err(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: UnsupportedNodeKind::OwnedSourceField,
-            });
-        }
-        Node::OwnedPosition(_) => {
-            return Err(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: UnsupportedNodeKind::OwnedPosition,
-            });
-        }
+        Node::OwnedSourceField(field) => Expression::OwnedSourceField(field.clone()),
+        Node::OwnedPosition(position) => Expression::OwnedPosition(position.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),
@@ -1383,4 +1376,75 @@ mod structured_xml_admission_tests {
         project.source_options.xml_document = false;
         assert!(lower(&project).is_err());
     }
+}
+
+fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
+    fn visit(scope: &Scope, route: mapping::SourceScopeLocation) -> Option<Diagnostic> {
+        if let ScopeIteration::OwnedSource {
+            source,
+            output_path: Some(node),
+        } = &scope.iteration
+        {
+            return Some(Diagnostic::OwnedSource {
+                diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                    location: crate::OwnedSourceDiagnosticLocation::Iteration { scope: route },
+                    request: Some(crate::OwnedSourceDiagnosticRequest::Iteration {
+                        owner: (&source.owner).into(),
+                        path: source.path.clone(),
+                    }),
+                    reason: crate::OwnedSourceCapabilityReason::Document,
+                    origin: crate::OwnedSourceCapabilityOrigin::Expression {
+                        namespace: crate::OwnedSourceNamespace::Main,
+                        node: *node,
+                    },
+                }
+                .into(),
+            });
+        }
+        if let Some(segments) = scope.concatenated() {
+            for (index, segment) in segments.iter().enumerate() {
+                if let Some(error) = visit(
+                    segment,
+                    route.descendant(mapping::SourceScopeStep::Segment(index)),
+                ) {
+                    return Some(error);
+                }
+            }
+        }
+        for (index, child) in scope.children.iter().enumerate() {
+            if let Some(error) = visit(
+                child,
+                route.descendant(mapping::SourceScopeStep::Child(index)),
+            ) {
+                return Some(error);
+            }
+        }
+        for (index, child) in scope.dynamic_children.iter().enumerate() {
+            if let Some(error) = visit(
+                &child.scope,
+                route.descendant(mapping::SourceScopeStep::DynamicChild(index)),
+            ) {
+                return Some(error);
+            }
+        }
+        None
+    }
+    if let Some(error) = visit(
+        &project.root,
+        mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
+    ) {
+        return Some(error);
+    }
+    for (index, target) in project.extra_targets.iter().enumerate() {
+        if let Some(error) = visit(
+            &target.root,
+            mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Named {
+                index,
+                name: target.name.clone(),
+            }),
+        ) {
+            return Some(error);
+        }
+    }
+    None
 }

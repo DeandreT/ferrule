@@ -91,6 +91,23 @@ impl<'a> SourceCatalog<'a> {
         Self { primary, extras }
     }
 
+    pub(super) fn owned_schema_at(
+        self,
+        source: &mapping::OwnedSourceRef,
+    ) -> Option<SchemaCursor<'a>> {
+        let root = match &source.owner {
+            mapping::SourceOwner::Primary => self.primary,
+            mapping::SourceOwner::Named { name } => {
+                &self
+                    .extras
+                    .iter()
+                    .find(|candidate| candidate.name == *name)?
+                    .source
+            }
+        };
+        follow_from(root, root, &source.path).map(|node| SchemaCursor::new(root, node))
+    }
+
     pub(super) fn primary(self) -> SchemaCursor<'a> {
         SchemaCursor::new(self.primary, self.primary)
     }

@@ -129,6 +129,7 @@ pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitErr
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
+    codegen::validate_owned_emission(program)?;
     let manifest = render_manifest(options);
     let source = render_source(program)?;
     ArtifactSet::new([
@@ -654,7 +655,9 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .chain(*expression)
             .chain(*arg)
             .collect(),
-        Expression::SourceField { .. }
+        Expression::OwnedSourceField(_)
+        | Expression::OwnedPosition(_)
+        | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }
@@ -1307,6 +1310,12 @@ fn render_expression(
     let call_expression =
         |node: NodeId, context: &str| format!("{prefix}{node}({context}{parameter_argument})");
     let body = match expression {
+        Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+            let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
+                codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
+            });
+            return Err(codegen::owned_expression_emission_error(namespace, id, expression).into());
+        }
         Expression::SourceField { frame, path } => {
             let path = path
                 .iter()
@@ -2014,6 +2023,7 @@ fn render_grouping(
     output: &mut String,
 ) {
     let wrapper = match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => source.path().last().map_or_else(
             || "None".to_string(),
             |name| format!("Some({})", rust_string(name)),
@@ -2181,6 +2191,7 @@ fn render_iteration_candidates(
         "let candidates"
     };
     match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => {
             render_source_iteration_candidates(program, source.path(), binding, output);
         }
