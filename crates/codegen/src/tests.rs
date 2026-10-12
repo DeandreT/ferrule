@@ -1877,3 +1877,5 @@ fn owned_metadata_is_not_a_new_reachability_edge() {
 mod owned_collection;
 
 mod owned_basic;
+
+mod basic_owned_emission;

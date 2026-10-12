@@ -1288,5 +1288,7 @@ fn validate_scope(
     Ok(())
 }
 
+pub use owned_sources::validate_basic_owned_emission;
+
 #[cfg(test)]
 mod tests;
