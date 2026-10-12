@@ -89,435 +89,14 @@ fn render_with_json_boundaries(
     }
 
     for (node, expression) in expressions {
-        output.push('\n');
-        output.push_str(&format!(
-            "    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context)",
-        ));
-        match expression {
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
-                return Err(codegen::owned_expression_emission_error(
-                    codegen::OwnedSourceNamespace::Main,
-                    node,
-                    expression,
-                )
-                .into());
-            }
-            Expression::SourceField { frame, path } => {
-                output.push_str(" =>\n        ");
-                if let Some(frame) = frame {
-                    output.push_str("context.ResolveSourceFieldInFrame(");
-                    render_path(frame, &mut output);
-                    output.push_str(", ");
-                    render_path(path, &mut output);
-                } else {
-                    output.push_str("context.ResolveSourceField(");
-                    render_path(path, &mut output);
-                }
-                output.push_str(");\n");
-            }
-            Expression::SourceRootXmlTypeEquals {
-                canonical_expanded_type,
-            } => {
-                output.push_str(&format!(
-                    " =>\n        context.ResolveSourceRootXmlTypeEquals({node}U, {});\n",
-                    literal::string(canonical_expanded_type)
-                ));
-            }
-            Expression::SourceRootField { path, required } => {
-                let reader = if *required {
-                    "ResolveRequiredSourceRootField"
-                } else {
-                    "ResolveSourceRootField"
-                };
-                output.push_str(&format!(" =>\n        context.{reader}({node}U, "));
-                render_path(path, &mut output);
-                output.push_str(");\n");
-            }
-            Expression::DynamicSourceField { object, frame, key } => {
-                output.push_str("\n    {\n        var key = Node_");
-                output.push_str(&key.to_string());
-                output.push_str("(context);\n        return context.ResolveDynamicScalar(");
-                match frame {
-                    Some(frame) => render_path(frame, &mut output),
-                    None => output.push_str("null"),
-                }
-                output.push_str(", ");
-                render_path(object, &mut output);
-                output.push_str(", key);\n    }\n");
-            }
-            Expression::XmlSerialize {
-                frame,
-                path,
-                schema,
-                declaration,
-                indent,
-                namespace,
-            } => {
-                let schema = codegen::serialize_embedded_schema(
-                    schema,
-                    codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
-                )?;
-                output.push_str("\n    {\n        var instance = context.ResolveXmlInstance(");
-                match frame {
-                    Some(frame) => render_path(frame, &mut output),
-                    None => output.push_str("null"),
-                }
-                output.push_str(", ");
-                render_path(path, &mut output);
-                output.push_str("\n        );\n        return global::Ferrule.Runtime.FerruleXml.SerializeEmbedded(\n            ");
-                output.push_str(&format!("{node}U, "));
-                output.push_str(&literal::string(&schema));
-                output.push_str(", instance, ");
-                output.push_str(if *declaration { "true" } else { "false" });
-                output.push_str(", ");
-                output.push_str(if *indent { "true" } else { "false" });
-                output.push_str(", ");
-                match namespace {
-                    Some(namespace) => output.push_str(&literal::string(namespace)),
-                    None => output.push_str("null"),
-                }
-                output.push_str(");\n    }\n");
-            }
-            Expression::XmlMixedContent {
-                frame,
-                path,
-                replacements,
-            } => {
-                output.push_str(
-                    "\n    {\n        return global::Ferrule.Runtime.FerruleXmlMixedContent.Evaluate(\n            context,\n            ",
-                );
-                match frame {
-                    Some(frame) => render_path(frame, &mut output),
-                    None => output.push_str("null"),
-                }
-                output.push_str(",\n            ");
-                render_path(path, &mut output);
-                output.push_str(
-                    ",\n            new global::Ferrule.Runtime.FerruleXmlMixedContentReplacement[]\n            {\n",
-                );
-                for replacement in replacements {
-                    output.push_str("                new(");
-                    output.push_str(&literal::string(&replacement.element));
-                    output.push_str(", ");
-                    render_path(&replacement.collection, &mut output);
-                    output.push_str(&format!(", Node_{}),\n", replacement.expression));
-                }
-                output.push_str("            });\n    }\n");
-            }
-            Expression::SourceDocumentPath => {
-                output.push_str(" =>\n        context.ResolveSourceDocumentPath();\n");
-            }
-            Expression::Position { collection } => {
-                output.push_str(
-                    " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.Position(",
-                );
-                render_path(collection, &mut output);
-                output.push_str("));\n");
-            }
-            Expression::JoinField {
-                join,
-                collection,
-                path,
-            } => {
-                output.push_str(&format!(
-                    " =>\n        context.ResolveJoinScalar({}UL, ",
-                    join.get()
-                ));
-                render_path(collection, &mut output);
-                output.push_str(", ");
-                render_path(path, &mut output);
-                output.push_str(");\n");
-            }
-            Expression::JoinPosition { join } => {
-                output.push_str(&format!(
-                    " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.JoinPosition({}UL));\n",
-                    join.get()
-                ));
-            }
-            Expression::Const { value } => {
-                output.push_str(" =>\n        ");
-                output.push_str(&literal::value(node, value)?);
-                output.push_str(";\n");
-            }
-            Expression::FunctionParameter { parameter } => {
-                return Err(ProgramValidationError::FunctionParameterInMain {
-                    node,
-                    parameter: *parameter,
-                }
-                .into());
-            }
-            Expression::RuntimeValue { value } => {
-                output.push_str(" =>\n        context.ResolveRuntimeValue(");
-                output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
-                output.push_str(runtime_value_name(*value));
-                output.push_str(");\n");
-            }
-            Expression::RuntimeParameter { name, ty } => {
-                output.push_str(" =>\n        context.ResolveRuntimeParameter(");
-                output.push_str(&format!("{node}U, "));
-                output.push_str(&literal::string(name));
-                output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
-                output.push_str(scalar_type_name(*ty));
-                output.push_str(");\n");
-            }
-            Expression::RuntimeParameterDefault { name, ty, default } => {
-                output.push_str(" =>\n        context.ResolveRuntimeParameterOrDefault(");
-                output.push_str(&format!("{node}U, "));
-                output.push_str(&literal::string(name));
-                output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
-                output.push_str(scalar_type_name(*ty));
-                output.push_str(&format!(", () => Node_{default}(context));\n"));
-            }
-            Expression::Call { function, args } => {
-                output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
-                output.push_str(&literal::string(function.as_str()));
-                output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
-                for (index, argument) in args.iter().enumerate() {
-                    if index != 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&format!("Node_{argument}(context)"));
-                }
-                output.push_str(" });\n");
-            }
-            Expression::DelimitedTextField { input, parser } => {
-                output.push_str(" =>\n        ");
-                render_delimited_text_field(parser, &format!("Node_{input}(context)"), &mut output);
-                output.push_str(";\n");
-            }
-            Expression::UserFunctionCall { function, args } => {
-                output.push_str("\n    {\n");
-                render_user_function_call(
-                    node,
-                    *function,
-                    args,
-                    &functions,
-                    |argument| format!("Node_{argument}(context)"),
-                    has_filter_map,
-                    &mut output,
-                )?;
-                output.push_str("    }\n");
-            }
-            Expression::If {
-                condition,
-                then,
-                else_,
-            } => {
-                output.push_str("\n    {\n");
-                output.push_str(&format!(
-                    "        var condition_{node} = Node_{condition}(context);\n"
-                ));
-                output.push_str(&format!(
-                    "        if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(condition_{node}, {condition}U))\n        {{\n            return Node_{then}(context);\n        }}\n"
-                ));
-                output.push_str(&format!("        return Node_{else_}(context);\n    }}\n"));
-            }
-            Expression::Raise { message } => {
-                let message = message.map_or_else(
-                    || "null".to_string(),
-                    |message| format!("Node_{message}(context)"),
-                );
-                output.push_str(&format!(" =>\n        throw global::Ferrule.Runtime.FerruleFailures.MappingException({node}U, {message});\n"));
-            }
-            Expression::ValueMap {
-                input,
-                input_type,
-                table,
-                default,
-            } => {
-                output.push_str("\n    {\n");
-                let normalization = if input_type.is_some() {
-                    format!(
-                        "        if (input_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.JsonNull)\n        {{\n            input_{node} = global::Ferrule.Runtime.FerruleValue.Null;\n        }}\n"
-                    )
-                } else {
-                    String::new()
-                };
-                output.push_str(&format!(
-                    "        var input_{node} = Node_{input}(context);\n{normalization}        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, "
-                ));
-                match input_type {
-                    Some(value) => output.push_str(&format!(
-                        "global::Ferrule.Runtime.FerruleScalarType.{}",
-                        scalar_type_name(*value)
-                    )),
-                    None => output.push_str("null"),
-                }
-                output.push_str(",\n            new global::Ferrule.Runtime.FerruleValueMapEntry[]\n            {\n");
-                for (from, to) in table {
-                    output.push_str("                new(");
-                    output.push_str(&literal::value(node, from)?);
-                    output.push_str(", ");
-                    output.push_str(&literal::value(node, to)?);
-                    output.push_str("),\n");
-                }
-                output.push_str("            },\n            ");
-                match default {
-                    Some(value) => output.push_str(&literal::value(node, value)?),
-                    None => output.push_str("null"),
-                }
-                output.push_str(");\n    }\n");
-            }
-            Expression::Lookup {
-                collection,
-                key,
-                matches,
-                value,
-            } => {
-                output.push_str("\n    {\n");
-                output.push_str(&format!(
-                    "        var lookup_match_{node} = Node_{matches}(context);\n        return context.Lookup("
-                ));
-                render_path(collection, &mut output);
-                output.push_str(", ");
-                render_path(key, &mut output);
-                output.push_str(&format!(", lookup_match_{node}, "));
-                render_path(value, &mut output);
-                output.push_str(");\n    }\n");
-            }
-            Expression::CollectionFind {
-                collection,
-                predicate,
-                value,
-            } => {
-                output.push_str("\n    {\n");
-                output.push_str(&format!(
-                    "        var find_items_{node} = context.CollectionFindItems("
-                ));
-                render_path(collection, &mut output);
-                output.push_str(&format!(
-                    ");\n        foreach (var find_context_{node} in find_items_{node})\n        {{\n            var find_predicate_{node} = Node_{predicate}(find_context_{node});\n            if (find_predicate_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.Bool)\n            {{\n                if (find_predicate_{node}.BooleanValue)\n                {{\n                    return Node_{value}(find_context_{node});\n                }}\n                continue;\n            }}\n            if (find_predicate_{node}.Kind is global::Ferrule.Runtime.FerruleValueKind.Null or global::Ferrule.Runtime.FerruleValueKind.JsonNull or global::Ferrule.Runtime.FerruleValueKind.XmlNil)\n            {{\n                continue;\n            }}\n            _ = global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(find_predicate_{node}, {predicate}U);\n        }}\n        return global::Ferrule.Runtime.FerruleValue.Null;\n    }}\n"
-                ));
-            }
-            Expression::Aggregate {
-                function,
-                collection,
-                value,
-                arg,
-            } => {
-                output.push_str("\n    {\n");
-                output.push_str(&format!(
-                    "        var items_{node} = context.AggregateItems("
-                ));
-                render_path(collection, &mut output);
-                output.push_str(&format!(
-                    ");\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(items_{node}.Count);\n        foreach (var item_context_{node} in items_{node})\n        {{\n"
-                ));
-                match value {
-                    AggregateValue::Path(path) => {
-                        output.push_str(&format!(
-                            "            values_{node}.Add(item_context_{node}.AggregateCurrentScalar("
-                        ));
-                        render_path(path, &mut output);
-                        output.push_str("));\n");
-                    }
-                    AggregateValue::Expression(expression) => output.push_str(&format!(
-                        "            values_{node}.Add(Node_{expression}(item_context_{node}));\n"
-                    )),
-                }
-                output.push_str("        }\n");
-                match arg {
-                    Some(arg) => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
-                    )),
-                    None => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
-                    )),
-                }
-                output.push_str(&format!(
-                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
-                    aggregate_function_name(*function)
-                ));
-            }
-            Expression::JoinAggregate {
-                function,
-                join,
-                expression,
-                arg,
-            } => {
-                output.push_str("\n    {\n");
-                output.push_str(&format!("        var tuple_contexts_{node} = "));
-                render_inner_join_call(join, &mut output);
-                output.push_str(&format!(
-                    ";\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(tuple_contexts_{node}.Count);\n        foreach (var tuple_context_{node} in tuple_contexts_{node})\n        {{\n"
-                ));
-                match expression {
-                    Some(expression) => output.push_str(&format!(
-                        "            values_{node}.Add(Node_{expression}(tuple_context_{node}));\n"
-                    )),
-                    None => output.push_str(&format!(
-                        "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
-                    )),
-                }
-                output.push_str("        }\n");
-                match arg {
-                    Some(arg) => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
-                    )),
-                    None => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
-                    )),
-                }
-                output.push_str(&format!(
-                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
-                    aggregate_function_name(*function)
-                ));
-            }
-            Expression::SequenceExists {
-                sequence,
-                predicate,
-            } => {
-                output.push_str("\n    {\n");
-                let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output)?;
-                output.push_str(&format!(
-                    "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n"
-                ));
-            }
-            Expression::SequenceItemAt { sequence, index } => {
-                output.push_str("\n    {\n");
-                let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output)?;
-                output.push_str(&format!(
-                    "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
-                ));
-            }
-            Expression::SequenceAggregate {
-                function,
-                sequence,
-                predicate,
-                expression,
-                arg,
-            } => {
-                output.push_str("\n    {\n");
-                let identifier = format!("node_{node}");
-                render_generated_values(&identifier, sequence, &mut output)?;
-                output.push_str(&format!(
-                    "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
-                ));
-                if let Some(predicate) = predicate {
-                    output.push_str(&format!(
-                        "            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                continue;\n            }}\n"
-                    ));
-                }
-                output.push_str(&format!(
-                    "            aggregate_values_{identifier}.Add(Node_{}(sequence_context_{identifier}));\n        }}\n",
-                    expression.unwrap_or(sequence.item())
-                ));
-                match arg {
-                    Some(arg) => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = Node_{arg}(context);\n"
-                    )),
-                    None => output.push_str(&format!(
-                        "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = null;\n"
-                    )),
-                }
-                output.push_str(&format!(
-                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, aggregate_values_{identifier}, aggregate_argument_{identifier});\n    }}\n",
-                    aggregate_function_name(*function)
-                ));
-            }
-        }
+        render_expression(
+            node,
+            expression,
+            &functions,
+            has_filter_map,
+            ExpressionContext::Legacy,
+            &mut output,
+        )?;
     }
 
     for (scope_index, scope) in scopes.iter().enumerate() {
@@ -640,98 +219,7 @@ fn render_with_json_boundaries(
             output.push_str("        return context.CopyCurrentGroup();\n    }\n");
             continue;
         }
-        for (binding_index, expression) in scope.evaluations.iter().enumerate() {
-            output.push_str(&format!(
-                "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"
-            ));
-        }
-        let dynamic_group = matches!(scope.construction, TargetConstruction::DynamicGroup { .. });
-        output.push_str(&format!(
-            "        var fields_{scope_index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleField>\n        {{\n"
-        ));
-        for binding in &scope.bindings {
-            output.push_str("            new global::Ferrule.Runtime.FerruleField(");
-            output.push_str(&literal::string(binding.target_field));
-            output.push_str(", ");
-            if binding.repeating {
-                output.push_str(
-                    "TargetBuilder.RepeatedScalar(new global::Ferrule.Runtime.FerruleValue[] { ",
-                );
-                for (index, binding_index) in binding.values.iter().enumerate() {
-                    if index != 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&format!("value_{scope_index}_{binding_index}"));
-                }
-                output.push_str(" }, ");
-            } else {
-                output.push_str(&format!(
-                    "TargetBuilder.Scalar(value_{scope_index}_{}, ",
-                    binding.values[0]
-                ));
-            }
-            output.push_str(&render_target_domain(binding.target_domain));
-            output.push_str(")),\n");
-        }
-        output.push_str("        };\n");
-        if let TargetConstruction::DynamicGroup {
-            fixed_fields,
-            bindings,
-            ..
-        } = scope.construction
-        {
-            output.push_str(&format!(
-                "        var fixed_fields_{scope_index} = new string[] {{ "
-            ));
-            for (index, field) in fixed_fields.iter().enumerate() {
-                if index != 0 {
-                    output.push_str(", ");
-                }
-                output.push_str(&literal::string(field));
-            }
-            output.push_str(" };\n");
-            for (index, binding) in bindings.iter().enumerate() {
-                output.push_str(&format!(
-                    "        var dynamic_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({}U, Node_{}(context));\n        var dynamic_value_{scope_index}_{index} = Node_{}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_key_{scope_index}_{index},\n            TargetBuilder.Scalar(dynamic_value_{scope_index}_{index}, {}));\n",
-                    binding.key,
-                    binding.key,
-                    binding.value,
-                    render_target_domain(binding.target_domain),
-                ));
-            }
-        }
-        for (target_field, child_index) in &scope.children {
-            output.push_str(&format!(
-                "        fields_{scope_index}.Add(new global::Ferrule.Runtime.FerruleField({}, Scope_{child_index}(context)));\n",
-                literal::string(target_field)
-            ));
-        }
-        if dynamic_group {
-            for (index, (key, child_index)) in scope.dynamic_children.iter().enumerate() {
-                output.push_str(&format!(
-                    "        var dynamic_child_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({key}U, Node_{key}(context));\n        var dynamic_child_value_{scope_index}_{index} = Scope_{child_index}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_child_key_{scope_index}_{index},\n            dynamic_child_value_{scope_index}_{index});\n"
-                ));
-            }
-        }
-        output.push_str(&format!(
-            "        var group_{scope_index} = new global::Ferrule.Runtime.FerruleGroup(fields_{scope_index});\n"
-        ));
-        if let TargetConstruction::XmlMixedContent { elements } = scope.construction {
-            output.push_str(&format!(
-                "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
-            ));
-            for element in elements {
-                output.push_str("                new(");
-                output.push_str(&literal::string(&element.source));
-                output.push_str(", ");
-                output.push_str(&literal::string(&element.target));
-                output.push_str("),\n");
-            }
-            output.push_str("            });\n");
-        } else {
-            output.push_str(&format!("        return group_{scope_index};\n"));
-        }
-        output.push_str("    }\n");
+        render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
     output.push_str("}\n");
@@ -2274,4 +1762,681 @@ const fn scalar_type_name(value: ScalarType) -> &'static str {
         ScalarType::Float => "Double",
         ScalarType::Bool => "Bool",
     }
+}
+
+#[derive(Clone, Copy)]
+enum ExpressionContext {
+    Legacy,
+    #[cfg(test)]
+    Basic,
+}
+
+// The Legacy branch retains the ordinary source bytes and scalar evaluation order.
+fn render_expression(
+    node: NodeId,
+    expression: &Expression,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    has_filter_map: bool,
+    mode: ExpressionContext,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let (context_type, legacy_receiver, position_reader) = match mode {
+        ExpressionContext::Legacy => (
+            "global::Ferrule.Runtime.ScopeContext",
+            "context",
+            "Position",
+        ),
+        #[cfg(test)]
+        ExpressionContext::Basic => (
+            "global::Ferrule.Runtime.FerruleBasicScopeContext",
+            "context.LegacyView",
+            "LegacyPosition",
+        ),
+    };
+    #[cfg(test)]
+    if matches!(mode, ExpressionContext::Basic) {
+        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        return NodeBody_{node}(context);\n    }}\n"));
+    }
+    let method = match mode {
+        ExpressionContext::Legacy => format!("Node_{node}"),
+        #[cfg(test)]
+        ExpressionContext::Basic => format!("NodeBody_{node}"),
+    };
+    output.push('\n');
+    output.push_str(&format!(
+        "    private static global::Ferrule.Runtime.FerruleValue {method}(\n        {context_type} context)",
+    ));
+    match expression {
+        Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+            #[cfg(test)]
+            if matches!(mode, ExpressionContext::Basic) {
+                return crate::owned_basic::render_owned_leaf(node, expression, output);
+            }
+            return Err(codegen::owned_expression_emission_error(
+                codegen::OwnedSourceNamespace::Main,
+                node,
+                expression,
+            )
+            .into());
+        }
+        Expression::SourceField { frame, path } => {
+            #[cfg(test)]
+            if matches!(mode, ExpressionContext::Basic) {
+                output.push_str(" =>\n        context.ResolveLegacyField(");
+                render_path(path, output);
+                output.push_str(", ");
+                render_optional_path(frame.as_deref(), output);
+                output.push_str(");\n");
+                return Ok(());
+            }
+            output.push_str(" =>\n        ");
+            if let Some(frame) = frame {
+                output.push_str("context.ResolveSourceFieldInFrame(");
+                render_path(frame, output);
+                output.push_str(", ");
+                render_path(path, output);
+            } else {
+                output.push_str("context.ResolveSourceField(");
+                render_path(path, output);
+            }
+            output.push_str(");\n");
+        }
+        Expression::SourceRootXmlTypeEquals {
+            canonical_expanded_type,
+        } => {
+            output.push_str(&format!(
+                " =>\n        context.ResolveSourceRootXmlTypeEquals({node}U, {});\n",
+                literal::string(canonical_expanded_type)
+            ));
+        }
+        Expression::SourceRootField { path, required } => {
+            let reader = if *required {
+                "ResolveRequiredSourceRootField"
+            } else {
+                "ResolveSourceRootField"
+            };
+            output.push_str(&format!(" =>\n        context.{reader}({node}U, "));
+            render_path(path, output);
+            output.push_str(");\n");
+        }
+        Expression::DynamicSourceField { object, frame, key } => {
+            output.push_str("\n    {\n        var key = Node_");
+            output.push_str(&key.to_string());
+            output.push_str("(context);\n        return context.ResolveDynamicScalar(");
+            match frame {
+                Some(frame) => render_path(frame, output),
+                None => output.push_str("null"),
+            }
+            output.push_str(", ");
+            render_path(object, output);
+            output.push_str(", key);\n    }\n");
+        }
+        Expression::XmlSerialize {
+            frame,
+            path,
+            schema,
+            declaration,
+            indent,
+            namespace,
+        } => {
+            let schema =
+                codegen::serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
+            output.push_str("\n    {\n        var instance = context.ResolveXmlInstance(");
+            match frame {
+                Some(frame) => render_path(frame, output),
+                None => output.push_str("null"),
+            }
+            output.push_str(", ");
+            render_path(path, output);
+            output.push_str("\n        );\n        return global::Ferrule.Runtime.FerruleXml.SerializeEmbedded(\n            ");
+            output.push_str(&format!("{node}U, "));
+            output.push_str(&literal::string(&schema));
+            output.push_str(", instance, ");
+            output.push_str(if *declaration { "true" } else { "false" });
+            output.push_str(", ");
+            output.push_str(if *indent { "true" } else { "false" });
+            output.push_str(", ");
+            match namespace {
+                Some(namespace) => output.push_str(&literal::string(namespace)),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
+        }
+        Expression::XmlMixedContent {
+            frame,
+            path,
+            replacements,
+        } => {
+            output.push_str(
+                "\n    {\n        return global::Ferrule.Runtime.FerruleXmlMixedContent.Evaluate(\n            context,\n            ",
+            );
+            match frame {
+                Some(frame) => render_path(frame, output),
+                None => output.push_str("null"),
+            }
+            output.push_str(",\n            ");
+            render_path(path, output);
+            output.push_str(
+                ",\n            new global::Ferrule.Runtime.FerruleXmlMixedContentReplacement[]\n            {\n",
+            );
+            for replacement in replacements {
+                output.push_str("                new(");
+                output.push_str(&literal::string(&replacement.element));
+                output.push_str(", ");
+                render_path(&replacement.collection, output);
+                output.push_str(&format!(", Node_{}),\n", replacement.expression));
+            }
+            output.push_str("            });\n    }\n");
+        }
+        Expression::SourceDocumentPath => {
+            output.push_str(" =>\n        context.ResolveSourceDocumentPath();\n");
+        }
+        Expression::Position { collection } => {
+            output.push_str(&format!(
+                " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.{position_reader}(",
+            ));
+            render_path(collection, output);
+            output.push_str("));\n");
+        }
+        Expression::JoinField {
+            join,
+            collection,
+            path,
+        } => {
+            output.push_str(&format!(
+                " =>\n        context.ResolveJoinScalar({}UL, ",
+                join.get()
+            ));
+            render_path(collection, output);
+            output.push_str(", ");
+            render_path(path, output);
+            output.push_str(");\n");
+        }
+        Expression::JoinPosition { join } => {
+            output.push_str(&format!(
+                " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.JoinPosition({}UL));\n",
+                join.get()
+            ));
+        }
+        Expression::Const { value } => {
+            output.push_str(" =>\n        ");
+            output.push_str(&literal::value(node, value)?);
+            output.push_str(";\n");
+        }
+        Expression::FunctionParameter { parameter } => {
+            return Err(ProgramValidationError::FunctionParameterInMain {
+                node,
+                parameter: *parameter,
+            }
+            .into());
+        }
+        Expression::RuntimeValue { value } => {
+            output.push_str(&format!(
+                " =>\n        {legacy_receiver}.ResolveRuntimeValue("
+            ));
+            output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
+            output.push_str(runtime_value_name(*value));
+            output.push_str(");\n");
+        }
+        Expression::RuntimeParameter { name, ty } => {
+            output.push_str(&format!(
+                " =>\n        {legacy_receiver}.ResolveRuntimeParameter("
+            ));
+            output.push_str(&format!("{node}U, "));
+            output.push_str(&literal::string(name));
+            output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+            output.push_str(scalar_type_name(*ty));
+            output.push_str(");\n");
+        }
+        Expression::RuntimeParameterDefault { name, ty, default } => {
+            output.push_str(&format!(
+                " =>\n        {legacy_receiver}.ResolveRuntimeParameterOrDefault("
+            ));
+            output.push_str(&format!("{node}U, "));
+            output.push_str(&literal::string(name));
+            output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+            output.push_str(scalar_type_name(*ty));
+            output.push_str(&format!(", () => Node_{default}(context));\n"));
+        }
+        Expression::Call { function, args } => {
+            output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            output.push_str(&literal::string(function.as_str()));
+            output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
+            for (index, argument) in args.iter().enumerate() {
+                if index != 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("Node_{argument}(context)"));
+            }
+            output.push_str(" });\n");
+        }
+        Expression::DelimitedTextField { input, parser } => {
+            output.push_str(" =>\n        ");
+            render_delimited_text_field(parser, &format!("Node_{input}(context)"), output);
+            output.push_str(";\n");
+        }
+        Expression::UserFunctionCall { function, args } => {
+            output.push_str("\n    {\n");
+            render_user_function_call(
+                node,
+                *function,
+                args,
+                functions,
+                |argument| format!("Node_{argument}(context)"),
+                has_filter_map,
+                output,
+            )?;
+            output.push_str("    }\n");
+        }
+        Expression::If {
+            condition,
+            then,
+            else_,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var condition_{node} = Node_{condition}(context);\n"
+            ));
+            output.push_str(&format!(
+                "        if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(condition_{node}, {condition}U))\n        {{\n            return Node_{then}(context);\n        }}\n"
+            ));
+            output.push_str(&format!("        return Node_{else_}(context);\n    }}\n"));
+        }
+        Expression::Raise { message } => {
+            let message = message.map_or_else(
+                || "null".to_string(),
+                |message| format!("Node_{message}(context)"),
+            );
+            output.push_str(&format!(" =>\n        throw global::Ferrule.Runtime.FerruleFailures.MappingException({node}U, {message});\n"));
+        }
+        Expression::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => {
+            output.push_str("\n    {\n");
+            let normalization = if input_type.is_some() {
+                format!(
+                    "        if (input_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.JsonNull)\n        {{\n            input_{node} = global::Ferrule.Runtime.FerruleValue.Null;\n        }}\n"
+                )
+            } else {
+                String::new()
+            };
+            output.push_str(&format!(
+                "        var input_{node} = Node_{input}(context);\n{normalization}        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, "
+            ));
+            match input_type {
+                Some(value) => output.push_str(&format!(
+                    "global::Ferrule.Runtime.FerruleScalarType.{}",
+                    scalar_type_name(*value)
+                )),
+                None => output.push_str("null"),
+            }
+            output.push_str(",\n            new global::Ferrule.Runtime.FerruleValueMapEntry[]\n            {\n");
+            for (from, to) in table {
+                output.push_str("                new(");
+                output.push_str(&literal::value(node, from)?);
+                output.push_str(", ");
+                output.push_str(&literal::value(node, to)?);
+                output.push_str("),\n");
+            }
+            output.push_str("            },\n            ");
+            match default {
+                Some(value) => output.push_str(&literal::value(node, value)?),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
+        }
+        Expression::Lookup {
+            collection,
+            key,
+            matches,
+            value,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var lookup_match_{node} = Node_{matches}(context);\n        return context.Lookup("
+            ));
+            render_path(collection, output);
+            output.push_str(", ");
+            render_path(key, output);
+            output.push_str(&format!(", lookup_match_{node}, "));
+            render_path(value, output);
+            output.push_str(");\n    }\n");
+        }
+        Expression::CollectionFind {
+            collection,
+            predicate,
+            value,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var find_items_{node} = context.CollectionFindItems("
+            ));
+            render_path(collection, output);
+            output.push_str(&format!(
+                ");\n        foreach (var find_context_{node} in find_items_{node})\n        {{\n            var find_predicate_{node} = Node_{predicate}(find_context_{node});\n            if (find_predicate_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.Bool)\n            {{\n                if (find_predicate_{node}.BooleanValue)\n                {{\n                    return Node_{value}(find_context_{node});\n                }}\n                continue;\n            }}\n            if (find_predicate_{node}.Kind is global::Ferrule.Runtime.FerruleValueKind.Null or global::Ferrule.Runtime.FerruleValueKind.JsonNull or global::Ferrule.Runtime.FerruleValueKind.XmlNil)\n            {{\n                continue;\n            }}\n            _ = global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(find_predicate_{node}, {predicate}U);\n        }}\n        return global::Ferrule.Runtime.FerruleValue.Null;\n    }}\n"
+            ));
+        }
+        Expression::Aggregate {
+            function,
+            collection,
+            value,
+            arg,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var items_{node} = context.AggregateItems("
+            ));
+            render_path(collection, output);
+            output.push_str(&format!(
+                ");\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(items_{node}.Count);\n        foreach (var item_context_{node} in items_{node})\n        {{\n"
+            ));
+            match value {
+                AggregateValue::Path(path) => {
+                    output.push_str(&format!(
+                        "            values_{node}.Add(item_context_{node}.AggregateCurrentScalar("
+                    ));
+                    render_path(path, output);
+                    output.push_str("));\n");
+                }
+                AggregateValue::Expression(expression) => output.push_str(&format!(
+                    "            values_{node}.Add(Node_{expression}(item_context_{node}));\n"
+                )),
+            }
+            output.push_str("        }\n");
+            match arg {
+                Some(arg) => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
+                )),
+                None => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
+                )),
+            }
+            output.push_str(&format!(
+                "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
+                aggregate_function_name(*function)
+            ));
+        }
+        Expression::JoinAggregate {
+            function,
+            join,
+            expression,
+            arg,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!("        var tuple_contexts_{node} = "));
+            render_inner_join_call(join, output);
+            output.push_str(&format!(
+                ";\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(tuple_contexts_{node}.Count);\n        foreach (var tuple_context_{node} in tuple_contexts_{node})\n        {{\n"
+            ));
+            match expression {
+                Some(expression) => output.push_str(&format!(
+                    "            values_{node}.Add(Node_{expression}(tuple_context_{node}));\n"
+                )),
+                None => output.push_str(&format!(
+                    "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
+                )),
+            }
+            output.push_str("        }\n");
+            match arg {
+                Some(arg) => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
+                )),
+                None => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
+                )),
+            }
+            output.push_str(&format!(
+                "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
+                aggregate_function_name(*function)
+            ));
+        }
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => {
+            output.push_str("\n    {\n");
+            let identifier = format!("node_{node}");
+            render_generated_values(&identifier, sequence, output)?;
+            output.push_str(&format!(
+                "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n"
+            ));
+        }
+        Expression::SequenceItemAt { sequence, index } => {
+            output.push_str("\n    {\n");
+            let identifier = format!("node_{node}");
+            render_generated_values(&identifier, sequence, output)?;
+            output.push_str(&format!(
+                "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
+            ));
+        }
+        Expression::SequenceAggregate {
+            function,
+            sequence,
+            predicate,
+            expression,
+            arg,
+        } => {
+            output.push_str("\n    {\n");
+            let identifier = format!("node_{node}");
+            render_generated_values(&identifier, sequence, output)?;
+            output.push_str(&format!(
+                "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
+            ));
+            if let Some(predicate) = predicate {
+                output.push_str(&format!(
+                    "            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                continue;\n            }}\n"
+                ));
+            }
+            output.push_str(&format!(
+                "            aggregate_values_{identifier}.Add(Node_{}(sequence_context_{identifier}));\n        }}\n",
+                expression.unwrap_or(sequence.item())
+            ));
+            match arg {
+                Some(arg) => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = Node_{arg}(context);\n"
+                )),
+                None => output.push_str(&format!(
+                    "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = null;\n"
+                )),
+            }
+            output.push_str(&format!(
+                "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, aggregate_values_{identifier}, aggregate_argument_{identifier});\n    }}\n",
+                aggregate_function_name(*function)
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn render_bound_group(scope_index: usize, scope: &ScopePlan<'_>, output: &mut String) {
+    for (binding_index, expression) in scope.evaluations.iter().enumerate() {
+        output.push_str(&format!(
+            "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"
+        ));
+    }
+    let dynamic_group = matches!(scope.construction, TargetConstruction::DynamicGroup { .. });
+    output.push_str(&format!(
+        "        var fields_{scope_index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleField>\n        {{\n"
+    ));
+    for binding in &scope.bindings {
+        output.push_str("            new global::Ferrule.Runtime.FerruleField(");
+        output.push_str(&literal::string(binding.target_field));
+        output.push_str(", ");
+        if binding.repeating {
+            output.push_str(
+                "TargetBuilder.RepeatedScalar(new global::Ferrule.Runtime.FerruleValue[] { ",
+            );
+            for (index, binding_index) in binding.values.iter().enumerate() {
+                if index != 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("value_{scope_index}_{binding_index}"));
+            }
+            output.push_str(" }, ");
+        } else {
+            output.push_str(&format!(
+                "TargetBuilder.Scalar(value_{scope_index}_{}, ",
+                binding.values[0]
+            ));
+        }
+        output.push_str(&render_target_domain(binding.target_domain));
+        output.push_str(")),\n");
+    }
+    output.push_str("        };\n");
+    if let TargetConstruction::DynamicGroup {
+        fixed_fields,
+        bindings,
+        ..
+    } = scope.construction
+    {
+        output.push_str(&format!(
+            "        var fixed_fields_{scope_index} = new string[] {{ "
+        ));
+        for (index, field) in fixed_fields.iter().enumerate() {
+            if index != 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&literal::string(field));
+        }
+        output.push_str(" };\n");
+        for (index, binding) in bindings.iter().enumerate() {
+            output.push_str(&format!(
+                "        var dynamic_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({}U, Node_{}(context));\n        var dynamic_value_{scope_index}_{index} = Node_{}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_key_{scope_index}_{index},\n            TargetBuilder.Scalar(dynamic_value_{scope_index}_{index}, {}));\n",
+                binding.key,
+                binding.key,
+                binding.value,
+                render_target_domain(binding.target_domain),
+            ));
+        }
+    }
+    for (target_field, child_index) in &scope.children {
+        output.push_str(&format!(
+            "        fields_{scope_index}.Add(new global::Ferrule.Runtime.FerruleField({}, Scope_{child_index}(context)));\n",
+            literal::string(target_field)
+        ));
+    }
+    if dynamic_group {
+        for (index, (key, child_index)) in scope.dynamic_children.iter().enumerate() {
+            output.push_str(&format!(
+                "        var dynamic_child_key_{scope_index}_{index} = global::Ferrule.Runtime.FerruleDynamicTargets.PropertyName({key}U, Node_{key}(context));\n        var dynamic_child_value_{scope_index}_{index} = Scope_{child_index}(context);\n        global::Ferrule.Runtime.FerruleDynamicTargets.Insert(\n            fields_{scope_index},\n            fixed_fields_{scope_index},\n            dynamic_child_key_{scope_index}_{index},\n            dynamic_child_value_{scope_index}_{index});\n"
+            ));
+        }
+    }
+    output.push_str(&format!(
+        "        var group_{scope_index} = new global::Ferrule.Runtime.FerruleGroup(fields_{scope_index});\n"
+    ));
+    if let TargetConstruction::XmlMixedContent { elements } = scope.construction {
+        output.push_str(&format!(
+            "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
+        ));
+        for element in elements {
+            output.push_str("                new(");
+            output.push_str(&literal::string(&element.source));
+            output.push_str(", ");
+            output.push_str(&literal::string(&element.target));
+            output.push_str("),\n");
+        }
+        output.push_str("            });\n");
+    } else {
+        output.push_str(&format!("        return group_{scope_index};\n"));
+    }
+    output.push_str("    }\n");
+}
+
+#[cfg(test)]
+pub(super) fn render_optional_path(path: Option<&[String]>, output: &mut String) {
+    match path {
+        Some(path) => render_path(path, output),
+        None => output.push_str("null"),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn render_basic_expression(
+    node: NodeId,
+    expression: &Expression,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    render_expression(
+        node,
+        expression,
+        &BTreeMap::new(),
+        false,
+        ExpressionContext::Basic,
+        output,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn basic_selected_output_types() -> &'static str {
+    SELECTED_TARGET_OUTPUT_TYPES
+}
+
+#[cfg(test)]
+pub(super) fn basic_path(path: &[String], output: &mut String) {
+    render_path(path, output);
+}
+
+#[cfg(test)]
+type BasicScopeIndices<'a> = (usize, Vec<(&'a str, usize)>);
+
+#[cfg(test)]
+pub(super) fn render_basic_scopes<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    let mut scopes = Vec::new();
+    let primary = add_scope(&program.root, &mut scopes);
+    let extras = program
+        .extra_targets
+        .iter()
+        .map(|target| (target.name.as_str(), add_scope(&target.root, &mut scopes)))
+        .collect();
+    for (index, scope) in scopes.iter().enumerate() {
+        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
+        if let Some(iteration) = scope.iteration {
+            output.push_str(&format!("        var cohort_{index} = context."));
+            match iteration.input() {
+                IterationSource::OwnedSource(source) => {
+                    output.push_str("WalkOwnedSourceCohort(");
+                    crate::owned_basic::render_owner(&source.source().owner, output);
+                    output.push_str(", ");
+                    render_path(&source.source().path, output);
+                }
+                IterationSource::Source(source) => {
+                    output.push_str("WalkSourceCohort(");
+                    render_path(source.path(), output);
+                }
+                _ => return Err(crate::owned_basic::scope_refusal(program, index)),
+            }
+            output.push_str(&format!(");\n        var items_{index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>(cohort_{index}.Count);\n        foreach (var candidate_{index} in cohort_{index})\n        {{\n            items_{index}.Add(ScopeItem_{index}(candidate_{index}.Context));\n        }}\n        global::System.GC.KeepAlive(cohort_{index});\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{index});\n"));
+        } else {
+            output.push_str(&format!(
+                "        var item_{index} = ScopeItem_{index}(context);\n"
+            ));
+            if scope.repeating {
+                output.push_str(&format!("        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ item_{index} }});\n"));
+            } else {
+                output.push_str(&format!("        return item_{index};\n"));
+            }
+        }
+        output.push_str("    }\n\n");
+        output.push_str(&format!("    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
+        if let TargetConstruction::Scalar {
+            expression,
+            target_domain,
+        } = scope.construction
+        {
+            output.push_str(&format!(
+                "        return TargetBuilder.Scalar(Node_{expression}(context), {});\n    }}\n",
+                render_target_domain(*target_domain)
+            ));
+        } else {
+            render_bound_group(index, scope, output);
+        }
+    }
+    Ok((primary, extras))
 }

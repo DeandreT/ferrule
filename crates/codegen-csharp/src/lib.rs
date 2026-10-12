@@ -12,6 +12,8 @@ mod filter_map_guard_tests;
 mod json5_output;
 mod literal;
 mod mapping;
+#[cfg(test)]
+mod owned_basic;
 mod runtime;
 mod static_documents;
 mod x12_output;
@@ -157,6 +159,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 
 #[cfg(test)]
 mod tests {
+    #[path = "owned_basic.rs"]
+    mod owned_basic;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,
