@@ -35,6 +35,10 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
+    BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots,
+    CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+};
+pub use context::{
     DeclaredNamedSourceRoot, OwnedScopeContext, OwnedSourceError, OwnedSourceIdentity,
     OwnedSourceLimitKind, OwnedSourceLimits, SourceOwnerRef, SourceRoots,
 };
@@ -149,6 +153,8 @@ pub enum RuntimeError {
         found: usize,
     },
     SourcePath(SourcePathError),
+    OwnedSource(OwnedSourceError),
+    BasicSourceBridge(BasicSourceBridgeError),
     PrimaryRoot {
         node: u32,
         source: ir::PrimaryRootError,
@@ -366,6 +372,8 @@ impl fmt::Display for RuntimeError {
                 "user function {function} expected {expected} arguments, found {found}"
             ),
             Self::SourcePath(error) => error.fmt(formatter),
+            Self::OwnedSource(error) => error.fmt(formatter),
+            Self::BasicSourceBridge(error) => error.fmt(formatter),
             Self::PrimaryRoot { node, source } => write!(formatter, "node {node}: {source}"),
             Self::Function(error) => error.fmt(formatter),
             Self::AggregateIntegerOverflow { function } => {
@@ -612,6 +620,8 @@ impl std::error::Error for RuntimeError {
         match self {
             Self::FilterMapRuntime { source, .. } => Some(source.as_ref()),
             Self::SourcePath(error) => Some(error),
+            Self::OwnedSource(error) => Some(error),
+            Self::BasicSourceBridge(error) => Some(error),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
             Self::FilterMapBudget { .. }
@@ -672,6 +682,18 @@ impl std::error::Error for RuntimeError {
             | Self::UserFunctionType { .. }
             | Self::XmlSerialization { .. } => None,
         }
+    }
+}
+
+impl From<OwnedSourceError> for RuntimeError {
+    fn from(error: OwnedSourceError) -> Self {
+        Self::OwnedSource(error)
+    }
+}
+
+impl From<BasicSourceBridgeError> for RuntimeError {
+    fn from(error: BasicSourceBridgeError) -> Self {
+        Self::BasicSourceBridge(error)
     }
 }
 
