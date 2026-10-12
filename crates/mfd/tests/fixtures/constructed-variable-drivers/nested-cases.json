@@ -1,0 +1,80 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Count\":0}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Count\":2},{},{\"Count\":7}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 2
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Count\":false}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Other\":1}]}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]
+

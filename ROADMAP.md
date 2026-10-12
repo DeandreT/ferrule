@@ -692,6 +692,11 @@ to the recorded route/profile and no inferred streaming or universal benefit.
 
 #### A1. Executable `.mfd` Common Profile
 
+Bounded flat variable records can establish one repeating target group through a
+valid direct literal and scalar inputs in an existing plain parent frame. The
+[import contract](docs/mfd-interop.md#import) preserves full physical schemas and
+keeps competing connectors, structural copy and new collection frames refused.
+
 - [x] Support nested cloned target groups with unique declared ancestor owners
   and exact binding provenance in [#239](https://github.com/DeandreT/ferrule/issues/239),
   following the [import contract](docs/mfd-interop.md). Unequal child partitions

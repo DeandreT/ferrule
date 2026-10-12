@@ -481,9 +481,16 @@ fn build_one(
                 })
                 .count()
                 == 1
-            && direct_literal_group_driver(iteration.feed, &feed, builder)
+            && plain_constructed_group_feed(iteration.feed, &feed)
+            && (literal_constant_value(iteration.feed, builder).is_some()
+                || super::constructed_variable_driver::recognize(
+                    iteration.feed,
+                    &target_path,
+                    builder,
+                    scopes,
+                ))
         {
-            // A literal contributes one group in the inherited context.
+            // A present constructed value contributes one group in the inherited context.
             // Target cardinality wraps this constructed item as repetition;
             // no source collection or generated-item frame is introduced.
             scopes.ensure_scope(&target_path);
@@ -857,11 +864,7 @@ fn build_one(
     }
 }
 
-fn direct_literal_group_driver(
-    output: u32,
-    feed: &super::iteration::IterationFeed,
-    builder: &GraphBuilder<'_>,
-) -> bool {
+fn plain_constructed_group_feed(output: u32, feed: &super::iteration::IterationFeed) -> bool {
     if feed.source_key != output
         || feed.computed_source.is_some()
         || feed.sequence_component.is_some()
@@ -884,34 +887,33 @@ fn direct_literal_group_driver(
     {
         return false;
     }
-    let Some(component) = builder
+    true
+}
+
+pub(super) fn literal_constant_value(output: u32, builder: &GraphBuilder<'_>) -> Option<Value> {
+    let component = builder
         .fn_by_output
         .get(&output)
-        .map(|index| &builder.fn_components[*index])
-    else {
-        return false;
-    };
+        .map(|index| &builder.fn_components[*index])?;
     if component.library != "core"
         || component.name != "constant"
         || component.kind != 2
         || !component.inputs.is_empty()
         || component.outputs.as_slice() != [output]
     {
-        return false;
+        return None;
     }
-    let Some((literal, datatype)) = &component.constant else {
-        return false;
-    };
+    let (literal, datatype) = component.constant.as_ref()?;
     if !matches!(
         datatype.as_str(),
         "string" | "boolean" | "integer" | "int" | "long" | "decimal" | "double" | "float"
     ) {
-        return false;
+        return None;
     }
     match super::function::parse_constant(literal, datatype) {
-        Value::String(_) | Value::Bool(_) | Value::Int(_) => true,
-        Value::Float(value) => value.is_finite(),
-        _ => false,
+        value @ (Value::String(_) | Value::Bool(_) | Value::Int(_)) => Some(value),
+        Value::Float(value) if value.is_finite() => Some(Value::Float(value)),
+        _ => None,
     }
 }
 
