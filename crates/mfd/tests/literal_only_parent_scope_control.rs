@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/constructed-variable-drivers")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/constructed-variable-drivers")
 }
 
 fn import_design(resources: &Path, design: &str, label: &str) -> mfd::Imported {
