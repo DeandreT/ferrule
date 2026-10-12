@@ -798,8 +798,10 @@ alternative views retain refusals.
 A terminal `array` view can select a complete array of records for transparent
 forwarding. One explicit structural input supplies the collection; descendant
 outputs retain its item frame, ordering and scalar paths. Array and item facets
-remain intact. Connected descendant overrides, competing structural drivers and
-variable scope controls retain refusals until their construction contracts qualify.
+remain intact. A separate bounded singleton proof admits literal-established
+scalar assignments when the selected and target item schemas match completely.
+Other descendant overrides, competing structural drivers and variable scope
+controls retain refusals.
 
 A single direct core constant can drive a repeating group once in the existing parent
 context. Its declared literal must be a string, Boolean, integer or finite
@@ -820,7 +822,13 @@ Cycles, connected ancestor drivers, overrides and changed scalar facets retain
 their refusals. The physical fields' repeated ancestors belong to plain source scopes enclosing the
 target. A sibling's frame is insufficient. Preserve complete physical schemas
 and the inherited context; this rule constructs target bindings and introduces
-no collection or structural copy. Computed inputs, competing connectors,
+no collection frame. Copy-All can project at most 256 scalar fields from the
+same bounded record proof, including a declared record collection that permits
+one item. Compare complete item schemas apart from local names and separately
+proved cardinality/uniqueness metadata; retain the original selected and target
+schemas. Explicit target scalar bindings take precedence over projected fields.
+Collection `contains` constraints, incompatible facets and singleton-excluding
+cardinality retain refusals. Computed inputs, competing connectors,
 uniterated collection crossings, controlled parent scopes and variable controls
 retain their refusals.
 

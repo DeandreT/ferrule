@@ -1409,3 +1409,6 @@ mod xml_dynamic_input_document_outputs;
 
 #[path = "code_generation/xml_mixed_named_outputs.rs"]
 mod xml_mixed_named_outputs;
+
+#[path = "code_generation/constructed_variable_copy_all.rs"]
+mod constructed_variable_copy_all;

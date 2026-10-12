@@ -4,7 +4,7 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{ScopeConstruction, ScopeIteration};
 
 use super::graph::GraphBuilder;
-use super::schema::{ComponentFormat, schema_node_at};
+use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use super::scope::ScopeBuilder;
 use super::target_iteration::literal_constant_value;
 
@@ -15,6 +15,27 @@ pub(super) fn recognize(
     target_path: &[String],
     builder: &GraphBuilder<'_>,
     scopes: &ScopeBuilder,
+) -> bool {
+    recognize_record(output, target_path, builder, Some(scopes), false)
+}
+
+/// Defer classification only: parent frames and target compatibility are checked
+/// by `projection` after the enclosing scopes have been installed.
+pub(super) fn defer_projection(output: u32, builder: &GraphBuilder<'_>) -> bool {
+    builder.intermediates.iter().any(|variable| {
+        variable.format == ComponentFormat::Json
+            && variable.schema.repeating
+            && variable.ports.get(&output).is_some_and(Vec::is_empty)
+            && variable.output_keys.contains(&output)
+    }) && recognize_record(output, &[], builder, None, true)
+}
+
+fn recognize_record(
+    output: u32,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    scopes: Option<&ScopeBuilder>,
+    singleton_collection: bool,
 ) -> bool {
     let mut owners = builder
         .intermediates
@@ -43,7 +64,10 @@ pub(super) fn recognize(
     let SchemaKind::Group { children, .. } = &record.kind else {
         return false;
     };
-    if record.repeating
+    if record.repeating && !singleton_collection
+        || record
+            .item_count_range
+            .is_some_and(|range| !range.contains_count(1))
         || (0..output_path.len()).any(|length| {
             schema_node_at(&variable.schema, &output_path[..length])
                 .is_none_or(|node| node.repeating)
@@ -94,11 +118,71 @@ pub(super) fn recognize(
                 .any(|component| component.output_keys.contains(&feed))
         {
             present = true;
-        } else if !parent_scalar(feed, target_path, builder, scopes) {
+        } else if scopes.is_some_and(|scopes| !parent_scalar(feed, target_path, builder, scopes)) {
             return false;
         }
     }
     present
+}
+
+/// Copy-All assigns one flat record while retaining its declared collection type.
+pub(super) fn projection(
+    output: u32,
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &GraphBuilder<'_>,
+    scopes: &ScopeBuilder,
+) -> Option<Vec<(String, u32)>> {
+    if !recognize_record(output, target_path, builder, Some(scopes), true) {
+        return None;
+    }
+    let variable = builder
+        .intermediates
+        .iter()
+        .find(|component| component.output_keys.contains(&output))?;
+    let output_path = variable.ports.get(&output)?;
+    let record = schema_node_at(&variable.schema, output_path)?;
+    let target_record = schema_node_at(&target.schema, target_path)?;
+    let SchemaKind::Group { children, .. } = &record.kind else {
+        return None;
+    };
+    if children.len() > 256
+        || target_record
+            .item_count_range
+            .is_some_and(|range| !range.contains_count(1))
+        || record.json_contains.is_some()
+        || target_record.json_contains.is_some()
+    {
+        return None;
+    }
+    // Compare complete item schemas. Names identify the local ports; cardinality
+    // is proved above and uniqueness is automatic for the constructed singleton.
+    // These are comparison copies: the declared schemas stay unchanged.
+    let mut source_item = record.clone();
+    let mut target_item = target_record.clone();
+    for item in [&mut source_item, &mut target_item] {
+        item.name.clear();
+        item.repeating = false;
+        item.item_count_range = None;
+        item.json_unique_items = false;
+    }
+    if source_item != target_item {
+        return None;
+    }
+    let mut fields = Vec::new();
+    for child in children {
+        let mut path = output_path.clone();
+        path.push(child.name.clone());
+        let feed = variable.ports.iter().find_map(|(key, candidate)| {
+            (variable.input_keys.contains(key) && *candidate == path)
+                .then(|| builder.edge_from.get(key).copied())
+                .flatten()
+        });
+        if let Some(feed) = feed {
+            fields.push((child.name.clone(), feed));
+        }
+    }
+    Some(fields)
 }
 
 const MAX_SCALAR_ALIAS_HOPS: usize = 64;
@@ -294,4 +378,63 @@ fn plain_parent_chain(target_path: &[String], scopes: &ScopeBuilder) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copy_all_fixture_selections_retain_independent_complete_collection_schemas() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/constructed-variable-copy-all");
+        for (name, component_name, repeated) in [
+            ("json-object.mfd", "buffer", false),
+            ("json-array.mfd", "buffer", true),
+            ("edi-array.mfd", "segment", true),
+            ("nested-edi-array.mfd", "segment", true),
+        ] {
+            let path = directory.join(name);
+            let text = std::fs::read_to_string(&path).unwrap();
+            let document = roxmltree::Document::parse(&text).unwrap();
+            let component = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("component") && node.attribute("name") == Some(component_name)
+                })
+                .unwrap();
+            let mut warnings = Vec::new();
+            let resources =
+                crate::resource::ResourceResolver::new(&path, Some(directory.parent().unwrap()))
+                    .unwrap();
+            let selected = if component_name == "buffer" {
+                super::super::schema::read_json_component_in_package(
+                    &component,
+                    &resources,
+                    &mut warnings,
+                )
+            } else {
+                super::super::schema::read_edi_component(&component, &resources, &mut warnings)
+            }
+            .unwrap();
+            assert!(warnings.is_empty(), "{name}: {warnings:?}");
+            let mut expected = SchemaNode::group(
+                if component_name == "buffer" {
+                    "Stored"
+                } else {
+                    "N1"
+                },
+                vec![
+                    SchemaNode::scalar("Text", ir::ScalarType::String),
+                    SchemaNode::scalar("Count", ir::ScalarType::Int),
+                ],
+            );
+            expected.repeating = repeated;
+            if name == "json-array.mfd" {
+                expected.item_count_range = Some(ir::ItemCountRange::new(0, Some(4)).unwrap());
+                expected.json_unique_items = true;
+            }
+            assert_eq!(selected.schema, expected, "{name}");
+        }
+    }
 }

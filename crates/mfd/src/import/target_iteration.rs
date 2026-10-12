@@ -467,7 +467,6 @@ fn build_one(
         .and_then(|index| builder.sequence_expr(index));
     if source_path.is_none() && sequence.is_none() && join.is_none() {
         if iteration.output == IterationOutput::Repeated
-            && !iteration.projects_whole_group
             && !has_inherited_filter
             && schema_node_at(&target.schema, &target_path)
                 .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
@@ -482,19 +481,52 @@ fn build_one(
                 .count()
                 == 1
             && plain_constructed_group_feed(iteration.feed, &feed)
-            && (literal_constant_value(iteration.feed, builder).is_some()
+        {
+            if iteration.projects_whole_group {
+                if let Some(fields) = super::constructed_variable_driver::projection(
+                    iteration.feed,
+                    &target_path,
+                    target,
+                    builder,
+                    scopes,
+                ) {
+                    let nodes = fields
+                        .into_iter()
+                        .filter_map(|(field, feed)| {
+                            let mut path = target_path.clone();
+                            path.push(field);
+                            (!connected.contains(&path)).then_some((path, feed))
+                        })
+                        .map(|(path, feed)| {
+                            let anchor = scopes.enclosing_anchor(&path);
+                            Some((
+                                TargetLeaf::from_path(&path)?,
+                                builder.binding_node_at_anchor(feed, &path, &anchor)?,
+                            ))
+                        })
+                        .collect::<Option<Vec<_>>>();
+                    if let Some(nodes) = nodes {
+                        scopes.ensure_scope(&target_path);
+                        for (target, node) in nodes {
+                            scopes.add_binding(target, node);
+                        }
+                        return;
+                    }
+                }
+            } else if literal_constant_value(iteration.feed, builder).is_some()
                 || super::constructed_variable_driver::recognize(
                     iteration.feed,
                     &target_path,
                     builder,
                     scopes,
-                ))
-        {
-            // A present constructed value contributes one group in the inherited context.
-            // Target cardinality wraps this constructed item as repetition;
-            // no source collection or generated-item frame is introduced.
-            scopes.ensure_scope(&target_path);
-            return;
+                )
+            {
+                // A present constructed value contributes one group in the inherited context.
+                // Target cardinality wraps this constructed item as repetition;
+                // no source collection or generated-item frame is introduced.
+                scopes.ensure_scope(&target_path);
+                return;
+            }
         }
         builder.warnings.push(format!(
             "iteration into `{}` comes from an unsupported feed; skipped",

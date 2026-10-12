@@ -63,7 +63,10 @@ pub(super) fn classify_target_connection(
         feed,
         copy_all_targets,
     } = connection;
-    if builder.reject_unsupported_variable_construction(feed, target_path) {
+    let deferred_projection = target_node.repeating
+        && copy_all_targets.contains(&input_key)
+        && super::constructed_variable_driver::defer_projection(feed, builder);
+    if !deferred_projection && builder.reject_unsupported_variable_construction(feed, target_path) {
         return;
     }
     match builder.classify_join_iteration(feed, target_path) {

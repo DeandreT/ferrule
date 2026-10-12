@@ -219,11 +219,14 @@ fn constructed_variable_drivers_refuse_unproved_presence_and_context() {
         ("connected record input", original.replace("<edge vertexkey=\"22\"/>", "<edge vertexkey=\"22\"/><edge vertexkey=\"20\"/>"), "Records"),
         ("competing scalar aliases", original.replace("<entry name=\"Text\" inpkey=\"22\" outkey=\"23\"/>", "<entry name=\"Text\" inpkey=\"22\" outkey=\"23\"/><entry name=\"Text\" inpkey=\"26\"/>").replace("<edge vertexkey=\"22\"/>", "<edge vertexkey=\"22\"/><edge vertexkey=\"26\"/>"), "Records"),
         ("competing target connectors", original.replace("<entry name=\"array\" inpkey=\"30\"><entry name=\"item\" type=\"json-item\">", "<entry name=\"array\" inpkey=\"30\"><entry name=\"item\" type=\"json-item\" inpkey=\"34\">").replace("<edge vertexkey=\"30\"/>", "<edge vertexkey=\"30\"/><edge vertexkey=\"34\"/>"), "Records"),
-        ("copy-all", original.replace("</graph>", "</graph><connections><edge from=\"21\" to=\"30\"><data type=\"2\"/></edge></connections>"), "Records"),
         ("unframed collection", nested.replace(parent_edge, ""), "Batches/Records"),
         ("controlled parent", filtered, "Batches/Records"),
     ];
-    for (index, (label, design, target_path)) in variants.into_iter().enumerate() {
+    let variants = variants.into_iter().flat_map(|(label, design, target_path)| {
+        let copy_all = design.replace("</graph>", "</graph><connections><edge from=\"21\" to=\"30\"><data type=\"2\"/></edge></connections>");
+        [(label, design, target_path), (label, copy_all, target_path)]
+    });
+    for (index, (label, design, target_path)) in variants.enumerate() {
         assert_ne!(
             design.as_str(),
             if target_path == "Records" {
