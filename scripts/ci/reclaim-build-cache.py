@@ -102,6 +102,15 @@ def decode_mount_path(encoded):
     return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), encoded)
 
 
+def check_mount_root(encoded, filesystem):
+    # Namespace bind mounts have a kernel namespace/inode label, not a path.
+    # Their absolute mount points still participate in every cache veto below.
+    if filesystem == "nsfs" and re.fullmatch(
+            r"(?:cgroup|ipc|mnt|net|pid|time|user|uts):\[[0-9]+\]", encoded):
+        return
+    decode_mount_path(encoded)
+
+
 def reject_mounts(directory, *, mountinfo=None, descendants=True):
     """Veto mounted roots and descendants, including same-device bind mounts."""
     root = os.readlink(f"/proc/self/fd/{directory}")
@@ -121,7 +130,7 @@ def reject_mounts(directory, *, mountinfo=None, descendants=True):
                 and re.fullmatch(r"[0-9]+", fields[1]) is not None
                 and re.fullmatch(r"[0-9]+:[0-9]+", fields[2]) is not None,
                 "Mount inventory is malformed")
-        decode_mount_path(fields[3])
+        check_mount_root(fields[3], fields[separator + 1])
         point = decode_mount_path(fields[4])
         require(point != root and not (descendants and point.startswith(root + "/")),
                 "Mounted cache tree requires inspection")
