@@ -1,0 +1,10 @@
+[
+  {"input":"{\"Code\":\"A-7\",\"Quantity\":2}","expected":{"Code":"A-7","Quantity":2,"Stored":{"Code":"A-7","Quantity":2}}},
+  {"input":"{\"Code\":\"雪😀\",\"Quantity\":-17}","expected":{"Code":"雪😀","Quantity":-17,"Stored":{"Code":"雪😀","Quantity":-17}}},
+  {"input":"{\"Code\":\"\",\"Quantity\":0}","expected":{"Code":"","Quantity":0,"Stored":{"Code":"","Quantity":0}}},
+  {"input":"{\"Code\":\"missing\"}","expected":{"Code":"missing","Stored":{"Code":"missing"}}},
+  {"input":"{}","reject":true},
+  {"input":"{\"Code\":true,\"Quantity\":2}","reject":true},
+  {"input":"{\"Code\":\"A\",\"Quantity\":1.5}","reject":true},
+  {"input":"{\"Code\":\"A\",\"Unexpected\":true}","reject":true}
+]
