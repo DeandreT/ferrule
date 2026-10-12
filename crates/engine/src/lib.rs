@@ -53,8 +53,9 @@ pub use filter_map::{
     MAX_FILTER_MAP_WORK,
 };
 pub use pipeline::{
-    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue, run_pipeline,
-    run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
+    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue,
+    check_pipeline_source_ownership_capability, run_pipeline, run_pipeline_with_context,
+    run_pipeline_with_stage_contexts, validate_pipeline,
 };
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,

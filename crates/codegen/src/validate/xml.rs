@@ -122,6 +122,9 @@ pub(super) fn validate(
 }
 
 fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
+    if schema.json_array_wrapper {
+        return Some("JSON array wrapper");
+    }
     if !schema.xml_name_alternatives.is_empty() {
         return Some("ambiguous expanded XML element names");
     }

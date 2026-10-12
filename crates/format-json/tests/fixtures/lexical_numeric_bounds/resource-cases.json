@@ -1,0 +1,88 @@
+[
+  {
+    "id": "external-root-and-child",
+    "root": "root.json",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 1,
+          "maximum": 3
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    }
+  },
+  {
+    "id": "local-ref",
+    "root": "local.json",
+    "expected_schema": {
+      "name": "Boundary",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "int"
+      },
+      "numeric_range": {
+        "kind": "integer",
+        "bounds": {
+          "minimum": 1
+        }
+      }
+    },
+    "expected_export": {
+      "title": "Boundary",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  {
+    "id": "named-anchor",
+    "root": "anchor-root.json",
+    "expected_error_variant": "SchemaResource",
+    "expected_reason": "only JSON Pointer fragments are supported; named anchors are not"
+  },
+  {
+    "id": "cycle-existing-fallback",
+    "root": "cycle.json",
+    "expected_schema": {
+      "name": "Loop",
+      "repeating": false,
+      "kind": {
+        "kind": "scalar",
+        "ty": "string"
+      }
+    }
+  },
+  {
+    "id": "outside-package",
+    "root": "outside.json",
+    "expected_error_variant": "SchemaResource",
+    "expected_reason_category": "outside package root"
+  },
+  {
+    "id": "inline-external-disallowed",
+    "schema_text": "{\"$ref\":\"value.json\"}",
+    "expected_error_variant": "SchemaResource",
+    "expected_reason": "in-memory schemas cannot load external resources"
+  },
+  {
+    "id": "depth-existing-limit",
+    "constructed_object_depth": 129,
+    "allowed_existing_errors": [
+      "SchemaResourceLimit:JSON nesting depth:128",
+      "Json:recursion limit"
+    ]
+  }
+]

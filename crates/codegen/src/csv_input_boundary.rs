@@ -185,6 +185,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         xml_attribute_required,
         nullable,
         container_nullable,
+        json_array_wrapper,
         json_any,
         fixed,
         json_allowed_values,
@@ -223,6 +224,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         && !xml_attribute_required
         && !nullable
         && !container_nullable
+        && !json_array_wrapper
         && !json_any
         && fixed.is_none()
         && json_allowed_values.is_none()

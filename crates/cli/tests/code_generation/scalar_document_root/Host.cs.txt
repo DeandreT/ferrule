@@ -1,0 +1,86 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+static FerruleValue Scalar(JsonElement value) => value.GetProperty("kind").GetString() switch {
+    "Null"=>FerruleValue.Null,
+    "String"=>FerruleValue.FromString(value.GetProperty("value").GetString()!),
+    "Bool"=>FerruleValue.FromBoolean(value.GetProperty("value").GetBoolean()),
+    "Int"=>FerruleValue.FromInt64(value.GetProperty("value").GetInt64()),
+    "Float"=>FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)Convert.ToUInt64(value.GetProperty("bits").GetString(),16)))),
+    _=>throw new InvalidOperationException("unqualified scalar literal"),
+};
+static object Raw(FerruleInstance instance) => instance switch {
+    FerruleScalar scalar=>scalar.Value.Kind switch {
+        FerruleValueKind.Null=>new {kind="Scalar",scalarKind="Null"},
+        FerruleValueKind.String=>new {kind="Scalar",scalarKind="String",value=scalar.Value.StringValue},
+        FerruleValueKind.Bool=>new {kind="Scalar",scalarKind="Bool",value=scalar.Value.BooleanValue},
+        FerruleValueKind.Int64=>new {kind="Scalar",scalarKind="Int",value=scalar.Value.Int64Value},
+        FerruleValueKind.Double=>new {kind="Scalar",scalarKind="Float",bits=unchecked((ulong)BitConverter.DoubleToInt64Bits(scalar.Value.DoubleValue)).ToString("x16")},
+        _=>new {kind="UnexpectedScalar",scalarKind=scalar.Value.Kind.ToString(),complete=scalar.Value.ToString()},
+    },
+    FerruleGroup group=>new {kind="Group",origin=group.XmlTypeOrigin,fields=group.Fields.Select(field=>new {field.Name,value=Raw(field.Value)}).ToArray()},
+    _=>new {kind="UnexpectedInstance",type=instance.GetType().FullName,complete=instance.ToString()},
+};
+static FerruleGroup Source(string? field=null,FerruleValue? replacement=null)=>new(new[] {
+    new FerruleField("Text",new FerruleScalar(field=="Text"?replacement!.Value:FerruleValue.FromString("birch & Ω"))),
+    new FerruleField("Flag",new FerruleScalar(field=="Flag"?replacement!.Value:FerruleValue.FromBoolean(true))),
+    new FerruleField("Count",new FerruleScalar(field=="Count"?replacement!.Value:FerruleValue.FromInt64(-7))),
+    new FerruleField("Measure",new FerruleScalar(field=="Measure"?replacement!.Value:FerruleValue.FromDouble(1.25))),
+});
+static object Error(Exception error)=>new {type=error.GetType().FullName,error.Message,error.HResult,complete=error.ToString(),
+    boundary=error is FerruleXmlBoundaryException xml?(object)new {kind=xml.Kind.ToString(),xml.Detail,xml.Bytes,xml.Limit}:null,
+    runtime=error is FerruleRuntimeException runtime?(object)new {runtime.Error,runtime.Node,runtime.Function,runtime.ExpectedArity,runtime.ActualArity,runtime.FoundKind,runtime.AggregateOperation,runtime.Detail,runtime.RequestedItems,runtime.MaximumItems,runtime.MaximumDepth,runtime.RuntimeValue,runtime.FailureRule,runtime.MappingFailureMessage,runtime.MappingExceptionMessage,runtime.Join,runtime.UserFunction,runtime.FunctionParameter,runtime.ExpectedScalarType,runtime.RuntimeParameter,runtime.SourceField,runtime.FoundInstance,runtime.PrimaryRoot}:null,
+    inner=error.InnerException is null?null:Error(error.InnerException),
+};
+if(args.Length!=2)throw new ArgumentException("need design and directory");
+var root=args[1];var outcomes=new List<object>();
+void Retain()=>File.WriteAllText(Path.Combine(root,"complete-outcomes.original.json"),JsonSerializer.Serialize(outcomes,new JsonSerializerOptions{WriteIndented=true}));
+try {
+    using var cases=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,"cases.json")));
+    var named=args[0]=="named";
+    var caseName=named?"source-String-modern":args[0];
+    var item=cases.RootElement.EnumerateArray().Single(item=>item.GetProperty("name").GetString()==caseName);
+    var source=Source();var before=JsonSerializer.Serialize(Raw(source));
+    var expected=new FerruleScalar(Scalar(item.GetProperty("expected_scalar")));
+    var expectedWire=item.GetProperty("wire").GetString()!;
+    outcomes.Add(new {name="positive-before",source=Raw(source),expected=Raw(expected),expectedWire});Retain();
+    var actual=GeneratedMapping.ExecuteOutputs(source);
+    outcomes.Add(new {name="typed-original",actual=Raw(actual.Primary),extras=actual.Extras.Select(extra=>new {extra.Name,instance=Raw(extra.Instance)}).ToArray()});Retain();
+    var text=File.ReadAllText(Path.Combine(root,"input.xml"));
+    var wire=GeneratedMapping.ExecuteXmlOutputs(text);
+    outcomes.Add(new {name="text-original",wire});Retain();
+    var bytes=GeneratedMapping.ExecuteXmlBytesOutputs(Encoding.UTF8.GetBytes(text));
+    outcomes.Add(new {name="bytes-original",bytes});Retain();
+    var extrasGood=named?actual.Extras.Count==1&&actual.Extras[0].Name=="Audit"&&JsonSerializer.Serialize(Raw(actual.Extras[0].Instance))==JsonSerializer.Serialize(Raw(expected)):actual.Extras.Count==0;
+    var wireExtrasGood=named?wire.Extras.Count==1&&wire.Extras[0].Name=="Audit"&&wire.Extras[0].Document==expectedWire&&bytes.Extras.Count==1&&bytes.Extras[0].Name=="Audit"&&bytes.Extras[0].Document.SequenceEqual(Encoding.UTF8.GetBytes(expectedWire)):wire.Extras.Count==0&&bytes.Extras.Count==0;
+    var good=JsonSerializer.Serialize(Raw(actual.Primary))==JsonSerializer.Serialize(Raw(expected))&&extrasGood
+        &&before==JsonSerializer.Serialize(Raw(source))&&wire.Primary==expectedWire&&wireExtrasGood
+        &&bytes.Primary.SequenceEqual(Encoding.UTF8.GetBytes(expectedWire));
+    outcomes.Add(new {name="positive",source=Raw(source),expected=Raw(expected),actual=Raw(actual.Primary),extras=actual.Extras.Select(extra=>new {extra.Name,instance=Raw(extra.Instance)}).ToArray(),wire,bytes,good});Retain();
+    if(!good)throw new InvalidOperationException("complete positive typed/wire/caller differs");
+    using var controls=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,"typed-controls.json")));
+    var descriptor=File.ReadAllText(Path.Combine(root,"target-descriptor.json"));var count=0;
+    foreach(var control in controls.RootElement.EnumerateArray()) {
+        if(control.GetProperty("design").GetString()!=args[0])continue;
+        source=Source(control.GetProperty("input_field").GetString(),Scalar(control.GetProperty("input")));
+        before=JsonSerializer.Serialize(Raw(source));expected=new FerruleScalar(Scalar(control.GetProperty("expected")));
+        outcomes.Add(new {name=control.GetProperty("name").GetString()+"-before",source=Raw(source),expected=Raw(expected)});Retain();
+        var mapped=GeneratedMapping.Execute(source);Exception? refusal=null;string? emitted=null;
+        try{emitted=FerruleXml.SerializeDocumentEmbedded(descriptor,mapped,false,false,null,null);}catch(Exception error){refusal=error;}
+        var expectedType=control.GetProperty("xml_error").GetProperty("expected").GetString();
+        var found=Scalar(control.GetProperty("expected")).Kind.ToString();
+        var detail=$"element or attribute 'Output' expected {expectedType}, got {found}";
+        good=JsonSerializer.Serialize(Raw(mapped))==JsonSerializer.Serialize(Raw(expected))&&before==JsonSerializer.Serialize(Raw(source))&&emitted is null
+            &&refusal is FerruleXmlBoundaryException boundary&&boundary.Kind==FerruleXmlBoundaryErrorKind.Output&&boundary.Bytes is null&&boundary.Limit is null
+            &&boundary.Detail==$"node 0: XML serialization failed: {detail}"
+            &&boundary.InnerException is FerruleRuntimeException runtime&&runtime.Error==FerruleRuntimeError.XmlSerialization&&runtime.Node==0&&runtime.Detail==detail
+            &&runtime.InnerException is InvalidOperationException lexical&&lexical.Message==detail;
+        outcomes.Add(new {name=control.GetProperty("name").GetString(),source=Raw(source),expected=Raw(expected),actual=Raw(mapped),emitted,error=refusal is null?null:Error(refusal),good});Retain();count++;
+        if(!good)throw new InvalidOperationException("complete typed boundary error differs");
+    }
+    var expectedCount=args[0] switch{"source-Float-modern"=>3,"source-String-modern" or "source-Bool-modern"=>1,_=>0};
+    if(count!=expectedCount)throw new InvalidOperationException("closed control count differs");
+    Console.WriteLine($"SCALAR_ROOT339_COMPLETE positive=1 typed_controls={count}");
+} catch(Exception error){outcomes.Add(new {setupError=Error(error)});Retain();throw;}

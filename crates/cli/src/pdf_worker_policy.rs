@@ -462,3 +462,9 @@ mod tests {
         assert_eq!(receipt["successful_originals_retained"], true);
     }
 }
+
+impl crate::FilesystemPdfReader for FilesystemRunPolicy {
+    fn read_pdf(&self, path: &Path, layout: &mapping::PdfLayout) -> anyhow::Result<ir::Instance> {
+        FilesystemRunPolicy::read_pdf(self, path, layout)
+    }
+}

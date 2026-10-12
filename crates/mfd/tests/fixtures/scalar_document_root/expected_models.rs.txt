@@ -1,0 +1,74 @@
+// Complete independently authored neutral models.
+use std::collections::BTreeMap;
+use ir::{Instance, SchemaNode, ScalarType, Value};
+use mapping::{FormatOptions, Graph, Node, Project, Scope, ScopeConstruction};
+
+pub fn scalar(case: &serde_json::Value) -> Value {
+    let value = &case["expected_scalar"];
+    match value["kind"].as_str().expect("literal kind") {
+        "String" => Value::String(value["value"].as_str().expect("literal text").into()),
+        "Bool" => Value::Bool(value["value"].as_bool().expect("literal boolean")),
+        "Int" => Value::Int(value["value"].as_i64().expect("literal signed integer")),
+        "Float" => Value::Float(f64::from_bits(u64::from_str_radix(value["bits"].as_str().expect("literal bits"), 16).expect("literal binary64"))),
+        _ => panic!("unqualified literal kind"),
+    }
+}
+pub fn xml_scalar(name: &str, ty: ScalarType) -> SchemaNode {
+    SchemaNode::scalar(name, ty)
+}
+pub fn source_schema() -> SchemaNode {
+    SchemaNode::group("Input", vec![
+        xml_scalar("Text", ScalarType::String), xml_scalar("Flag", ScalarType::Bool),
+        xml_scalar("Count", ScalarType::Int), xml_scalar("Measure", ScalarType::Float),
+    ])
+}
+pub fn source_instance() -> Instance {
+    Instance::Group(vec![
+        ("Text".into(), Instance::Scalar(Value::String("birch & Ω".into()))),
+        ("Flag".into(), Instance::Scalar(Value::Bool(true))),
+        ("Count".into(), Instance::Scalar(Value::Int(-7))),
+        ("Measure".into(), Instance::Scalar(Value::Float(f64::from_bits(0x3ff4000000000000)))),
+    ].into())
+}
+pub fn expected_project(case: &serde_json::Value) -> Project {
+    let ty = match case["type"].as_str().expect("literal type") {
+        "String" => ScalarType::String, "Bool" => ScalarType::Bool,
+        "Int" => ScalarType::Int, "Float" => ScalarType::Float,
+        _ => panic!("unqualified type"),
+    };
+    let feed = case["feed"].as_u64().expect("literal feed");
+    let node = match feed {
+        80 => Node::Const { value: scalar(case) },
+        10..=13 => Node::SourceField { path: vec![match feed { 10 => "Text", 11 => "Flag", 12 => "Count", 13 => "Measure", _ => unreachable!() }.into()], frame: None },
+        _ => panic!("unqualified feed"),
+    };
+    Project {
+        source: source_schema(), target: xml_scalar("Output", ty),
+        source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
+        source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        target_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        extra_sources: vec![], extra_targets: vec![], failure_rules: vec![], user_functions: BTreeMap::new(),
+        graph: Graph { nodes: BTreeMap::from([(0, node)]) },
+        root: Scope { construction: ScopeConstruction::Scalar { value: 0 }, ..Scope::default() },
+    }
+}
+
+pub fn expected_named_project() -> Project {
+    let mut project = Project {
+        source: source_schema(), target: xml_scalar("Output", ScalarType::String),
+        source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
+        source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        target_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        extra_sources: vec![], extra_targets: vec![mapping::NamedTarget {
+            name: "Audit".into(), path: Some("audit.xml".into()),
+            schema: xml_scalar("Output", ScalarType::String),
+            options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+            root: Scope { construction: ScopeConstruction::Scalar { value: 0 }, ..Scope::default() },
+        }], failure_rules: vec![], user_functions: BTreeMap::new(),
+        graph: Graph { nodes: BTreeMap::from([(0, Node::SourceField { path: vec!["Text".into()], frame: None })]) },
+        root: Scope { construction: ScopeConstruction::Scalar { value: 0 }, ..Scope::default() },
+    };
+    // This complete model uses literal metadata, never imported metadata.
+    project.extra_targets.shrink_to_fit();
+    project
+}

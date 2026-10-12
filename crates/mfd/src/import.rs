@@ -41,6 +41,7 @@ mod iteration;
 mod join;
 mod json_parser;
 mod json_serializer;
+mod json_variable;
 mod materialize;
 mod mixed_content;
 mod output_parameter;
@@ -49,6 +50,7 @@ mod protobuf_target;
 mod recursive;
 mod scalar_anchor;
 mod scalar_function;
+mod scalar_root;
 mod schema;
 mod scope;
 mod sequence_scalar;
@@ -1646,7 +1648,11 @@ fn import_resolved(
                     match read_json_component_in_package(&component, resources, &mut warnings) {
                         Some(sc) => match json_serializer::read(&component, &sc) {
                             Ok(Some(serializer)) => json_serializers.push(serializer),
-                            Ok(None) => match json_parser::read(&component, &sc) {
+                            Ok(None) => match json_parser::read(
+                                &component,
+                                &sc,
+                                &edges.feeds.values().copied().collect(),
+                            ) {
                                 Ok(Some(parser)) => json_parsers.push(parser),
                                 Ok(None) => schema_components.push(sc),
                                 Err(reason) => warnings.push(format!(
@@ -2688,6 +2694,32 @@ fn build_target_scope(
         }
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
+                match json_variable::expand_record(
+                    target,
+                    target_path,
+                    node,
+                    inpkey,
+                    from,
+                    copy_all_targets.contains(&inpkey),
+                    builder,
+                ) {
+                    Ok(Some(record)) => {
+                        for (path, feed) in record {
+                            if let Some(leaf) = TargetLeaf::from_path(&path) {
+                                bindings.push((leaf, feed, inpkey));
+                            }
+                        }
+                        continue;
+                    }
+                    Err(reason) => {
+                        builder.warnings.push(format!(
+                            "JSON variable record into `{}` is unsupported: {reason}; skipped",
+                            target_path.join("/")
+                        ));
+                        continue;
+                    }
+                    Ok(None) => {}
+                }
                 if udf::structured::accept_target(target, target_path, node, inpkey, from, builder)
                 {
                     structured_udf_targets.push((target_path.clone(), from));
@@ -2707,13 +2739,11 @@ fn build_target_scope(
                     &mut group_projections,
                 )
             }
-            Some(_) => match TargetLeaf::from_path(target_path) {
-                Some(target) => bindings.push((target, from, inpkey)),
-                None => builder.warnings.push(
-                    "connection into a scalar document root is not supported; binding skipped"
-                        .to_string(),
-                ),
-            },
+            Some(_) => {
+                if let Some(target) = TargetLeaf::from_path(target_path) {
+                    bindings.push((target, from, inpkey));
+                }
+            }
             None => builder.warnings.push(format!(
                 "target port path `{}` not found in schema",
                 target_path.join("/")
@@ -2743,6 +2773,7 @@ fn build_target_scope(
         }
     }
     materialize::eager_functions(builder);
+    scalar_root::install(target, structure, resources, builder, &mut scopes);
     if let Some(feed) = dynamic_document
         && let Some(node) = builder.binding_node_at_anchor(feed, &[], &[])
         && !scopes.root.set_output_path(Some(node))

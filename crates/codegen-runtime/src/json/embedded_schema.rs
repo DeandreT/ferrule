@@ -347,7 +347,7 @@ fn embedded_schema_retains_v1_behavior_and_typed_v2_failures() {
         bits = high.to_bits()
     );
     for invalid in [
-        "FERRULE-EMBEDDED-SCHEMA/3\n{}".into(),
+        "FERRULE-EMBEDDED-SCHEMA/4\n{}".into(),
         descriptor.replace(&marker, "FERRULE-F64-BITS:7ff0000000000000"),
     ] {
         assert!(matches!(

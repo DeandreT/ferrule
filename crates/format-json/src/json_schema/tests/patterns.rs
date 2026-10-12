@@ -118,20 +118,11 @@ fn malformed_or_nonportable_patterns_reject_even_when_the_type_ignores_them() {
 }
 
 #[test]
-fn ambiguous_patterns_nested_arrays_and_pattern_only_all_of_reject() {
+fn ambiguous_patterns_and_pattern_only_all_of_reject() {
     assert!(import_str_result(r#"{"pattern":"required"}"#).is_err());
     assert!(
         import_str_result(r#"{"type":"object","additionalProperties":{"pattern":"required"}}"#)
             .is_err()
-    );
-    assert!(
-        import_str_result(
-            r#"{
-              "type":"array",
-              "items":{"type":"array","items":{"type":"string","pattern":"^x$"}}
-            }"#
-        )
-        .is_err()
     );
     assert!(import_str_result(r#"{"allOf":[{"pattern":"^x$"}]}"#).is_err());
     assert!(import_str_result(r#"{"allOf":[{"format":"email"},{"pattern":"^x$"}]}"#).is_err());

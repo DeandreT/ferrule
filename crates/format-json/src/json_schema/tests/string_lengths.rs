@@ -75,19 +75,10 @@ fn concrete_non_strings_ignore_valid_bounds_but_validate_their_tokens() {
 }
 
 #[test]
-fn ambiguous_untyped_bounds_and_constrained_nested_arrays_reject() {
+fn ambiguous_untyped_bounds_reject() {
     assert!(import_str_result(r#"{"minLength":1}"#).is_err());
     assert!(
         import_str_result(r#"{"additionalProperties":{"minLength":1},"type":"object"}"#).is_err()
-    );
-    assert!(
-        import_str_result(
-            r#"{
-          "type":"array",
-          "items":{"type":"array","items":{"type":"string","minLength":2}}
-        }"#
-        )
-        .is_err()
     );
 
     let no_op = import_str(r#"{"minLength":0}"#);

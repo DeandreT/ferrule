@@ -201,8 +201,9 @@ pub fn preview_pipeline_value_payloads(
     )
 }
 
-/// Check identities, format support and byte sizes without parsing documents
-/// or evaluating any mapping. Empty bytes can stand in for pending host input.
+/// Check identities, format support, byte sizes and mapping capabilities
+/// without parsing documents or evaluating a mapping. Empty bytes can stand
+/// in for pending host input.
 pub fn validate_pipeline_preview(
     pipeline: &Pipeline,
     pipeline_path: &Path,
@@ -395,6 +396,10 @@ fn prepare_preview<'a, 'b>(
             .map_or_else(|| pipeline_path.to_owned(), |path| directory.join(path)),
     )?;
     validate_logical_path(&main_path, "main mapping")?;
+    // Keep cancellation ahead of the final pre-input capability check.
+    check_cancelled(options.cancellation)?;
+    // Admit every stage/target in the same dependency order as execution.
+    engine::check_pipeline_source_ownership_capability(pipeline)?;
     Ok(PreparedPreview {
         boundaries,
         payloads,
