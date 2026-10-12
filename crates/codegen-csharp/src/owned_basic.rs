@@ -405,3 +405,140 @@ pub(super) fn render_owned_leaf(
     }
     Ok(())
 }
+
+// Separate checked prototype; the prepared mapping above remains byte-exact.
+pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
+    let mut source = render_basic_owned_mapping(program)?;
+    let plan = codegen::legacy_named_input_admission_plan(program)?;
+    let (primary, extras) = mapping::render_basic_scopes(program, &mut String::new())?;
+    // Reuse the ordinary NamedInput spelling and exact record declaration.
+    source.push_str("\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic static partial class GeneratedMapping\n{\n");
+    render_checked_catalogue("CheckedAllInputs", &plan.all_outputs, &mut source);
+    render_checked_catalogue("CheckedPrimaryInputs", &plan.primary, &mut source);
+    for target in &plan.named_targets {
+        render_checked_catalogue(
+            &format!("CheckedNamedInputs_{}", target.target_index),
+            &target.catalogue,
+            &mut source,
+        );
+    }
+    source.push_str(CHECKED_INPUT_ACCESSOR);
+    source.push_str(
+        r#"
+    private static ExecutionOutputs ExecuteCheckedOwnedBasic(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(source);
+        var accessor = new CheckedNamedInputAccessor(supplied);
+        ObserveCheckedInputBoundary(true);
+        var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.CreateFromNamedInputs(
+            source, CheckedAllInputs, accessor.Supplied, accessor, limits);
+        var context = roots.RootContext(execution);
+        var result = (ExecutionOutputs)ExecuteCheckedBasicContext(context, null);
+        global::System.GC.KeepAlive(roots);
+        return result;
+    }
+
+    private static SelectedTargetOutput ExecuteSelectedCheckedOwnedBasic(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleTargetSelection selection,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(source);
+        global::System.ArgumentNullException.ThrowIfNull(selection);
+        var selected = ResolveOwnedBasicTarget(selection);
+        var catalogue = selected switch
+        {
+            0 => CheckedPrimaryInputs,
+"#,
+    );
+    for (index, _) in extras.iter().enumerate() {
+        source.push_str(&format!(
+            "            {} => CheckedNamedInputs_{index},\n",
+            index + 1
+        ));
+    }
+    source.push_str(r#"            _ => throw new global::System.InvalidOperationException("Resolved checked target is invalid."),
+        };
+        var accessor = new CheckedNamedInputAccessor(supplied);
+        ObserveCheckedInputBoundary(true);
+        var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.CreateFromNamedInputs(
+            source, catalogue, accessor.Supplied, accessor, limits);
+        var context = roots.RootContext(execution);
+        var result = (SelectedTargetOutput)ExecuteCheckedBasicContext(context, selected);
+        global::System.GC.KeepAlive(roots);
+        return result;
+    }
+
+    // Checked-only common context seam for later explicit failure-bridge
+    // composition. The existing inventory still closes failure rules here.
+    // Both return shapes are existing reference types; no wrapper is allocated.
+    private static object ExecuteCheckedBasicContext(
+        global::Ferrule.Runtime.FerruleBasicScopeContext context, int? selected)
+    {
+        if (selected.HasValue)
+        {
+            switch (selected.Value)
+            {
+"#);
+    source.push_str(&format!("                case 0: return new SelectedTargetOutput.Primary(Scope_{primary}(context));\n"));
+    for (index, (name, scope)) in extras.iter().enumerate() {
+        source.push_str(&format!("                case {}: return new SelectedTargetOutput.Named(new NamedOutput({}, Scope_{scope}(context)));\n",index+1,literal::string(name)));
+    }
+    source.push_str("                default: throw new global::System.InvalidOperationException(\"Resolved checked target is invalid.\");\n            }\n        }\n");
+    source.push_str(&format!(
+        "        var primary = Scope_{primary}(context);\n"
+    ));
+    for (index, (_, scope)) in extras.iter().enumerate() {
+        source.push_str(&format!(
+            "        var extra_{index} = Scope_{scope}(context);\n"
+        ));
+    }
+    source.push_str("        return new ExecutionOutputs(primary, new NamedOutput[]\n        {\n");
+    for (index, (name, _)) in extras.iter().enumerate() {
+        source.push_str(&format!(
+            "            new({}, extra_{index}),\n",
+            literal::string(name)
+        ));
+    }
+    source.push_str("        });\n    }\n}\n");
+    Ok(source)
+}
+
+fn render_checked_catalogue(
+    name: &str,
+    catalogue: &codegen::NamedInputCatalogue<'_>,
+    source: &mut String,
+) {
+    source.push_str(&format!("    private static readonly global::Ferrule.Runtime.FerruleBasicNamedSourceDeclaration[] {name} = new global::Ferrule.Runtime.FerruleBasicNamedSourceDeclaration[]\n    {{\n"));
+    for entry in &catalogue.entries {
+        let mode = match entry.availability {
+            codegen::NamedInputAvailability::Optional => "Optional",
+            codegen::NamedInputAvailability::RequiredLegacy => "RequiredLegacy",
+            codegen::NamedInputAvailability::ReservedUnavailable => "ReservedUnavailable",
+        };
+        source.push_str(&format!("        new({}, global::Ferrule.Runtime.FerruleBasicNamedSourceMode.{mode}), // declaration {}\n",literal::string(entry.name),entry.declaration_index));
+    }
+    source.push_str("    };\n\n");
+}
+
+const CHECKED_INPUT_ACCESSOR: &str = r#"
+    // Calls are erased unless the private host supplies this partial observer.
+    static partial void ObserveCheckedInputBoundary(bool factory);
+    private readonly struct CheckedNamedInputAccessor : global::Ferrule.Runtime.IFerruleNamedSourceInputAccessor<NamedInput>
+    {
+        private readonly global::System.Collections.Generic.IReadOnlyList<NamedInput> _supplied;
+        internal CheckedNamedInputAccessor(global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied) { _supplied = supplied; }
+        internal global::System.Collections.Generic.IReadOnlyList<NamedInput> Supplied => _supplied;
+        public global::Ferrule.Runtime.FerruleNamedSourceInput Read(NamedInput item)
+        {
+            ObserveCheckedInputBoundary(false);
+            return item is null ? default : new(item.Name, item.Instance);
+        }
+    }
+"#;

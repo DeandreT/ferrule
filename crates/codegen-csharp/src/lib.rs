@@ -1679,3 +1679,11 @@ mod owned_stage_a_tests {
         }
     }
 }
+
+// Test-only checked entry prototype; ordinary/public emitters stay unchanged.
+#[cfg(test)]
+pub(crate) fn render_checked_private_owned_basic_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    owned_basic::render_checked_basic_owned_mapping(program)
+}
