@@ -1087,17 +1087,22 @@ impl FerruleApp {
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
         let canvas_id = self.embedded_canvas_id(egui::Id::new("main_mapping_canvas"));
         ui.add_enabled_ui(editing_enabled, |ui| {
-            let source_blocks = source_blocks(&self.project.source);
+            let source_blocks = project_source_blocks(&self.project);
             let target_blocks = target_blocks(&self.project.target);
             let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
-            crate::app::sync_endpoint_wires_with_owned_items(
+            let unavailable_blocks =
+                source_conflicts(&self.project.source, &self.project.extra_sources);
+            crate::app::sync_endpoint_wires_with_policy(
                 &self.project.graph,
                 &self.project.root,
                 &source_blocks,
                 &target_blocks,
                 &self.main_canvas.endpoint_scroll,
                 &mut self.main_canvas.snarl,
-                &owned_items,
+                SourcePinPolicy {
+                    owned_items: &owned_items,
+                    unavailable_blocks: &unavailable_blocks,
+                },
             );
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
@@ -1109,7 +1114,8 @@ impl FerruleApp {
                     &self.project.failure_rules,
                     &self.project.extra_sources,
                 )
-                .with_user_functions(&self.project.user_functions),
+                .with_user_functions(&self.project.user_functions)
+                .with_primary_source(&self.project.source),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,

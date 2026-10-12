@@ -25,6 +25,19 @@ layout and dialect details that an extension cannot express.
 
 ## Important Boundaries
 
+- MFD import constructs a required, non-null singleton XML scalar document root
+  from one matching String, Bool, Int or Float constant, or one required XML
+  element path whose root and ancestors are singular. The selected scalar
+  declaration uses qualified `xs:string`, `xs:boolean`, `xs:long` or `xs:double`.
+  Its own XSD must prove default or explicit 1..1 occurrences through each
+  selected element and containing sequence or all particle. Constants must have
+  valid saved lexical values; Float constants must be finite. Primary and named
+  targets retain their own schemas and output identities. Repeated, optional,
+  nullable, competing and metadata-dependent root feeds, custom scalar facets,
+  lists, unions, attributes and simple-content paths produce repair warnings
+  and refuse executable import. XML instance readers and writers retain their
+  existing typed errors, including nonfinite output refusal. Singleton scalar
+  root MFD export remains unsupported and refuses before publishing artifacts.
 - JSON5 input accepts comments, trailing commas, single-quoted strings, and
   other supported JSON5 syntax; comments are not represented in mapping values
   or written back. Output omits quotes around property names when JSON5 allows
@@ -238,8 +251,7 @@ layout and dialect details that an extension cannot express.
   endpoints retain their existing admission rules; a rounded near-integer is
   never treated as an exact integral spelling. Opaque annotations and data,
   `multipleOf`, runtime instance numbers, duplicate-key behavior, dialect policy,
-  and schema resource limits are unchanged. Generated backend qualification of
-  these input spellings is separate. Import accepts both modern numeric
+  and schema resource limits are unchanged. Native and generated Rust/C# adapters enforce the resulting exact bounds. Import accepts both modern numeric
   exclusive bounds and Draft 4
   boolean exclusives regardless of the declared dialect for interoperability;
   export emits the canonical normalized form. Positive finite `multipleOf`
@@ -274,8 +286,17 @@ layout and dialect details that an extension cannot express.
   enforce the interval before visiting array items. JSON Lines applies a root
   array interval to the total nonblank line count; nullable root arrays reject
   because line-oriented null-container semantics are ambiguous. Disjoint count
-  unions and independently constrained nested array wrappers reject rather than
-  widen. `$ref` siblings follow the dialect declared by their physical schema
+  unions reject rather than widen. Nested schema-valued arrays retain each
+  level in an explicitly marked repeating group whose sole repeating child is
+  `item`. Each outer item is a group containing the complete inner array;
+  empty outer arrays and arrays containing empty inner arrays remain distinct.
+  Item-count, uniqueness, supported `contains`, and container nullability apply
+  to their own level. Array-item nullability is separate from outer-container
+  nullability. Canonical JSON Schema export and `.mfd` array/item ports retain
+  those levels and declared paths. An ordinary object property named `item`
+  does not acquire the wrapper role. XML, CSV, and EDI boundaries reject the
+  JSON wrapper role. Positional nested arrays and unsupported structured
+  predicates remain outside this subset. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
@@ -323,8 +344,8 @@ layout and dialect details that an extension cannot express.
   generated input and output boundaries. They survive nullable wrappers,
   references, compatible `allOf`, contiguous exact `anyOf` unions, array-item
   projection, typed dynamic properties, and canonical export. Disjoint length
-  unions, ambiguous untyped assertions, and constrained nested arrays reject
-  rather than move or widen an assertion.
+  unions and ambiguous untyped assertions reject rather than move or widen an
+  assertion.
   Concrete string-capable fields and scalar unions also retain JSON Schema
   `pattern` assertions. Null bypasses a pattern in nullable domains, while
   string values in array items and typed dynamic properties are checked.

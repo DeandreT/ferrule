@@ -31,10 +31,12 @@ extract_runner_archive() {
   runuser -u "$runner_user" -- /usr/bin/tar -xzf "$1" -C "$runner_dir" --no-same-owner
 }
 
-if [[ ! -f $script_dir/guard-ovh-job.sh ]]; then
-  echo 'Copy guard-ovh-job.sh alongside this provisioning script.' >&2
-  exit 1
-fi
+for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py reclaim-build-cache.py; do
+  if [[ ! -f $script_dir/$helper ]]; then
+    printf 'Copy %s alongside this provisioning script.\n' "$helper" >&2
+    exit 1
+  fi
+done
 
 if (( EUID != 0 )) || [[ $(uname -m) != x86_64 ]]; then
   echo 'Provisioning requires root on an x86_64 Ubuntu host.' >&2
@@ -127,8 +129,9 @@ install -o "$runner_user" -g "$runner_user" -m 755 \
 printf '%s\n' "$service" > "$runner_dir/.service"
 chown "$runner_user:$runner_user" "$runner_dir/.service"
 install -d -o root -g root -m 755 /opt/ferrule-runner-tools
-install -o root -g root -m 755 "$script_dir/guard-ovh-job.sh" \
-  /opt/ferrule-runner-tools/guard-ovh-job.sh
+for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py reclaim-build-cache.py; do
+  install -o root -g root -m 755 "$script_dir/$helper" "/opt/ferrule-runner-tools/$helper"
+done
 if [[ ! -x /opt/ferrule-runner-tools/sccache ]]; then
   tool_tmp=$(mktemp -d /tmp/ferrule-sccache.XXXXXX)
   trap 'rm -f "${archive:-}"; rm -rf "${tool_tmp:-}"' EXIT

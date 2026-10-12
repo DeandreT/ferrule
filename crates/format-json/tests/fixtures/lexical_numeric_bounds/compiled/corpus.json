@@ -1,0 +1,233 @@
+{
+  "compiled": {
+    "bounded_schema": "{\"title\":\"Limits\",\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"IntValue\",\"FloatValue\"],\"properties\":{\"IntValue\":{\"type\":\"integer\",\"minimum\":1.0,\"maximum\":3e0},\"FloatValue\":{\"type\":\"number\",\"exclusiveMinimum\":10e-1,\"exclusiveMaximum\":30e-1}}}\n",
+    "unbounded_schema": "{\"title\":\"Limits\",\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"IntValue\",\"FloatValue\"],\"properties\":{\"IntValue\":{\"type\":\"integer\"},\"FloatValue\":{\"type\":\"number\"}}}",
+    "expected_bounded_schema": {
+      "name": "Limits",
+      "repeating": false,
+      "kind": {
+        "kind": "group",
+        "children": [
+          {
+            "name": "IntValue",
+            "repeating": false,
+            "kind": {
+              "kind": "scalar",
+              "ty": "int"
+            },
+            "numeric_range": {
+              "kind": "integer",
+              "bounds": {
+                "minimum": 1,
+                "maximum": 3
+              }
+            }
+          },
+          {
+            "name": "FloatValue",
+            "repeating": false,
+            "kind": {
+              "kind": "scalar",
+              "ty": "float"
+            },
+            "numeric_range": {
+              "kind": "number",
+              "bounds": {
+                "minimum": {
+                  "value": 1.0,
+                  "exclusive": true
+                },
+                "maximum": {
+                  "value": 3.0,
+                  "exclusive": true
+                }
+              }
+            }
+          }
+        ],
+        "required": [
+          "IntValue",
+          "FloatValue"
+        ]
+      }
+    },
+    "expected_unbounded_schema": {
+      "name": "Limits",
+      "repeating": false,
+      "kind": {
+        "kind": "group",
+        "children": [
+          {
+            "name": "IntValue",
+            "repeating": false,
+            "kind": {
+              "kind": "scalar",
+              "ty": "int"
+            }
+          },
+          {
+            "name": "FloatValue",
+            "repeating": false,
+            "kind": {
+              "kind": "scalar",
+              "ty": "float"
+            }
+          }
+        ],
+        "required": [
+          "IntValue",
+          "FloatValue"
+        ]
+      }
+    },
+    "expected_ranges": {
+      "IntValue": "[1, 3]",
+      "FloatValue": "(1, 3)"
+    },
+    "cases": [
+      {
+        "id": "inside",
+        "input": "{\"IntValue\":2,\"FloatValue\":1.5}",
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 2
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 1.5,
+            "bits": "3ff8000000000000"
+          }
+        },
+        "serialized_json": "{\n  \"IntValue\": 2,\n  \"FloatValue\": 1.5\n}\n",
+        "accepted": true
+      },
+      {
+        "id": "int-min",
+        "input": "{\"IntValue\":1,\"FloatValue\":1.5}",
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 1
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 1.5,
+            "bits": "3ff8000000000000"
+          }
+        },
+        "serialized_json": "{\n  \"IntValue\": 1,\n  \"FloatValue\": 1.5\n}\n",
+        "accepted": true
+      },
+      {
+        "id": "int-max",
+        "input": "{\"IntValue\":3,\"FloatValue\":2.5}",
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 3
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 2.5,
+            "bits": "4004000000000000"
+          }
+        },
+        "serialized_json": "{\n  \"IntValue\": 3,\n  \"FloatValue\": 2.5\n}\n",
+        "accepted": true
+      },
+      {
+        "id": "int-below",
+        "input": "{\"IntValue\":0,\"FloatValue\":1.5}",
+        "error_field": "IntValue",
+        "range_text": "[1, 3]",
+        "input_got": "0",
+        "output_got": "0",
+        "csharp_input_message": "JSON scalar 'IntValue' is outside its numeric range: 0.",
+        "csharp_output_message": "JSON scalar 'IntValue' is outside its numeric range: 0.",
+        "accepted": false,
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 0
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 1.5,
+            "bits": "3ff8000000000000"
+          }
+        },
+        "failed_field": "IntValue"
+      },
+      {
+        "id": "int-above",
+        "input": "{\"IntValue\":4,\"FloatValue\":1.5}",
+        "error_field": "IntValue",
+        "range_text": "[1, 3]",
+        "input_got": "4",
+        "output_got": "4",
+        "csharp_input_message": "JSON scalar 'IntValue' is outside its numeric range: 4.",
+        "csharp_output_message": "JSON scalar 'IntValue' is outside its numeric range: 4.",
+        "accepted": false,
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 4
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 1.5,
+            "bits": "3ff8000000000000"
+          }
+        },
+        "failed_field": "IntValue"
+      },
+      {
+        "id": "float-lower-exclusive",
+        "input": "{\"IntValue\":2,\"FloatValue\":1}",
+        "error_field": "FloatValue",
+        "range_text": "(1, 3)",
+        "input_got": "1",
+        "output_got": "1.0",
+        "csharp_input_message": "JSON scalar 'FloatValue' is outside its numeric range: 1.",
+        "csharp_output_message": "JSON scalar 'FloatValue' is outside its numeric range: 1.",
+        "accepted": false,
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 2
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 1.0,
+            "bits": "3ff0000000000000"
+          }
+        },
+        "failed_field": "FloatValue"
+      },
+      {
+        "id": "float-upper-exclusive",
+        "input": "{\"IntValue\":2,\"FloatValue\":3}",
+        "error_field": "FloatValue",
+        "range_text": "(1, 3)",
+        "input_got": "3",
+        "output_got": "3.0",
+        "csharp_input_message": "JSON scalar 'FloatValue' is outside its numeric range: 3.",
+        "csharp_output_message": "JSON scalar 'FloatValue' is outside its numeric range: 3.",
+        "accepted": false,
+        "expected_values": {
+          "IntValue": {
+            "tag": "Int",
+            "value": 2
+          },
+          "FloatValue": {
+            "tag": "Float",
+            "value": 3.0,
+            "bits": "4008000000000000"
+          }
+        },
+        "failed_field": "FloatValue"
+      }
+    ]
+  }
+}

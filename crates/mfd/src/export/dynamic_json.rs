@@ -1104,7 +1104,18 @@ fn render_json_entries(
     let mut out = String::new();
     if schema.repeating {
         let pad = "\t".repeat(indent);
-        let _ = writeln!(out, "{pad}<entry name=\"array\" expanded=\"1\">");
+        let marker_key = if schema.json_array_wrapper {
+            ports
+                .key_for_abs(path)
+                .map(|key| format!(" {attr}=\"{key}\""))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{pad}<entry name=\"array\"{marker_key} expanded=\"1\">"
+        );
         let _ = writeln!(
             out,
             "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
@@ -1147,6 +1158,30 @@ fn render_json_value(
     let Some(key) = ports.key_for_abs(path) else {
         return;
     };
+    if let Some(item) = node.json_array_wrapper_item() {
+        path.push(item.name.clone());
+        let marker_key = if item.json_array_wrapper {
+            ports
+                .key_for_abs(path)
+                .map(|key| format!(" {attr}=\"{key}\""))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{pad}<entry name=\"array\"{marker_key} expanded=\"1\">"
+        );
+        let _ = writeln!(
+            out,
+            "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+        );
+        render_json_value(item, ports, attr, indent + 2, path, targets, out);
+        let _ = writeln!(out, "{pad}\t</entry>");
+        let _ = writeln!(out, "{pad}</entry>");
+        path.pop();
+        return;
+    }
     match &node.kind {
         SchemaKind::Scalar { ty } => {
             let _ = writeln!(
@@ -1173,7 +1208,18 @@ fn render_json_value(
                 );
                 path.push(child.name.clone());
                 if child.repeating {
-                    let _ = writeln!(out, "{pad}\t\t<entry name=\"array\" expanded=\"1\">");
+                    let marker_key = if child.json_array_wrapper {
+                        ports
+                            .key_for_abs(path)
+                            .map(|key| format!(" {attr}=\"{key}\""))
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    let _ = writeln!(
+                        out,
+                        "{pad}\t\t<entry name=\"array\"{marker_key} expanded=\"1\">"
+                    );
                     let _ = writeln!(
                         out,
                         "{pad}\t\t\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
@@ -1226,7 +1272,18 @@ fn render_source_entries(
     let mut out = String::new();
     if schema.repeating {
         let pad = "\t".repeat(indent);
-        let _ = writeln!(out, "{pad}<entry name=\"array\" expanded=\"1\">");
+        let marker_key = if schema.json_array_wrapper {
+            ports
+                .key_for_abs(path)
+                .map(|key| format!(" outkey=\"{key}\""))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{pad}<entry name=\"array\"{marker_key} expanded=\"1\">"
+        );
         let _ = writeln!(
             out,
             "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
@@ -1259,6 +1316,30 @@ fn render_source_value(
     let Some(key) = ports.key_for_abs(path) else {
         return;
     };
+    if let Some(item) = node.json_array_wrapper_item() {
+        path.push(item.name.clone());
+        let marker_key = if item.json_array_wrapper {
+            ports
+                .key_for_abs(path)
+                .map(|key| format!(" outkey=\"{key}\""))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{pad}<entry name=\"array\"{marker_key} expanded=\"1\">"
+        );
+        let _ = writeln!(
+            out,
+            "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+        );
+        render_source_value(item, ports, indent + 2, path, sites, out);
+        let _ = writeln!(out, "{pad}\t</entry>");
+        let _ = writeln!(out, "{pad}</entry>");
+        path.pop();
+        return;
+    }
     match &node.kind {
         SchemaKind::Scalar { ty } => {
             let _ = writeln!(
@@ -1284,7 +1365,18 @@ fn render_source_value(
                 );
                 path.push(child.name.clone());
                 if child.repeating {
-                    let _ = writeln!(out, "{pad}\t\t<entry name=\"array\" expanded=\"1\">");
+                    let marker_key = if child.json_array_wrapper {
+                        ports
+                            .key_for_abs(path)
+                            .map(|key| format!(" outkey=\"{key}\""))
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    let _ = writeln!(
+                        out,
+                        "{pad}\t\t<entry name=\"array\"{marker_key} expanded=\"1\">"
+                    );
                     let _ = writeln!(
                         out,
                         "{pad}\t\t\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"

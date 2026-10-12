@@ -1,0 +1,3336 @@
+{
+  "cases": [
+    {
+      "id": "root-complete",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[[7,9],[11,13,15]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 11
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 13
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 15
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    7,\n    9\n  ],\n  [\n    11,\n    13,\n    15\n  ]\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a20202020372c0a20202020390a20205d2c0a20205b0a2020202031312c0a2020202031332c0a2020202031350a20205d0a5d0a"
+    },
+    {
+      "id": "outer-minimum",
+      "wire": "[]",
+      "expected_native_error": {
+        "variant": "ItemCountMismatch",
+        "name": "Batches",
+        "range": "between 1 and 2",
+        "got": 0,
+        "display": "`Batches` requires between 1 and 2 array items, got 0"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 0 items outside its declared item-count range.",
+        "Detail": "JSON array 'Batches' has 0 items outside its declared item-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 0 items outside its declared item-count range.",
+        "Detail": "JSON array 'Batches' has 0 items outside its declared item-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "outer-maximum",
+      "wire": "[[7,9],[11,13],[17,19]]",
+      "expected_native_error": {
+        "variant": "ItemCountMismatch",
+        "name": "Batches",
+        "range": "between 1 and 2",
+        "got": 3,
+        "display": "`Batches` requires between 1 and 2 array items, got 3"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 3 items outside its declared item-count range.",
+        "Detail": "JSON array 'Batches' has 3 items outside its declared item-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 3 items outside its declared item-count range.",
+        "Detail": "JSON array 'Batches' has 3 items outside its declared item-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-minimum",
+      "wire": "[[7]]",
+      "expected_native_error": {
+        "variant": "ItemCountMismatch",
+        "name": "item",
+        "range": "between 2 and 3",
+        "got": 1,
+        "display": "`item` requires between 2 and 3 array items, got 1"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 1 items outside its declared item-count range.",
+        "Detail": "JSON array 'item' has 1 items outside its declared item-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 1 items outside its declared item-count range.",
+        "Detail": "JSON array 'item' has 1 items outside its declared item-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-maximum",
+      "wire": "[[7,9,11,13]]",
+      "expected_native_error": {
+        "variant": "ItemCountMismatch",
+        "name": "item",
+        "range": "between 2 and 3",
+        "got": 4,
+        "display": "`item` requires between 2 and 3 array items, got 4"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 4 items outside its declared item-count range.",
+        "Detail": "JSON array 'item' has 4 items outside its declared item-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 4 items outside its declared item-count range.",
+        "Detail": "JSON array 'item' has 4 items outside its declared item-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-unique",
+      "wire": "[[7,7]]",
+      "expected_native_error": {
+        "variant": "UniqueItemsMismatch",
+        "name": "item",
+        "first_index": 1,
+        "duplicate_index": 2,
+        "display": "`item` requires unique array items, but indexes 1 and 2 are equal"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' violates uniqueItems at item 2.",
+        "Detail": "JSON array 'item' violates uniqueItems at item 2.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "Normalized JSON array 'item' violates uniqueItems at item 2.",
+        "Detail": "Normalized JSON array 'item' violates uniqueItems at item 2.",
+        "Inner": []
+      },
+      "expected_rust_output_error": {
+        "variant": "InvalidOutput",
+        "message": "`item` requires unique JSON array items, but indexes 1 and 2 are equal"
+      }
+    },
+    {
+      "id": "inner-shape",
+      "wire": "[7]",
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "item",
+        "expected": "array",
+        "got": "number",
+        "display": "`item`: expected array, got number"
+      },
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'item' expected array, got Number.",
+        "Detail": "JSON field 'item' expected array, got Number.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'item' expected array, got Int64.",
+        "Detail": "JSON field 'item' expected array, got Int64.",
+        "Inner": []
+      },
+      "expected_rust_output_error": {
+        "variant": "InvalidOutput",
+        "message": "`item`: expected array, got int"
+      }
+    },
+    {
+      "id": "empty-outer",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": []
+      },
+      "expected_output": "[]\n",
+      "expected_utf8_hex": "5b5d0a"
+    },
+    {
+      "id": "one-empty-inner",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[[]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  []\n]\n",
+      "expected_utf8_hex": "5b0a20205b5d0a5d0a"
+    },
+    {
+      "id": "two-empty-inners",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[[],[]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [],\n  []\n]\n",
+      "expected_utf8_hex": "5b0a20205b5d2c0a20205b5d0a5d0a"
+    },
+    {
+      "id": "outer-json-null",
+      "schema": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "container_nullable": true
+      },
+      "wire": "null",
+      "expected_typed": {
+        "kind": "Scalar",
+        "value": {
+          "kind": "JsonNull"
+        }
+      },
+      "expected_output": "null\n",
+      "expected_utf8_hex": "6e756c6c0a"
+    },
+    {
+      "id": "inner-json-null",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "container_nullable": true
+            }
+          ]
+        }
+      },
+      "wire": "[null,[]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  null,\n  []\n]\n",
+      "expected_utf8_hex": "5b0a20206e756c6c2c0a20205b5d0a5d0a"
+    },
+    {
+      "id": "property-complete",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "Batches": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 3,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "Batches"
+        ],
+        "additionalProperties": false,
+        "title": "Document"
+      },
+      "wire": "{\"Batches\":[[7,9]]}",
+      "expected_typed": {
+        "kind": "Group",
+        "origin": null,
+        "fields": [
+          {
+            "name": "Batches",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "origin": null,
+                  "fields": [
+                    {
+                      "name": "item",
+                      "value": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Int",
+                              "value": 7
+                            }
+                          },
+                          {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Int",
+                              "value": 9
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected_output": "{\n  \"Batches\": [\n    [\n      7,\n      9\n    ]\n  ]\n}\n",
+      "expected_model": {
+        "name": "Document",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Batches",
+              "repeating": true,
+              "json_array_wrapper": true,
+              "item_count_range": {
+                "minimum": 1,
+                "maximum": 2
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item",
+                    "repeating": true,
+                    "item_count_range": {
+                      "minimum": 2,
+                      "maximum": 3
+                    },
+                    "json_unique_items": true,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "required": [
+            "Batches"
+          ]
+        }
+      },
+      "expected_utf8_hex": "7b0a20202242617463686573223a205b0a202020205b0a202020202020372c0a202020202020390a202020205d0a20205d0a7d0a"
+    },
+    {
+      "id": "ordinary-object-item-property",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "title": "Document"
+      },
+      "wire": "{\"item\":[7,9]}",
+      "expected_typed": {
+        "kind": "Group",
+        "origin": null,
+        "fields": [
+          {
+            "name": "item",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 7
+                  }
+                },
+                {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 9
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected_output": "{\n  \"item\": [\n    7,\n    9\n  ]\n}\n",
+      "marker_must_be_absent": true,
+      "expected_model": {
+        "name": "Document",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ],
+          "required": [
+            "item"
+          ]
+        }
+      },
+      "expected_utf8_hex": "7b0a2020226974656d223a205b0a20202020372c0a20202020390a20205d0a7d0a"
+    },
+    {
+      "id": "outer-unique-distinct-order",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "uniqueItems": true,
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "json_unique_items": true
+      },
+      "wire": "[[7,9],[9,7]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    7,\n    9\n  ],\n  [\n    9,\n    7\n  ]\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a20202020372c0a20202020390a20205d2c0a20205b0a20202020392c0a20202020370a20205d0a5d0a"
+    },
+    {
+      "id": "outer-unique-duplicate",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "uniqueItems": true,
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "json_unique_items": true
+      },
+      "wire": "[[7,9],[7,9]]",
+      "expected_native_error": {
+        "variant": "UniqueItemsMismatch",
+        "name": "Batches",
+        "first_index": 1,
+        "duplicate_index": 2,
+        "display": "`Batches` requires unique array items, but indexes 1 and 2 are equal"
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' violates uniqueItems at item 2.",
+        "Detail": "JSON array 'Batches' violates uniqueItems at item 2.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "Normalized JSON array 'Batches' violates uniqueItems at item 2.",
+        "Detail": "Normalized JSON array 'Batches' violates uniqueItems at item 2.",
+        "Inner": []
+      },
+      "expected_rust_output_error": {
+        "variant": "InvalidOutput",
+        "message": "`Batches` requires unique JSON array items, but indexes 1 and 2 are equal"
+      }
+    },
+    {
+      "id": "three-level",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "json_array_wrapper": true,
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item",
+                    "repeating": true,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[[[7,9],[]],[]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "origin": null,
+                      "fields": [
+                        {
+                          "name": "item",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": [
+                              {
+                                "kind": "Scalar",
+                                "value": {
+                                  "kind": "Int",
+                                  "value": 7
+                                }
+                              },
+                              {
+                                "kind": "Scalar",
+                                "value": {
+                                  "kind": "Int",
+                                  "value": 9
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "origin": null,
+                      "fields": [
+                        {
+                          "name": "item",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    [\n      7,\n      9\n    ],\n    []\n  ],\n  []\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a202020205b0a202020202020372c0a202020202020390a202020205d2c0a202020205b5d0a20205d2c0a20205b5d0a5d0a"
+    },
+    {
+      "id": "all-null-levels",
+      "schema": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "container_nullable": true,
+              "nullable": true
+            }
+          ]
+        },
+        "container_nullable": true
+      },
+      "wire": "[[null,7],null,[]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "JsonNull"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    null,\n    7\n  ],\n  null,\n  []\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a202020206e756c6c2c0a20202020370a20205d2c0a20206e756c6c2c0a20205b5d0a5d0a"
+    },
+    {
+      "id": "outer-contains-positive",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "contains": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "minContains": 1,
+        "maxContains": 1,
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "json_contains": [
+          {
+            "predicate": {
+              "kind": "schema",
+              "schema": {
+                "name": "Batches/contains",
+                "repeating": true,
+                "item_count_range": {
+                  "minimum": 3,
+                  "maximum": 3
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            },
+            "range": {
+              "minimum": 1,
+              "maximum": 1
+            }
+          }
+        ]
+      },
+      "wire": "[[7,9],[11,13,15]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 11
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 13
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 15
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    7,\n    9\n  ],\n  [\n    11,\n    13,\n    15\n  ]\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a20202020372c0a20202020390a20205d2c0a20205b0a2020202031312c0a2020202031332c0a2020202031350a20205d0a5d0a"
+    },
+    {
+      "id": "outer-contains-negative",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "contains": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "minContains": 1,
+        "maxContains": 1,
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "json_contains": [
+          {
+            "predicate": {
+              "kind": "schema",
+              "schema": {
+                "name": "Batches/contains",
+                "repeating": true,
+                "item_count_range": {
+                  "minimum": 3,
+                  "maximum": 3
+                },
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              }
+            },
+            "range": {
+              "minimum": 1,
+              "maximum": 1
+            }
+          }
+        ]
+      },
+      "wire": "[[7,9]]",
+      "expected_native_error": {
+        "variant": "ContainsCountMismatch",
+        "name": "Batches",
+        "range": "exactly 1",
+        "got": 0,
+        "display": "`Batches` requires exactly 1 items matching its contains predicate, got 0"
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Detail": "JSON array 'Batches' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'Batches' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Detail": "JSON array 'Batches' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-contains-positive",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          },
+          "contains": {
+            "type": "integer",
+            "minimum": 10
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "json_contains": [
+                {
+                  "predicate": {
+                    "kind": "schema",
+                    "schema": {
+                      "name": "item/contains",
+                      "numeric_range": {
+                        "kind": "integer",
+                        "bounds": {
+                          "minimum": 10
+                        }
+                      },
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "int"
+                      }
+                    }
+                  },
+                  "range": {
+                    "minimum": 1,
+                    "maximum": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "wire": "[[7,11]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 11
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    7,\n    11\n  ]\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a20202020372c0a2020202031310a20205d0a5d0a"
+    },
+    {
+      "id": "inner-contains-negative",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          },
+          "contains": {
+            "type": "integer",
+            "minimum": 10
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "json_contains": [
+                {
+                  "predicate": {
+                    "kind": "schema",
+                    "schema": {
+                      "name": "item/contains",
+                      "numeric_range": {
+                        "kind": "integer",
+                        "bounds": {
+                          "minimum": 10
+                        }
+                      },
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "int"
+                      }
+                    }
+                  },
+                  "range": {
+                    "minimum": 1,
+                    "maximum": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "wire": "[[7,9]]",
+      "expected_native_error": {
+        "variant": "ContainsCountMismatch",
+        "name": "item",
+        "range": "exactly 1",
+        "got": 0,
+        "display": "`item` requires exactly 1 items matching its contains predicate, got 0"
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Detail": "JSON array 'item' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Inner": []
+      },
+      "expected_managed_output_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON array 'item' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Detail": "JSON array 'item' has 0 items matching its contains predicate outside the declared match-count range.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "local-acyclic-ref",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "$defs": {
+          "Line": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "items": {
+          "$ref": "#/$defs/Line"
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[[7,9]]",
+      "expected_typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_output": "[\n  [\n    7,\n    9\n  ]\n]\n",
+      "expected_utf8_hex": "5b0a20205b0a20202020372c0a20202020390a20205d0a5d0a"
+    },
+    {
+      "id": "outer-nullability-does-not-null-inner",
+      "schema": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "container_nullable": true
+      },
+      "wire": "[null]",
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "item",
+        "expected": "array",
+        "got": "null",
+        "display": "`item`: expected array, got null"
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'item' expected array, got Null.",
+        "Detail": "JSON field 'item' expected array, got Null.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-nullability-does-not-null-outer",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              },
+              "container_nullable": true
+            }
+          ]
+        }
+      },
+      "wire": "null",
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "Batches",
+        "expected": "array",
+        "got": "null",
+        "display": "`Batches`: expected array, got null"
+      },
+      "expected_managed_input_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'Batches' expected array, got Null.",
+        "Detail": "JSON field 'Batches' expected array, got Null.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "optional-nullable-array-absence",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "Batches": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "title": "Document"
+      },
+      "expected_model": {
+        "name": "Document",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Batches",
+              "repeating": true,
+              "json_array_wrapper": true,
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item",
+                    "repeating": true,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ]
+              },
+              "container_nullable": true
+            }
+          ]
+        }
+      },
+      "wire": "{}",
+      "expected_typed": {
+        "kind": "Group",
+        "origin": null,
+        "fields": [
+          {
+            "name": "Batches",
+            "value": {
+              "kind": "Scalar",
+              "value": {
+                "kind": "Null"
+              }
+            }
+          }
+        ]
+      },
+      "expected_output": "{}\n",
+      "expected_utf8_hex": "7b7d0a"
+    }
+  ],
+  "typed_output_negative_cases": [
+    {
+      "id": "missing-item",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": []
+          }
+        ]
+      },
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "Batches",
+        "expected": "array item group with one `item` field",
+        "got": "object",
+        "display": "`Batches`: expected array item group with one `item` field, got object"
+      },
+      "expected_managed_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'Batches' expected array item group with one `item` field, got object.",
+        "Detail": "JSON field 'Batches' expected array item group with one `item` field, got object.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "extra-item",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 7
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 9
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "extra",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 17
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "Batches",
+        "expected": "array item group with one `item` field",
+        "got": "object",
+        "display": "`Batches`: expected array item group with one `item` field, got object"
+      },
+      "expected_managed_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'Batches' expected array item group with one `item` field, got object.",
+        "Detail": "JSON field 'Batches' expected array item group with one `item` field, got object.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "direct-inner-repeated",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 7
+                }
+              },
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "Int",
+                  "value": 9
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "Batches",
+        "expected": "array item group with one `item` field",
+        "got": "array",
+        "display": "`Batches`: expected array item group with one `item` field, got array"
+      },
+      "expected_managed_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'Batches' expected array item group with one `item` field, got array.",
+        "Detail": "JSON field 'Batches' expected array item group with one `item` field, got array.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "inner-absence-null",
+      "schema": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2,
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "item_count_range": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "item_count_range": {
+                "minimum": 2,
+                "maximum": 3
+              },
+              "json_unique_items": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Group",
+            "origin": null,
+            "fields": [
+              {
+                "name": "item",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "item",
+        "expected": "array",
+        "got": "null",
+        "display": "`item`: expected array, got null"
+      },
+      "expected_managed_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'item' expected array, got Null.",
+        "Detail": "JSON field 'item' expected array, got Null.",
+        "Inner": []
+      }
+    },
+    {
+      "id": "outer-nullable-item-direct-null",
+      "schema": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "title": "Batches"
+      },
+      "expected_model": {
+        "name": "Batches",
+        "repeating": true,
+        "json_array_wrapper": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "container_nullable": true
+      },
+      "typed": {
+        "kind": "Repeated",
+        "items": [
+          {
+            "kind": "Scalar",
+            "value": {
+              "kind": "JsonNull"
+            }
+          }
+        ]
+      },
+      "expected_native_error": {
+        "variant": "Shape",
+        "name": "Batches",
+        "expected": "array item group with one `item` field",
+        "got": "json null",
+        "display": "`Batches`: expected array item group with one `item` field, got json null"
+      },
+      "expected_managed_error": {
+        "Node": null,
+        "Function": null,
+        "ExpectedArity": null,
+        "ActualArity": null,
+        "FoundKind": null,
+        "AggregateOperation": null,
+        "RequestedItems": null,
+        "MaximumItems": null,
+        "MaximumDepth": null,
+        "RuntimeValue": null,
+        "FailureRule": null,
+        "MappingFailureMessage": null,
+        "Join": null,
+        "UserFunction": null,
+        "FunctionParameter": null,
+        "ExpectedScalarType": null,
+        "RuntimeParameter": null,
+        "SourceField": null,
+        "FoundInstance": null,
+        "PrimaryRoot": null,
+        "MappingExceptionMessage": null,
+        "Type": "Ferrule.Runtime.FerruleRuntimeException",
+        "Error": "JsonBoundary",
+        "Message": "JSON field 'Batches' expected array item group with one `item` field, got JsonNull.",
+        "Detail": "JSON field 'Batches' expected array item group with one `item` field, got JsonNull.",
+        "Inner": []
+      }
+    }
+  ],
+  "malformed_ir": [
+    {
+      "id": "scalar-marker",
+      "mutation": {
+        "kind": {
+          "kind": "scalar",
+          "ty": "int"
+        }
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "nonrepeated-wrapper",
+      "mutation": {
+        "repeating": false
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "zero-child",
+      "mutation": {
+        "kind.children": []
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "two-children",
+      "mutation": {
+        "kind.children": [
+          "item",
+          "extra"
+        ]
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "wrong-child-name",
+      "mutation": {
+        "kind.children.0.name": "row"
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "nonrepeated-child",
+      "mutation": {
+        "kind.children.0.repeating": false
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "object-required",
+      "mutation": {
+        "kind.required": [
+          "item"
+        ]
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "dynamic-child",
+      "mutation": {
+        "kind.dynamic": "String"
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "object-property-count",
+      "mutation": {
+        "property_count_range": {
+          "minimum": 1
+        }
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "scalar-nullable",
+      "mutation": {
+        "nullable": true
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "scalar-range",
+      "mutation": {
+        "numeric_range": "Integer[0,1]"
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "xml-attribute",
+      "mutation": {
+        "attribute": true
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "json-any-text",
+      "mutation": {
+        "json_any": true
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    },
+    {
+      "id": "recursion-anchor",
+      "mutation": {
+        "recursive_ref": "Loop"
+      },
+      "metadata_is_valid": false,
+      "serde_reject": true,
+      "codec_reject": true,
+      "managed_reject": true
+    }
+  ],
+  "schema_refusal_cases": [
+    {
+      "id": "nested-prefix-items",
+      "schema": {
+        "title": "Batches",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        ],
+        "items": false
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "Batches",
+        "reason": "prefixItems members cannot contain a nested array wrapper",
+        "display": "JSON Schema union `Batches` is not representable: prefixItems members cannot contain a nested array wrapper"
+      }
+    },
+    {
+      "id": "nested-legacy-tuple",
+      "schema": {
+        "title": "Batches",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "array",
+        "items": [
+          {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        ],
+        "additionalItems": false
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "Batches",
+        "reason": "tuple-form `items` members cannot contain a nested array wrapper",
+        "display": "JSON Schema union `Batches` is not representable: tuple-form `items` members cannot contain a nested array wrapper"
+      }
+    },
+    {
+      "id": "recursive-array-items",
+      "schema": {
+        "title": "Batches",
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Loop"
+        },
+        "$defs": {
+          "Loop": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Loop"
+            }
+          }
+        }
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "Batches",
+        "reason": "nested array items require resolved acyclic schema references",
+        "display": "JSON Schema union `Batches` is not representable: nested array items require resolved acyclic schema references"
+      }
+    },
+    {
+      "id": "unresolved-inner-item",
+      "schema": {
+        "title": "Batches",
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Unavailable"
+          }
+        }
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "Batches",
+        "reason": "nested array items require resolved acyclic schema references",
+        "display": "JSON Schema union `Batches` is not representable: nested array items require resolved acyclic schema references"
+      }
+    },
+    {
+      "id": "mixed-array-string-items",
+      "schema": {
+        "title": "Batches",
+        "type": "array",
+        "items": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "item",
+        "reason": "heterogeneous type arrays may contain only scalar types",
+        "display": "JSON Schema union `item` is not representable: heterogeneous type arrays may contain only scalar types"
+      }
+    },
+    {
+      "id": "unsupported-contains-not",
+      "schema": {
+        "title": "Batches",
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "contains": {
+          "not": {
+            "type": "integer"
+          }
+        }
+      },
+      "expected_native_error": {
+        "variant": "UnsupportedSchemaUnion",
+        "name": "Batches/contains",
+        "reason": "`not` validation is not supported",
+        "display": "JSON Schema union `Batches/contains` is not representable: `not` validation is not supported"
+      }
+    }
+  ],
+  "managed_invalid_wrapper_error": {
+    "Node": null,
+    "Function": null,
+    "ExpectedArity": null,
+    "ActualArity": null,
+    "FoundKind": null,
+    "AggregateOperation": null,
+    "RequestedItems": null,
+    "MaximumItems": null,
+    "MaximumDepth": null,
+    "RuntimeValue": null,
+    "FailureRule": null,
+    "MappingFailureMessage": null,
+    "Join": null,
+    "UserFunction": null,
+    "FunctionParameter": null,
+    "ExpectedScalarType": null,
+    "RuntimeParameter": null,
+    "SourceField": null,
+    "FoundInstance": null,
+    "PrimaryRoot": null,
+    "MappingExceptionMessage": null,
+    "Type": "Ferrule.Runtime.FerruleRuntimeException",
+    "Error": "JsonBoundary",
+    "Message": "Embedded JSON schema node 'Batches' has invalid array-wrapper metadata.",
+    "Detail": "Embedded JSON schema node 'Batches' has invalid array-wrapper metadata.",
+    "Inner": []
+  }
+}

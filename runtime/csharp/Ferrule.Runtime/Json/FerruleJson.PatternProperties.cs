@@ -181,6 +181,7 @@ public static partial class FerruleJson
         left.Repeating == right.Repeating &&
         left.Nullable == right.Nullable &&
         left.ContainerNullable == right.ContainerNullable &&
+        left.JsonArrayWrapper == right.JsonArrayWrapper &&
         left.JsonAny == right.JsonAny &&
         left.JsonFormats.SequenceEqual(right.JsonFormats, StringComparer.Ordinal) &&
         left.ScalarDomain == right.ScalarDomain &&

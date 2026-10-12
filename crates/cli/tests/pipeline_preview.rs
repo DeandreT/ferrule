@@ -1168,3 +1168,430 @@ fn input_total_and_artifact_count_limits_precede_parsing_and_rendering() -> anyh
     assert!(format!("{error:#}").contains("stage targets"));
     Ok(())
 }
+
+mod source_ownership_admission {
+    use super::*;
+
+    struct Case {
+        name: &'static str,
+        pipeline: Pipeline,
+        stage: &'static str,
+        published_stage: &'static str,
+        expected: engine::EngineError,
+        display: &'static str,
+    }
+
+    fn owned_field() -> Node {
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec!["Value".into()],
+            },
+            frame: None,
+        })
+    }
+
+    fn bound(node: u32) -> Scope {
+        Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node,
+            }],
+            ..Scope::default()
+        }
+    }
+
+    fn one(project: Project) -> Pipeline {
+        Pipeline {
+            main_mapping_path: None,
+            stages: vec![PipelineStage {
+                id: "one".into(),
+                mapping_path: None,
+                project,
+                source: PipelineInput::Host {
+                    name: "input".into(),
+                },
+                extra_sources: vec![],
+            }],
+        }
+    }
+
+    fn unused_owned_project(lazy: bool) -> Project {
+        let mut project = copy_project();
+        project.graph.nodes.insert(47, owned_field());
+        if lazy {
+            project.graph.nodes.insert(
+                62,
+                Node::Const {
+                    value: Value::Bool(true),
+                },
+            );
+            project.graph.nodes.insert(
+                63,
+                Node::Const {
+                    value: Value::String("original".into()),
+                },
+            );
+            project
+                .graph
+                .nodes
+                .insert(65, Node::Raise { message: None });
+            project.graph.nodes.insert(
+                64,
+                Node::If {
+                    condition: 62,
+                    then: 63,
+                    else_: 65,
+                },
+            );
+            project.root = bound(64);
+        }
+        project
+    }
+
+    fn cases() -> Vec<Case> {
+        let mut direct = unused_owned_project(false);
+        direct.root = bound(47);
+        let expected = || engine::EngineError::UnsupportedSourceOwnership {
+            node: 47,
+            function: None,
+            kind: "owned_source_field",
+        };
+        let field_display =
+            "source ownership for owned_source_field node 47 (function None) is not supported";
+        let mut position = copy_project();
+        position.target =
+            SchemaNode::group("Record", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
+        position.graph.nodes.insert(
+            48,
+            Node::OwnedPosition(mapping::OwnedPosition {
+                owner: mapping::SourceOwner::Primary,
+                collection: Some(vec![]),
+            }),
+        );
+        position.root = bound(48);
+
+        let mut hidden = unused_owned_project(false);
+        hidden.extra_targets.push(NamedTarget {
+            name: "hidden".into(),
+            path: Some("hidden.json".into()),
+            schema: hidden.target.clone(),
+            options: hidden.target_options.clone(),
+            root: bound(47),
+        });
+        let mut disconnected = one(copy_project());
+        disconnected.stages.push(PipelineStage {
+            id: "disconnected".into(),
+            mapping_path: None,
+            project: direct.clone(),
+            source: PipelineInput::Host {
+                name: "input".into(),
+            },
+            extra_sources: vec![],
+        });
+
+        let function = mapping::FunctionId::new(7);
+        let mut called = copy_project();
+        called.user_functions.insert(
+            function,
+            mapping::UserFunction {
+                library: "tests".into(),
+                name: "owned_value".into(),
+                description: None,
+                parameters: vec![],
+                output_name: "value".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: BTreeMap::from([(47, owned_field())]),
+                },
+                output: 47,
+            },
+        );
+        called.graph.nodes.insert(
+            61,
+            Node::UserFunctionCall {
+                function,
+                args: vec![],
+            },
+        );
+        called.root = bound(61);
+
+        let mut potential = unused_owned_project(false);
+        potential.graph.nodes.insert(
+            62,
+            Node::Const {
+                value: Value::Bool(false),
+            },
+        );
+        potential.graph.nodes.insert(
+            63,
+            Node::Const {
+                value: Value::String("original".into()),
+            },
+        );
+        potential.graph.nodes.insert(
+            64,
+            Node::If {
+                condition: 62,
+                then: 47,
+                else_: 63,
+            },
+        );
+        potential.root = bound(64);
+        let mut forward = one(direct.clone());
+        forward.stages[0].id = "consume".into();
+        forward.stages[0].source = PipelineInput::StageTarget {
+            stage: "prepare".into(),
+            target: None,
+        };
+        let mut producer = one(direct.clone()).stages.remove(0);
+        producer.id = "prepare".into();
+        forward.stages.push(producer);
+        vec![
+            Case {
+                name: "direct-field",
+                pipeline: one(direct),
+                stage: "one",
+                published_stage: "one",
+                expected: expected(),
+                display: field_display,
+            },
+            Case {
+                name: "direct-position",
+                pipeline: one(position),
+                stage: "one",
+                published_stage: "one",
+                expected: engine::EngineError::UnsupportedSourceOwnership {
+                    node: 48,
+                    function: None,
+                    kind: "owned_position",
+                },
+                display: "source ownership for owned_position node 48 (function None) is not supported",
+            },
+            Case {
+                name: "unselected-named-target",
+                pipeline: one(hidden),
+                stage: "one",
+                published_stage: "one",
+                expected: expected(),
+                display: field_display,
+            },
+            Case {
+                name: "disconnected-stage",
+                pipeline: disconnected,
+                stage: "disconnected",
+                published_stage: "one",
+                expected: expected(),
+                display: field_display,
+            },
+            Case {
+                name: "called-function",
+                pipeline: one(called),
+                stage: "one",
+                published_stage: "one",
+                expected: engine::EngineError::UnsupportedSourceOwnership {
+                    node: 47,
+                    function: Some(function),
+                    kind: "owned_source_field",
+                },
+                display: "source ownership for owned_source_field node 47 (function Some(FunctionId(7))) is not supported",
+            },
+            Case {
+                name: "potential-if",
+                pipeline: one(potential),
+                stage: "one",
+                published_stage: "one",
+                expected: expected(),
+                display: field_display,
+            },
+            Case {
+                name: "forward-stage-order",
+                pipeline: forward,
+                stage: "prepare",
+                published_stage: "consume",
+                expected: expected(),
+                display: field_display,
+            },
+        ]
+    }
+
+    fn assert_refusal(error: &anyhow::Error, case: &Case) {
+        let chain = error.chain().map(ToString::to_string).collect::<Vec<_>>();
+        eprintln!(
+            "{} full_chain={chain:?} typed={:?}",
+            case.name,
+            error.downcast_ref::<engine::PipelineError>()
+        );
+        match error.downcast_ref::<engine::PipelineError>() {
+            Some(engine::PipelineError::StageExecution { stage, source }) => {
+                assert_eq!(stage.as_str(), case.stage);
+                assert_eq!(source, &case.expected);
+            }
+            other => panic!("expected stage ownership failure, got {other:?}"),
+        }
+        assert_eq!(
+            chain,
+            [
+                format!("stage `{}` failed: {}", case.stage, case.display),
+                case.display.to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn all_stages_and_targets_refuse_before_preview_decode() -> anyhow::Result<()> {
+        for case in cases() {
+            let dir = TempDir::new()?;
+            let pipeline_path = dir.0.join("pipeline.json");
+            let sentinel = dir.0.join("result.json");
+            std::fs::write(&sentinel, b"old-output")?;
+            let hosts = [host("input", Path::new("absent/input.json"), b"not-json")?];
+            let debug_calls = RefCell::new(Vec::<String>::new());
+            let trace_calls = RefCell::new(Vec::<(String, String)>::new());
+            let debug = |stage: &str, _: &engine::PendingTargetWrite| {
+                debug_calls.borrow_mut().push(stage.to_owned());
+                DebugDecision::Resume
+            };
+            let trace = |stage: &str, event: engine::TraceEvent| {
+                trace_calls
+                    .borrow_mut()
+                    .push((stage.to_owned(), format!("{event:?}")));
+            };
+            let options = PipelinePreviewOptions::new(&hosts)
+                .with_stage_debug_hook(&debug)
+                .with_stage_trace_sink(&trace);
+            eprintln!(
+                "{} pipeline={:?} publication_stage={} complete_input={:?}",
+                case.name,
+                case.pipeline,
+                case.published_stage,
+                hosts[0].document().bytes()
+            );
+            let metadata = validate_pipeline_preview(&case.pipeline, &pipeline_path, &options);
+            eprintln!("{} metadata={metadata:?}", case.name);
+            assert_refusal(
+                &metadata.expect_err("metadata admission must reject unsupported mapping"),
+                &case,
+            );
+            let result = preview_pipeline_value_payloads(&case.pipeline, &pipeline_path, &options);
+            let output_after = std::fs::read(&sentinel)?;
+            eprintln!(
+                "{} result={result:?} output_after={output_after:?} debug={:?} trace={:?}",
+                case.name,
+                debug_calls.borrow(),
+                trace_calls.borrow()
+            );
+            assert_refusal(
+                &result.expect_err("ownership refusal must precede invalid JSON decoding"),
+                &case,
+            );
+            assert_eq!(output_after.as_slice(), b"old-output".as_slice());
+            assert!(debug_calls.borrow().is_empty());
+            assert!(trace_calls.borrow().is_empty());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn preview_metadata_and_cancellation_errors_keep_precedence() -> anyhow::Result<()> {
+        let case = cases().remove(0);
+        let input = host("input", Path::new("input.json"), b"not-json")?;
+        for (name, hosts, cancelled, expected) in [
+            (
+                "missing-binding",
+                vec![],
+                false,
+                "host input `input` is missing",
+            ),
+            (
+                "duplicate-binding",
+                vec![input, input],
+                false,
+                "host input `input` was supplied more than once",
+            ),
+            (
+                "cancelled",
+                vec![input],
+                true,
+                "debug run cancelled before target field insertion",
+            ),
+        ] {
+            let cancellation = AtomicBool::new(cancelled);
+            let result = preview_pipeline_value_payloads(
+                &case.pipeline,
+                Path::new("pipeline.json"),
+                &PipelinePreviewOptions::new(&hosts).with_cancellation(&cancellation),
+            );
+            eprintln!(
+                "{name} complete_input={:?} result={result:?}",
+                hosts
+                    .iter()
+                    .map(|host| (host.name(), host.document().path(), host.document().bytes()))
+                    .collect::<Vec<_>>()
+            );
+            let error = result.expect_err("metadata/cancellation refusal must precede ownership");
+            let chain = error.chain().map(ToString::to_string).collect::<Vec<_>>();
+            eprintln!(
+                "{name} full_chain={chain:?} typed={:?}",
+                error.downcast_ref::<engine::EngineError>()
+            );
+            assert_eq!(chain, [expected.to_owned()]);
+            if cancelled {
+                assert_eq!(
+                    error.downcast_ref::<engine::EngineError>(),
+                    Some(&engine::EngineError::DebugCancelled)
+                );
+            } else {
+                assert!(error.downcast_ref::<engine::EngineError>().is_none());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unused_owned_storage_preserves_preview_and_legacy_lazy_execution() -> anyhow::Result<()> {
+        for lazy in [false, true] {
+            let dir = TempDir::new()?;
+            let pipeline = one(unused_owned_project(lazy));
+            let pipeline_path = dir.0.join("pipeline.json");
+            let sentinel = dir.0.join("result.json");
+            std::fs::write(&sentinel, b"old-output")?;
+            let hosts = [host(
+                "input",
+                Path::new("absent/input.json"),
+                br#"{"Value":"original"}"#,
+            )?];
+            let result = preview_pipeline_value_payloads(
+                &pipeline,
+                &pipeline_path,
+                &PipelinePreviewOptions::new(&hosts),
+            );
+            let output_after = std::fs::read(&sentinel)?;
+            eprintln!("unused lazy={lazy} result={result:?} output_after={output_after:?}");
+            let outcome = result?;
+            let tree: serde_json::Value = serde_json::from_slice(&outcome.artifacts[0].bytes)?;
+            let metadata = outcome
+                .artifacts
+                .iter()
+                .map(|artifact| {
+                    (
+                        artifact.stage.clone(),
+                        artifact.target.clone(),
+                        artifact.path.clone(),
+                        artifact.records_written,
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                (outcome.stages_executed, metadata, tree),
+                (
+                    vec!["one".to_owned()],
+                    vec![("one".to_owned(), None::<String>, sentinel, 1usize)],
+                    serde_json::json!({"Value":"original"}),
+                )
+            );
+            assert_eq!(output_after.as_slice(), b"old-output".as_slice());
+        }
+        Ok(())
+    }
+}

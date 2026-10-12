@@ -1,0 +1,1 @@
+{"title":"Report","type":"object","properties":{"Code":{"type":"string"},"Quantity":{"type":"integer"},"Stored":{"type":"object","properties":{"Code":{"type":"string"},"Quantity":{"type":"integer"}},"additionalProperties":false}},"additionalProperties":false}
