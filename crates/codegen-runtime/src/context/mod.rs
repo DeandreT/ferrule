@@ -1,4 +1,8 @@
 mod basic;
+mod named_input_admission;
+
+#[cfg(test)]
+mod named_input_admission_tests;
 
 mod grouping;
 mod join;
@@ -25,6 +29,9 @@ pub use basic::{
 };
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
+pub use named_input_admission::{
+    BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode,
+};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 pub use resolve::{OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimitKind};
 
@@ -652,13 +659,46 @@ pub struct OwnedSourceLimits {
     pub max_walk_contexts: usize,
 }
 
+enum NamedRootStorage<'a> {
+    Borrowed(&'a [DeclaredNamedSourceRoot<'a>]),
+    Normalized(Vec<DeclaredNamedSourceRoot<'a>>),
+}
+
+impl<'a> std::ops::Deref for NamedRootStorage<'a> {
+    type Target = [DeclaredNamedSourceRoot<'a>];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(named) => named,
+            Self::Normalized(named) => named,
+        }
+    }
+}
+
+// Keep the exact legacy slice representation, including in retained test logs.
+impl std::fmt::Debug for NamedRootStorage<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&**self, formatter)
+    }
+}
+
 struct SourceRootRegistry<'a> {
     primary: &'a Instance,
-    named: &'a [DeclaredNamedSourceRoot<'a>],
+    named: NamedRootStorage<'a>,
     limits: OwnedSourceLimits,
     name_bytes: usize,
     root_count: usize,
+    storage_count: usize,
     slot_bound: usize,
+}
+
+impl SourceRootRegistry<'_> {
+    fn retained_slots(&self) -> usize {
+        match &self.named {
+            NamedRootStorage::Borrowed(_) => self.root_count,
+            NamedRootStorage::Normalized(_) => self.storage_count,
+        }
+    }
 }
 
 /// Shares an immutable descriptor while all source data remains borrowed.
@@ -838,10 +878,11 @@ impl<'a> SourceRoots<'a> {
         Ok(Self {
             registry: std::sync::Arc::new(SourceRootRegistry {
                 primary,
-                named,
+                named: NamedRootStorage::Borrowed(named),
                 limits,
                 name_bytes: budget.used,
                 root_count,
+                storage_count: root_count,
                 slot_bound,
             }),
         })
@@ -851,7 +892,7 @@ impl<'a> SourceRoots<'a> {
     pub fn root_context(&self) -> Result<OwnedScopeContext<'a>, OwnedSourceError> {
         owned_charge(
             OwnedSourceLimitKind::MetadataSlots,
-            self.registry.root_count,
+            self.registry.retained_slots(),
             1,
             self.registry.slot_bound,
         )?;
@@ -888,7 +929,7 @@ impl<'a> OwnedScopeContext<'a> {
             used: self.registry.name_bytes,
             max: limits.max_metadata_bytes,
             slots: OwnedSlotBudget {
-                used: self.registry.root_count,
+                used: self.registry.retained_slots(),
                 max: self.registry.slot_bound,
             },
         };
