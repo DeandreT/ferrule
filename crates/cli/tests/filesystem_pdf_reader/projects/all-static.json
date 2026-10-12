@@ -1,0 +1,332 @@
+{
+  "source": {
+    "name": "Document",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Output",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Value",
+          "repeating": false,
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "input.pdf",
+  "target_path": "out.json",
+  "source_options": {
+    "pdf": {
+      "root_name": "Document",
+      "page_selection": {
+        "kind": "first"
+      },
+      "commands": [
+        {
+          "kind": "capture",
+          "name": "Value",
+          "region": {
+            "left": {
+              "reference": {
+                "kind": "left"
+              },
+              "offset": 0.0
+            },
+            "top": {
+              "reference": {
+                "kind": "top"
+              },
+              "offset": 0.0
+            },
+            "right": {
+              "reference": {
+                "kind": "right"
+              },
+              "offset": 0.0
+            },
+            "bottom": {
+              "reference": {
+                "kind": "bottom"
+              },
+              "offset": 0.0
+            }
+          },
+          "algorithm": {
+            "kind": "basic_visual",
+            "separate_words": "insert_space",
+            "whitespace": "default"
+          }
+        }
+      ]
+    }
+  },
+  "target_options": {
+    "json_document": true
+  },
+  "extra_sources": [
+    {
+      "name": "zeta",
+      "path": "zeta.pdf",
+      "schema": {
+        "name": "Document",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "pdf": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "alpha",
+      "path": "alpha.pdf",
+      "schema": {
+        "name": "Document",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "pdf": {
+          "root_name": "Document",
+          "page_selection": {
+            "kind": "first"
+          },
+          "commands": [
+            {
+              "kind": "capture",
+              "name": "Value",
+              "region": {
+                "left": {
+                  "reference": {
+                    "kind": "left"
+                  },
+                  "offset": 0.0
+                },
+                "top": {
+                  "reference": {
+                    "kind": "top"
+                  },
+                  "offset": 0.0
+                },
+                "right": {
+                  "reference": {
+                    "kind": "right"
+                  },
+                  "offset": 0.0
+                },
+                "bottom": {
+                  "reference": {
+                    "kind": "bottom"
+                  },
+                  "offset": 0.0
+                }
+              },
+              "algorithm": {
+                "kind": "basic_visual",
+                "separate_words": "insert_space",
+                "whitespace": "default"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "extra_targets": [
+    {
+      "name": "zeta-target",
+      "path": "zeta.json",
+      "schema": {
+        "name": "Output",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          }
+        ],
+        "children": []
+      }
+    },
+    {
+      "name": "alpha-target",
+      "path": "alpha.json",
+      "schema": {
+        "name": "Output",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "Value",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "json_document": true
+      },
+      "root": {
+        "target_field": "",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 2
+          }
+        ],
+        "children": []
+      }
+    }
+  ],
+  "failure_rules": [],
+  "user_functions": {},
+  "graph": {
+    "nodes": {
+      "0": {
+        "kind": "source_field",
+        "path": [
+          "Value"
+        ]
+      },
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "zeta",
+          "Value"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "alpha",
+          "Value"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 0
+      }
+    ],
+    "children": []
+  }
+}

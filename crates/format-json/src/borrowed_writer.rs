@@ -160,6 +160,30 @@ fn single<'a>(
         },
         item => item,
     };
+    if let Some(item) = schema.json_array_wrapper_item() {
+        let Instance::Group(fields) = instance else {
+            return Err(crate::write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                crate::instance_type_name(instance),
+            ));
+        };
+        if fields.len() != 1 {
+            return Err(crate::write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                crate::instance_type_name(instance),
+            ));
+        }
+        let Some((_, value)) = fields.iter().find(|(name, _)| name == &item.name) else {
+            return Err(crate::write_shape_error(
+                schema,
+                "array item group with one `item` field",
+                crate::instance_type_name(instance),
+            ));
+        };
+        return node(item, value, recursive, recursion_depth, patterns);
+    }
     if schema.json_any {
         return match instance {
             Instance::Scalar(Value::String(text)) => match serde_json::from_str(text) {

@@ -657,3 +657,131 @@ fn main() {
     assert_eq!(*loader.calls.borrow(), vec![("Live".into(), "one.json".into())]);
 }
 "#;
+
+// Stage-A controls exercise emission admission only; no Evidence/exercise actors.
+fn basic_owned_direct_program() -> Program {
+    let mut p = witness();
+    p.expressions[0].expression = Expression::OwnedSourceField(mapping::OwnedSourceField {
+        source: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Primary,
+            path: vec!["Unused".into()],
+        },
+        frame: None,
+    });
+    p
+}
+fn owned_direct_error() -> ProgramValidationError {
+    ProgramValidationError::OwnedSource {
+        diagnostic: codegen::OwnedSourceDiagnostic::Capability {
+            location: codegen::OwnedSourceDiagnosticLocation::Expression {
+                namespace: codegen::OwnedSourceNamespace::Main,
+                node: 1,
+                scope: None,
+            },
+            request: Some(codegen::OwnedSourceDiagnosticRequest::Field {
+                owner: codegen::OwnedSourceDiagnosticOwner::Primary,
+                path: vec!["Unused".into()],
+                frame: None,
+            }),
+            reason: codegen::OwnedSourceCapabilityReason::UnsupportedBasicContext,
+            origin: codegen::OwnedSourceCapabilityOrigin::RetainedExpression {
+                namespace: codegen::OwnedSourceNamespace::Main,
+                node: 1,
+            },
+        }
+        .into(),
+    }
+}
+fn closed_options(name: &str) -> Options {
+    Options {
+        package_name: name.into(),
+        runtime_dependency: RuntimeDependency::Path("../codegen-runtime".into()),
+    }
+}
+#[test]
+fn owned_direct_program_is_structural_but_ordinary_emission_stays_typed_closed() {
+    use std::error::Error as _;
+    let p = basic_owned_direct_program();
+    let validation = codegen::validate_program(&p);
+    let result = emit(&p, &closed_options("owned_closed"));
+    eprintln!("A-D02 E-R01 complete Program={p:#?} validation={validation:#?} emit={result:#?}");
+    assert_eq!(validation, Ok(()));
+    let error = result.unwrap_err();
+    let expected = owned_direct_error();
+    assert_eq!(
+        error
+            .source()
+            .unwrap()
+            .downcast_ref::<ProgramValidationError>(),
+        Some(&expected)
+    );
+    assert!(matches!(error, EmitError::InvalidProgram(actual) if actual == expected));
+}
+#[test]
+fn owned_direct_package_preflight_and_malformed_shape_precedence_remain_exact() {
+    let p = basic_owned_direct_program();
+    let result = emit(&p, &closed_options("bad name"));
+    eprintln!("A-P01 valid owned Program={p:#?} result={result:#?}");
+    assert!(matches!(result, Err(EmitError::InvalidPackageName(name)) if name == "bad name"));
+    let mut p = p;
+    if let Expression::OwnedSourceField(field) = &mut p.expressions[0].expression {
+        field.source.owner = mapping::SourceOwner::Named {
+            name: String::new(),
+        };
+    }
+    let result = emit(&p, &closed_options("bad name"));
+    eprintln!("A-P01 raw invalid owner Program={p:#?} result={result:#?}");
+    let expected = ProgramValidationError::OwnedSource {
+        diagnostic: codegen::OwnedSourceDiagnostic::Structure {
+            location: codegen::OwnedSourceDiagnosticLocation::Expression {
+                namespace: codegen::OwnedSourceNamespace::Main,
+                node: 1,
+                scope: None,
+            },
+            request: codegen::OwnedSourceDiagnosticRequest::Field {
+                owner: codegen::OwnedSourceDiagnosticOwner::Named {
+                    name: String::new(),
+                },
+                path: vec!["Unused".into()],
+                frame: None,
+            },
+            reason: codegen::OwnedSourceStructureReason::InvalidNamedOwner,
+        }
+        .into(),
+    };
+    assert!(matches!(result, Err(EmitError::InvalidProgram(actual)) if actual == expected));
+}
+#[test]
+fn owned_direct_csv_and_json5_routes_preserve_policy_before_closed_emission() {
+    let options = closed_options("owned_closed");
+    let mut csv = basic_owned_direct_program();
+    csv.root.iteration = Some(IterationPlan::source(vec![]));
+    let valid = codegen::CsvOutputPolicy::default();
+    let invalid = codegen::CsvOutputPolicy {
+        delimiter: Some('\0'),
+        ..Default::default()
+    };
+    let bad = emit_with_csv_output(&csv, &options, &invalid);
+    let result = emit_with_csv_output(&csv, &options, &valid);
+    eprintln!(
+        "A-P02 E-R02 Program={csv:#?} valid={valid:#?} invalid={invalid:#?} bad={bad:#?} valid_result={result:#?}"
+    );
+    assert!(matches!(
+        bad,
+        Err(EmitError::CsvOutput(codegen::CsvOutputError::BadDelimiter(
+            '\0'
+        )))
+    ));
+    assert!(
+        matches!(result, Err(EmitError::InvalidProgram(actual)) if actual == owned_direct_error())
+    );
+    let p = basic_owned_direct_program();
+    let result = emit_with_json5(&p, &options);
+    eprintln!("E-R03 Program={p:#?} result={result:#?}");
+    match result.unwrap_err() {
+        Json5EmitError::Ordinary(error) => assert!(
+            matches!(error, EmitError::InvalidProgram(actual) if actual == owned_direct_error())
+        ),
+        error => panic!("complete ordinary closed wrapper required: {error:?}"),
+    }
+}

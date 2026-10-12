@@ -1234,3 +1234,5 @@ fn rejects_duplicate_and_missing_expressions() {
         })
     );
 }
+
+mod owned_sources;

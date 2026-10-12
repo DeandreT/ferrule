@@ -1,0 +1,1 @@
+{"$ref":"#/$defs/Bound","$defs":{"Bound":{"title":"Boundary","type":"integer","minimum":10e-1}}}

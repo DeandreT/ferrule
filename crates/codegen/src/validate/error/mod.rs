@@ -9,9 +9,137 @@ use super::{
 
 mod display;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceDiagnosticOwner {
+    Primary,
+    Named { name: String },
+}
+impl From<&mapping::SourceOwner> for OwnedSourceDiagnosticOwner {
+    fn from(owner: &mapping::SourceOwner) -> Self {
+        match owner {
+            mapping::SourceOwner::Primary => Self::Primary,
+            mapping::SourceOwner::Named { name } => Self::Named { name: name.clone() },
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnedSourceNamespace {
+    Main,
+    Function(FunctionId),
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceDiagnosticLocation {
+    Expression {
+        namespace: OwnedSourceNamespace,
+        node: NodeId,
+        scope: Option<mapping::SourceScopeLocation>,
+    },
+    Iteration {
+        scope: mapping::SourceScopeLocation,
+    },
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceDiagnosticRequest {
+    Field {
+        owner: OwnedSourceDiagnosticOwner,
+        path: Vec<String>,
+        frame: Option<Vec<String>>,
+    },
+    Position {
+        owner: OwnedSourceDiagnosticOwner,
+        collection: Option<Vec<String>>,
+    },
+    Iteration {
+        owner: OwnedSourceDiagnosticOwner,
+        path: Vec<String>,
+    },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnedSourceSchemaShape {
+    Missing,
+    Scalar { repeating: bool },
+    ScalarUnion { repeating: bool },
+    Group { repeating: bool },
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceStructureReason {
+    InvalidNamedOwner,
+    UnknownOwner,
+    MissingOwnedPath { segment: usize },
+    UnresolvedRecursiveAnchor { anchor: String },
+    InvalidOwnedField { found: OwnedSourceSchemaShape },
+    IncompatibleFramePath,
+    InvalidOwnedCollection { found: OwnedSourceSchemaShape },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnedSourceCapabilityReason {
+    IsolatedFunction,
+    FailureRule,
+    GeneratedItem,
+    Grouping,
+    Join,
+    Concatenate,
+    DynamicOwner,
+    DynamicLoader,
+    Document,
+    XmlOperator,
+    AggregateLookup,
+    TreeOperator,
+    DynamicTarget,
+    SpecialConstruction,
+    ScopeControl,
+    UnsupportedBasicContext,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceCapabilityOrigin {
+    Scope {
+        scope: mapping::SourceScopeLocation,
+    },
+    Expression {
+        namespace: OwnedSourceNamespace,
+        node: NodeId,
+    },
+    FunctionCall {
+        caller_namespace: OwnedSourceNamespace,
+        call: NodeId,
+        callee: FunctionId,
+    },
+    FunctionBody {
+        function: FunctionId,
+    },
+    Failure {
+        index: usize,
+    },
+    DynamicSource {
+        index: usize,
+        name: String,
+    },
+    RetainedExpression {
+        namespace: OwnedSourceNamespace,
+        node: NodeId,
+    },
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedSourceDiagnostic {
+    Structure {
+        location: OwnedSourceDiagnosticLocation,
+        request: OwnedSourceDiagnosticRequest,
+        reason: OwnedSourceStructureReason,
+    },
+    Capability {
+        location: OwnedSourceDiagnosticLocation,
+        request: Option<OwnedSourceDiagnosticRequest>,
+        reason: OwnedSourceCapabilityReason,
+        origin: OwnedSourceCapabilityOrigin,
+    },
+}
+
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    OwnedSource {
+        diagnostic: Box<OwnedSourceDiagnostic>,
+    },
     FilterMapAdmission {
         item: NodeId,
         kind: mapping::FilterMapAdmissionKind,

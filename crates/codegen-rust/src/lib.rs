@@ -20,6 +20,8 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 mod csv_api;
 mod failure;
 mod json5_api;
+#[cfg(test)]
+mod owned_basic;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
@@ -129,6 +131,7 @@ pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitErr
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
+    codegen::validate_owned_emission(program)?;
     let manifest = render_manifest(options);
     let source = render_source(program)?;
     ArtifactSet::new([
@@ -654,7 +657,9 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .chain(*expression)
             .chain(*arg)
             .collect(),
-        Expression::SourceField { .. }
+        Expression::OwnedSourceField(_)
+        | Expression::OwnedPosition(_)
+        | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }
@@ -1294,6 +1299,26 @@ fn render_user_function(
     Ok(output)
 }
 
+#[derive(Clone, Copy)]
+struct ExpressionEmission {
+    filter_map: bool,
+    owner_function: Option<u64>,
+    #[cfg(test)]
+    basic: bool,
+}
+impl ExpressionEmission {
+    fn is_basic(self) -> bool {
+        #[cfg(test)]
+        {
+            self.basic
+        }
+        #[cfg(not(test))]
+        {
+            false
+        }
+    }
+}
+
 fn render_expression(
     id: NodeId,
     expression: &Expression,
@@ -1303,91 +1328,163 @@ fn render_expression(
     filter_map: bool,
     owner_function: Option<u64>,
 ) -> Result<String, EmitError> {
+    render_expression_in_context(
+        id,
+        expression,
+        prefix,
+        parameters,
+        functions,
+        ExpressionEmission {
+            filter_map,
+            owner_function,
+            #[cfg(test)]
+            basic: false,
+        },
+    )
+}
+
+fn render_expression_in_context(
+    id: NodeId,
+    expression: &Expression,
+    prefix: &str,
+    parameters: Option<&BTreeMap<FunctionParameterId, usize>>,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    emission: ExpressionEmission,
+) -> Result<String, EmitError> {
+    let filter_map = emission.filter_map;
+    let owner_function = emission.owner_function;
+    let basic = emission.is_basic();
+    let context_type = if basic {
+        "BasicScopeContext"
+    } else {
+        "ScopeContext"
+    };
+    let legacy_context = if basic {
+        "context.legacy_view()"
+    } else {
+        "context"
+    };
+    let owned_body = {
+        #[cfg(test)]
+        {
+            if basic {
+                owned_basic::render_owned_access(expression)
+            } else {
+                None
+            }
+        }
+        #[cfg(not(test))]
+        {
+            None::<String>
+        }
+    };
     let parameter_argument = parameters.map(|_| ", parameters").unwrap_or_default();
     let call_expression =
         |node: NodeId, context: &str| format!("{prefix}{node}({context}{parameter_argument})");
-    let body = match expression {
-        Expression::SourceField { frame, path } => {
-            let path = path
-                .iter()
-                .map(|segment| rust_string(segment))
-                .collect::<Vec<_>>()
-                .join(", ");
-            match frame {
-                Some(frame) => {
-                    let frame = frame
-                        .iter()
-                        .map(|segment| rust_string(segment))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!(
-                        "context.resolve_source_field_in_frame(&[{frame}], &[{path}]).map_err(RuntimeError::from)"
-                    )
-                }
-                None => {
-                    format!("context.resolve_source_field(&[{path}]).map_err(RuntimeError::from)")
+    let body = if let Some(body) = owned_body {
+        body
+    } else {
+        match expression {
+            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+                let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
+                    codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
+                });
+                return Err(
+                    codegen::owned_expression_emission_error(namespace, id, expression).into(),
+                );
+            }
+            Expression::SourceField { frame, path } if basic => {
+                let path = render_string_path(path);
+                let frame = frame.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+                );
+                format!("context.legacy_field(&[{path}], {frame})")
+            }
+            Expression::SourceField { frame, path } => {
+                let path = path
+                    .iter()
+                    .map(|segment| rust_string(segment))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                match frame {
+                    Some(frame) => {
+                        let frame = frame
+                            .iter()
+                            .map(|segment| rust_string(segment))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!(
+                            "context.resolve_source_field_in_frame(&[{frame}], &[{path}]).map_err(RuntimeError::from)"
+                        )
+                    }
+                    None => {
+                        format!(
+                            "context.resolve_source_field(&[{path}]).map_err(RuntimeError::from)"
+                        )
+                    }
                 }
             }
-        }
-        Expression::SourceRootXmlTypeEquals {
-            canonical_expanded_type,
-        } => format!(
-            "context.source_root_xml_type_equals({id}, {})",
-            rust_string(canonical_expanded_type)
-        ),
-        Expression::SourceRootField { path, required } => {
-            let reader = if *required {
-                "source_root_required_field"
-            } else {
-                "source_root_field"
-            };
-            format!("context.{reader}({id}, &[{}])", render_string_path(path))
-        }
-        Expression::DynamicSourceField { object, frame, key } => {
-            let object = render_string_path(object);
-            let frame = frame.as_ref().map_or_else(
-                || "None".to_string(),
-                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
-            );
-            let key = call_expression(*key, "context");
-            format!(
-                "{{\n        let key = {key}?;\n        Ok(context.dynamic_scalar({frame}, &[{object}], &key))\n    }}"
-            )
-        }
-        Expression::XmlSerialize {
-            frame,
-            path,
-            schema,
-            declaration,
-            indent,
-            namespace,
-        } => {
-            let schema = serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
-            let path = render_string_path(path);
-            let frame = frame.as_ref().map_or_else(
-                || "None".to_string(),
-                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
-            );
-            let namespace = namespace.as_ref().map_or_else(
-                || "None".to_string(),
-                |namespace| format!("Some({})", rust_string(namespace)),
-            );
-            format!(
-                "{{\n        let instance = context.resolve_xml_instance({frame}, &[{path}])?;\n        serialize_xml({id}, {}, instance, {declaration}, {indent}, {namespace})\n    }}",
-                rust_string(&schema)
-            )
-        }
-        Expression::XmlMixedContent {
-            frame,
-            path,
-            replacements,
-        } => {
-            let path = render_string_path(path);
-            let frame = frame.as_ref().map_or_else(
-                || "None".to_string(),
-                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
-            );
-            let replacements = replacements
+            Expression::SourceRootXmlTypeEquals {
+                canonical_expanded_type,
+            } => format!(
+                "context.source_root_xml_type_equals({id}, {})",
+                rust_string(canonical_expanded_type)
+            ),
+            Expression::SourceRootField { path, required } => {
+                let reader = if *required {
+                    "source_root_required_field"
+                } else {
+                    "source_root_field"
+                };
+                format!("context.{reader}({id}, &[{}])", render_string_path(path))
+            }
+            Expression::DynamicSourceField { object, frame, key } => {
+                let object = render_string_path(object);
+                let frame = frame.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+                );
+                let key = call_expression(*key, "context");
+                format!(
+                    "{{\n        let key = {key}?;\n        Ok(context.dynamic_scalar({frame}, &[{object}], &key))\n    }}"
+                )
+            }
+            Expression::XmlSerialize {
+                frame,
+                path,
+                schema,
+                declaration,
+                indent,
+                namespace,
+            } => {
+                let schema =
+                    serialize_embedded_schema(schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
+                let path = render_string_path(path);
+                let frame = frame.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+                );
+                let namespace = namespace.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |namespace| format!("Some({})", rust_string(namespace)),
+                );
+                format!(
+                    "{{\n        let instance = context.resolve_xml_instance({frame}, &[{path}])?;\n        serialize_xml({id}, {}, instance, {declaration}, {indent}, {namespace})\n    }}",
+                    rust_string(&schema)
+                )
+            }
+            Expression::XmlMixedContent {
+                frame,
+                path,
+                replacements,
+            } => {
+                let path = render_string_path(path);
+                let frame = frame.as_ref().map_or_else(
+                    || "None".to_string(),
+                    |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+                );
+                let replacements = replacements
                 .iter()
                 .map(|replacement| {
                     format!(
@@ -1399,262 +1496,270 @@ fn render_expression(
                 })
                 .collect::<Vec<_>>()
                 .join(",\n            ");
-            format!(
-                "xml_mixed_content(\n        context,\n        {frame},\n        &[{path}],\n        &[\n            {replacements}\n        ],\n    )"
-            )
-        }
-        Expression::SourceDocumentPath => {
-            "context.source_document_path().map_err(RuntimeError::from)".into()
-        }
-        Expression::Position { collection } => {
-            let collection = collection
-                .iter()
-                .map(|segment| rust_string(segment))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("Ok(Value::Int(context.position(&[{collection}]) as i64))")
-        }
-        Expression::JoinField {
-            join,
-            collection,
-            path,
-        } => {
-            let collection = render_string_path(collection);
-            let path = render_string_path(path);
-            format!(
-                "context.resolve_join_scalar({}, &[{collection}], &[{path}]).map_err(RuntimeError::from)",
+                format!(
+                    "xml_mixed_content(\n        context,\n        {frame},\n        &[{path}],\n        &[\n            {replacements}\n        ],\n    )"
+                )
+            }
+            Expression::SourceDocumentPath => {
+                "context.source_document_path().map_err(RuntimeError::from)".into()
+            }
+            Expression::Position { collection } if basic => {
+                // Only actual control-free Vec-backed walks or legacy fallback1
+                // create these positions; no caller-injected phase is admitted.
+                format!(
+                    "Ok(Value::Int(context.legacy_position(&[{}]) as i64))",
+                    render_string_path(collection)
+                )
+            }
+            Expression::Position { collection } => {
+                let collection = collection
+                    .iter()
+                    .map(|segment| rust_string(segment))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("Ok(Value::Int(context.position(&[{collection}]) as i64))")
+            }
+            Expression::JoinField {
+                join,
+                collection,
+                path,
+            } => {
+                let collection = render_string_path(collection);
+                let path = render_string_path(path);
+                format!(
+                    "context.resolve_join_scalar({}, &[{collection}], &[{path}]).map_err(RuntimeError::from)",
+                    join.get()
+                )
+            }
+            Expression::JoinPosition { join } => format!(
+                "Ok(Value::Int(context.join_position({})? as i64))",
                 join.get()
-            )
-        }
-        Expression::JoinPosition { join } => format!(
-            "Ok(Value::Int(context.join_position({})? as i64))",
-            join.get()
-        ),
-        Expression::Const { value } => {
-            format!("Ok({})", rust_value(id, value)?)
-        }
-        Expression::FunctionParameter { parameter } => {
-            let index = parameters
-                .and_then(|parameters| parameters.get(parameter))
-                .copied()
-                .ok_or(ProgramValidationError::FunctionParameterInMain {
-                    node: id,
-                    parameter: *parameter,
-                })?;
-            format!("Ok(parameters[{index}].clone())")
-        }
-        Expression::RuntimeValue { value } => format!(
-            "context.runtime_value(RuntimeValue::{})",
-            runtime_value_name(*value)
-        ),
-        Expression::RuntimeParameter { name, ty } => format!(
-            "context.runtime_parameter({}, {}, ScalarType::{})",
-            id,
-            rust_string(name),
-            scalar_type_name(*ty)
-        ),
-        Expression::RuntimeParameterDefault { name, ty, default } => format!(
-            "context.runtime_parameter_or_else({}, {}, ScalarType::{}, || {})",
-            id,
-            rust_string(name),
-            scalar_type_name(*ty),
-            call_expression(*default, "context")
-        ),
-        Expression::Call { function, args } => {
-            let mut body = String::from("{\n        let args = vec![\n");
-            for arg in args {
-                body.push_str(&format!(
-                    "            {}?,\n",
-                    call_expression(*arg, "context")
-                ));
+            ),
+            Expression::Const { value } => {
+                format!("Ok({})", rust_value(id, value)?)
             }
-            body.push_str(&format!(
-                "        ];\n        call({}, &args)\n    }}",
-                rust_string(function.as_str())
-            ));
-            body
-        }
-        Expression::DelimitedTextField { input, parser } => format!(
-            "{{\n        let args = [\n            {}?,\n            Value::String({}.to_string()),\n            Value::String({}.to_string()),\n        ];\n        call(\"flextext_parse_field\", &args)\n    }}",
-            call_expression(*input, "context"),
-            rust_string(parser.layout_descriptor()),
-            rust_string(parser.path_descriptor()),
-        ),
-        Expression::UserFunctionCall { function, args } => {
-            let definition = functions.get(function).ok_or({
-                ProgramValidationError::MissingUserFunction {
-                    owner: None,
-                    node: id,
-                    function: *function,
-                }
-            })?;
-            let mut body = String::from("{\n");
-            // Evaluate all expressions before adapting any declared parameter.
-            for (index, argument) in args.iter().enumerate() {
-                body.push_str(&format!(
-                    "        let raw_argument_{index} = {}?;\n",
-                    call_expression(*argument, "context"),
-                ));
+            Expression::FunctionParameter { parameter } => {
+                let index = parameters
+                    .and_then(|parameters| parameters.get(parameter))
+                    .copied()
+                    .ok_or(ProgramValidationError::FunctionParameterInMain {
+                        node: id,
+                        parameter: *parameter,
+                    })?;
+                format!("Ok(parameters[{index}].clone())")
             }
-            if !filter_map {
-                for (index, parameter) in definition.parameters.iter().enumerate() {
+            Expression::RuntimeValue { value } => format!(
+                "{legacy_context}.runtime_value(RuntimeValue::{})",
+                runtime_value_name(*value)
+            ),
+            Expression::RuntimeParameter { name, ty } => format!(
+                "{legacy_context}.runtime_parameter({}, {}, ScalarType::{})",
+                id,
+                rust_string(name),
+                scalar_type_name(*ty)
+            ),
+            Expression::RuntimeParameterDefault { name, ty, default } => format!(
+                "{legacy_context}.runtime_parameter_or_else({}, {}, ScalarType::{}, || {})",
+                id,
+                rust_string(name),
+                scalar_type_name(*ty),
+                call_expression(*default, "context")
+            ),
+            Expression::Call { function, args } => {
+                let mut body = String::from("{\n        let args = vec![\n");
+                for arg in args {
                     body.push_str(&format!(
+                        "            {}?,\n",
+                        call_expression(*arg, "context")
+                    ));
+                }
+                body.push_str(&format!(
+                    "        ];\n        call({}, &args)\n    }}",
+                    rust_string(function.as_str())
+                ));
+                body
+            }
+            Expression::DelimitedTextField { input, parser } => format!(
+                "{{\n        let args = [\n            {}?,\n            Value::String({}.to_string()),\n            Value::String({}.to_string()),\n        ];\n        call(\"flextext_parse_field\", &args)\n    }}",
+                call_expression(*input, "context"),
+                rust_string(parser.layout_descriptor()),
+                rust_string(parser.path_descriptor()),
+            ),
+            Expression::UserFunctionCall { function, args } => {
+                let definition = functions.get(function).ok_or({
+                    ProgramValidationError::MissingUserFunction {
+                        owner: None,
+                        node: id,
+                        function: *function,
+                    }
+                })?;
+                let mut body = String::from("{\n");
+                // Evaluate all expressions before adapting any declared parameter.
+                for (index, argument) in args.iter().enumerate() {
+                    body.push_str(&format!(
+                        "        let raw_argument_{index} = {}?;\n",
+                        call_expression(*argument, "context"),
+                    ));
+                }
+                if !filter_map {
+                    for (index, parameter) in definition.parameters.iter().enumerate() {
+                        body.push_str(&format!(
                     "        let argument_{index} = adapt_user_function_value(\n            raw_argument_{index},\n            ScalarType::{},\n            {},\n            Some({}),\n        )?;\n",
                     scalar_type_name(parameter.ty),
                     function.get(),
                     parameter.id.get(),
                 ));
-                }
-            }
-            let arguments = (0..args.len())
-                .map(|index| {
-                    if filter_map {
-                        format!("raw_argument_{index}")
-                    } else {
-                        format!("argument_{index}")
                     }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            body.push_str(&format!(
-                "        user_function_{}(context, &[{arguments}])\n    }}",
-                function.get()
-            ));
-            body
-        }
-        Expression::If {
-            condition,
-            then,
-            else_,
-        } => {
-            let condition_call = call_expression(*condition, "context");
-            let then_call = call_expression(*then, "context");
-            let else_call = call_expression(*else_, "context");
-            format!(
-                "{{\n        let condition = {condition_call}?;\n        if require_bool({condition}, condition)? {{\n            {then_call}\n        }} else {{\n            {else_call}\n        }}\n    }}"
-            )
-        }
-        Expression::Raise { message } => {
-            let message = message.map_or_else(
-                || "None".to_string(),
-                |message| format!("Some({}?)", call_expression(message, "context")),
-            );
-            format!("Err(codegen_runtime::mapping_exception({id}, {message}))")
-        }
-        Expression::ValueMap {
-            input,
-            input_type,
-            table,
-            default,
-        } => {
-            let normalization = if parameters.is_none() && input_type.is_some() {
-                "        let input = match input { Value::JsonNull(_) => Value::Null, value => value };\n"
-            } else {
-                ""
-            };
-            let input_type = input_type.map_or_else(
-                || "None".to_string(),
-                |value| format!("Some(ScalarType::{})", scalar_type_name(value)),
-            );
-            let table = table
-                .iter()
-                .map(|(from, to)| {
-                    Ok(format!(
-                        "({}, {})",
-                        rust_value(id, from)?,
-                        rust_value(id, to)?
-                    ))
-                })
-                .collect::<Result<Vec<_>, EmitError>>()?
-                .join(", ");
-            let default = match default {
-                Some(value) => format!("Some({})", rust_value(id, value)?),
-                None => "None".to_string(),
-            };
-            let input = call_expression(*input, "context");
-            let lookup = if parameters.is_some() {
-                "codegen_runtime::value_map_user_function"
-            } else {
-                "value_map"
-            };
-            format!(
-                "{{\n        let input = {input}?;\n{normalization}        Ok({lookup}(input, {input_type}, &[{table}], {default}))\n    }}"
-            )
-        }
-        Expression::Lookup {
-            collection,
-            key,
-            matches,
-            value,
-        } => {
-            let collection = render_string_path(collection);
-            let key = render_string_path(key);
-            let value = render_string_path(value);
-            format!(
-                "{{\n        let needle = expression_{matches}(context)?;\n        context.lookup(&[{collection}], &[{key}], &needle, &[{value}]).map_err(RuntimeError::from)\n    }}"
-            )
-        }
-        Expression::CollectionFind {
-            collection,
-            predicate,
-            value,
-        } => {
-            let collection = render_string_path(collection);
-            format!(
-                "{{\n        let candidates = context.collection_find_items(&[{collection}])?;\n        for item_context in candidates {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if collection_find_selected({predicate}, predicate)? {{\n                return expression_{value}(&item_context);\n            }}\n        }}\n        Ok(Value::Null)\n    }}"
-            )
-        }
-        Expression::Aggregate {
-            function,
-            collection,
-            value,
-            arg,
-        } => {
-            let collection = collection
-                .iter()
-                .map(|segment| rust_string(segment))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mut body = format!(
-                "{{\n        let item_contexts = context.aggregate_items(&[{collection}]);\n        let mut values = Vec::with_capacity(item_contexts.len());\n        for item_context in item_contexts {{\n"
-            );
-            match value {
-                AggregateValue::Path(path) => {
-                    let path = path
-                        .iter()
-                        .map(|segment| rust_string(segment))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    body.push_str(&format!(
+                }
+                let arguments = (0..args.len())
+                    .map(|index| {
+                        if filter_map {
+                            format!("raw_argument_{index}")
+                        } else {
+                            format!("argument_{index}")
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                body.push_str(&format!(
+                    "        user_function_{}(context, &[{arguments}])\n    }}",
+                    function.get()
+                ));
+                body
+            }
+            Expression::If {
+                condition,
+                then,
+                else_,
+            } => {
+                let condition_call = call_expression(*condition, "context");
+                let then_call = call_expression(*then, "context");
+                let else_call = call_expression(*else_, "context");
+                format!(
+                    "{{\n        let condition = {condition_call}?;\n        if require_bool({condition}, condition)? {{\n            {then_call}\n        }} else {{\n            {else_call}\n        }}\n    }}"
+                )
+            }
+            Expression::Raise { message } => {
+                let message = message.map_or_else(
+                    || "None".to_string(),
+                    |message| format!("Some({}?)", call_expression(message, "context")),
+                );
+                format!("Err(codegen_runtime::mapping_exception({id}, {message}))")
+            }
+            Expression::ValueMap {
+                input,
+                input_type,
+                table,
+                default,
+            } => {
+                let normalization = if parameters.is_none() && input_type.is_some() {
+                    "        let input = match input { Value::JsonNull(_) => Value::Null, value => value };\n"
+                } else {
+                    ""
+                };
+                let input_type = input_type.map_or_else(
+                    || "None".to_string(),
+                    |value| format!("Some(ScalarType::{})", scalar_type_name(value)),
+                );
+                let table = table
+                    .iter()
+                    .map(|(from, to)| {
+                        Ok(format!(
+                            "({}, {})",
+                            rust_value(id, from)?,
+                            rust_value(id, to)?
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, EmitError>>()?
+                    .join(", ");
+                let default = match default {
+                    Some(value) => format!("Some({})", rust_value(id, value)?),
+                    None => "None".to_string(),
+                };
+                let input = call_expression(*input, "context");
+                let lookup = if parameters.is_some() {
+                    "codegen_runtime::value_map_user_function"
+                } else {
+                    "value_map"
+                };
+                format!(
+                    "{{\n        let input = {input}?;\n{normalization}        Ok({lookup}(input, {input_type}, &[{table}], {default}))\n    }}"
+                )
+            }
+            Expression::Lookup {
+                collection,
+                key,
+                matches,
+                value,
+            } => {
+                let collection = render_string_path(collection);
+                let key = render_string_path(key);
+                let value = render_string_path(value);
+                format!(
+                    "{{\n        let needle = expression_{matches}(context)?;\n        context.lookup(&[{collection}], &[{key}], &needle, &[{value}]).map_err(RuntimeError::from)\n    }}"
+                )
+            }
+            Expression::CollectionFind {
+                collection,
+                predicate,
+                value,
+            } => {
+                let collection = render_string_path(collection);
+                format!(
+                    "{{\n        let candidates = context.collection_find_items(&[{collection}])?;\n        for item_context in candidates {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if collection_find_selected({predicate}, predicate)? {{\n                return expression_{value}(&item_context);\n            }}\n        }}\n        Ok(Value::Null)\n    }}"
+                )
+            }
+            Expression::Aggregate {
+                function,
+                collection,
+                value,
+                arg,
+            } => {
+                let collection = collection
+                    .iter()
+                    .map(|segment| rust_string(segment))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut body = format!(
+                    "{{\n        let item_contexts = context.aggregate_items(&[{collection}]);\n        let mut values = Vec::with_capacity(item_contexts.len());\n        for item_context in item_contexts {{\n"
+                );
+                match value {
+                    AggregateValue::Path(path) => {
+                        let path = path
+                            .iter()
+                            .map(|segment| rust_string(segment))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        body.push_str(&format!(
                         "            values.push(item_context.aggregate_current_scalar(&[{path}]));\n"
                     ));
+                    }
+                    AggregateValue::Expression(expression) => body.push_str(&format!(
+                        "            values.push(expression_{expression}(&item_context)?);\n"
+                    )),
                 }
-                AggregateValue::Expression(expression) => body.push_str(&format!(
-                    "            values.push(expression_{expression}(&item_context)?);\n"
-                )),
+                body.push_str("        }\n");
+                match arg {
+                    Some(arg) => body.push_str(&format!(
+                        "        let arg = Some(expression_{arg}(context)?);\n"
+                    )),
+                    None => body.push_str("        let arg = None;\n"),
+                }
+                body.push_str(&format!(
+                    "        aggregate(AggregateFunction::{}, &values, arg)\n    }}",
+                    aggregate_function_name(*function)
+                ));
+                body
             }
-            body.push_str("        }\n");
-            match arg {
-                Some(arg) => body.push_str(&format!(
-                    "        let arg = Some(expression_{arg}(context)?);\n"
-                )),
-                None => body.push_str("        let arg = None;\n"),
-            }
-            body.push_str(&format!(
-                "        aggregate(AggregateFunction::{}, &values, arg)\n    }}",
-                aggregate_function_name(*function)
-            ));
-            body
-        }
-        Expression::JoinAggregate {
-            function,
-            join,
-            expression,
-            arg,
-        } => {
-            let tuples = render_inner_join_call(join).unwrap_or_else(|| "Vec::new()".into());
-            let mut body = format!("{{\n        let tuple_contexts = {tuples};\n");
-            match expression {
+            Expression::JoinAggregate {
+                function,
+                join,
+                expression,
+                arg,
+            } => {
+                let tuples = render_inner_join_call(join).unwrap_or_else(|| "Vec::new()".into());
+                let mut body = format!("{{\n        let tuple_contexts = {tuples};\n");
+                match expression {
                 Some(expression) => body.push_str(&format!(
                     "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for tuple_context in tuple_contexts {{\n            values.push(expression_{expression}(&tuple_context)?);\n        }}\n"
                 )),
@@ -1662,72 +1767,73 @@ fn render_expression(
                     "        let values = vec![Value::Null; tuple_contexts.len()];\n",
                 ),
             }
-            match arg {
-                Some(arg) => body.push_str(&format!(
-                    "        let arg = Some(expression_{arg}(context)?);\n"
-                )),
-                None => body.push_str("        let arg = None;\n"),
+                match arg {
+                    Some(arg) => body.push_str(&format!(
+                        "        let arg = Some(expression_{arg}(context)?);\n"
+                    )),
+                    None => body.push_str("        let arg = None;\n"),
+                }
+                body.push_str(&format!(
+                    "        aggregate(AggregateFunction::{}, &values, arg)\n    }}",
+                    aggregate_function_name(*function)
+                ));
+                body
             }
-            body.push_str(&format!(
-                "        aggregate(AggregateFunction::{}, &values, arg)\n    }}",
-                aggregate_function_name(*function)
-            ));
-            body
-        }
-        Expression::SequenceExists {
-            sequence,
-            predicate,
-        } => {
-            let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body)?;
-            body.push_str(&format!(
+            Expression::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                let mut body = String::from("{\n");
+                render_generated_values(sequence, "        ", &mut body)?;
+                body.push_str(&format!(
                 "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
             ));
-            body
-        }
-        Expression::SequenceItemAt { sequence, index } => {
-            let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body)?;
-            body.push_str(&format!(
+                body
+            }
+            Expression::SequenceItemAt { sequence, index } => {
+                let mut body = String::from("{\n");
+                render_generated_values(sequence, "        ", &mut body)?;
+                body.push_str(&format!(
                 "        let index = expression_{index}(context)?;\n        aggregate(AggregateFunction::ItemAt, &sequence_values, Some(index))\n    }}"
             ));
-            body
-        }
-        Expression::SequenceAggregate {
-            function,
-            sequence,
-            predicate,
-            expression,
-            arg,
-        } => {
-            let mut body = String::from("{\n");
-            render_generated_values(sequence, "        ", &mut body)?;
-            body.push_str(
+                body
+            }
+            Expression::SequenceAggregate {
+                function,
+                sequence,
+                predicate,
+                expression,
+                arg,
+            } => {
+                let mut body = String::from("{\n");
+                render_generated_values(sequence, "        ", &mut body)?;
+                body.push_str(
                 "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n",
             );
-            body.push_str(
+                body.push_str(
                 "        for item_context in context.generated_item_contexts(&generated_items) {\n",
             );
-            if let Some(predicate) = predicate {
-                body.push_str(&format!(
+                if let Some(predicate) = predicate {
+                    body.push_str(&format!(
                     "            let selected = expression_{predicate}(&item_context)?;\n            if !require_bool({predicate}, selected)? {{\n                continue;\n            }}\n"
                 ));
-            }
-            body.push_str(&format!(
+                }
+                body.push_str(&format!(
                 "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",
                 expression.unwrap_or(sequence.item())
             ));
-            match arg {
-                Some(arg) => body.push_str(&format!(
-                    "        let arg = Some(expression_{arg}(context)?);\n"
-                )),
-                None => body.push_str("        let arg = None;\n"),
+                match arg {
+                    Some(arg) => body.push_str(&format!(
+                        "        let arg = Some(expression_{arg}(context)?);\n"
+                    )),
+                    None => body.push_str("        let arg = None;\n"),
+                }
+                body.push_str(&format!(
+                    "        aggregate(AggregateFunction::{}, &aggregate_values, arg)\n    }}",
+                    aggregate_function_name(*function)
+                ));
+                body
             }
-            body.push_str(&format!(
-                "        aggregate(AggregateFunction::{}, &aggregate_values, arg)\n    }}",
-                aggregate_function_name(*function)
-            ));
-            body
         }
     };
     let parameters_argument = parameters
@@ -1742,8 +1848,15 @@ fn render_expression(
             "#[allow(dead_code)]\nfn {prefix}{id}(context: &ScopeContext<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n    let work_context = context.filter_map_node({function}, {id})?;\n    let context = &work_context;\n{parameters_use}    let result = (|| -> Result<Value, RuntimeError> {{ {body} }})();\n    result.map_err(|error| context.filter_map_wrap(error))\n}}\n\n"
         ))
     } else {
+        let entry_observation = if basic {
+            format!(
+                "    #[cfg(test)]\n    eprintln!(\"RAW PRIVATE_BASIC_EXPRESSION module={{}} node={id}\", module_path!());\n"
+            )
+        } else {
+            String::new()
+        };
         Ok(format!(
-            "fn {prefix}{id}(context: &ScopeContext<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n    let _ = context;\n{parameters_use}    {body}\n}}\n\n"
+            "fn {prefix}{id}(context: &{context_type}<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n{entry_observation}    let _ = context;\n{parameters_use}    {body}\n}}\n\n"
         ))
     }
 }
@@ -1840,6 +1953,7 @@ fn render_scope(
 ) -> Result<String, EmitError> {
     let mut output =
         format!("fn {name}(context: &ScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n");
+    output.push_str("    let _ = context;\n");
     if let Some(iteration) = &scope.iteration {
         if iteration.concatenated().is_some() {
             output.push_str(&render_concatenated_scope(iteration, segment_names));
@@ -1968,6 +2082,7 @@ fn render_iteration_scope(
     } else {
         "&item_context"
     };
+    output.push_str(&format!("        let _ = {item_context};\n"));
     output.push_str(&render_scope_item(
         scope,
         child_names,
@@ -2014,6 +2129,7 @@ fn render_grouping(
     output: &mut String,
 ) {
     let wrapper = match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => source.path().last().map_or_else(
             || "None".to_string(),
             |name| format!("Some({})", rust_string(name)),
@@ -2181,6 +2297,7 @@ fn render_iteration_candidates(
         "let candidates"
     };
     match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => {
             render_source_iteration_candidates(program, source.path(), binding, output);
         }

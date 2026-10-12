@@ -46,6 +46,7 @@ fn render_with_json_boundaries(
     program: &Program,
     json_boundaries: bool,
 ) -> Result<String, EmitError> {
+    codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
     for node in &program.expressions {
@@ -93,6 +94,14 @@ fn render_with_json_boundaries(
             "    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context)",
         ));
         match expression {
+            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+                return Err(codegen::owned_expression_emission_error(
+                    codegen::OwnedSourceNamespace::Main,
+                    node,
+                    expression,
+                )
+                .into());
+            }
             Expression::SourceField { frame, path } => {
                 output.push_str(" =>\n        ");
                 if let Some(frame) = frame {
@@ -786,6 +795,14 @@ fn render_user_function_expression(
         function.get()
     ));
     match expression {
+        Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+            return Err(codegen::owned_expression_emission_error(
+                codegen::OwnedSourceNamespace::Function(function),
+                node,
+                expression,
+            )
+            .into());
+        }
         Expression::Const { value } => {
             output.push_str(" =>\n        ");
             output.push_str(&literal::value(node, value)?);
@@ -1777,6 +1794,7 @@ fn render_post_group_filter(scope: usize, post_group_filter: Option<NodeId>, out
 
 fn render_grouping_path(input: &IterationSource, output: &mut String) {
     match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => render_path(source.path(), output),
         IterationSource::DynamicDocuments(dynamic) => render_path(dynamic.source().path(), output),
         IterationSource::Generated(_) => render_path(&[], output),
@@ -1827,6 +1845,7 @@ fn render_iteration_candidates(
     output: &mut String,
 ) -> Result<(), EmitError> {
     match input {
+        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => {
             render_source_iteration_candidates(program, scope, source.path(), output);
         }

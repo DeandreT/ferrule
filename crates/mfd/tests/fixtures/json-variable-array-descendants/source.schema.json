@@ -1,0 +1,1 @@
+{"title":"Source","type":"object","properties":{"Rows":{"type":"array","items":{"type":"object","properties":{"Header":{"type":"object","properties":{"Label":{"type":"string"},"Total":{"type":"integer"}},"additionalProperties":false}},"additionalProperties":false}}},"additionalProperties":false}

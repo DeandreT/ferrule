@@ -1,0 +1,147 @@
+[
+  {
+    "id": "four-keywords",
+    "raw_schema": "{\"minimum\":1.0,\"maximum\":2e0,\"exclusiveMinimum\":-2.0,\"exclusiveMaximum\":30e-1}",
+    "expected_normalized_json": "{\"minimum\":1,\"maximum\":2,\"exclusiveMinimum\":-2,\"exclusiveMaximum\":3}"
+  },
+  {
+    "id": "escaped-key",
+    "raw_schema": "{\"min\\u0069mum\":1.0}",
+    "expected_normalized_json": "{\"minimum\":1}"
+  },
+  {
+    "id": "keyword-as-property-name",
+    "raw_schema": "{\"properties\":{\"minimum\":{\"type\":\"integer\",\"minimum\":1.0},\"maximum\":{\"default\":{\"minimum\":2.0}}}}",
+    "expected_normalized_json": "{\"properties\":{\"minimum\":{\"type\":\"integer\",\"minimum\":1},\"maximum\":{\"default\":{\"minimum\":2.0}}}}"
+  },
+  {
+    "id": "schema-map-$defs",
+    "raw_schema": "{\"$defs\":{\"N\":{\"minimum\":1.0}}}",
+    "expected_normalized_json": "{\"$defs\":{\"N\":{\"minimum\":1}}}"
+  },
+  {
+    "id": "schema-map-definitions",
+    "raw_schema": "{\"definitions\":{\"N\":{\"minimum\":1.0}}}",
+    "expected_normalized_json": "{\"definitions\":{\"N\":{\"minimum\":1}}}"
+  },
+  {
+    "id": "schema-map-dependentSchemas",
+    "raw_schema": "{\"dependentSchemas\":{\"N\":{\"minimum\":1.0}}}",
+    "expected_normalized_json": "{\"dependentSchemas\":{\"N\":{\"minimum\":1}}}"
+  },
+  {
+    "id": "schema-map-patternProperties",
+    "raw_schema": "{\"patternProperties\":{\"N\":{\"minimum\":1.0}}}",
+    "expected_normalized_json": "{\"patternProperties\":{\"N\":{\"minimum\":1}}}"
+  },
+  {
+    "id": "schema-map-properties",
+    "raw_schema": "{\"properties\":{\"N\":{\"minimum\":1.0}}}",
+    "expected_normalized_json": "{\"properties\":{\"N\":{\"minimum\":1}}}"
+  },
+  {
+    "id": "schema-array-allOf",
+    "raw_schema": "{\"allOf\":[{\"minimum\":1.0}]}",
+    "expected_normalized_json": "{\"allOf\":[{\"minimum\":1}]}"
+  },
+  {
+    "id": "schema-array-anyOf",
+    "raw_schema": "{\"anyOf\":[{\"minimum\":1.0}]}",
+    "expected_normalized_json": "{\"anyOf\":[{\"minimum\":1}]}"
+  },
+  {
+    "id": "schema-array-oneOf",
+    "raw_schema": "{\"oneOf\":[{\"minimum\":1.0}]}",
+    "expected_normalized_json": "{\"oneOf\":[{\"minimum\":1}]}"
+  },
+  {
+    "id": "schema-array-prefixItems",
+    "raw_schema": "{\"prefixItems\":[{\"minimum\":1.0}]}",
+    "expected_normalized_json": "{\"prefixItems\":[{\"minimum\":1}]}"
+  },
+  {
+    "id": "schema-child-additionalItems",
+    "raw_schema": "{\"additionalItems\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"additionalItems\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-additionalProperties",
+    "raw_schema": "{\"additionalProperties\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"additionalProperties\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-contains",
+    "raw_schema": "{\"contains\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"contains\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-contentSchema",
+    "raw_schema": "{\"contentSchema\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"contentSchema\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-else",
+    "raw_schema": "{\"else\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"else\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-if",
+    "raw_schema": "{\"if\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"if\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-not",
+    "raw_schema": "{\"not\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"not\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-propertyNames",
+    "raw_schema": "{\"propertyNames\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"propertyNames\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-then",
+    "raw_schema": "{\"then\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"then\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-unevaluatedItems",
+    "raw_schema": "{\"unevaluatedItems\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"unevaluatedItems\":{\"minimum\":1}}"
+  },
+  {
+    "id": "schema-child-unevaluatedProperties",
+    "raw_schema": "{\"unevaluatedProperties\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"unevaluatedProperties\":{\"minimum\":1}}"
+  },
+  {
+    "id": "items-object",
+    "raw_schema": "{\"items\":{\"minimum\":1.0}}",
+    "expected_normalized_json": "{\"items\":{\"minimum\":1}}"
+  },
+  {
+    "id": "items-tuple",
+    "raw_schema": "{\"items\":[{\"minimum\":1.0},{\"maximum\":2.0}]}",
+    "expected_normalized_json": "{\"items\":[{\"minimum\":1},{\"maximum\":2}]}"
+  },
+  {
+    "id": "legacy-dependencies",
+    "raw_schema": "{\"dependencies\":{\"A\":{\"minimum\":1.0},\"B\":[\"minimum\",\"1.0\"]}}",
+    "expected_normalized_json": "{\"dependencies\":{\"A\":{\"minimum\":1},\"B\":[\"minimum\",\"1.0\"]}}"
+  },
+  {
+    "id": "opaque-all",
+    "raw_schema": "{\"default\":{\"minimum\":1.0},\"const\":{\"minimum\":1.0},\"enum\":[{\"minimum\":1.0}],\"examples\":[{\"minimum\":1.0}],\"x-custom\":{\"minimum\":1.0},\"multipleOf\":1.0,\"minimum\":\"1.0\"}",
+    "expected_normalized_json": "{\"default\":{\"minimum\":1.0},\"const\":{\"minimum\":1.0},\"enum\":[{\"minimum\":1.0}],\"examples\":[{\"minimum\":1.0}],\"x-custom\":{\"minimum\":1.0},\"multipleOf\":1.0,\"minimum\":\"1.0\"}"
+  },
+  {
+    "id": "duplicate-last-wins",
+    "raw_schema": "{\"minimum\":1.0,\"min\\u0069mum\":2e0}",
+    "expected_normalized_json": "{\"minimum\":1,\"minimum\":2}"
+  },
+  {
+    "id": "duplicate-opaque-not-dropped",
+    "raw_schema": "{\"default\":{\"minimum\":1e9999},\"default\":{\"minimum\":1.0},\"minimum\":1.0}",
+    "expected_normalized_json": "{\"default\":{\"minimum\":1e9999},\"default\":{\"minimum\":1.0},\"minimum\":1}"
+  }
+]

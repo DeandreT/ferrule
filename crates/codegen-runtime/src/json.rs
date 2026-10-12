@@ -379,6 +379,9 @@ fn validate_json_node(
     schema: &SchemaNode,
     value: &serde_json::Value,
 ) -> Result<(), ConstraintValidationError> {
+    if let Some(item) = schema.json_array_wrapper_item() {
+        return validate_json_document(item, value);
+    }
     match (&schema.kind, value) {
         (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, value) => {
             if let serde_json::Value::Number(value) = value {

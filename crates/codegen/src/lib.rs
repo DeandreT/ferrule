@@ -15,6 +15,7 @@ mod join;
 mod json5_boundary;
 mod lower;
 mod model;
+mod owned_admission;
 mod static_document_boundary;
 mod validate;
 mod x12_boundary;
@@ -53,12 +54,16 @@ pub use model::{
     Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
     FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
     GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan, IterationSource,
-    NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy, NamedXmlOutputPolicy, Program,
-    RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence,
-    SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction,
-    TargetScope, UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
-    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
-    XmlOutputPolicy,
+    NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy, NamedXmlOutputPolicy,
+    OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction,
+    ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
+    SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
+    XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
+    XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
+};
+pub use owned_admission::{
+    NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
+    NamedTargetInputCatalogue, legacy_named_input_admission_plan,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
@@ -67,8 +72,12 @@ pub use static_document_boundary::{
     prepare_static_document_boundary, prepare_static_document_project_boundaries,
 };
 pub use validate::{
-    GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,
-    SequenceExpressionRole, SequenceOwner, validate_program,
+    GroupingExpressionRole, JoinKeySide, OwnedSourceCapabilityOrigin, OwnedSourceCapabilityReason,
+    OwnedSourceDiagnostic, OwnedSourceDiagnosticLocation, OwnedSourceDiagnosticOwner,
+    OwnedSourceDiagnosticRequest, OwnedSourceNamespace, OwnedSourceSchemaShape,
+    OwnedSourceStructureReason, ProgramValidationError, RecursiveSequencePathRole,
+    SequenceExpressionRole, SequenceOwner, owned_expression_emission_error,
+    validate_owned_emission, validate_program,
 };
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,

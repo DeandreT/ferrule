@@ -206,7 +206,9 @@ fn validate_stage(
         .collect();
     for (&node, expression) in &expressions {
         match expression {
-            Expression::Const { .. }
+            Expression::OwnedSourceField(_)
+            | Expression::OwnedPosition(_)
+            | Expression::Const { .. }
             | Expression::FunctionParameter { .. }
             | Expression::If { .. }
             | Expression::Raise { .. } => {}

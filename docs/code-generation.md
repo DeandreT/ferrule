@@ -722,6 +722,20 @@ budget. A count mismatch remains a typed input/output boundary error, while
 invalid embedded metadata and matcher work exhaustion remain fatal instead of
 being treated as ordinary nonmatches.
 
+Nested schema-valued arrays retain an explicit `json_array_wrapper` role in
+embedded descriptors. A marked repeated group has exactly one repeated child
+named `item`; each outer element carries that child's complete inner array.
+Generated descriptors carrying this role use embedded-schema version 3, with
+the existing exact finite-float metadata representation. Older descriptor
+readers reject the version before treating the wrapper as an ordinary object.
+Rust and C# JSON boundaries transparently read and write this declared role,
+enforcing count, uniqueness, supported contains predicates, and nullability at
+each level. Typed execution keeps the group and child fields visible to paths
+and nested iteration. The default false marker is omitted, so ordinary object
+properties named `item` retain their existing shape. Invalid marked descriptors
+refuse before document processing, and XML, CSV, and EDI boundaries do not
+reinterpret the JSON role.
+
 The exact homogeneous `prefixItems` importer subset adds no generated-runtime
 feature or new code-generation IR form. Draft 2020-12 and
 undeclared schemas whose bounded finite prefix entries normalize to
