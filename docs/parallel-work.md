@@ -21,6 +21,86 @@ choose a lane and avoid conflicting changes.
    and next step. Release ownership when pausing or handing off so another
    contributor can take it.
 
+## Basic owned-source contributor lanes
+
+Snapshot: 2026-10-12, against merged main
+[`2d52eba`](https://github.com/DeandreT/ferrule/commit/2d52eba6166124d31996532b5fe46cdacb0ec405).
+This [#578](https://github.com/DeandreT/ferrule/issues/578) update covers only the
+[#519](https://github.com/DeandreT/ferrule/issues/519) Basic owned-source lane.
+The other availability tables and diagrams below retain their dated scope.
+
+The shared IR/admission work in [PR535](https://github.com/DeandreT/ferrule/pull/535)
+and [PR548](https://github.com/DeandreT/ferrule/pull/548), private Rust renderer
+[PR547](https://github.com/DeandreT/ferrule/pull/547), private Rust failure groundwork
+[PR555](https://github.com/DeandreT/ferrule/pull/555), private C# renderer/budget
+correction [PR563](https://github.com/DeandreT/ferrule/pull/563), neutral Basic
+gate [PR577](https://github.com/DeandreT/ferrule/pull/577), plus the C# checked-input
+bridge [PR579](https://github.com/DeandreT/ferrule/pull/579), and C# source-failure
+bridge [PR581](https://github.com/DeandreT/ferrule/pull/581) are merged. The public
+Basic emitter APIs
+remain unpublished; ordinary emitters keep their existing
+closed ownership gates.
+
+These maintainer-owned lanes are not an unassigned-work list. Check the live
+assignee and arrange a file handoff before taking shared files. Keep each result
+in one focused PR.
+
+| Lane | Exclusive source scope | Publication dependency and next gate |
+| --- | --- | --- |
+| [#537 Rust checked-input bridge](https://github.com/DeandreT/ferrule/issues/537) | `crates/codegen-rust/src/lib.rs`, `owned_basic.rs`, and `tests/owned_basic.rs` | Preserve PR555's failure groundwork and both existing warning fixes. Publish this checked-input scope before the separate #541 source-rule bridge. |
+| [#541 Rust source-rule bridge](https://github.com/DeandreT/ferrule/issues/541) | Rust `owned_basic.rs` and `tests/owned_basic.rs` | Follow #537; add ordinary source-rule evaluation and checked/failure interactions. Preserve `lib.rs`, `failure.rs`, and runtime sources. This issue remains open. |
+| [#538 C# checked-input bridge](https://github.com/DeandreT/ferrule/issues/538) | `crates/codegen-csharp/src/lib.rs`, `owned_basic.rs`, and `tests/owned_basic.rs` | Merged in [PR579](https://github.com/DeandreT/ferrule/pull/579). Hand these shared files to #542 for the next C# increment. |
+| [#542 C# source-failure bridge](https://github.com/DeandreT/ferrule/issues/542) | C# `owned_basic.rs` and `tests/owned_basic.rs` | Merged in [PR581](https://github.com/DeandreT/ferrule/pull/581), preserving #538's checked-input path. Hand these shared files to the C# public-API owner for its next increment. |
+| [#519 Rust public API](https://github.com/DeandreT/ferrule/issues/519) | Rust `lib.rs`, `owned_basic.rs`, `failure.rs`, and `tests/owned_basic.rs` | Follow the merged neutral gate and both languages' checked-input/source-rule bridge qualifications. Accepted source checks cover 17 source controls, four existing controls, strict checks, production compilation, public-symbol exposure, and test inventory. [#580](https://github.com/DeandreT/ferrule/issues/580) qualified the corrected consumer fixture; independent result acceptance covers all five external modules / 14 calls. Publication remains pending. Publish separately from C#. |
+| [#519 C# public API](https://github.com/DeandreT/ferrule/issues/519) | C# `lib.rs`, `mapping.rs`, `owned_basic.rs`, and `tests/owned_basic.rs` | Follow the merged neutral gate and both languages' checked-input/source-rule bridge qualifications. Independent acceptance covers 50 source controls, strict checks, and seven external consumers / 24 calls; publication remains pending. |
+| [#566 private inventory alignment](https://github.com/DeandreT/ferrule/issues/566) | Private emitter emission/catalogue files and focused tests; shared public admission gate read-only | Align the private inventory within its existing renderer scope. Future public target ValueMap support is a separate [#582](https://github.com/DeandreT/ferrule/issues/582) lane; preserve the current public refusal. |
+| [#578 scoped documentation](https://github.com/DeandreT/ferrule/issues/578) | `ROADMAP.md` and `docs/parallel-work.md` | Update these two files after coordinating publication status; preserve other workstreams and historical diagrams. |
+
+Publication prerequisites are shown below. Both languages' checked-input and
+source-rule bridges need qualification and publication before either public API
+is published. PR555 is merged failure groundwork; #541 remains a separate open
+Rust source-rule increment. Independent public Rust source reconciliation is accepted.
+The [#580](https://github.com/DeandreT/ferrule/issues/580) consumer fixture
+correction in Rust `tests/owned_basic.rs` passed compilation and strict checks.
+All five external modules / 14 calls now have independent result acceptance.
+Coordinate that shared file with the Rust public-API owner. The earlier compile
+failure remains a failed record; both public APIs remain unpublished.
+
+```mermaid
+flowchart LR
+    N["#576 Neutral gate<br/>merged"]
+    R["#537 Rust checked bridge<br/>unpublished"]
+    C["#538 C# checked bridge<br/>merged"]
+    RF["#541 Rust source rules<br/>unpublished"]
+    F["#542 C# source failures<br/>merged"]
+    RP["#519 Rust public API<br/>qualified, unpublished"]
+    CP["#519 C# public API<br/>qualified, unpublished"]
+    C --> F
+    N --> RP
+    N --> CP
+    R --> RF
+    RF --> RP
+    RF --> CP
+    F --> RP
+    F --> CP
+```
+
+- [x] Shared model/admission, both private renderer foundations, Rust failure
+  groundwork, the neutral Basic gate, and both C# bridges are merged.
+- [ ] Publish #537, then the separate #541 source-rule bridge.
+- [x] Qualify the corrected #580 fixture with all five Rust public external
+  consumer modules / 14 calls, with independent result acceptance. Retain the
+  accepted C# candidate results.
+- [ ] Publish the Rust and C# public APIs in separate, independently buildable PRs.
+
+One Rust source owner should sequence #537, #541, and the Rust public API; one
+C# owner should take the C# public API after merged #538 and #542.
+The public language PRs can be worked on in parallel after their shared gates pass. Those backend scopes do not
+own common validator files or runtime source changes. Reserve shared verification
+before compiling, and verify complete current-main sources and the required test
+inventory when reusing build artifacts. Keep earlier failed checks distinct from
+the qualified successor.
+
 ## Current ownership and readiness
 
 Snapshot: 2026-10-11 15:57:27 UTC, against merged main [`4e0f95d`](https://github.com/DeandreT/ferrule/commit/4e0f95de957c32e6381a1b66c5f0fe21be75da5c).

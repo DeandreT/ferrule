@@ -1,6 +1,6 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-11
+Updated: 2026-10-12
 
 ## Goal
 
@@ -24,6 +24,73 @@ operator qualification procedures with a dependency diagram.
 
 This roadmap is an execution plan. The complete earlier technical baseline and
 scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
+
+## Basic owned-source progress (2026-10-12)
+
+This focused [#578](https://github.com/DeandreT/ferrule/issues/578) snapshot is
+against merged main [`2d52eba`](https://github.com/DeandreT/ferrule/commit/2d52eba6166124d31996532b5fe46cdacb0ec405).
+It updates the [#519](https://github.com/DeandreT/ferrule/issues/519) Basic
+owned-source lane; the dated snapshots and other workstreams below retain their
+recorded scope.
+
+Main contains the shared ownership model, private emitter groundwork, and an
+additive neutral Basic validator. The public Basic emitter families remain
+unpublished. Existing ordinary generated interfaces retain their closed
+ownership admission rules.
+
+### Merged groundwork
+
+- [x] Merge the ownership IR and common admission foundation:
+  [#516 / PR535](https://github.com/DeandreT/ferrule/pull/535) and
+  [#536 / PR548](https://github.com/DeandreT/ferrule/pull/548).
+- [x] Merge the test-scoped private Rust Basic renderer:
+  [#517 / PR547](https://github.com/DeandreT/ferrule/pull/547).
+- [x] Merge private Rust failure groundwork:
+  [PR555](https://github.com/DeandreT/ferrule/pull/555). The ordinary source-rule
+  bridge in [#541](https://github.com/DeandreT/ferrule/issues/541) remains open.
+- [x] Merge the private C# Basic renderer and its corrected budget controls:
+  [#518 and #554 / PR563](https://github.com/DeandreT/ferrule/pull/563).
+- [x] Merge the neutral Basic admission API and its current-source verification:
+  [#576 / PR577](https://github.com/DeandreT/ferrule/pull/577).
+- [x] Merge the private C# checked-input bridge:
+  [#538 / PR579](https://github.com/DeandreT/ferrule/pull/579).
+- [x] Merge the private C# ordinary source-failure bridge and checked interactions:
+  [#542 / PR581](https://github.com/DeandreT/ferrule/pull/581).
+
+### Next delivery gates
+
+- [ ] Publish the private Rust checked-input bridge
+  [#537](https://github.com/DeandreT/ferrule/issues/537), preserving PR555's
+  failure groundwork, then publish the separate ordinary source-rule bridge
+  [#541](https://github.com/DeandreT/ferrule/issues/541).
+- [ ] Publish the additive Rust and C# Basic emitter APIs under
+  [#519](https://github.com/DeandreT/ferrule/issues/519) as separate PRs after
+  their shared prerequisites are qualified and merged.
+
+The unpublished C# public candidate has independent acceptance for 50 source
+controls, strict checks, and seven external consumers exercising 24 calls.
+
+The unpublished public Rust candidate has accepted checks for 17 source
+controls, four existing controls, strict checks, production compilation,
+public-symbol exposure, and the required test inventory. The
+[#580](https://github.com/DeandreT/ferrule/issues/580) fixture correction passed
+compilation and strict checks; independent result acceptance now covers all
+five external consumer modules / 14 calls. The earlier compile failure remains
+a failed verification record. Both public families remain unpublished on main.
+
+The Basic lane covers explicit static source ownership and its admitted scalar
+and collection contexts. Private inventory alignment in
+[#566](https://github.com/DeandreT/ferrule/issues/566) owns emitter changes and
+focused tests; its shared public admission gate stays read-only. Future public
+target ValueMap support belongs to
+[#582](https://github.com/DeandreT/ferrule/issues/582), preserving the current
+public refusal until that separate scope is qualified. This increment adds no
+CLI selection mode or broader GUI/native-workflow claim.
+
+[Basic contributor lanes](docs/parallel-work.md#basic-owned-source-contributor-lanes)
+record publication dependencies and file ownership. Same-language bridge and
+public-API edits must be sequenced; the Rust and C# public PRs can proceed in
+parallel once their shared gates pass.
 
 ## Current contributor snapshot
 
