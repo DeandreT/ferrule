@@ -536,3 +536,222 @@ fn display_path(path: &[String]) -> String {
         path.join("/")
     }
 }
+
+/// Exact source endpoint copied only after owned metadata admission.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OwnedSourceIdentity {
+    Primary,
+    Named(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OwnedSourceLimitKind {
+    Roots,
+    Frames,
+    PathSegments,
+    MetadataBytes,
+    WalkContexts,
+    MetadataSlots,
+}
+
+/// Failures specific to the additive owned runtime core.
+#[derive(Debug, PartialEq, Eq)]
+pub enum OwnedSourceError {
+    InvalidNamedOwner,
+    UnknownOwner {
+        name: String,
+    },
+    AmbiguousOwner {
+        name: String,
+        declarations: Vec<usize>,
+    },
+    SourceUnavailable {
+        name: String,
+    },
+    InactiveSourceFrame {
+        owner: OwnedSourceIdentity,
+        collection: Option<Vec<String>>,
+    },
+    IncompatibleFramePath {
+        owner: OwnedSourceIdentity,
+        frame: Vec<String>,
+        path: Vec<String>,
+    },
+    UniteratedRepetition {
+        owner: OwnedSourceIdentity,
+        path: Vec<String>,
+        segment: usize,
+    },
+    UnsupportedSourceKind {
+        owner: OwnedSourceIdentity,
+        path: Vec<String>,
+        found: InstanceKind,
+    },
+    Traversal {
+        owner: OwnedSourceIdentity,
+        source: SourcePathError,
+    },
+    InvalidPosition {
+        index: usize,
+    },
+    MetadataLimit {
+        kind: OwnedSourceLimitKind,
+        used: usize,
+        requested: usize,
+        max: usize,
+    },
+    MetadataArithmeticOverflow {
+        kind: OwnedSourceLimitKind,
+    },
+}
+
+impl fmt::Display for OwnedSourceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidNamedOwner => formatter.write_str("owned named source cannot be empty"),
+            Self::UnknownOwner { name } => {
+                write!(formatter, "owned source {name:?} is not declared")
+            }
+            Self::AmbiguousOwner { name, declarations } => write!(
+                formatter,
+                "owned source {name:?} is ambiguous at declarations {declarations:?}"
+            ),
+            Self::SourceUnavailable { name } => {
+                write!(formatter, "owned source {name:?} has no supplied root")
+            }
+            Self::InactiveSourceFrame { owner, collection } => write!(
+                formatter,
+                "owned source frame {owner:?} {collection:?} is not active"
+            ),
+            Self::IncompatibleFramePath { owner, frame, path } => write!(
+                formatter,
+                "owned source frame {owner:?} {frame:?} does not prefix field {path:?}"
+            ),
+            Self::UniteratedRepetition {
+                owner,
+                path,
+                segment,
+            } => write!(
+                formatter,
+                "owned source {owner:?} {path:?} crosses an uniterated repetition at segment {segment}"
+            ),
+            Self::UnsupportedSourceKind { owner, path, found } => write!(
+                formatter,
+                "owned source {owner:?} {path:?} does not support {found}"
+            ),
+            Self::Traversal { owner, source } => {
+                write!(formatter, "owned source {owner:?}: {source:?}")
+            }
+            Self::InvalidPosition { index } => {
+                write!(formatter, "owned source position {index} is not one-based")
+            }
+            Self::MetadataLimit {
+                kind,
+                used,
+                requested,
+                max,
+            } => write!(
+                formatter,
+                "owned source metadata {kind:?} exceeds {max}: used {used}, requested {requested}"
+            ),
+            Self::MetadataArithmeticOverflow { kind } => write!(
+                formatter,
+                "owned source metadata {kind:?} accounting overflow"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for OwnedSourceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Traversal { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl super::OwnedScopeContext<'_> {
+    /// Reads only the requested owner and its authoritative occurrence.
+    /// Full paths are endpoint-relative, including with an explicit frame.
+    pub fn owned_field(
+        &self,
+        owner: super::SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+    ) -> Result<Value, OwnedSourceError> {
+        self.query_budget(owner, path, frame)?;
+        let (key, root) = self.resolve_owned_owner(owner)?;
+        let selected = if let Some(frame) = frame {
+            if !path.starts_with(frame) {
+                return Err(OwnedSourceError::IncompatibleFramePath {
+                    owner: self.owned_identity(key),
+                    frame: super::owned_string_path(frame),
+                    path: super::owned_string_path(path),
+                });
+            }
+            let index = self.owned_frame_index(key, Some(frame)).ok_or_else(|| {
+                OwnedSourceError::InactiveSourceFrame {
+                    owner: self.owned_identity(key),
+                    collection: Some(super::owned_string_path(frame)),
+                }
+            })?;
+            Some(&self.frames[index])
+        } else {
+            self.owned_base(key, path)
+        };
+        let (mut current, offset) =
+            selected.map_or((root, 0), |frame| (frame.instance, frame.collection.len()));
+        for segment in offset..=path.len() {
+            match current {
+                Instance::Repeated(_) => {
+                    return Err(OwnedSourceError::UniteratedRepetition {
+                        owner: self.owned_identity(key),
+                        path: super::owned_string_path(path),
+                        segment,
+                    });
+                }
+                Instance::DocumentSet(_) | Instance::MappedSequence(_) => {
+                    return Err(OwnedSourceError::UnsupportedSourceKind {
+                        owner: self.owned_identity(key),
+                        path: super::owned_string_path(path),
+                        found: super::owned_instance_kind(current),
+                    });
+                }
+                _ => {}
+            }
+            if segment == path.len() {
+                return current
+                    .as_scalar()
+                    .cloned()
+                    .ok_or_else(|| OwnedSourceError::Traversal {
+                        owner: self.owned_identity(key),
+                        source: SourcePathError::ExpectedScalar {
+                            path: super::owned_string_path(path),
+                            found: super::owned_instance_kind(current),
+                        },
+                    });
+            }
+            match current {
+                Instance::Scalar(Value::Null | Value::JsonNull(_)) => return Ok(Value::Null),
+                Instance::Group(_) => {
+                    let Some(next) = current.field(path[segment]) else {
+                        return Ok(Value::Null);
+                    };
+                    current = next;
+                }
+                _ => {
+                    return Err(OwnedSourceError::Traversal {
+                        owner: self.owned_identity(key),
+                        source: SourcePathError::CannotTraverse {
+                            path: super::owned_string_path(path),
+                            segment,
+                            found: super::owned_instance_kind(current),
+                        },
+                    });
+                }
+            }
+        }
+        unreachable!("owned scalar resolution returns at the complete path")
+    }
+}

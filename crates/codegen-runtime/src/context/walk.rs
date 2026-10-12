@@ -461,3 +461,179 @@ fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {
     }
     current.as_scalar()
 }
+
+// One cursor per active repeated ancestor; never enqueue all source items.
+enum OwnedWalkTask<'a> {
+    Visit {
+        instance: &'a Instance,
+        consumed: usize,
+        restore: usize,
+    },
+    Repeated {
+        items: &'a [Instance],
+        consumed: usize,
+        next: usize,
+        restore: usize,
+    },
+}
+
+impl<'a> super::OwnedScopeContext<'a> {
+    /// Walks an exact static source owner with canonical endpoint-relative paths.
+    /// Every repeated boundary records its actual item and one-based position.
+    pub fn walk_owned_source(
+        &self,
+        owner: super::SourceOwnerRef<'_>,
+        path: &[&str],
+    ) -> Result<Vec<Self>, super::OwnedSourceError> {
+        use super::{OwnedSourceError, OwnedSourceLimitKind};
+
+        let mut budget = self.query_budget(owner, path, None)?;
+        let (key, root) = self.resolve_owned_owner(owner)?;
+        let base = self.owned_base(key, path);
+        if base.is_some_and(|frame| frame.collection.len() == path.len()) {
+            super::owned_charge(
+                OwnedSourceLimitKind::WalkContexts,
+                0,
+                1,
+                self.registry.limits.max_walk_contexts,
+            )?;
+            budget.slots.charge(1)?;
+            return Ok(vec![Self {
+                registry: std::sync::Arc::clone(&self.registry),
+                frames: self.copy_owned_frames(&self.frames, &mut budget)?,
+            }]);
+        }
+        let (instance, consumed) =
+            base.map_or((root, 0), |frame| (frame.instance, frame.collection.len()));
+        let mut frames = self.copy_owned_frames(&self.frames, &mut budget)?;
+        budget.slots.charge(1)?; // Current task reservation, retained through the walk.
+        budget.slots.charge(1)?; // Initial pending Visit cursor.
+        let mut pending = vec![OwnedWalkTask::Visit {
+            instance,
+            consumed,
+            restore: frames.len(),
+        }];
+        let mut output = Vec::new();
+        while let Some(task) = pending.pop() {
+            budget.slots.release(1)?;
+            match task {
+                OwnedWalkTask::Repeated {
+                    items,
+                    consumed,
+                    next,
+                    restore,
+                } => {
+                    for frame in &frames[restore..] {
+                        budget.slots.release(1)?;
+                        budget.slots.release(frame.collection.len())?;
+                    }
+                    frames.truncate(restore);
+                    let Some(item) = items.get(next) else {
+                        continue;
+                    };
+                    let index = next.checked_add(1).ok_or(
+                        OwnedSourceError::MetadataArithmeticOverflow {
+                            kind: OwnedSourceLimitKind::WalkContexts,
+                        },
+                    )?;
+                    super::owned_charge(
+                        OwnedSourceLimitKind::Frames,
+                        frames.len(),
+                        1,
+                        self.registry.limits.max_active_frames,
+                    )?;
+                    budget.slots.charge(1)?;
+                    budget.slots.charge(consumed)?;
+                    budget.borrowed_path(&path[..consumed])?;
+                    frames.push(super::OwnedSourceFrame {
+                        owner: key,
+                        collection: super::owned_string_path(&path[..consumed]),
+                        instance: item,
+                        index,
+                    });
+                    budget.slots.charge(2)?;
+                    pending.push(OwnedWalkTask::Repeated {
+                        items,
+                        consumed,
+                        next: index,
+                        restore,
+                    });
+                    pending.push(OwnedWalkTask::Visit {
+                        instance: item,
+                        consumed,
+                        restore: frames.len(),
+                    });
+                }
+                OwnedWalkTask::Visit {
+                    mut instance,
+                    mut consumed,
+                    restore,
+                } => {
+                    for frame in &frames[restore..] {
+                        budget.slots.release(1)?;
+                        budget.slots.release(frame.collection.len())?;
+                    }
+                    frames.truncate(restore);
+                    loop {
+                        match instance {
+                            Instance::Scalar(Value::Null | Value::JsonNull(_)) => break,
+                            Instance::Repeated(items) => {
+                                budget.slots.charge(1)?;
+                                pending.push(OwnedWalkTask::Repeated {
+                                    items,
+                                    consumed,
+                                    next: 0,
+                                    restore: frames.len(),
+                                });
+                                break;
+                            }
+                            Instance::DocumentSet(_) | Instance::MappedSequence(_) => {
+                                return Err(OwnedSourceError::UnsupportedSourceKind {
+                                    owner: self.owned_identity(key),
+                                    path: super::owned_string_path(path),
+                                    found: super::owned_instance_kind(instance),
+                                });
+                            }
+                            _ => {}
+                        }
+                        if consumed == path.len() {
+                            super::owned_charge(
+                                OwnedSourceLimitKind::WalkContexts,
+                                output.len(),
+                                1,
+                                self.registry.limits.max_walk_contexts,
+                            )?;
+                            budget.slots.charge(1)?;
+                            let copied = self.copy_owned_frames(&frames, &mut budget)?;
+                            output.push(Self {
+                                registry: std::sync::Arc::clone(&self.registry),
+                                frames: copied,
+                            });
+                            break;
+                        }
+                        match instance {
+                            Instance::Group(_) => {
+                                let Some(next) = instance.field(path[consumed]) else {
+                                    break;
+                                };
+                                instance = next;
+                                consumed += 1;
+                            }
+                            _ => {
+                                return Err(OwnedSourceError::Traversal {
+                                    owner: self.owned_identity(key),
+                                    source: SourcePathError::CannotTraverse {
+                                        path: super::owned_string_path(path),
+                                        segment: consumed,
+                                        found: super::owned_instance_kind(instance),
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(output)
+    }
+}
