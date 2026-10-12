@@ -4,7 +4,9 @@ use crate::Expression;
 
 pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
     match expression {
-        Expression::SourceField { .. }
+        Expression::OwnedSourceField(_)
+        | Expression::OwnedPosition(_)
+        | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }

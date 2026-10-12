@@ -55,12 +55,14 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// functions.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
+    codegen::validate_owned_emission(program)?;
     let generated_mapping = mapping::render(program)?;
     emit_mapping_artifacts(program, generated_mapping)
 }
 
 fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
+    codegen::validate_owned_emission(program)?;
     let generated_mapping = mapping::render_typed(program)?;
     emit_mapping_artifacts(program, generated_mapping)
 }
@@ -1390,5 +1392,286 @@ mod tests {
             .find(|file| file.path.as_str() == "GeneratedMapping.cs")
             .expect("generated mapping artifact");
         std::str::from_utf8(&file.contents).expect("generated source is UTF-8")
+    }
+}
+
+#[cfg(test)]
+mod owned_stage_a_tests {
+    use super::*;
+    use codegen::{
+        Expression, ExpressionNode, IterationPlan, Program, ProgramValidationError,
+        SourceIteration, TargetScope,
+    };
+    use ir::{ScalarType, SchemaKind, SchemaNode};
+    fn input() -> SchemaNode {
+        SchemaNode::group(
+            "Input",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        )
+    }
+    fn target() -> SchemaNode {
+        SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        )
+    }
+    fn owned(source: SchemaNode, target: SchemaNode, parts: &[&str]) -> Program {
+        Program {
+            xml_boundary: None,
+            source,
+            target,
+            extra_sources: vec![],
+            extra_targets: vec![],
+            user_functions: vec![],
+            failure_rules: vec![],
+            expressions: vec![ExpressionNode {
+                id: 99,
+                expression: Expression::OwnedSourceField(::mapping::OwnedSourceField {
+                    source: ::mapping::OwnedSourceRef {
+                        owner: ::mapping::SourceOwner::Primary,
+                        path: parts.iter().map(|part| (*part).into()).collect(),
+                    },
+                    frame: None,
+                }),
+            }],
+            root: TargetScope {
+                target_field: String::new(),
+                repeating: false,
+                iteration: None,
+                construction: Default::default(),
+                bindings: vec![],
+                children: vec![],
+            },
+        }
+    }
+    fn expected(parts: &[&str]) -> ProgramValidationError {
+        ProgramValidationError::OwnedSource {
+            diagnostic: codegen::OwnedSourceDiagnostic::Capability {
+                location: codegen::OwnedSourceDiagnosticLocation::Expression {
+                    namespace: codegen::OwnedSourceNamespace::Main,
+                    node: 99,
+                    scope: None,
+                },
+                request: Some(codegen::OwnedSourceDiagnosticRequest::Field {
+                    owner: codegen::OwnedSourceDiagnosticOwner::Primary,
+                    path: parts.iter().map(|part| (*part).into()).collect(),
+                    frame: None,
+                }),
+                reason: codegen::OwnedSourceCapabilityReason::UnsupportedBasicContext,
+                origin: codegen::OwnedSourceCapabilityOrigin::RetainedExpression {
+                    namespace: codegen::OwnedSourceNamespace::Main,
+                    node: 99,
+                },
+            }
+            .into(),
+        }
+    }
+    fn outer(result: Result<ArtifactSet, EmitError>, parts: &[&str]) {
+        use std::error::Error as _;
+        eprintln!("complete ordinary result={result:#?}");
+        let error = result.unwrap_err();
+        let expected = expected(parts);
+        assert_eq!(
+            error
+                .source()
+                .unwrap()
+                .downcast_ref::<ProgramValidationError>(),
+            Some(&expected)
+        );
+        assert_eq!(error, EmitError::ProgramValidation(expected));
+    }
+    fn segment(name: &str, width: usize) -> SchemaNode {
+        SchemaNode::group(
+            name,
+            (1..=width)
+                .map(|index| SchemaNode::scalar(format!("{name}{index:02}"), ScalarType::String))
+                .collect(),
+        )
+    }
+    fn x12() -> SchemaNode {
+        let mut isa = segment("ISA", 16);
+        let SchemaKind::Group { children, .. } = &mut isa.kind else {
+            unreachable!()
+        };
+        children[11].fixed = Some("00401".into());
+        let mut gs = segment("GS", 8);
+        let SchemaKind::Group { children, .. } = &mut gs.kind else {
+            unreachable!()
+        };
+        children[7].fixed = Some("004010".into());
+        SchemaNode::group(
+            "Order",
+            vec![
+                isa,
+                gs,
+                segment("ST", 2),
+                segment("W05", 3),
+                segment("SE", 2),
+                segment("GE", 2),
+                segment("IEA", 2),
+            ],
+        )
+    }
+    #[test]
+    fn owned_ordinary_and_private_typed_route_gate_preserve_complete_errors() {
+        let p = owned(input(), target(), &["Value"]);
+        let validation = codegen::validate_program(&p);
+        let result = emit(&p);
+        let typed = emit_typed(&p);
+        eprintln!(
+            "A-D02 E-C01 complete Program={p:#?} validation={validation:#?} ordinary={result:#?} typed={typed:#?}"
+        );
+        assert_eq!(validation, Ok(()));
+        outer(result, &["Value"]);
+        outer(typed, &["Value"]);
+    }
+    #[test]
+    fn owned_csv_output_valid_profile_is_closed_and_invalid_dialect_wins() {
+        let mut p = owned(input().repeating(), target(), &["Value"]);
+        p.root.iteration = Some(IterationPlan::new(
+            SourceIteration::new(vec![]),
+            None,
+            None,
+            vec![],
+            codegen::IterationOutput::Repeated,
+        ));
+        let valid = codegen::CsvOutputPolicy::default();
+        let invalid = codegen::CsvOutputPolicy {
+            delimiter: Some('\0'),
+            ..Default::default()
+        };
+        let result = emit_with_csv_output(&p, &valid);
+        let bad = emit_with_csv_output(&p, &invalid);
+        eprintln!(
+            "A-P02 E-C04 Program={p:#?} valid={valid:#?} invalid={invalid:#?} result={result:#?} bad={bad:#?}"
+        );
+        assert_eq!(
+            bad.unwrap_err(),
+            EmitError::CsvOutput(codegen::CsvOutputError::BadDelimiter('\0'))
+        );
+        outer(result, &["Value"]);
+    }
+    #[test]
+    fn owned_json5_valid_profile_reaches_closed_ordinary_wrapper() {
+        let p = owned(input(), target(), &["Value"]);
+        let result = emit_with_json5(&p);
+        eprintln!("E-C05 Program={p:#?} result={result:#?}");
+        match result.unwrap_err() {
+            Json5EmitError::Ordinary(error) => outer(Err(error), &["Value"]),
+            error => panic!("complete expected ordinary wrapper: {error:?}"),
+        }
+    }
+    #[test]
+    fn owned_csv_json_and_csv_x12_preserve_their_exact_policy_and_typed_gate_wrappers() {
+        let p = owned(input(), target(), &["Value"]);
+        let valid = codegen::CsvJsonBoundaryPolicy {
+            source: Default::default(),
+            extra_target_names: vec![],
+        };
+        let invalid = codegen::CsvJsonBoundaryPolicy {
+            source: codegen::CsvInputPolicy {
+                delimiter: Some('\0'),
+                ..Default::default()
+            },
+            extra_target_names: vec![],
+        };
+        let result = emit_with_csv_json_adapters(&p, &valid);
+        let bad = emit_with_csv_json_adapters(&p, &invalid);
+        eprintln!(
+            "E-C03 Program={p:#?} valid={valid:#?} invalid={invalid:#?} result={result:#?} bad={bad:#?}"
+        );
+        match bad.unwrap_err() {
+            CsvJsonEmitError::Policy(error) => match *error {
+                codegen::CsvJsonBoundaryError::Source(
+                    codegen::CsvInputBoundaryError::BadDelimiter('\0'),
+                ) => {}
+                error => panic!("exact old source policy cause: {error:?}"),
+            },
+            error => panic!("exact old policy wrapper: {error:?}"),
+        }
+        match result.unwrap_err() {
+            CsvJsonEmitError::Ordinary(error) => outer(Err(error), &["Value"]),
+            error => panic!("exact ordinary wrapper: {error:?}"),
+        }
+        let p = owned(input(), x12(), &["Value"]);
+        let valid = codegen::CsvX12BoundaryPolicy {
+            source: Default::default(),
+            target: Default::default(),
+        };
+        let invalid = codegen::CsvX12BoundaryPolicy {
+            source: codegen::CsvInputPolicy {
+                delimiter: Some('\0'),
+                ..Default::default()
+            },
+            target: Default::default(),
+        };
+        let result = emit_with_csv_x12_adapters(&p, &valid);
+        let bad = emit_with_csv_x12_adapters(&p, &invalid);
+        eprintln!(
+            "E-C02 Program={p:#?} valid={valid:#?} invalid={invalid:#?} result={result:#?} bad={bad:#?}"
+        );
+        match bad.unwrap_err() {
+            CsvX12EmitError::Policy(error) => match *error {
+                codegen::CsvX12BoundaryError::BadDelimiter('\0') => {}
+                error => panic!("exact old source policy cause: {error:?}"),
+            },
+            error => panic!("exact old policy wrapper: {error:?}"),
+        }
+        match result.unwrap_err() {
+            CsvX12EmitError::Ordinary(error) => outer(Err(error), &["Value"]),
+            error => panic!("exact ordinary wrapper: {error:?}"),
+        }
+    }
+    #[test]
+    fn owned_x12_and_static_documents_keep_old_policy_first_and_closed_ordinary_sources() {
+        let p = owned(x12(), target(), &["W05", "W0502"]);
+        let valid = codegen::X12BoundaryPolicy {
+            source: Some(Default::default()),
+            target: None,
+        };
+        let invalid = codegen::X12BoundaryPolicy {
+            source: None,
+            target: None,
+        };
+        let result = emit_with_x12(&p, &valid);
+        let bad = emit_with_x12(&p, &invalid);
+        eprintln!(
+            "E-C06 Program={p:#?} valid={valid:#?} invalid={invalid:#?} result={result:#?} bad={bad:#?}"
+        );
+        match bad.unwrap_err() {
+            X12EmitError::Policy(codegen::X12BoundaryPolicyError::NoX12Side) => {}
+            error => panic!("exact old policy wrapper: {error:?}"),
+        }
+        match result.unwrap_err() {
+            X12EmitError::Ordinary(error) => outer(Err(error), &["W05", "W0502"]),
+            error => panic!("exact ordinary wrapper: {error:?}"),
+        }
+        let valid = codegen::StaticDocumentBoundaryPolicy {
+            source: codegen::DocumentBoundaryOptions::X12(Default::default()),
+            target: codegen::DocumentBoundaryOptions::Json,
+            extra_sources: vec![],
+            extra_targets: vec![],
+        };
+        let invalid = codegen::StaticDocumentBoundaryPolicy {
+            source: codegen::DocumentBoundaryOptions::Json,
+            target: codegen::DocumentBoundaryOptions::Json,
+            extra_sources: vec![],
+            extra_targets: vec![],
+        };
+        let result = emit_with_static_document_adapters(&p, &valid);
+        let bad = emit_with_static_document_adapters(&p, &invalid);
+        eprintln!(
+            "E-C07 Program={p:#?} valid={valid:#?} invalid={invalid:#?} result={result:#?} bad={bad:#?}"
+        );
+        match bad.unwrap_err() {
+            StaticDocumentEmitError::Policy(
+                codegen::StaticDocumentBoundaryError::NoX12Boundary,
+            ) => {}
+            error => panic!("exact old policy wrapper: {error:?}"),
+        }
+        match result.unwrap_err() {
+            StaticDocumentEmitError::Ordinary(error) => outer(Err(error), &["W05", "W0502"]),
+            error => panic!("exact ordinary wrapper: {error:?}"),
+        }
     }
 }

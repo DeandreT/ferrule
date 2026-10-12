@@ -8,6 +8,7 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OwnedSource { diagnostic } => write!(formatter, "owned source: {diagnostic:?}"),
             Self::FilterMapAdmission { item, kind } => {
                 write!(formatter, "compiled filter_map_v1 item {item}: {kind:?}")
             }
