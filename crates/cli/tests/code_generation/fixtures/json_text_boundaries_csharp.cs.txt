@@ -22,6 +22,16 @@ foreach (var test in cases.RootElement.EnumerateArray())
 
 static void Verify(Func<string> run, JsonElement test)
 {
+    if (test.TryGetProperty("boolean_error", out var expectedBoolean))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (
+            error.Error == FerruleRuntimeError.NotABool &&
+            error.Node == expectedBoolean.GetProperty("node").GetUInt32() &&
+            error.FoundKind?.ToString().ToLowerInvariant() == expectedBoolean.GetProperty("found").GetString())
+        { return; }
+        throw new Exception($"Expected Boolean condition failure was accepted: {test}");
+    }
     if (test.TryGetProperty("execution_error", out var expectedError))
     {
         try { _ = run(); }
