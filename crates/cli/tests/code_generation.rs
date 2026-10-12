@@ -56,6 +56,9 @@ mod json_parser_ports;
 mod json_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+
+#[path = "code_generation/empty_constructed_scopes.rs"]
+mod empty_constructed_scopes;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
 mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
