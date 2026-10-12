@@ -35,6 +35,10 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
+    DeclaredNamedSourceRoot, OwnedScopeContext, OwnedSourceError, OwnedSourceIdentity,
+    OwnedSourceLimitKind, OwnedSourceLimits, SourceOwnerRef, SourceRoots,
+};
+pub use context::{
     GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
