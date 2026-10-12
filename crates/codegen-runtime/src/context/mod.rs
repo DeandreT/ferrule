@@ -1,3 +1,5 @@
+mod basic;
+
 mod grouping;
 mod join;
 mod recursive;
@@ -17,6 +19,10 @@ mod named_tests;
 #[cfg(test)]
 mod source_field_tests;
 
+pub use basic::{
+    BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots,
+    CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+};
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
