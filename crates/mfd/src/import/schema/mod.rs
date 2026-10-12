@@ -17,6 +17,7 @@ mod generic_xml;
 mod http_get;
 mod json_variable;
 mod pdf;
+mod port_declarations;
 mod protobuf;
 mod shared;
 mod wsdl;
@@ -33,6 +34,9 @@ pub(super) use shared::{
     XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
     read_xsd_metadata_text, resolve_xml_schema_reference, retain_xsd_resource_refusal,
 };
+
+pub(super) use port_declarations::PortDeclarationCensus;
+use port_declarations::PortDeclarations;
 
 pub(super) fn enrich_unresolved_edi_source_schemas(project: &mut mapping::Project) {
     edi::enrich_unresolved_source_schemas(project);
@@ -240,6 +244,8 @@ pub(super) struct SchemaComponent {
     pub(super) input_ancestors: BTreeMap<u32, Vec<u32>>,
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
+    /// Raw declaration facts retained only for bounded admission proofs.
+    pub(super) port_declarations: Option<PortDeclarations>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
     pub(super) db_xml_columns: BTreeMap<u32, database_xml::Column>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
@@ -248,6 +254,38 @@ pub(super) struct SchemaComponent {
 impl SchemaComponent {
     pub(super) fn is_target(&self) -> bool {
         (!self.is_variable && !self.is_source) || self.is_pass_through
+    }
+
+    pub(super) fn declares_output(&self, key: u32) -> bool {
+        self.output_keys.contains(&key)
+            || self
+                .port_declarations
+                .as_ref()
+                .is_some_and(|facts| facts.declares_output(key))
+    }
+
+    pub(super) fn unambiguous_declared_output(&self, key: u32) -> bool {
+        self.output_keys.contains(&key)
+            && self.ports.contains_key(&key)
+            && self
+                .port_declarations
+                .as_ref()
+                .is_some_and(|facts| facts.unambiguous_output(key))
+    }
+
+    pub(super) fn unambiguous_declared_input(&self, key: u32) -> bool {
+        self.input_keys.contains(&key)
+            && self.ports.contains_key(&key)
+            && self
+                .port_declarations
+                .as_ref()
+                .is_some_and(|facts| facts.unambiguous_input(key))
+    }
+
+    pub(super) fn ambiguous_input_affects(&self, key: u32, path: &[String]) -> bool {
+        self.port_declarations
+            .as_ref()
+            .is_none_or(|facts| facts.ambiguous_input_affects(key, path))
     }
 }
 
@@ -440,13 +478,16 @@ fn read_schema_component_resolved(
     let mut in_count = 0usize;
     let (input_keys, output_keys) = entry_key_sets(&root_el);
     // The root entry's own port is a document-level connection.
+    let mut declarations = PortDeclarationCensus::default();
+    declarations.record(entry, &[]);
     record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
-    collect_entry_ports(
+    collect_entry_ports_with_declarations(
         &entry,
         &mut Vec::new(),
         &mut ports,
         &mut out_count,
         &mut in_count,
+        Some(&mut declarations),
     );
     let input_ancestors = input_port_ancestors(&entry, &input_keys);
     let no_port_warning_index = (out_count == 0 && in_count == 0).then(|| {
@@ -640,6 +681,7 @@ fn read_schema_component_resolved(
             input_ancestors,
             input_keys,
             output_keys,
+            port_declarations: Some(declarations.finish(root_el)),
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
@@ -830,14 +872,17 @@ fn read_json_component_resolved(
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
+    let mut declarations = PortDeclarationCensus::default();
+    declarations.record(entry, &[]);
     record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
-    collect_json_ports(
+    collect_json_ports_with_declarations(
         &entry,
         &mut Vec::new(),
         &mut ports,
         &mut out_count,
         &mut in_count,
         warnings,
+        Some(&mut declarations),
     );
     if let Some(target) = &dynamic_json {
         in_count += target.input_count();
@@ -997,6 +1042,7 @@ fn read_json_component_resolved(
         input_ancestors,
         input_keys,
         output_keys,
+        port_declarations: Some(declarations.finish(root_el)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json,
@@ -1074,13 +1120,14 @@ fn remap_json_array_wrapper_ports(
     Ok(())
 }
 
-pub(super) fn collect_json_ports(
-    entry: &roxmltree::Node,
+pub(super) fn collect_json_ports_with_declarations<'doc, 'input>(
+    entry: &roxmltree::Node<'doc, 'input>,
     path: &mut Vec<String>,
     ports: &mut BTreeMap<u32, Vec<String>>,
     out_count: &mut usize,
     in_count: &mut usize,
     warnings: &mut Vec<String>,
+    mut declarations: Option<&mut PortDeclarationCensus<'doc, 'input>>,
 ) {
     for child in entry
         .children()
@@ -1101,16 +1148,38 @@ pub(super) fn collect_json_ports(
                     continue;
                 }
                 path.push(child.attribute("name").unwrap_or_default().to_string());
+                if let Some(declarations) = declarations.as_deref_mut() {
+                    declarations.record(child, path);
+                }
                 record_entry_keys(&child, path, ports, out_count, in_count);
-                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+                collect_json_ports_with_declarations(
+                    &child,
+                    path,
+                    ports,
+                    out_count,
+                    in_count,
+                    warnings,
+                    declarations.as_deref_mut(),
+                );
                 path.pop();
             }
             Some("json-subtype") => {
                 // A subtype is an alternative object view, not a path
                 // segment. Its root and descendant ports address the same
                 // property path represented by the merged schema projection.
+                if let Some(declarations) = declarations.as_deref_mut() {
+                    declarations.record(child, path);
+                }
                 record_entry_keys(&child, path, ports, out_count, in_count);
-                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+                collect_json_ports_with_declarations(
+                    &child,
+                    path,
+                    ports,
+                    out_count,
+                    in_count,
+                    warnings,
+                    declarations.as_deref_mut(),
+                );
             }
             Some("json-propertyname") => {
                 if child.attribute("outkey").is_some()
@@ -1142,8 +1211,19 @@ pub(super) fn collect_json_ports(
                 {
                     continue;
                 }
+                if let Some(declarations) = declarations.as_deref_mut() {
+                    declarations.record(child, path);
+                }
                 record_entry_keys(&child, path, ports, out_count, in_count);
-                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+                collect_json_ports_with_declarations(
+                    &child,
+                    path,
+                    ports,
+                    out_count,
+                    in_count,
+                    warnings,
+                    declarations.as_deref_mut(),
+                );
             }
         }
     }
@@ -1443,6 +1523,7 @@ pub(super) fn read_csv_component(
         input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
@@ -1486,6 +1567,17 @@ fn collect_entry_ports(
     out_count: &mut usize,
     in_count: &mut usize,
 ) {
+    collect_entry_ports_with_declarations(entry, path, ports, out_count, in_count, None);
+}
+
+pub(super) fn collect_entry_ports_with_declarations<'doc, 'input>(
+    entry: &roxmltree::Node<'doc, 'input>,
+    path: &mut Vec<String>,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    out_count: &mut usize,
+    in_count: &mut usize,
+    mut declarations: Option<&mut PortDeclarationCensus<'doc, 'input>>,
+) {
     for child in entry
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
@@ -1498,10 +1590,20 @@ fn collect_entry_ports(
         if child.attribute("type") == Some("xml-type") && name != XML_TEXT_FIELD {
             // xml-type entries are transparent type wrappers: descend
             // without extending the path.
-            collect_entry_ports(&child, path, ports, out_count, in_count);
+            collect_entry_ports_with_declarations(
+                &child,
+                path,
+                ports,
+                out_count,
+                in_count,
+                declarations.as_deref_mut(),
+            );
             continue;
         }
         path.push(name.to_string());
+        if let Some(declarations) = declarations.as_deref_mut() {
+            declarations.record(child, path);
+        }
         if let Some(key) = parse_u32(child.attribute("outkey")) {
             *out_count += 1;
             ports.insert(key, path.clone());
@@ -1510,7 +1612,14 @@ fn collect_entry_ports(
             *in_count += 1;
             ports.insert(key, path.clone());
         }
-        collect_entry_ports(&child, path, ports, out_count, in_count);
+        collect_entry_ports_with_declarations(
+            &child,
+            path,
+            ports,
+            out_count,
+            in_count,
+            declarations.as_deref_mut(),
+        );
         path.pop();
     }
 }
@@ -2026,6 +2135,7 @@ fn read_db_component_resolved(
         input_ancestors,
         input_keys,
         output_keys,
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns,
         dynamic_json: None,

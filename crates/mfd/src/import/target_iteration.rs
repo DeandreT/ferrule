@@ -389,6 +389,28 @@ fn build_one(
     skipped: &mut Vec<Vec<String>>,
 ) {
     let target_path = iteration.target_path;
+    if iteration.output == IterationOutput::Repeated
+        && schema_node_at(&target.schema, &target_path)
+            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+        && super::constructed_variable_driver::declares_constructed_output(iteration.feed, builder)
+        && (!super::constructed_variable_driver::uniquely_declared_output(iteration.feed, builder)
+            || !super::constructed_variable_driver::unambiguous_record_inputs(
+                iteration.feed,
+                builder,
+            ))
+    {
+        builder.warnings.push(format!(
+            "iteration into `{}` has unproved or competing declared output producers for key {}; skipped",
+            target_path.join("/"),
+            iteration.feed,
+        ));
+        builder.warnings.push(format!(
+            "iteration into `{}` comes from an unsupported feed; skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
     let join = iteration.join;
     let feed = builder.resolve_iteration_feed(iteration.feed);
     let inherited_filters =
@@ -466,6 +488,69 @@ fn build_one(
         .sequence_component
         .and_then(|index| builder.sequence_expr(index));
     if source_path.is_none() && sequence.is_none() && join.is_none() {
+        if iteration.output == IterationOutput::Repeated
+            && !has_inherited_filter
+            && schema_node_at(&target.schema, &target_path)
+                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+            && target
+                .ports
+                .iter()
+                .filter(|(key, path)| {
+                    target.input_keys.contains(key)
+                        && **path == target_path
+                        && builder.edge_from.contains_key(key)
+                })
+                .count()
+                == 1
+            && plain_constructed_group_feed(iteration.feed, &feed)
+            && super::constructed_variable_driver::uniquely_declared_output(iteration.feed, builder)
+        {
+            if iteration.projects_whole_group {
+                if let Some(fields) = super::constructed_variable_driver::projection(
+                    iteration.feed,
+                    &target_path,
+                    target,
+                    builder,
+                    scopes,
+                ) {
+                    let nodes = fields
+                        .into_iter()
+                        .filter_map(|(field, feed)| {
+                            let mut path = target_path.clone();
+                            path.push(field);
+                            (!connected.contains(&path)).then_some((path, feed))
+                        })
+                        .map(|(path, feed)| {
+                            let anchor = scopes.enclosing_anchor(&path);
+                            Some((
+                                TargetLeaf::from_path(&path)?,
+                                builder.binding_node_at_anchor(feed, &path, &anchor)?,
+                            ))
+                        })
+                        .collect::<Option<Vec<_>>>();
+                    if let Some(nodes) = nodes {
+                        scopes.ensure_scope(&target_path);
+                        for (target, node) in nodes {
+                            scopes.add_binding(target, node);
+                        }
+                        return;
+                    }
+                }
+            } else if literal_constant_value(iteration.feed, builder).is_some()
+                || super::constructed_variable_driver::recognize(
+                    iteration.feed,
+                    &target_path,
+                    builder,
+                    scopes,
+                )
+            {
+                // A present constructed value contributes one group in the inherited context.
+                // Target cardinality wraps this constructed item as repetition;
+                // no source collection or generated-item frame is introduced.
+                scopes.ensure_scope(&target_path);
+                return;
+            }
+        }
         builder.warnings.push(format!(
             "iteration into `{}` comes from an unsupported feed; skipped",
             target_path.join("/")
@@ -831,6 +916,55 @@ fn build_one(
         if let Some(target) = TargetLeaf::from_path(&marker_path) {
             scopes.add_binding(target, type_value);
         }
+    }
+}
+
+fn plain_constructed_group_feed(output: u32, feed: &super::iteration::IterationFeed) -> bool {
+    !(feed.source_key != output
+        || feed.computed_source.is_some()
+        || feed.sequence_component.is_some()
+        || feed.db_where_component.is_some()
+        || !feed.source_suffix.is_empty()
+        || feed.has_filter
+        || feed.filter_expr.is_some()
+        || !feed.udf_filters.is_empty()
+        || feed.has_key_grouping
+        || feed.has_start_grouping
+        || feed.has_adjacent_grouping
+        || feed.has_end_grouping
+        || feed.has_block_grouping
+        || feed.distinct_key.is_some()
+        || feed.has_sort
+        || feed.has_windows()
+        || feed.order_issue.is_some()
+        || feed.projects_whole_group
+        || !feed.projections.is_empty())
+}
+
+pub(super) fn literal_constant_value(output: u32, builder: &GraphBuilder<'_>) -> Option<Value> {
+    let component = builder
+        .fn_by_output
+        .get(&output)
+        .map(|index| &builder.fn_components[*index])?;
+    if component.library != "core"
+        || component.name != "constant"
+        || component.kind != 2
+        || !component.inputs.is_empty()
+        || component.outputs.as_slice() != [output]
+    {
+        return None;
+    }
+    let (literal, datatype) = component.constant.as_ref()?;
+    if !matches!(
+        datatype.as_str(),
+        "string" | "boolean" | "integer" | "int" | "long" | "decimal" | "double" | "float"
+    ) {
+        return None;
+    }
+    match super::function::parse_constant(literal, datatype) {
+        value @ (Value::String(_) | Value::Bool(_) | Value::Int(_)) => Some(value),
+        Value::Float(value) if value.is_finite() => Some(Value::Float(value)),
+        _ => None,
     }
 }
 

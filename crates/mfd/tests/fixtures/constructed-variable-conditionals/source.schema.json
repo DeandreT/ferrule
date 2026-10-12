@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "Count": {
+      "type": "integer"
+    },
+    "Choose": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "title": "Source"
+}
