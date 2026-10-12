@@ -164,7 +164,7 @@ fn execute(
     label: &str,
     pipeline: &Pipeline,
     source: &Instance,
-) -> Result<engine::PipelineOutputs, PipelineError> {
+) -> Result<engine::PipelineOutputs, Box<PipelineError>> {
     std::fs::write(
         directory.join(format!("{label}-input.json")),
         serde_json::to_vec_pretty(source).unwrap(),
@@ -175,7 +175,7 @@ fn execute(
         &BTreeMap::from([(host_name(pipeline), source.clone())]),
     );
     retain(directory, label, &result);
-    result
+    result.map_err(Box::new)
 }
 
 fn assert_late_rule(error: &PipelineError) {
@@ -327,7 +327,7 @@ fn first_stage_error_and_lazy_selected_message_keep_original_pipeline_precedence
     let absent_pipeline = import(&absent, &absent_path);
     let error = execute(&absent, "no-message", &absent_pipeline, &input(true, false)).unwrap_err();
     assert!(
-        matches!(error, PipelineError::StageExecution { stage, source: EngineError::MappingFailure { rule: 1, message: None } } if stage == "mfd-stage-2")
+        matches!(*error, PipelineError::StageExecution { stage, source: EngineError::MappingFailure { rule: 1, message: None } } if stage == "mfd-stage-2")
     );
 }
 
