@@ -62,6 +62,8 @@ mod literal_group_drivers;
 mod edi_structure_variables;
 #[path = "code_generation/empty_constructed_scopes.rs"]
 mod empty_constructed_scopes;
+#[path = "code_generation/empty_iterated_scopes.rs"]
+mod empty_iterated_scopes;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
 #[path = "code_generation/json_variable_array_descendants.rs"]
