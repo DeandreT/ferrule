@@ -469,9 +469,8 @@ fn build_one(
         if iteration.output == IterationOutput::Repeated
             && !iteration.projects_whole_group
             && !has_inherited_filter
-            && schema_node_at(&target.schema, &target_path).is_some_and(|node| {
-                node.repeating && matches!(node.kind, SchemaKind::Group { .. })
-            })
+            && schema_node_at(&target.schema, &target_path)
+                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
             && target
                 .ports
                 .iter()
