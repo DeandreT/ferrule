@@ -1290,6 +1290,77 @@ fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
         }
 }
 
+fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
+    fn visit(scope: &Scope, route: mapping::SourceScopeLocation) -> Option<Diagnostic> {
+        if let ScopeIteration::OwnedSource {
+            source,
+            output_path: Some(node),
+        } = &scope.iteration
+        {
+            return Some(Diagnostic::OwnedSource {
+                diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                    location: crate::OwnedSourceDiagnosticLocation::Iteration { scope: route },
+                    request: Some(crate::OwnedSourceDiagnosticRequest::Iteration {
+                        owner: (&source.owner).into(),
+                        path: source.path.clone(),
+                    }),
+                    reason: crate::OwnedSourceCapabilityReason::Document,
+                    origin: crate::OwnedSourceCapabilityOrigin::Expression {
+                        namespace: crate::OwnedSourceNamespace::Main,
+                        node: *node,
+                    },
+                }
+                .into(),
+            });
+        }
+        if let Some(segments) = scope.concatenated() {
+            for (index, segment) in segments.iter().enumerate() {
+                if let Some(error) = visit(
+                    segment,
+                    route.descendant(mapping::SourceScopeStep::Segment(index)),
+                ) {
+                    return Some(error);
+                }
+            }
+        }
+        for (index, child) in scope.children.iter().enumerate() {
+            if let Some(error) = visit(
+                child,
+                route.descendant(mapping::SourceScopeStep::Child(index)),
+            ) {
+                return Some(error);
+            }
+        }
+        for (index, child) in scope.dynamic_children.iter().enumerate() {
+            if let Some(error) = visit(
+                &child.scope,
+                route.descendant(mapping::SourceScopeStep::DynamicChild(index)),
+            ) {
+                return Some(error);
+            }
+        }
+        None
+    }
+    if let Some(error) = visit(
+        &project.root,
+        mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
+    ) {
+        return Some(error);
+    }
+    for (index, target) in project.extra_targets.iter().enumerate() {
+        if let Some(error) = visit(
+            &target.root,
+            mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Named {
+                index,
+                name: target.name.clone(),
+            }),
+        ) {
+            return Some(error);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod structured_xml_admission_tests {
     use super::*;
@@ -1376,75 +1447,4 @@ mod structured_xml_admission_tests {
         project.source_options.xml_document = false;
         assert!(lower(&project).is_err());
     }
-}
-
-fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
-    fn visit(scope: &Scope, route: mapping::SourceScopeLocation) -> Option<Diagnostic> {
-        if let ScopeIteration::OwnedSource {
-            source,
-            output_path: Some(node),
-        } = &scope.iteration
-        {
-            return Some(Diagnostic::OwnedSource {
-                diagnostic: crate::OwnedSourceDiagnostic::Capability {
-                    location: crate::OwnedSourceDiagnosticLocation::Iteration { scope: route },
-                    request: Some(crate::OwnedSourceDiagnosticRequest::Iteration {
-                        owner: (&source.owner).into(),
-                        path: source.path.clone(),
-                    }),
-                    reason: crate::OwnedSourceCapabilityReason::Document,
-                    origin: crate::OwnedSourceCapabilityOrigin::Expression {
-                        namespace: crate::OwnedSourceNamespace::Main,
-                        node: *node,
-                    },
-                }
-                .into(),
-            });
-        }
-        if let Some(segments) = scope.concatenated() {
-            for (index, segment) in segments.iter().enumerate() {
-                if let Some(error) = visit(
-                    segment,
-                    route.descendant(mapping::SourceScopeStep::Segment(index)),
-                ) {
-                    return Some(error);
-                }
-            }
-        }
-        for (index, child) in scope.children.iter().enumerate() {
-            if let Some(error) = visit(
-                child,
-                route.descendant(mapping::SourceScopeStep::Child(index)),
-            ) {
-                return Some(error);
-            }
-        }
-        for (index, child) in scope.dynamic_children.iter().enumerate() {
-            if let Some(error) = visit(
-                &child.scope,
-                route.descendant(mapping::SourceScopeStep::DynamicChild(index)),
-            ) {
-                return Some(error);
-            }
-        }
-        None
-    }
-    if let Some(error) = visit(
-        &project.root,
-        mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
-    ) {
-        return Some(error);
-    }
-    for (index, target) in project.extra_targets.iter().enumerate() {
-        if let Some(error) = visit(
-            &target.root,
-            mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Named {
-                index,
-                name: target.name.clone(),
-            }),
-        ) {
-            return Some(error);
-        }
-    }
-    None
 }
