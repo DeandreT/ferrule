@@ -269,6 +269,7 @@ public static partial class FerruleJson
         RequireKind(kindElement, JsonValueKind.Object, $"schema node '{name}' kind", "object");
         var kind = RequiredString(kindElement, "kind");
         var repeating = OptionalBoolean(element, "repeating");
+        var jsonArrayWrapper = ReadJsonArrayWrapper(name, element, kindElement, kind, repeating);
         if (OptionalBoolean(element, "xml_optional") &&
             (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
              name.StartsWith('\u001f') || repeating ||
@@ -565,6 +566,7 @@ public static partial class FerruleJson
             repeating,
             nullable,
             OptionalBoolean(element, "container_nullable"),
+            jsonArrayWrapper,
             jsonAny,
             jsonFormats,
             scalarDomain,
@@ -590,6 +592,46 @@ public static partial class FerruleJson
             inclusiveAlternatives,
             xmlTypeAlternatives,
             recursiveReference);
+    }
+
+    private static bool ReadJsonArrayWrapper(string name, JsonElement element, JsonElement kindElement, string kind, bool repeating)
+    {
+        var flags = element.EnumerateObject().Where(property => property.NameEquals("json_array_wrapper")).ToArray();
+        if (flags.Length == 0) return false;
+        var invalid = $"Embedded JSON schema node '{name}' has invalid array-wrapper metadata.";
+        if (flags.Length != 1 || flags[0].Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw Boundary(invalid);
+        if (!flags[0].Value.GetBoolean()) return false;
+        if (kind != "group" || !repeating ||
+            !kindElement.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array || children.GetArrayLength() != 1) throw Boundary(invalid);
+        var item = children[0];
+        if (item.ValueKind != JsonValueKind.Object || OptionalString(item, "name") != "item" || !OptionalBoolean(item, "repeating")) throw Boundary(invalid);
+        foreach (var field in kindElement.EnumerateObject())
+        {
+            if (field.Name is "kind" or "children") continue;
+            if (field.Name == "dynamic" && field.Value.ValueKind == JsonValueKind.Null) continue;
+            if ((field.Name is "alternatives" or "required" or "xml_restricted_alternatives") && field.Value.ValueKind == JsonValueKind.Array && field.Value.GetArrayLength() == 0) continue;
+            throw Boundary(invalid);
+        }
+        foreach (var field in element.EnumerateObject())
+        {
+            if (field.Name is "name" or "kind" or "repeating" or "json_array_wrapper" or "container_nullable" or "item_count_range" or "json_contains" or "json_unique_items") continue;
+            if (field.Name is "attribute" or "text" or "nillable" or "xml_optional" or "xml_attribute_required" or "nullable" or "json_any" or "xml_type_alternatives")
+            {
+                if (field.Value.ValueKind == JsonValueKind.False) continue;
+                throw Boundary(invalid);
+            }
+            if (field.Name is "xml_name_alternatives" or "json_formats" or "xml_repeating_sequences" or "xml_repeating_choices")
+            {
+                if (field.Value.ValueKind == JsonValueKind.Array && field.Value.GetArrayLength() == 0) continue;
+                throw Boundary(invalid);
+            }
+            if (field.Name == "alternative_mode" && field.Value.ValueKind == JsonValueKind.String && field.Value.GetString() == "exclusive" ||
+                field.Name == "xml_alternative_kind" && field.Value.ValueKind == JsonValueKind.String && field.Value.GetString() == "xsi_type" ||
+                field.Name == "xml_wildcard_process_contents" && field.Value.ValueKind == JsonValueKind.String && field.Value.GetString() == "skip") continue;
+            if (field.Value.ValueKind == JsonValueKind.Null) continue;
+            throw Boundary(invalid);
+        }
+        return true;
     }
 
     private static void BindRecursiveReferences(JsonSchemaNode root)
@@ -1281,6 +1323,11 @@ public static partial class FerruleJson
                 budget.ExitRecursiveReference();
             }
         }
+        if (schema.JsonArrayWrapper)
+        {
+            var child = schema.Children[0];
+            return new FerruleGroup(new[] { new FerruleField(child.Name, ReadNode(child, element, budget, depth + 1)) });
+        }
         if (schema.JsonAny)
         {
             return new FerruleScalar(
@@ -1565,6 +1612,14 @@ public static partial class FerruleJson
             instance = mapped.Items[0];
         }
 
+        if (schema.JsonArrayWrapper)
+        {
+            var child = schema.Children[0];
+            if (instance is not FerruleGroup wrapperGroup || wrapperGroup.Fields.Count != 1 || !wrapperGroup.TryGetField(child.Name, out var wrapperValue))
+                throw Shape(schema.Name, "array item group with one `item` field", InstanceKind(instance));
+            WriteNode(writer, child, wrapperValue, budget, depth + 1);
+            return;
+        }
         if (schema.JsonAny)
         {
             WriteAny(writer, schema, instance);
@@ -3042,6 +3097,11 @@ public static partial class FerruleJson
             }
             return;
         }
+        if (schema.JsonArrayWrapper)
+        {
+            ValidateRawUniqueNode(schema.Children[0], element, budget, depth + 1);
+            return;
+        }
         if (schema.JsonAny || schema.IsScalar || element.ValueKind != JsonValueKind.Object)
         {
             return;
@@ -3347,6 +3407,7 @@ public static partial class FerruleJson
             bool repeating,
             bool nullable,
             bool containerNullable,
+            bool jsonArrayWrapper,
             bool jsonAny,
             IReadOnlyList<string> jsonFormats,
             JsonScalarDomain scalarDomain,
@@ -3377,6 +3438,7 @@ public static partial class FerruleJson
             Repeating = repeating;
             Nullable = nullable;
             ContainerNullable = containerNullable;
+            JsonArrayWrapper = jsonArrayWrapper;
             JsonAny = jsonAny;
             JsonFormats = jsonFormats;
             ScalarDomain = scalarDomain;
@@ -3412,6 +3474,7 @@ public static partial class FerruleJson
         public bool Nullable { get; }
 
         public bool ContainerNullable { get; private set; }
+        public bool JsonArrayWrapper { get; }
 
         public bool JsonAny { get; }
 

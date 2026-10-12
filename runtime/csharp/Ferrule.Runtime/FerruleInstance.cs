@@ -40,7 +40,7 @@ public sealed class FerruleField
 public sealed class FerruleGroup : FerruleInstance
 {
     private readonly IReadOnlyList<FerruleField> _fields;
-    private readonly Dictionary<string, FerruleInstance> _fieldsByName;
+    private readonly Dictionary<string, FerruleInstance>? _fieldsByName;
     private readonly bool _schemaDeclarations;
     private readonly FerruleXmlTypeOrigin? _origin;
 
@@ -94,12 +94,65 @@ public sealed class FerruleGroup : FerruleInstance
         _fields = new ReadOnlyCollection<FerruleField>(ordered);
     }
 
+    // The basic source bridge owns and admits every projection slot. This seam
+    // makes one exact immutable snapshot without growing legacy collections.
+    internal static FerruleGroup FromBasicSourceProjection(
+        ReadOnlySpan<FerruleField> fields, nuint maximumFields, OwnedCounter slots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+        var count = (nuint)fields.Length;
+        OwnedSourceAccounting.Limit(0, count, maximumFields, FerruleOwnedSourceLimitKind.Roots);
+        if (fields.Length > Array.MaxLength)
+            throw OwnedSourceAccounting.Overflow(FerruleOwnedSourceLimitKind.MetadataSlots);
+        for (var i = 0; i < fields.Length; i++)
+        {
+            ArgumentNullException.ThrowIfNull(fields[i]);
+            for (var j = 0; j < i; j++)
+            {
+                if (StringComparer.Ordinal.Equals(fields[j].Name, fields[i].Name))
+                    throw new FerruleRuntimeException(FerruleRuntimeError.DuplicateField,
+                        "Ferrule basic source projection has a duplicate field.");
+            }
+        }
+
+        // Snapshot slots coexist with the caller's admitted field backing.
+        // Both wrappers are admitted before the first allocation as well.
+        slots.Charge(OwnedSourceAccounting.Add(count, 2, FerruleOwnedSourceLimitKind.MetadataSlots));
+        var snapshot = new FerruleField[fields.Length];
+        fields.CopyTo(snapshot);
+        var view = new ReadOnlyCollection<FerruleField>(snapshot);
+        return new FerruleGroup(view);
+    }
+
+    private FerruleGroup(ReadOnlyCollection<FerruleField> projection)
+    {
+        _fields = projection;
+        _fieldsByName = null;
+        _schemaDeclarations = false;
+        _origin = null;
+    }
+
     public IReadOnlyList<FerruleField> Fields => _fields;
 
     public bool TryGetField(
         string name,
-        [NotNullWhen(true)] out FerruleInstance? value) =>
-        _fieldsByName.TryGetValue(name, out value);
+        [NotNullWhen(true)] out FerruleInstance? value)
+    {
+        if (_fieldsByName is not null)
+            return _fieldsByName.TryGetValue(name, out value);
+        ArgumentNullException.ThrowIfNull(name, "key");
+        for (var i = 0; i < _fields.Count; i++)
+        {
+            if (StringComparer.Ordinal.Equals(_fields[i].Name, name))
+            {
+                value = _fields[i].Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
 }
 
 public sealed class FerruleRepeated : FerruleInstance

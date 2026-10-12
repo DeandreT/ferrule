@@ -1,0 +1,78 @@
+use std::{fs, path::PathBuf};
+use codegen_runtime::{Instance, Value};
+use ferrule_generated_mapping as generated;
+
+fn scalar(tag: &serde_json::Value) -> Value {
+    match tag["kind"].as_str().expect("literal scalar tag") {
+        "Null" => Value::Null,
+        "String" => Value::String(tag["value"].as_str().expect("literal string").into()),
+        "Bool" => Value::Bool(tag["value"].as_bool().expect("literal boolean")),
+        "Int" => Value::Int(tag["value"].as_i64().expect("literal integer")),
+        "Float" => Value::Float(f64::from_bits(u64::from_str_radix(tag["bits"].as_str().expect("literal bits"),16).expect("literal binary64"))),
+        _ => panic!("unqualified scalar tag"),
+    }
+}
+fn source(replacement: Option<(&str, Value)>) -> Instance {
+    Instance::Group(vec![
+        ("Text".into(), Instance::Scalar(Value::String("birch & Ω".into()))),
+        ("Flag".into(), Instance::Scalar(Value::Bool(true))),
+        ("Count".into(), Instance::Scalar(Value::Int(-7))),
+        ("Measure".into(), Instance::Scalar(Value::Float(f64::from_bits(0x3ff4000000000000)))),
+    ].into_iter().map(|(name, value)| {
+        let changed=match &replacement { Some((field, value)) if name==*field => Instance::Scalar(value.clone()), _ => value };
+        (name, changed)
+    }).collect::<Vec<_>>().into())
+}
+fn same(actual: &Instance, expected: &Instance) -> bool {
+    match (actual, expected) {
+        (Instance::Scalar(Value::Float(a)),Instance::Scalar(Value::Float(e))) => a.to_bits()==e.to_bits(),
+        _ => actual==expected,
+    }
+}
+fn main() -> Result<(),Box<dyn std::error::Error>> {
+    let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if args.len()!=2 { return Err("need design and output directory".into()); }
+    let root=PathBuf::from(&args[1]);
+    let cases:serde_json::Value=serde_json::from_slice(&fs::read(root.join("cases.json"))?)?;
+    let named=args[0]=="named";
+    let case_name=if named{"source-String-modern"}else{args[0].as_str()};
+    let case=cases.as_array().ok_or("literal cases")?.iter().find(|case|case["name"]==case_name).ok_or("literal design")?;
+    let expected=Instance::Scalar(scalar(&case["expected_scalar"]));
+    let input=source(None);
+    let before=format!("{input:#?}");
+    let actual=generated::execute_outputs(&input);
+    let text=fs::read_to_string(root.join("input.xml"))?;
+    let wire=generated::execute_xml_outputs(&text);
+    let bytes=generated::execute_xml_bytes_outputs(text.as_bytes());
+    fs::write(root.join("positive-complete.original.txt"),format!("source={input:#?}\nexpected={expected:#?}\nactual={actual:#?}\ntext={wire:#?}\nbytes={bytes:#?}\n"))?;
+    let wire_expected=case["wire"].as_str().ok_or("literal wire")?;
+    let outputs=actual?;
+    let extras_good=if named{outputs.extras.len()==1&&outputs.extras[0].name=="Audit"&&same(&outputs.extras[0].instance,&expected)}else{outputs.extras.is_empty()};
+    if !same(&outputs.primary,&expected)||!extras_good||format!("{input:#?}")!=before { return Err("complete typed scalar or caller differs".into()); }
+    let wire=wire?;let bytes=bytes?;
+    let extras_good=if named{wire.extras.len()==1&&wire.extras[0].name=="Audit"&&wire.extras[0].document==wire_expected&&bytes.extras.len()==1&&bytes.extras[0].name=="Audit"&&bytes.extras[0].document==wire_expected.as_bytes()}else{wire.extras.is_empty()&&bytes.extras.is_empty()};
+    if wire.primary!=wire_expected||bytes.primary!=wire_expected.as_bytes()||!extras_good { return Err("complete XML text/bytes differ".into()); }
+    let controls:serde_json::Value=serde_json::from_slice(&fs::read(root.join("typed-controls.json"))?)?;
+    let descriptor=fs::read_to_string(root.join("target-descriptor.json"))?;
+    let mut outcomes=Vec::new();
+    let mut good=true;
+    for control in controls.as_array().ok_or("literal controls")? {
+        if control["design"]!=args[0] {continue;}
+        let input=source(Some((control["input_field"].as_str().ok_or("field")?,scalar(&control["input"]))));
+        let before=format!("{input:#?}");
+        let expected=Instance::Scalar(scalar(&control["expected"]));
+        let actual=generated::execute(&input);
+        let wire=actual.as_ref().ok().map(|value|codegen_runtime::serialize_xml_document(&descriptor,value,false,false,None,None));
+        let comparison=matches!(&actual,Ok(value) if same(value,&expected))&&format!("{input:#?}")==before
+            &&matches!(&wire,Some(Err(error)) if error.kind==codegen_runtime::XmlBoundaryErrorKind::Output
+                &&error.bytes.is_none()&&error.limit.is_none()
+                &&error.detail==format!("element `Output` expected {}, got {}",control["xml_error"]["expected"].as_str().expect("expected type"),control["xml_error"]["got"].as_str().expect("got kind")));
+        outcomes.push((control["name"].as_str().ok_or("name")?.to_owned(),input,expected,actual,wire,comparison));
+        fs::write(root.join("typed-boundaries-complete.original.txt"),format!("{outcomes:#?}\n"))?;
+        good&=comparison;
+    }
+    let expected_controls=match args[0].as_str(){"source-Float-modern"=>3,"source-String-modern"|"source-Bool-modern"=>1,_=>0};
+    if outcomes.len()!=expected_controls||!good {return Err("complete typed boundary errors differ".into());}
+    println!("SCALAR_ROOT339_COMPLETE positive=1 typed_controls={}",outcomes.len());
+    Ok(())
+}

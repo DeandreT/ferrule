@@ -1,0 +1,1 @@
+{"type":"object","properties":{"Title":{"type":"string"},"Details":{"type":"object","properties":{"Code":{"type":"string"}}},"UnusedObject":{"type":"object","properties":{"Value":{"type":"integer"}}},"UnusedRows":{"type":"array","items":{"type":"string"}}}}
