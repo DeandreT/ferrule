@@ -1,12 +1,34 @@
 # Ferrule CI runners: Cleo and Over
 
-Native CI and generated-backend suites default to `ferrule-cleo`. `ferrule-over`
-on the OVHcloud host is an optional alternative. Set repository variable
-`CI_RUNNER` to `cleo`, `over`, or `github-hosted` to choose the default for new
-runs. The manual workflow's runner choice overrides that variable for one run.
-There is no automatic failover: an offline selected runner leaves jobs queued.
-Fork pull requests always use GitHub's `ubuntu-latest` machines. Pages remains
-on its separate GitHub-hosted workflow.
+Native CI and generated-backend suites default to `auto`: the two Cleo workers
+are preferred, with `ferrule-over` automatically eligible during a Cleo outage.
+Set repository variable `CI_RUNNER` to `auto`, `cleo`, `over`, or `github-hosted`.
+Manual dispatch overrides the variable for one run. Explicit host selections pin
+the host; forks always use `ubuntu-latest`. Pages keeps its separate hosted workflow.
+
+Vecta's user timer polls GitHub's complete runner inventory every 30 seconds.
+After two separated observations where both `ferrule-cleo` and `ferrule-cleo-2`
+are offline, the controller adds `ferrule-primary` and the legacy `ferrule-ovh`
+labels to `ferrule-over`. When either Cleo worker returns online, it removes only
+those labels from Over. A busy primary stays preferred; jobs wait for it rather
+than spilling onto Over. Existing running jobs are never cancelled or restarted,
+and already queued automatic/legacy jobs can use the backup during the outage.
+The explicit `ferrule-over` label is always retained.
+
+The same controller maintains `wareboxes-primary`/`wareboxes-ci` on
+`wareboxes-over` when `wareboxes-cleo` is offline. It changes labels only on the
+known backup registrations. Missing/ambiguous inventories or API errors preserve
+the last state. Vecta must remain running with network access and its existing
+GitHub CLI authentication; credentials stay outside the CI containers and
+workflow secrets. Install on Vecta from this checkout:
+
+```sh
+bash scripts/ci/install-runner-failover.sh
+systemctl --user status ci-runner-failover.timer --no-pager
+journalctl --user -u ci-runner-failover.service -n 50 --no-pager
+```
+
+Stop the timer before making scheduling-label changes for maintenance.
 
 ## Cleo's persistent hosting
 
@@ -25,16 +47,35 @@ ssh cleo 'mkdir -p /home/deck/services/ferrule/provision'
 scp scripts/ci/cleo-runner.Containerfile scripts/ci/cleo-runner-entrypoint.sh \
   scripts/ci/provision-cleo-runner.sh scripts/ci/guard-ovh-job.sh \
   scripts/ci/prepare-ovh-job.py scripts/ci/compact-job-evidence.py \
-  scripts/ci/reclaim-build-cache.py cleo:/home/deck/services/ferrule/provision/
+  scripts/ci/reclaim-build-cache.py scripts/ci/ferrule-ci.slice cleo:/home/deck/services/ferrule/provision/
 gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
   --jq .token | ssh cleo 'bash /home/deck/services/ferrule/provision/provision-cleo-runner.sh'
 ```
 
 The installer requires 32 GiB free. A private container runs as `ferrule-runner`,
 without sudo, a Docker socket, host credentials, or desktop display sockets.
-Xvfb supplies isolated graphical displays. Cleo permits two CPU cores and 5 GiB
-memory for this container, with bounded build/test parallelism. The separate
-Wareboxes runner has its own home and container.
+Xvfb supplies isolated graphical displays. Each Ferrule worker permits two CPU
+threads and 5 GiB memory, with one Cargo build at a time. Both services belong to
+`ferrule-ci.slice`, which caps their combined CPU at four threads, starts memory
+reclaim at 6 GiB, caps resident memory at 7 GiB and swap at 3 GiB. This leaves
+physical memory for Wareboxes' independent 6 GiB container and the host.
+
+Slot 1 uses `services/ferrule/home`; slot 2 uses `services/ferrule/slots/2/home`.
+Their checkouts, Cargo targets, compiler caches, SDKs and retained evidence are
+independent. The image is reused; no Cargo target tree is copied or shared.
+The second registration is named `ferrule-cleo-2`, with the same primary labels.
+After slot 1 belongs to the bounded slice, provision slot 2 with:
+
+```sh
+gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
+  --jq .token | ssh cleo 'bash /home/deck/services/ferrule/provision/provision-cleo-runner.sh 2'
+```
+
+For an existing first service, drain only its scheduling labels, wait for GitHub
+idle and no `Runner.Worker` process, stop it, install `ferrule-ci.slice` in
+`~/.config/systemd/user`, add `Slice=ferrule-ci.slice` to its Quadlet `[Service]`,
+reload/start the service and restore its labels. Do not restart an active worker.
+The second-slot installer refuses an unbounded first service.
 
 Quadlet configuration lives at
 `/home/deck/.config/containers/systemd/ferrule-cleo.container`. Its `[Install]`
@@ -250,8 +291,8 @@ The routing follows GitHub's [self-hosted runner label documentation](https://do
 Review GitHub's [runner security guidance](https://docs.github.com/en/actions/reference/security/secure-use)
 before expanding trusted inputs or granting account privileges.
 
-To return to the primary runner, set `CI_RUNNER=cleo`. During migration, the
-legacy `ferrule-ovh` label belongs only to Cleo, and `OVH_RUNNER_ENABLED=true`
-routes existing main/workflow revisions there until this migration is merged.
-Over retains `ferrule-over` for explicit selection. The old variable has no effect
-on the updated selectors.
+To restore Cleo preference with automatic fallback, set `CI_RUNNER=auto`.
+During migration, `OVH_RUNNER_ENABLED=true` routes older workflow revisions to
+`ferrule-ovh`: normally the Cleo workers, with Over eligible during a confirmed
+Cleo outage. Over retains `ferrule-over` for explicit selection. The old variable
+has no effect on the updated selectors.

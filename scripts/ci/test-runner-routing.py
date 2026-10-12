@@ -25,12 +25,12 @@ class RoutingTests(unittest.TestCase):
                     github = Context(event_name=event, repository="DeandreT/ferrule",
                                      event=Context(pull_request=Context(head=Context(repo=Context(
                                          full_name="foreign/repo" if fork else "DeandreT/ferrule")))))
-                    for selected in ("", "cleo", "over", "github-hosted"):
-                        for configured in ("", "cleo", "over", "github-hosted"):
-                            choice = selected or configured or "cleo"
+                    for selected in ("", "auto", "cleo", "over", "github-hosted"):
+                        for configured in ("", "auto", "cleo", "over", "github-hosted"):
+                            choice = selected or configured or "auto"
                             expected = (["ubuntu-latest"] if (event == "pull_request" and fork)
                                         or choice == "github-hosted" else
-                                        ["self-hosted", "Linux", "X64", "ferrule-" + choice])
+                                        ["self-hosted", "Linux", "X64", "ferrule-" + ("primary" if choice == "auto" else choice)])
                             actual = eval(code, {"__builtins__": {}, "fromJSON": json.loads,
                                                "github": github, "inputs": Context(runner=selected),
                                                "vars": Context(CI_RUNNER=configured)})
