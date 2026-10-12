@@ -112,10 +112,51 @@ class CacheSpaceTests(unittest.TestCase):
         self.preserve()
 
     @staticmethod
-    def mount_record(point):
+    def mount_record(point, *, root="/", filesystem="ext4"):
         escaped = (str(point).replace("\\", r"\134").replace(" ", r"\040")
                    .replace("\t", r"\011").replace("\n", r"\012"))
-        return f"42 1 0:1 / {escaped} rw shared:7 - ext4 device rw\n"
+        return f"42 1 0:1 {root} {escaped} rw shared:7 - {filesystem} device rw\n"
+
+    def test_unrelated_namespace_roots_keep_normal_cache_reclamation(self):
+        text = "".join(self.mount_record(
+            f"/unrelated/namespaces/{name}", root=f"{name}:[4026531833]",
+            filesystem="nsfs")
+            for name in ("cgroup", "ipc", "mnt", "net", "pid", "time", "user", "uts"))
+        text += self.mount_record("/unrelated/filesystem")
+        result = self.run_reclaim(available=self.capacity,
+                                  mounts=lambda fd, **options: reclaim.reject_mounts(
+                                      fd, mountinfo=text, **options))
+        self.assertEqual(result["reclaimed_targets"], list(reclaim.TARGETS))
+        self.assertEqual(result["after_bytes"], 24 * reclaim.GIB)
+        self.preserve()
+
+    def test_namespace_mountpoints_refuse_before_either_target_is_trimmed(self):
+        points = (self.cache, self.cache / "workspace-target",
+                  self.markers[1].parent, self.markers[1])
+        for point in points:
+            with self.subTest(point=point):
+                text = self.mount_record(point, root="net:[4026531833]",
+                                         filesystem="nsfs")
+                with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+                    self.run_reclaim(available=self.capacity,
+                                     mounts=lambda fd, **options: reclaim.reject_mounts(
+                                         fd, mountinfo=text, **options))
+                self.assertTrue(all(p.exists() for p in self.markers))
+                self.preserve()
+
+    def test_malformed_namespace_roots_preserve_all_targets(self):
+        invalid = (("net:[unknown]", "nsfs"), ("net:4026531833", "nsfs"),
+                   ("unknown:[4026531833]", "nsfs"), ("net:[-1]", "nsfs"),
+                   ("net:[4026531833]", "ext4"), ("net:[4026531833]", "tmpfs"))
+        for root, filesystem in invalid:
+            with self.subTest(root=root, filesystem=filesystem):
+                text = self.mount_record("/unrelated", root=root, filesystem=filesystem)
+                with self.assertRaisesRegex(ValueError, "Mount inventory"):
+                    self.run_reclaim(available=self.capacity,
+                                     mounts=lambda fd, **options: reclaim.reject_mounts(
+                                         fd, mountinfo=text, **options))
+                self.assertTrue(all(p.exists() for p in self.markers))
+                self.preserve()
 
     def test_synthetic_mounts_refuse_before_either_target_is_trimmed(self):
         target = self.cache / "workspace-target"
