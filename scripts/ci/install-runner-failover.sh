@@ -8,7 +8,7 @@ mkdir -p "$controller_dir" "$unit_dir"
 install -m 0755 "$script_dir/runner-failover.py" "$controller_dir/runner-failover.py"
 cat > "$unit_dir/ci-runner-failover.service" <<UNIT
 [Unit]
-Description=Prefer Cleo CI workers and enable Over during confirmed outages
+Description=Prefer idle Cleo CI workers and enable Over when Cleo has no idle slot
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 -I $controller_dir/runner-failover.py --state-dir $HOME/.local/state/ci-runner-failover

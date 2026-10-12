@@ -1,24 +1,29 @@
 # Ferrule CI runners: Cleo and Over
 
 Native CI and generated-backend suites default to `auto`: the two Cleo workers
-are preferred, with `ferrule-over` automatically eligible during a Cleo outage.
+are preferred, with `ferrule-over` automatically eligible when Cleo has no idle slot.
 Set repository variable `CI_RUNNER` to `auto`, `cleo`, `over`, or `github-hosted`.
 Manual dispatch overrides the variable for one run. Explicit host selections pin
 the host; forks always use `ubuntu-latest`. Pages keeps its separate hosted workflow.
 
 Vecta's user timer polls GitHub's complete runner inventory every 30 seconds.
-After two separated observations where both `ferrule-cleo` and `ferrule-cleo-2`
-are offline, the controller adds `ferrule-primary` and the legacy `ferrule-ovh`
-labels to `ferrule-over`. When either Cleo worker returns online, it removes only
-those labels from Over. A busy primary stays preferred; jobs wait for it rather
-than spilling onto Over. Existing running jobs are never cancelled or restarted,
-and already queued automatic/legacy jobs can use the backup during the outage.
+After two separated complete observations where every online Cleo worker is
+busy, or both `ferrule-cleo` and `ferrule-cleo-2` are offline, the controller adds
+`ferrule-primary` and the legacy `ferrule-ovh` labels to `ferrule-over`. An offline
+worker does not count as an available slot. When either Cleo worker is online
+and idle, the next poll removes only those labels from Over. This enables
+overflow after roughly 30–60 seconds of occupied capacity; GitHub chooses among
+eligible idle runners. Existing running jobs are never cancelled or restarted,
+and already queued automatic/legacy jobs can use the backup during saturation
+or an outage.
 The explicit `ferrule-over` label is always retained.
 
 The same controller maintains `wareboxes-primary`/`wareboxes-ci` on
-`wareboxes-over` when `wareboxes-cleo` is offline. It changes labels only on the
-known backup registrations. Missing/ambiguous inventories or API errors preserve
-the last state. Vecta must remain running with network access and its existing
+`wareboxes-over` when `wareboxes-cleo` is busy or offline, with the same confirmation
+and idle recovery rules. It changes labels only on the known backup registrations.
+Missing/ambiguous inventories, including absent or nonboolean busy flags, refuse
+decisions. API failures preserve the last saved state, although partial label
+updates may already have happened. Vecta must remain running with network access and its existing
 GitHub CLI authentication; credentials stay outside the CI containers and
 workflow secrets. Install on Vecta from this checkout:
 
@@ -293,6 +298,6 @@ before expanding trusted inputs or granting account privileges.
 
 To restore Cleo preference with automatic fallback, set `CI_RUNNER=auto`.
 During migration, `OVH_RUNNER_ENABLED=true` routes older workflow revisions to
-`ferrule-ovh`: normally the Cleo workers, with Over eligible during a confirmed
-Cleo outage. Over retains `ferrule-over` for explicit selection. The old variable
+`ferrule-ovh`: normally the Cleo workers, with Over eligible during confirmed
+Cleo saturation or an outage. Over retains `ferrule-over` for explicit selection. The old variable
 has no effect on the updated selectors.

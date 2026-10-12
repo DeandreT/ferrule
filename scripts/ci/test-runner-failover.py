@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Qualify outage/recovery decisions and API/state failure boundaries."""
+"""Qualify busy/outage/recovery decisions and API/state failure boundaries."""
 import copy
 import contextlib
 import importlib.util
 import io
+import itertools
 import json
 from pathlib import Path
 import tempfile
@@ -16,10 +17,11 @@ failover = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(failover)
 
 
-def snapshot(repository, primary_status="offline", backup_status="online"):
+def snapshot(repository, primary_status="offline", backup_status="online", primary_busy=True):
     primary, backup, _ = failover.POOLS[repository]
     runners = [dict(name=name, id=index + 20, status=primary_status if name in primary else backup_status,
-                    busy=True, labels=[dict(name="Linux"), dict(name="explicit-or-unrelated")])
+                    busy=primary_busy if name in primary else False,
+                    labels=[dict(name="Linux"), dict(name="explicit-or-unrelated")])
                for index, name in enumerate((*primary, backup))]
     return [dict(total_count=len(runners), runners=runners)]
 
@@ -37,17 +39,116 @@ class FailoverTests(unittest.TestCase):
             self.assertEqual({operation[2] for operation in operations}, set(failover.POOLS[repository][2]))
             self.assertTrue(all(operation[0] == "POST" for operation in operations))
 
-    def test_busy_primary_and_partial_cleo_outage_keep_primary_preferred(self):
+    def test_busy_primary_and_partial_cleo_outage_enable_over(self):
         repository = "DeandreT/ferrule"
         pages = snapshot(repository)
         pages[0]["runners"][1]["status"] = "online"
         pages[0]["runners"][-1]["labels"] += [dict(name=label) for label in failover.POOLS[repository][2]]
         runners = failover.inventory(pages, repository)
-        state, operations = failover.plan(repository, runners, {"availability": "over", "consecutive": 2,
+        state, operations = failover.plan(repository, runners, {"availability": "over", "consecutive": 1,
                                                                "observed_at": 100}, 130)
-        self.assertEqual(state["availability"], "cleo")
-        self.assertEqual({operation[2] for operation in operations}, set(failover.POOLS[repository][2]))
-        self.assertTrue(all(operation[0] == "DELETE" for operation in operations))
+        self.assertEqual(state["availability"], "over")
+        self.assertEqual(state["consecutive"], 2)
+        self.assertEqual(operations, [])  # Existing scheduling labels already enable Over.
+
+    def test_fully_busy_pools_require_two_separated_complete_observations(self):
+        for repository in failover.POOLS:
+            runners = failover.inventory(snapshot(repository, primary_status="online"), repository)
+            first, operations = failover.plan(repository, runners, {}, 100)
+            self.assertEqual(operations, [])
+            for now in (101, 119, 221):
+                _, operations = failover.plan(repository, runners, first, now)
+                self.assertEqual(operations, [])
+            _, operations = failover.plan(repository, runners, first, 130)
+            self.assertEqual({operation[2] for operation in operations}, set(failover.POOLS[repository][2]))
+            self.assertTrue(all(operation[0] == "POST" for operation in operations))
+
+    def test_any_idle_primary_restores_cleo_preference(self):
+        for repository in failover.POOLS:
+            primary, _, labels = failover.POOLS[repository]
+            for idle_name in primary:
+                for other_status in ("online", "offline"):
+                    with self.subTest(repository=repository, idle=idle_name, other=other_status):
+                        pages = snapshot(repository, primary_status=other_status)
+                        runner = next(r for r in pages[0]["runners"] if r["name"] == idle_name)
+                        runner.update(status="online", busy=False)
+                        pages[0]["runners"][-1]["labels"] += [dict(name=label) for label in labels]
+                        runners = failover.inventory(pages, repository)
+                        state, operations = failover.plan(repository, runners,
+                            dict(availability="over", consecutive=2, observed_at=100), 130)
+                        self.assertEqual(state["availability"], "cleo")
+                        self.assertEqual({operation[2] for operation in operations}, set(labels))
+                        self.assertTrue(all(operation[0] == "DELETE" for operation in operations))
+
+    def test_idle_observation_breaks_busy_confirmation(self):
+        for repository in failover.POOLS:
+            runners = failover.inventory(snapshot(repository, primary_status="online"), repository)
+            first, _ = failover.plan(repository, runners, {}, 100)
+            primary = failover.POOLS[repository][0][0]
+            runners[primary]["busy"] = False
+            idle, _ = failover.plan(repository, runners, first, 130)
+            runners[primary]["busy"] = True
+            busy, operations = failover.plan(repository, runners, idle, 160)
+            self.assertEqual(busy["consecutive"], 1)
+            self.assertEqual(operations, [])
+
+    def test_missing_or_nonboolean_capacity_refuses_inventory(self):
+        for repository in failover.POOLS:
+            for index in range(len(snapshot(repository)[0]["runners"])):
+                for bad in (None, 0, 1, "false", "true"):
+                    with self.subTest(repository=repository, index=index, busy=bad):
+                        pages = snapshot(repository)
+                        pages[0]["runners"][index]["busy"] = bad
+                        with self.assertRaises(ValueError):
+                            failover.inventory(pages, repository)
+                pages = snapshot(repository)
+                del pages[0]["runners"][index]["busy"]
+                with self.assertRaises(ValueError):
+                    failover.inventory(pages, repository)
+
+    def test_busy_pool_with_offline_backup_does_not_enable_it(self):
+        for repository in failover.POOLS:
+            runners = failover.inventory(snapshot(repository, primary_status="online",
+                                                  backup_status="offline"), repository)
+            _, operations = failover.plan(repository, runners,
+                dict(availability="over", consecutive=1, observed_at=100), 130)
+            self.assertEqual(operations, [])
+
+    def test_capacity_matrix_changes_only_known_scheduling_labels(self):
+        conditions = (("online", False), ("online", True),
+                      ("offline", False), ("offline", True))
+        for repository in failover.POOLS:
+            primary, _, labels = failover.POOLS[repository]
+            for slots in itertools.product(conditions, repeat=len(primary)):
+                for backup_status in ("online", "offline"):
+                    with self.subTest(repository=repository, slots=slots, backup=backup_status):
+                        pages = snapshot(repository, backup_status=backup_status)
+                        for runner, (status, busy) in zip(pages[0]["runners"], slots):
+                            runner.update(status=status, busy=busy)
+                        pages[0]["runners"][-1]["labels"].append(dict(name=labels[0]))
+                        runners = failover.inventory(pages, repository)
+                        _, operations = failover.plan(repository, runners,
+                            dict(availability="over", consecutive=1, observed_at=100), 130)
+                        idle = ("online", False) in slots
+                        expected = ([("DELETE", pages[0]["runners"][-1]["id"], labels[0])]
+                                    if idle else
+                                    [("POST", pages[0]["runners"][-1]["id"], labels[1])]
+                                    if backup_status == "online" else [])
+                        self.assertEqual(operations, expected)
+
+    def test_invalid_capacity_never_mutates_labels_or_saved_state(self):
+        for repository in failover.POOLS:
+            with tempfile.TemporaryDirectory() as directory:
+                state = Path(directory) / "state.json"
+                original = json.dumps(dict(availability="over", consecutive=2, observed_at=100))
+                state.write_text(original)
+                pages = snapshot(repository, primary_status="online")
+                del pages[0]["runners"][0]["busy"]
+                with patch.object(failover, "api", return_value=pages) as api:
+                    with self.assertRaises(ValueError):
+                        failover.reconcile(repository, state, 130)
+                    self.assertEqual(api.call_count, 1)
+                self.assertEqual(state.read_text(), original)
 
     def test_offline_backup_is_not_enabled(self):
         repository = "wareboxes/wareboxes"
@@ -84,7 +185,7 @@ class FailoverTests(unittest.TestCase):
 
     def test_recovery_deletes_only_scheduling_labels(self):
         for repository in failover.POOLS:
-            pages = snapshot(repository, primary_status="online")
+            pages = snapshot(repository, primary_status="online", primary_busy=False)
             pages[0]["runners"][-1]["labels"] += [dict(name=label) for label in failover.POOLS[repository][2]]
             with tempfile.TemporaryDirectory() as directory:
                 state = Path(directory) / "state.json"
@@ -115,7 +216,7 @@ class FailoverTests(unittest.TestCase):
                 state = root / "DeandreT-ferrule.json"
                 previous = json.dumps(dict(availability="over", consecutive=1, observed_at=100))
                 state.write_text(previous)
-                pages = snapshot(repository, primary_status=primary_status)
+                pages = snapshot(repository, primary_status=primary_status, primary_busy=False)
                 backup = pages[0]["runners"][-1]
                 scheduling = set(failover.POOLS[repository][2])
                 if method == "DELETE":

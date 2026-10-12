@@ -30,8 +30,9 @@ def inventory(pages, repository):
                 raise ValueError("unexpected automatic pool member")
             continue
         if (runner["name"] in by_name or type(runner["id"]) is not int
-                or runner["id"] in ids or runner["status"] not in ("online", "offline")):
-            raise ValueError("ambiguous runner identity or status")
+                or runner["id"] in ids or runner["status"] not in ("online", "offline")
+                or type(runner.get("busy")) is not bool):
+            raise ValueError("ambiguous runner identity, status or capacity")
         if any(label["name"] == "Linux" for label in runner["labels"]) is False:
             raise ValueError("unexpected runner platform")
         ids.add(runner["id"])
@@ -43,9 +44,9 @@ def inventory(pages, repository):
 
 def plan(repository, runners, previous, now):
     primary_names, backup_name, labels = POOLS[repository]
-    # Busy is deliberately ignored: waiting for Cleo is the preferred policy.
-    primary_online = any(runners[name]["status"] == "online" for name in primary_names)
-    availability = "cleo" if primary_online else "over"
+    primary_idle = any(runners[name]["status"] == "online" and not runners[name]["busy"]
+                       for name in primary_names)
+    availability = "cleo" if primary_idle else "over"
     consecutive = 1
     if (previous.get("availability") == availability
             and 20 <= now - previous.get("observed_at", now) <= 120):
@@ -54,9 +55,9 @@ def plan(repository, runners, previous, now):
     backup = runners[backup_name]
     current = {label["name"] for label in backup["labels"]}
     operations = []
-    # Remove fallback eligibility immediately when any primary returns.
-    # Outages must appear in two separate fresh, complete observations.
-    if primary_online:
+    # Prefer any available Cleo slot; never interrupt an existing Over job.
+    # Busy/offline pools must appear in two fresh, complete observations.
+    if primary_idle:
         operations = [("DELETE", backup["id"], label) for label in labels if label in current]
     elif consecutive >= 2 and backup["status"] == "online":
         operations = [("POST", backup["id"], label) for label in labels if label not in current]
