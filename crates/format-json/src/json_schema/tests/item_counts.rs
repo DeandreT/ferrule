@@ -122,7 +122,7 @@ fn all_of_delays_and_intersects_array_count_constraints() {
 }
 
 #[test]
-fn malformed_ambiguous_and_nested_count_constraints_reject() {
+fn malformed_and_ambiguous_count_constraints_reject() {
     for (schema, expected) in [
         (
             r#"{"title":"x","type":"array","minItems":-1,"items":{}}"#,
@@ -143,15 +143,6 @@ fn malformed_ambiguous_and_nested_count_constraints_reject() {
         (
             r#"{"title":"x","minItems":1}"#,
             "without a concrete array type",
-        ),
-        (
-            r#"{
-  "title":"x",
-  "type":"array",
-  "minItems":1,
-  "items":{"type":"array","maxItems":2,"items":{"type":"string"}}
-}"#,
-            "distinct wrapper levels",
         ),
     ] {
         assert!(

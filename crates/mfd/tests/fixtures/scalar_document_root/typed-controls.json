@@ -1,0 +1,95 @@
+[
+  {
+    "name": "float-infinity",
+    "design": "source-Float-modern",
+    "input_field": "Measure",
+    "input": {
+      "kind": "Float",
+      "bits": "7ff0000000000000"
+    },
+    "expected": {
+      "kind": "Float",
+      "bits": "7ff0000000000000"
+    },
+    "xml_error": {
+      "variant": "ValueType",
+      "name": "Output",
+      "expected": "Float",
+      "got": "non-finite float"
+    }
+  },
+  {
+    "name": "float-negative-infinity",
+    "design": "source-Float-modern",
+    "input_field": "Measure",
+    "input": {
+      "kind": "Float",
+      "bits": "fff0000000000000"
+    },
+    "expected": {
+      "kind": "Float",
+      "bits": "fff0000000000000"
+    },
+    "xml_error": {
+      "variant": "ValueType",
+      "name": "Output",
+      "expected": "Float",
+      "got": "non-finite float"
+    }
+  },
+  {
+    "name": "float-nan",
+    "design": "source-Float-modern",
+    "input_field": "Measure",
+    "input": {
+      "kind": "Float",
+      "bits": "7ff8000000000000"
+    },
+    "expected": {
+      "kind": "Float",
+      "bits": "7ff8000000000000"
+    },
+    "xml_error": {
+      "variant": "ValueType",
+      "name": "Output",
+      "expected": "Float",
+      "got": "non-finite float"
+    }
+  },
+  {
+    "name": "string-null",
+    "design": "source-String-modern",
+    "input_field": "Text",
+    "input": {
+      "kind": "Null"
+    },
+    "expected": {
+      "kind": "Null"
+    },
+    "xml_error": {
+      "variant": "ValueType",
+      "name": "Output",
+      "expected": "String",
+      "got": "null"
+    }
+  },
+  {
+    "name": "bool-wrong-kind",
+    "design": "source-Bool-modern",
+    "input_field": "Flag",
+    "input": {
+      "kind": "String",
+      "value": "wrong"
+    },
+    "expected": {
+      "kind": "String",
+      "value": "wrong"
+    },
+    "xml_error": {
+      "variant": "ValueType",
+      "name": "Output",
+      "expected": "Bool",
+      "got": "string"
+    }
+  }
+]

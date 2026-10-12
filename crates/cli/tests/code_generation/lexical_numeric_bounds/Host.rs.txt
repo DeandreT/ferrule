@@ -1,0 +1,132 @@
+use codegen_runtime::{Instance, JsonBoundaryError, Value, XmlTypeOrigin, field, group, scalar};
+use ferrule_generated_mapping::{execute, execute_json, execute_json_bytes};
+use serde_json::Value as Json;
+use std::{fs, path::Path};
+
+fn expected(case: &Json) -> Instance {
+    group(
+        case["expected_values"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, row)| {
+                let value = match row["tag"].as_str().unwrap() {
+                    "Int" => Value::Int(row["value"].as_i64().unwrap()),
+                    "Float" => Value::Float(f64::from_bits(
+                        u64::from_str_radix(row["bits"].as_str().unwrap(), 16).unwrap(),
+                    )),
+                    _ => panic!("unexpected authored scalar tag"),
+                };
+                field(name, scalar(value))
+            }),
+    )
+}
+fn complete_instance(actual: &Instance, case: &Json) -> bool {
+    let Instance::Group(fields) = actual else {
+        return false;
+    };
+    let wanted = case["expected_values"].as_object().unwrap();
+    fields.xml_type_origin() == XmlTypeOrigin::Unknown
+        && fields.len() == wanted.len()
+        && fields
+            .iter()
+            .zip(wanted)
+            .all(|((name, value), (wanted_name, row))| {
+                name == wanted_name
+                    && match (value, row["tag"].as_str()) {
+                        (Instance::Scalar(Value::Int(value)), Some("Int")) => {
+                            Some(*value) == row["value"].as_i64()
+                        }
+                        (Instance::Scalar(Value::Float(value)), Some("Float")) => {
+                            value.to_bits()
+                                == u64::from_str_radix(row["bits"].as_str().unwrap(), 16).unwrap()
+                        }
+                        _ => false,
+                    }
+            })
+}
+fn wanted_error(case: &Json, input_bounded: bool) -> JsonBoundaryError {
+    let field = case["failed_field"].as_str().unwrap();
+    let got = case[if input_bounded {
+        "input_got"
+    } else {
+        "output_got"
+    }]
+    .as_str()
+    .unwrap();
+    let message = format!(
+        "`{field}` requires numeric range {}, got {got}",
+        case["range_text"].as_str().unwrap()
+    );
+    if input_bounded {
+        JsonBoundaryError::InvalidInput { message }
+    } else {
+        JsonBoundaryError::InvalidOutput { message }
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if arguments.len() != 2 {
+        return Err("need evidence directory and boundary side".into());
+    }
+    let directory = Path::new(&arguments[0]);
+    let input_bounded = arguments[1] == "input";
+    let corpus: Json = serde_json::from_str(&fs::read_to_string(directory.join("cases.json"))?)?;
+    let rows = corpus["compiled"]["cases"]
+        .as_array()
+        .ok_or("cases required")?;
+    let originals = rows
+        .iter()
+        .map(|case| {
+            let text = case["input"].as_str().unwrap();
+            let typed = expected(case);
+            let actual_typed = execute(&typed);
+            (
+                case,
+                typed,
+                actual_typed,
+                execute_json(text),
+                execute_json_bytes(text.as_bytes()),
+            )
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        directory.join("COMPLETE-INPUTS-TYPED-TEXT-BYTES-ORIGINALS.txt"),
+        format!("{originals:#?}\n"),
+    )?;
+    let mut mismatches = Vec::new();
+    for (case, typed, actual_typed, text, bytes) in &originals {
+        let id = case["id"].as_str().unwrap();
+        if !complete_instance(typed, case)
+            || !matches!(actual_typed, Ok(actual) if complete_instance(actual, case))
+        {
+            mismatches.push(format!("{id}: complete typed instance differs"));
+        }
+        if case["accepted"] == true {
+            let wanted = case["serialized_json"].as_str().unwrap();
+            if !matches!(text, Ok(actual) if actual == wanted)
+                || !matches!(bytes, Ok(actual) if actual == wanted.as_bytes())
+            {
+                mismatches.push(format!("{id}: complete serialized document differs"));
+            }
+        } else {
+            let wanted = wanted_error(case, input_bounded);
+            if !matches!(text, Err(actual) if actual == &wanted)
+                || !matches!(bytes, Err(actual) if actual == &wanted)
+            {
+                mismatches.push(format!(
+                    "{id}: complete boundary error differs: expected {wanted:#?}"
+                ));
+            }
+        }
+    }
+    fs::write(
+        directory.join("COMPLETE-COMPARISONS.txt"),
+        format!("cases={}\n{mismatches:#?}\n", rows.len()),
+    )?;
+    if rows.len() != 7 || !mismatches.is_empty() {
+        return Err("complete authored lexical boundary cohort differs".into());
+    }
+    println!("7 complete lexical boundary rows: typed, text and byte APIs");
+    Ok(())
+}

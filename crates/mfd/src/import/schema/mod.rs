@@ -15,6 +15,7 @@ mod fixed_width;
 mod flextext;
 mod generic_xml;
 mod http_get;
+mod json_variable;
 mod pdf;
 mod protobuf;
 mod shared;
@@ -931,6 +932,28 @@ fn read_json_component_resolved(
             }
             json_entry_value_schema(&name, &entry)
         });
+    let is_variable = match json_variable::select(data, &schema) {
+        Ok(Some(selected)) => {
+            schema = selected;
+            true
+        }
+        Ok(None) => false,
+        Err(reason) => {
+            warnings.push(format!(
+                "JSON variable `{name}` has an unsupported root selection: {reason}; skipped"
+            ));
+            return None;
+        }
+    };
+    if schema.contains_json_array_wrapper()
+        && let Err(reason) =
+            remap_json_array_wrapper_ports(&entry, &schema, &mut Vec::new(), &mut ports)
+    {
+        warnings.push(format!(
+            "JSON component `{name}` has incompatible nested array entries: {reason}; skipped"
+        ));
+        return None;
+    }
     if is_source && let Err(reason) = attach_json_dynamic_source_schema(&mut schema, &ports) {
         warnings.push(format!(
             "dynamic JSON source `{name}` is unsupported: {reason}"
@@ -944,6 +967,9 @@ fn read_json_component_resolved(
         ));
         return None;
     }
+
+    let (input_keys, output_keys) = entry_key_sets(&root_el);
+    let input_ancestors = input_port_ancestors(&entry, &input_keys);
 
     Some(SchemaComponent {
         name,
@@ -964,13 +990,13 @@ fn read_json_component_resolved(
         },
         is_source,
         is_default_output: is_default_output(component),
-        is_variable: false,
+        is_variable,
         is_pass_through: false,
         compute_when_key: None,
         ports,
-        input_ancestors: BTreeMap::new(),
-        input_keys: BTreeSet::new(),
-        output_keys: BTreeSet::new(),
+        input_ancestors,
+        input_keys,
+        output_keys,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json,
@@ -978,6 +1004,76 @@ fn read_json_component_resolved(
 }
 
 /// Maps JSON property ports to schema paths; structural wrappers are transparent.
+fn remap_json_array_wrapper_ports(
+    entry: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+) -> Result<(), &'static str> {
+    if schema.json_array_wrapper {
+        let children = entry
+            .children()
+            .filter(|node| node.has_tag_name("entry"))
+            .collect::<Vec<_>>();
+        if entry.attribute("name") == Some("array") {
+            let [item] = children.as_slice() else {
+                return Err(
+                    "marked array entries must contain one `item` role owning an inner `array`",
+                );
+            };
+            let nested = item
+                .children()
+                .filter(|node| node.has_tag_name("entry"))
+                .collect::<Vec<_>>();
+            if item.attribute("name") != Some("item")
+                || item.attribute("type") != Some("json-item")
+                || !matches!(nested.as_slice(), [array] if array.attribute("name") == Some("array"))
+            {
+                return Err(
+                    "marked array entries must contain one `item` role owning an inner `array`",
+                );
+            }
+        } else if !matches!(children.as_slice(), [array] if array.attribute("name") == Some("array"))
+        {
+            return Err("marked array entries require one declared `array` level");
+        }
+    }
+    for child in entry.children().filter(|node| node.has_tag_name("entry")) {
+        let nested = if child.attribute("type") == Some("json-property") {
+            let name = child.attribute("name").unwrap_or_default();
+            let Some(nested) = schema.child(name) else {
+                continue;
+            };
+            path.push(name.to_owned());
+            Some(nested)
+        } else if child.attribute("type") == Some("json-item")
+            && child.attribute("name") == Some("item")
+            && entry.attribute("name") == Some("array")
+            && schema.json_array_wrapper
+        {
+            let Some(item) = schema.json_array_wrapper_item() else {
+                continue;
+            };
+            path.push(item.name.clone());
+            Some(item)
+        } else {
+            None
+        };
+        for attribute in ["inpkey", "outkey"] {
+            if let Some(key) = parse_u32(child.attribute(attribute))
+                && let Some(existing) = ports.get_mut(&key)
+            {
+                *existing = path.clone();
+            }
+        }
+        remap_json_array_wrapper_ports(&child, nested.unwrap_or(schema), path, ports)?;
+        if nested.is_some() {
+            path.pop();
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn collect_json_ports(
     entry: &roxmltree::Node,
     path: &mut Vec<String>,
@@ -1188,7 +1284,14 @@ pub(super) fn json_entry_value_schema(name: &str, entry: &roxmltree::Node) -> Sc
                 return SchemaNode::group(name, children);
             }
             Some("array") => {
-                return json_entry_value_schema(name, &child).repeating();
+                let mut item = json_entry_value_schema(name, &child);
+                if item.repeating {
+                    item.name = ir::JSON_ARRAY_ITEM_FIELD.to_owned();
+                    let mut wrapper = SchemaNode::group(name, vec![item]).repeating();
+                    wrapper.json_array_wrapper = true;
+                    return wrapper;
+                }
+                return item.repeating();
             }
             Some("item") => {
                 // An array's item wrapper: its child describes the value.

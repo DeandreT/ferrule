@@ -1,0 +1,1 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Text" type="xs:string"/><xs:element name="Flag" type="xs:boolean"/><xs:element name="Count" type="xs:long"/><xs:element name="Measure" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:schema>

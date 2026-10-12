@@ -342,6 +342,8 @@ public static partial class FerruleXml
                 throw new InvalidOperationException("embedded XML schema exceeds its depth limit");
             }
             var name = RequiredString(element, "name");
+            if (OptionalBoolean(element, "json_array_wrapper"))
+                throw new InvalidOperationException("JSON array-wrapper metadata requires a JSON boundary");
             if (name.Length == 0)
             {
                 throw new InvalidOperationException("embedded XML schema name cannot be empty");

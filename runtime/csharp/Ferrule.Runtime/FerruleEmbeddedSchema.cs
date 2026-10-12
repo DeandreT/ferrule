@@ -9,6 +9,7 @@ namespace Ferrule.Runtime;
 internal static class FerruleEmbeddedSchema
 {
     internal const string V2Prefix = "FERRULE-EMBEDDED-SCHEMA/2\n";
+    internal const string V3Prefix = "FERRULE-EMBEDDED-SCHEMA/3\n";
     private const string VersionStem = "FERRULE-EMBEDDED-SCHEMA/";
     private const string FloatBitsPrefix = "FERRULE-F64-BITS:";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -24,7 +25,9 @@ internal static class FerruleEmbeddedSchema
             throw new FormatException(
                 $"embedded schema is {bytes} bytes; maximum is {maximumBytes}");
         }
-        if (!descriptor.StartsWith(V2Prefix, StringComparison.Ordinal))
+        var prefix = descriptor.StartsWith(V2Prefix, StringComparison.Ordinal) ? V2Prefix :
+            descriptor.StartsWith(V3Prefix, StringComparison.Ordinal) ? V3Prefix : null;
+        if (prefix is null)
         {
             if (descriptor.StartsWith(VersionStem, StringComparison.Ordinal))
             {
@@ -33,7 +36,7 @@ internal static class FerruleEmbeddedSchema
             return new Descriptor(descriptor, false);
         }
 
-        var payload = descriptor[V2Prefix.Length..];
+        var payload = descriptor[prefix.Length..];
         using var parsed = JsonDocument.Parse(payload, new JsonDocumentOptions
         {
             MaxDepth = 127,

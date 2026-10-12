@@ -9,8 +9,9 @@ use ir::{Instance, SchemaNode};
 use mapping::{FormatOptions, Pipeline, PipelineInput};
 
 use crate::{
-    OutputDestination, ProjectDynamicSourceLoader, TargetOutput, absolute_mapping_path, http_url,
-    read_instance, write_target_outputs,
+    FilesystemPdfReader, OutputDestination, ProjectDynamicSourceLoader, TargetOutput,
+    absolute_mapping_path, http_url, read_instance, read_instance_with_pdf_reader,
+    write_target_outputs,
 };
 
 /// One explicitly supplied host document. Paths follow the process working
@@ -326,12 +327,45 @@ pub fn run_pipeline_file_with_options(
     run_pipeline_value_with_options(&pipeline, pipeline_path, inputs, outputs, options)
 }
 
+/// Like [`run_pipeline_file_with_options`], with a caller-owned filesystem PDF reader.
+pub fn run_pipeline_file_with_options_and_pdf_reader(
+    pipeline_path: &Path,
+    inputs: &[PipelineHostFile],
+    outputs: &[PipelineOutputFile],
+    options: &PipelineRunOptions<'_>,
+    reader: &dyn FilesystemPdfReader,
+) -> anyhow::Result<PipelineRunOutcome> {
+    let json = std::fs::read_to_string(pipeline_path)
+        .with_context(|| format!("reading pipeline file {}", pipeline_path.display()))?;
+    let pipeline = mapping::pipeline_file::decode_str(&json)
+        .with_context(|| format!("parsing pipeline file {}", pipeline_path.display()))?;
+    run_pipeline_value_with_pdf_reader(
+        &pipeline,
+        pipeline_path,
+        inputs,
+        outputs,
+        options,
+        Some(reader),
+    )
+}
+
 fn run_pipeline_value_with_options(
     pipeline: &Pipeline,
     pipeline_path: &Path,
     inputs: &[PipelineHostFile],
     outputs: &[PipelineOutputFile],
     options: &PipelineRunOptions<'_>,
+) -> anyhow::Result<PipelineRunOutcome> {
+    run_pipeline_value_with_pdf_reader(pipeline, pipeline_path, inputs, outputs, options, None)
+}
+
+fn run_pipeline_value_with_pdf_reader(
+    pipeline: &Pipeline,
+    pipeline_path: &Path,
+    inputs: &[PipelineHostFile],
+    outputs: &[PipelineOutputFile],
+    options: &PipelineRunOptions<'_>,
+    reader: Option<&dyn FilesystemPdfReader>,
 ) -> anyhow::Result<PipelineRunOutcome> {
     let issues = engine::validate_pipeline(pipeline);
     if !issues.is_empty() {
@@ -349,12 +383,21 @@ fn run_pipeline_value_with_options(
     let paths = validate_host_inputs(&host_boundaries, inputs)?;
     let selected = select_outputs(pipeline, outputs)?;
 
+    // Admission follows execution's dependency order and includes every target;
+    // selected outputs only choose the files to publish.
+    engine::check_pipeline_source_ownership_capability(pipeline)?;
+
     let mut protected = vec![pipeline_path.to_path_buf()];
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &host_boundaries {
         let path = paths[name];
-        let instance = read_instance(path, boundary.schema, boundary.options)
-            .with_context(|| format!("loading pipeline host input `{name}`"))?;
+        let instance = match reader {
+            Some(reader) => {
+                read_instance_with_pdf_reader(path, boundary.schema, boundary.options, Some(reader))
+            }
+            None => read_instance(path, boundary.schema, boundary.options),
+        }
+        .with_context(|| format!("loading pipeline host input `{name}`"))?;
         if http_url(path).is_none() {
             protected.push(path.to_path_buf());
             if boundary.options.local_xml_file_set
@@ -401,7 +444,16 @@ fn run_pipeline_value_with_options(
         .map(|stage| {
             (
                 stage.id.as_str(),
-                ProjectDynamicSourceLoader::new(pipeline_dir, &stage.project.extra_sources),
+                match reader {
+                    Some(reader) => ProjectDynamicSourceLoader::with_pdf_reader(
+                        pipeline_dir,
+                        &stage.project.extra_sources,
+                        Some(reader),
+                    ),
+                    None => {
+                        ProjectDynamicSourceLoader::new(pipeline_dir, &stage.project.extra_sources)
+                    }
+                },
             )
         })
         .collect::<BTreeMap<_, _>>();
