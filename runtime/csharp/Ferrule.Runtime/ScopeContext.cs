@@ -1417,10 +1417,13 @@ public sealed class FerruleOwnedSourceRoots
     internal FerruleOwnedSourceLimits Limits { get; }
     internal nuint SlotMaximum { get; }
     internal nuint RegistryCount => (nuint)_named.Length + 1;
+    private readonly nuint _normalizationBackingSlots;
+    internal nuint RegistryStorageCount => RegistryCount + _normalizationBackingSlots;
+    internal nuint AmbiguityReservationCount => _normalizationBackingSlots == 0 ? RegistryCount : (nuint)_named.Length;
     internal nuint RegistryText { get; }
     private FerruleOwnedSourceRoots(FerruleInstance primary, Binding[] named,
-        FerruleOwnedSourceLimits limits, nuint slots, nuint text)
-    { _primary = primary; _named = named; Limits = limits; SlotMaximum = slots; RegistryText = text; }
+        FerruleOwnedSourceLimits limits, nuint slots, nuint text, nuint normalizationBackingSlots = 0)
+    { _primary = primary; _named = named; Limits = limits; SlotMaximum = slots; RegistryText = text; _normalizationBackingSlots = normalizationBackingSlots; }
     public static FerruleOwnedSourceRoots Create(FerruleInstance primary,
         IReadOnlyList<FerruleDeclaredNamedSourceRoot> named, FerruleOwnedSourceLimits limits)
     {
@@ -1443,6 +1446,94 @@ public sealed class FerruleOwnedSourceRoots
         for (var i = 0; i < copy.Length; i++) copy[i] = new(named[i].Name, named[i].Instance);
         return new(primary, copy, limits, slots, bytes);
     }
+
+    // The final array is the registry table. No intermediate declaration list is made.
+    internal static FerruleOwnedSourceRoots FromNamedInputs<T, TAccessor>(FerruleInstance primary,
+        ReadOnlySpan<FerruleBasicNamedSourceDeclaration> catalogue, IReadOnlyList<T> supplied,
+        TAccessor accessor, FerruleOwnedSourceLimits limits, out BasicSourceBudget budget)
+        where TAccessor : struct, IFerruleNamedSourceInputAccessor<T>
+    {
+        Binding[] named;
+        nuint core, text, backing;
+        try
+        {
+            core = OwnedSourceAccounting.CSharpSlots(limits);
+            _ = BasicSourceAccounting.Maximum(limits, false);
+            var count = OwnedSourceAccounting.Add((nuint)catalogue.Length, 1, FerruleOwnedSourceLimitKind.Roots);
+            OwnedSourceAccounting.Limit(0, count, limits.MaxRoots, FerruleOwnedSourceLimitKind.Roots);
+            var length = BasicSourceAccounting.ArrayLength((nuint)catalogue.Length);
+            backing = length == 0 ? (nuint)0 : (nuint)1;
+            var storage = OwnedSourceAccounting.Add(count, backing, FerruleOwnedSourceLimitKind.MetadataSlots);
+            // One current value, two counter objects, and two complete error envelopes.
+            // The existing current/diagnostic and C# task reserves cover these five cells.
+            var peak = OwnedSourceAccounting.Add(storage, 5, FerruleOwnedSourceLimitKind.MetadataSlots);
+            OwnedSourceAccounting.Limit(0, peak, core, FerruleOwnedSourceLimitKind.MetadataSlots);
+            text = 0;
+            for (var i = 0; i < length; i++)
+            {
+                var declaration = catalogue[i]; var name = declaration.Name;
+                if (name is null) throw new ArgumentNullException(nameof(catalogue));
+                FerruleUnicode.RequireWellFormed(name, nameof(catalogue));
+                if (name.Length == 0) throw new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner);
+                if (declaration.Mode is not (FerruleBasicNamedSourceMode.Optional or
+                    FerruleBasicNamedSourceMode.RequiredLegacy or FerruleBasicNamedSourceMode.ReservedUnavailable))
+                    throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+                        declarationIndex: (nuint)i, declaredCount: (nuint)length);
+                for (var j = 0; j < i; j++)
+                    if (StringComparer.Ordinal.Equals(catalogue[j].Name, name))
+                        throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+                            declarationIndex: (nuint)i, declaredCount: (nuint)length);
+                var size = OwnedSourceAccounting.Text(name);
+                OwnedSourceAccounting.Limit(text, size, limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+                text = OwnedSourceAccounting.Add(text, size, FerruleOwnedSourceLimitKind.MetadataBytes);
+            }
+            budget = new BasicSourceBudget(limits, false);
+            budget.Charge(peak); budget.Text(text);
+            named = length == 0 ? Array.Empty<Binding>() : new Binding[length];
+            for (var i = 0; i < named.Length; i++) named[i] = new(catalogue[i].Name, null);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+
+        // Caller code executes outside ownership lifting, including a caller-thrown typed cause.
+        var suppliedCount = supplied.Count;
+        if (suppliedCount < 0) throw new ArgumentOutOfRangeException(nameof(supplied), suppliedCount, "Count cannot be negative.");
+        for (var ordinal = 0; ordinal < suppliedCount; ordinal++)
+        {
+            var item = supplied[ordinal];
+            var input = accessor.Read(item);
+            try
+            {
+                var name = input.Name; var instance = input.Instance;
+                if (name is null || instance is null) throw new ArgumentNullException(nameof(supplied));
+                FerruleUnicode.RequireWellFormed(name, nameof(supplied));
+                var found = -1;
+                for (var i = 0; i < named.Length; i++)
+                    if (StringComparer.Ordinal.Equals(named[i].Name, name) && catalogue[i].Mode != FerruleBasicNamedSourceMode.ReservedUnavailable)
+                    { found = i; break; }
+                if (found < 0)
+                {
+                    budget.Text(OwnedSourceAccounting.Text(name));
+                    throw new FerruleRuntimeException(FerruleRuntimeError.UnexpectedNamedSource,
+                        "named source is not declared by this mapping", detail: name);
+                }
+                if (named[found].Instance is not null)
+                    throw new FerruleRuntimeException(FerruleRuntimeError.DuplicateNamedSource,
+                        "named source was supplied more than once", detail: named[found].Name);
+                named[found] = new(named[found].Name, instance);
+            }
+            catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+            catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+        }
+        for (var i = 0; i < named.Length; i++)
+            if (catalogue[i].Mode == FerruleBasicNamedSourceMode.RequiredLegacy && named[i].Instance is null)
+                throw new FerruleRuntimeException(FerruleRuntimeError.MissingNamedSource,
+                    "named source is required by this mapping", detail: named[i].Name);
+        // Only the two counters remain live during the shared projection factory.
+        budget.Release(3);
+        return new(primary, named, limits, core, text, backing);
+    }
+
     public FerruleOwnedScopeContext RootContext() => FerruleOwnedScopeContext.CreateRoot(this);
     internal int Resolve(FerruleOwnedSourceOwner owner, OwnedQuery query)
     {
@@ -1476,7 +1567,7 @@ internal sealed class OwnedQuery
         Roots = context.Roots; Owner = owner;
         Slots = new(Roots.SlotMaximum, FerruleOwnedSourceLimitKind.MetadataSlots);
         Bytes = new(Roots.Limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
-        Slots.Charge(Roots.RegistryCount); Slots.Charge(1); Bytes.Charge(Roots.RegistryText);
+        Slots.Charge(Roots.RegistryStorageCount); Slots.Charge(1); Bytes.Charge(Roots.RegistryText);
         for (var i = 0; i < context.FrameCount; i++)
         {
             var item = context.FrameAt(i);
@@ -1484,7 +1575,7 @@ internal sealed class OwnedQuery
         }
         CheckPath(path); if (frame is not null) CheckPath(frame);
         // Query/error/ambiguity reserves precede namespace resolution and diagnostic copies.
-        Slots.Charge(Roots.RegistryCount);
+        Slots.Charge(Roots.AmbiguityReservationCount);
         Slots.Charge(OwnedSourceAccounting.Add(OwnedSourceAccounting.Add((nuint)path.Count,
             (nuint)(frame?.Count ?? 0), FerruleOwnedSourceLimitKind.MetadataSlots),
             2, FerruleOwnedSourceLimitKind.MetadataSlots));
@@ -1507,7 +1598,7 @@ internal sealed class OwnedQuery
     {
         Roots = context.Roots; Owner = owner; Slots = slots; Bytes = bytes;
         CheckPath(path); if (frame is not null) CheckPath(frame);
-        Slots.Charge(Roots.RegistryCount);
+        Slots.Charge(Roots.AmbiguityReservationCount);
         Slots.Charge(OwnedSourceAccounting.Add(OwnedSourceAccounting.Add((nuint)path.Count,
             (nuint)(frame?.Count ?? 0), FerruleOwnedSourceLimitKind.MetadataSlots),
             2, FerruleOwnedSourceLimitKind.MetadataSlots));
@@ -1611,7 +1702,7 @@ public sealed class FerruleOwnedScopeContext
     internal static FerruleOwnedScopeContext CreateRoot(FerruleOwnedSourceRoots roots)
     {
         var budget = new OwnedCounter(roots.SlotMaximum, FerruleOwnedSourceLimitKind.MetadataSlots);
-        budget.Charge(roots.RegistryCount); budget.Charge(1);
+        budget.Charge(roots.RegistryStorageCount); budget.Charge(1);
         return new(roots, Array.Empty<Occurrence>());
     }
     internal FerruleOwnedSourceRoots Roots { get; }
@@ -2287,6 +2378,70 @@ public sealed class FerruleBasicSourceRoots
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
+
+    /// <summary>Checks one supplied list against immutable complete program declarations.</summary>
+    /// <remarks>The catalogue names, modes and order must remain immutable for this call;
+    /// ReadOnlySpan alone does not guarantee immutability. The supplied Count and each reached
+    /// item/accessor are consumed once. Limits cover library metadata, not caller allocations,
+    /// source trees, execution time or total process memory.</remarks>
+    public static FerruleBasicSourceRoots CreateFromNamedInputs<T, TAccessor>(FerruleInstance primary,
+        ReadOnlySpan<FerruleBasicNamedSourceDeclaration> catalogue, IReadOnlyList<T> supplied,
+        TAccessor accessor, FerruleOwnedSourceLimits limits)
+        where TAccessor : struct, IFerruleNamedSourceInputAccessor<T>
+    {
+        ArgumentNullException.ThrowIfNull(primary); ArgumentNullException.ThrowIfNull(supplied);
+        var owned = FerruleOwnedSourceRoots.FromNamedInputs(primary, catalogue, supplied, accessor, limits, out var budget);
+        return FromAdmittedInputs(owned, budget);
+    }
+    private static FerruleBasicSourceRoots FromAdmittedInputs(FerruleOwnedSourceRoots owned, BasicSourceBudget budget)
+    {
+        try
+        {
+            var count = owned.RegistryCount;
+            var suppliedCount = 0; var uniqueCount = 0;
+            for (var i = 1; (nuint)i < owned.RegistryCount; i++)
+            {
+                if (owned.Instance(i) is null) continue;
+                suppliedCount++;
+                var first = true;
+                for (var j = 1; j < i; j++)
+                    if (owned.Instance(j) is not null && StringComparer.Ordinal.Equals(owned.Name(j), owned.Name(i)))
+                    { first = false; break; }
+                if (first) uniqueCount++;
+            }
+            // All arrays have exact capacities. The temporary fields coexist with
+            // the factory snapshot; field objects reuse admitted immutable names.
+            budget.Charge((nuint)suppliedCount);
+            budget.Charge((nuint)uniqueCount * 2);
+            var supplied = new int[suppliedCount]; var unique = new int[uniqueCount];
+            var fields = new FerruleField[uniqueCount];
+            var a = 0; var u = 0;
+            for (var i = 1; (nuint)i < owned.RegistryCount; i++)
+            {
+                var value = owned.Instance(i); if (value is null) continue;
+                supplied[a++] = i - 1;
+                var first = true;
+                for (var j = 0; j < u; j++)
+                    if (StringComparer.Ordinal.Equals(owned.Name(unique[j] + 1), owned.Name(i)))
+                    { first = false; break; }
+                if (!first) continue;
+                unique[u] = i - 1;
+                budget.Charge(1);
+                fields[u++] = new FerruleField(owned.Name(i)!, value);
+            }
+            var projection = FerruleGroup.FromBasicSourceProjection(fields, count - 1, budget.Slots);
+            fields = Array.Empty<FerruleField>();
+            budget.Release((nuint)uniqueCount); // the sole temporary array is no longer retained
+            budget.Charge(1);
+            // Counters stay admitted through allocation but are not part of returned roots.
+            var retained = budget.Slots.Used;
+            if (retained < 2) throw BasicSourceAccounting.Overflow();
+            return new FerruleBasicSourceRoots(owned, projection, supplied, unique, retained - 2);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+
     public FerruleBasicScopeContext RootContext(FerruleExecutionContext? execution = null)
     {
         try
@@ -3013,4 +3168,14 @@ public sealed partial class ScopeContext
         return ResolveScalarInFrame(frame, path);
     }
 
+}
+
+
+/// <summary>The availability policy of one exact program declaration.</summary>
+public enum FerruleBasicNamedSourceMode { Optional, RequiredLegacy, ReservedUnavailable }
+public readonly record struct FerruleBasicNamedSourceDeclaration(string Name, FerruleBasicNamedSourceMode Mode);
+public readonly record struct FerruleNamedSourceInput(string? Name, FerruleInstance? Instance);
+public interface IFerruleNamedSourceInputAccessor<T>
+{
+    FerruleNamedSourceInput Read(T item);
 }
