@@ -25,7 +25,13 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
     );
     output.push_str(mapping::basic_selected_output_types());
     output.push_str("public static partial class GeneratedMapping\n{\n    // No implementation in the prototype: C# erases calls outside the private test host.\n    static partial void ObserveOwnedBasicNode(uint node, global::Ferrule.Runtime.FerruleBasicScopeContext context);\n");
+    if !program.failure_rules.is_empty() {
+        output.push_str("    static partial void ObserveBasicFailureCohort(int rule, global::System.Collections.Generic.IReadOnlyList<string> path, global::Ferrule.Runtime.FerruleRetainedSourceCohort cohort);\n");
+    }
     output.push_str("    // Private prototype: exact prepared declarations, no input normalization or policy defaults.\n    private static ExecutionOutputs ExecuteOwnedBasic(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleDeclaredNamedSourceRoot> declared,\n        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,\n        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.Create(source, declared, limits);\n        var context = roots.RootContext(execution);\n");
+    if !program.failure_rules.is_empty() {
+        output.push_str("        EvaluateBasicFailureRules(context);\n");
+    }
     output.push_str(&format!(
         "        var primary = Scope_{primary}(context);\n"
     ));
@@ -46,7 +52,11 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
     output.push_str(
         "        });\n        global::System.GC.KeepAlive(roots);\n        return result;\n    }\n",
     );
-    output.push_str("\n    private static SelectedTargetOutput ExecuteSelectedOwnedBasic(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleDeclaredNamedSourceRoot> declared,\n        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,\n        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(selection);\n        var selected = ResolveOwnedBasicTarget(selection);\n        var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.Create(source, declared, limits);\n        var context = roots.RootContext(execution);\n        SelectedTargetOutput result;\n        switch (selected)\n        {\n");
+    output.push_str("\n    private static SelectedTargetOutput ExecuteSelectedOwnedBasic(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleDeclaredNamedSourceRoot> declared,\n        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,\n        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(selection);\n        var selected = ResolveOwnedBasicTarget(selection);\n        var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.Create(source, declared, limits);\n        var context = roots.RootContext(execution);\n");
+    if !program.failure_rules.is_empty() {
+        output.push_str("        EvaluateBasicFailureRules(context);\n");
+    }
+    output.push_str("        SelectedTargetOutput result;\n        switch (selected)\n        {\n");
     output.push_str(&format!("            case 0: result = new SelectedTargetOutput.Primary(Scope_{primary}(context)); break;\n"));
     for (index, (name, scope)) in extras.iter().enumerate() {
         output.push_str(&format!("            case {}: result = new SelectedTargetOutput.Named(new NamedOutput({}, Scope_{scope}(context))); break;\n", index + 1, literal::string(name)));
@@ -56,6 +66,7 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
         output.push_str(&format!("        if (global::System.String.Equals(name, {}, global::System.StringComparison.Ordinal)) return {};\n", literal::string(name), index + 1));
     }
     output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
+    render_basic_failures(program, &mut output)?;
     let mut nodes = program.expressions.iter().collect::<Vec<_>>();
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
@@ -200,7 +211,7 @@ fn dynamic_legacy_path(program: &Program, path: &[String]) -> bool {
 // Only potential represented target roots retain a legacy leaf. Both If arms
 // and parameter defaults remain potential demands; unused declarations and
 // dead legacy leaves do not activate a dynamic source. Earlier private checks
-// close functions, failures and specialized scopes; the following graph
+// close functions and specialized failure/scope domains; the following graph
 // inventory continues to refuse unsupported operators.
 fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, pending: &mut Vec<NodeId>) {
@@ -271,17 +282,7 @@ fn validate_private_inventory(program: &Program) -> Result<(), EmitError> {
             },
         ));
     }
-    if !program.failure_rules.is_empty() {
-        // Global failure admission is a boundary of this private primary entry.
-        return Err(capability(
-            Location::Iteration {
-                scope: SourceScopeLocation::root(SourceScopeTarget::Primary),
-            },
-            None,
-            Reason::FailureRule,
-            Origin::Failure { index: 0 },
-        ));
-    }
+    validate_basic_failures(program)?;
     let retained = retained_expressions(program);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
@@ -406,6 +407,148 @@ pub(super) fn render_owned_leaf(
     Ok(())
 }
 
+// Failure traversal remains the ordinary legacy walk inside a paired view. It
+// acquires one complete bounded source cohort before selecting its first item;
+// neither a second source walk nor an inferred owner is introduced.
+fn failure_refusal(index: usize, reason: Reason) -> EmitError {
+    capability(
+        Location::Iteration {
+            scope: SourceScopeLocation::root(SourceScopeTarget::Primary),
+        },
+        None,
+        reason,
+        Origin::Failure { index },
+    )
+}
+
+fn failure_expression_nodes(program: &Program, root: NodeId) -> BTreeSet<NodeId> {
+    let mut pending = vec![root];
+    let mut found = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !found.insert(id) {
+            continue;
+        }
+        let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
+            continue;
+        };
+        match &node.expression {
+            Expression::Call { args, .. } => pending.extend(args.iter().copied()),
+            Expression::If {
+                condition,
+                then,
+                else_,
+            } => pending.extend([*condition, *then, *else_]),
+            Expression::RuntimeParameterDefault { default, .. } => pending.push(*default),
+            Expression::Raise { message } => pending.extend(message.iter().copied()),
+            _ => {}
+        }
+    }
+    found
+}
+
+fn validate_basic_failures(program: &Program) -> Result<(), EmitError> {
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        let codegen::FailureIteration::Source(source) = &rule.iteration else {
+            return Err(failure_refusal(index, Reason::FailureRule));
+        };
+        // The bridge's new admission order is iteration, predicate, then optional
+        // message, per ordered rule. Common structural/owned-context validation
+        // and the unchanged target/UDF preflight have already run. Both potential
+        // If branches are inspected here; ordinary evaluation stays lazy.
+        if dynamic_legacy_path(program, source.path()) {
+            return Err(failure_refusal(index, Reason::DynamicLoader));
+        }
+        for root in rule.selection.predicate().into_iter().chain(rule.message) {
+            let retained = failure_expression_nodes(program, root);
+            for node in &program.expressions {
+                if !retained.contains(&node.id) {
+                    continue;
+                }
+                let dynamic = match &node.expression {
+                    Expression::SourceField { path, frame } => {
+                        dynamic_legacy_path(program, frame.as_ref().unwrap_or(path))
+                    }
+                    Expression::DynamicSourceField { .. } => true,
+                    _ => false,
+                };
+                if dynamic {
+                    return Err(capability(
+                        Location::Expression {
+                            namespace: Namespace::Main,
+                            node: node.id,
+                            scope: None,
+                        },
+                        None,
+                        Reason::DynamicLoader,
+                        Origin::Failure { index },
+                    ));
+                }
+                if !matches!(
+                    &node.expression,
+                    Expression::SourceField { .. }
+                        | Expression::Position { .. }
+                        | Expression::Const { .. }
+                        | Expression::Call { .. }
+                        | Expression::If { .. }
+                        | Expression::RuntimeValue { .. }
+                        | Expression::RuntimeParameter { .. }
+                        | Expression::RuntimeParameterDefault { .. }
+                        | Expression::Raise { .. }
+                ) {
+                    // Owned requests are refused by common validation first.
+                    // Every other specialized failure domain stays closed with
+                    // the pre-existing FailureRule envelope, not a new runtime.
+                    return Err(failure_refusal(index, Reason::FailureRule));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), EmitError> {
+    use codegen::{FailureIteration, FailureSelection};
+    if program.failure_rules.is_empty() {
+        return Ok(());
+    }
+    output.push_str("\n    private static void EvaluateBasicFailureRules(global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {\n");
+    for index in 0..program.failure_rules.len() {
+        output.push_str(&format!("        BasicFailureRule_{index}(context);\n"));
+    }
+    output.push_str("    }\n");
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        let FailureIteration::Source(source) = &rule.iteration else {
+            return Err(failure_refusal(index, Reason::FailureRule));
+        };
+        let number = index + 1;
+        output.push_str(&format!("\n    private static void BasicFailureRule_{index}(global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n        var path_failure_{index} = "));
+        mapping::basic_path(source.path(), output);
+        output.push_str(&format!(";\n        var cohort_failure_{index} = context.WalkSourceCohort(path_failure_{index});\n        ObserveBasicFailureCohort({number}, path_failure_{index}, cohort_failure_{index});\n        try\n        {{\n            foreach (var candidate_failure_{index} in cohort_failure_{index})\n            {{\n                var item_context_failure_{index} = candidate_failure_{index}.Context;\n"));
+        let indent = match rule.selection {
+            FailureSelection::All => 4,
+            FailureSelection::WhenTrue(predicate) | FailureSelection::WhenFalse(predicate) => {
+                output.push_str(&format!("                var selection_failure_{index} = Node_{predicate}(item_context_failure_{index});\n                if ("));
+                if matches!(rule.selection, FailureSelection::WhenFalse(_)) {
+                    output.push('!');
+                }
+                output.push_str(&format!("global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(selection_failure_{index}, {predicate}U))\n                {{\n"));
+                5
+            }
+        };
+        let pad = "    ".repeat(indent);
+        if let Some(message) = rule.message {
+            output.push_str(&format!("{pad}var message_failure_{index} = Node_{message}(item_context_failure_{index});\n{pad}throw global::Ferrule.Runtime.FerruleFailures.MappingFailure({number}, message_failure_{index});\n"));
+        } else {
+            output.push_str(&format!("{pad}throw global::Ferrule.Runtime.FerruleFailures.MappingFailure({number}, null);\n"));
+        }
+        if !matches!(rule.selection, FailureSelection::All) {
+            output.push_str("                }\n");
+        }
+        output.push_str(&format!("            }}\n        }}\n        finally {{ global::System.GC.KeepAlive(cohort_failure_{index}); }}\n    }}\n"));
+    }
+    Ok(())
+}
+
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
     let mut source = render_basic_owned_mapping(program)?;
@@ -475,17 +618,23 @@ pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<St
         return result;
     }
 
-    // Checked-only common context seam for later explicit failure-bridge
-    // composition. The existing inventory still closes failure rules here.
+    // One checked registry context is reused for ordinary global failures and
+    // selected/all output. Specialized failure domains remain typed-closed.
     // Both return shapes are existing reference types; no wrapper is allocated.
     private static object ExecuteCheckedBasicContext(
         global::Ferrule.Runtime.FerruleBasicScopeContext context, int? selected)
     {
-        if (selected.HasValue)
+"#);
+    if !program.failure_rules.is_empty() {
+        source.push_str("        EvaluateBasicFailureRules(context);\n");
+    }
+    source.push_str(
+        r#"        if (selected.HasValue)
         {
             switch (selected.Value)
             {
-"#);
+"#,
+    );
     source.push_str(&format!("                case 0: return new SelectedTargetOutput.Primary(Scope_{primary}(context));\n"));
     for (index, (name, scope)) in extras.iter().enumerate() {
         source.push_str(&format!("                case {}: return new SelectedTargetOutput.Named(new NamedOutput({}, Scope_{scope}(context)));\n",index+1,literal::string(name)));
