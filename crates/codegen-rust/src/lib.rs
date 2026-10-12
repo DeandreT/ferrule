@@ -1840,6 +1840,7 @@ fn render_scope(
 ) -> Result<String, EmitError> {
     let mut output =
         format!("fn {name}(context: &ScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n");
+    output.push_str("    let _ = context;\n");
     if let Some(iteration) = &scope.iteration {
         if iteration.concatenated().is_some() {
             output.push_str(&render_concatenated_scope(iteration, segment_names));
