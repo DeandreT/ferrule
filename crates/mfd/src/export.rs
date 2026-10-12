@@ -302,12 +302,16 @@ pub fn export_with_profile(
     Ok(prepared.report)
 }
 
+#[cfg(test)]
+mod source_ownership_tests;
+
 struct PreparedExport {
     artifacts: Vec<(PathBuf, String)>,
     report: ExportReport,
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    preflight::validate_source_ownership(project)?;
     if let Some(composition) = project.filter_map_v1_descriptors().first() {
         return Err(MfdError::UnsupportedSequenceComposition {
             item: composition.item,
@@ -1172,3 +1176,6 @@ fn database_target_view_compatible(source: &ir::SchemaNode, target: &ir::SchemaN
             .any(|source| source.name == target.name && source.kind == target.kind)
     })
 }
+
+#[cfg(test)]
+mod owned_collection_tests;

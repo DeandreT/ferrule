@@ -182,6 +182,7 @@ pub fn run_project_value_payloads(
 ) -> anyhow::Result<PayloadRunOutcome> {
     require_valid(project)?;
     validate_input_budget(options)?;
+    engine::check_source_ownership_capability(project, options.target)?;
 
     let source = read_payload(options.primary, &project.source, &project.source_options)
         .context("reading primary input payload")?;
@@ -913,4 +914,50 @@ fn read_xlsx_payload(
     }
     .context("parsing XLSX input payload")?;
     Ok(Instance::Repeated(rows))
+}
+
+#[cfg(test)]
+mod owned_source_payload_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_refusal_precedes_parsing_a_malformed_payload() {
+        let project = crate::owned_source_test_project();
+        let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON").unwrap();
+        let error = run_project_value_payloads(
+            &project,
+            Path::new("project.json"),
+            &PayloadRunOptions::new(primary),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_source_field"
+            })
+        ));
+    }
+}
+
+#[cfg(test)]
+mod owned_collection_payload_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_collection_refusal_precedes_parsing_a_malformed_payload() {
+        let project = crate::owned_collection_test_project();
+        let primary = PayloadDocument::new(Path::new("input.json"), b"not JSON").unwrap();
+        let error = run_project_value_payloads(
+            &project,
+            Path::new("project.json"),
+            &PayloadRunOptions::new(primary),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+        ));
+    }
 }

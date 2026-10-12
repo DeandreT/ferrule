@@ -173,7 +173,9 @@ fn generic_structural_feed_iterates_and_atomizes_into_simple_content() -> Result
         .find(|scope| scope.target_field == "Item")
         .ok_or("missing Item scope")?;
     assert_eq!(
-        item.source().map(|path| path.to_vec()),
+        item.source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["Employees".into(), "element()".into()])
     );
     let property = item
@@ -182,7 +184,10 @@ fn generic_structural_feed_iterates_and_atomizes_into_simple_content() -> Result
         .find(|scope| scope.target_field == "Property")
         .ok_or("missing Property scope")?;
     assert_eq!(
-        property.source().map(|path| path.to_vec()),
+        property
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
         Some(vec!["element()".into()])
     );
     assert!(

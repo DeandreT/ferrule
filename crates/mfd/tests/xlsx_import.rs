@@ -43,7 +43,13 @@ fn imports_static_flat_xlsx_table_with_sparse_columns() {
         .iter()
         .find(|scope| scope.target_field == "Person")
         .unwrap();
-    assert_eq!(person.source().map(|path| path.to_vec()), Some(Vec::new()));
+    assert_eq!(
+        person
+            .source()
+            .expect("legacy fixture selector")
+            .map(|path| path.to_vec()),
+        Some(Vec::new())
+    );
     assert!(person.bindings.iter().any(|binding| {
         binding.target_field == "Name"
             && matches!(
@@ -161,7 +167,10 @@ fn imports_fixed_rows_with_open_cells_as_a_transposed_table() {
         })
     ));
 
-    assert_eq!(project.root.source(), Some(&[][..]));
+    assert_eq!(
+        project.root.source().expect("legacy fixture selector"),
+        Some(&[][..])
+    );
     assert!(project.root.bindings.iter().any(|binding| {
         binding.target_field == "Category"
             && matches!(
@@ -249,7 +258,10 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
         .iter()
         .find(|scope| scope.target_field == "Branch")
         .unwrap();
-    assert_eq!(branch.source(), Some(&[][..]));
+    assert_eq!(
+        branch.source().expect("legacy fixture selector"),
+        Some(&[][..])
+    );
     assert!(branch.bindings.iter().any(|binding| {
         binding.target_field == "Name"
             && matches!(
@@ -262,7 +274,12 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
         .iter()
         .find(|scope| scope.target_field == "Member")
         .unwrap();
-    assert!(member.source().is_some_and(|path| path == ["Roster"]));
+    assert!(
+        member
+            .source()
+            .expect("legacy fixture selector")
+            .is_some_and(|path| path == ["Roster"])
+    );
     assert!(member.bindings.iter().any(|binding| {
         binding.target_field == "First"
             && matches!(
@@ -386,7 +403,12 @@ fn imports_fixed_scalar_and_table_as_a_composite_json_source() {
         .iter()
         .find(|scope| scope.target_field == "People")
         .unwrap();
-    assert!(people.source().is_some_and(|path| path == ["People"]));
+    assert!(
+        people
+            .source()
+            .expect("legacy fixture selector")
+            .is_some_and(|path| path == ["People"])
+    );
     assert!(people.bindings.iter().any(|binding| {
         binding.target_field == "Age"
             && matches!(
@@ -452,7 +474,10 @@ fn imports_header_driven_nested_worksheet_grid() {
         .iter()
         .find(|scope| scope.target_field == "Period")
         .unwrap();
-    assert_eq!(period.source(), Some(&[][..]));
+    assert_eq!(
+        period.source().expect("legacy fixture selector"),
+        Some(&[][..])
+    );
     assert!(period.filter.is_some());
     assert!(period.bindings.iter().any(|binding| {
         binding.target_field == "Month"
@@ -473,7 +498,10 @@ fn imports_header_driven_nested_worksheet_grid() {
         .iter()
         .find(|scope| scope.target_field == "Sale")
         .unwrap();
-    assert_eq!(sale.source(), Some(&["Rows".to_string()][..]));
+    assert_eq!(
+        sale.source().expect("legacy fixture selector"),
+        Some(&["Rows".to_string()][..])
+    );
     assert!(sale.bindings.iter().any(|binding| {
         binding.target_field == "Region"
             && matches!(

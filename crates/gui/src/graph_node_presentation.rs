@@ -55,7 +55,42 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
     }
 }
 
+pub(super) fn owned_source_title(node: &Node) -> Option<String> {
+    fn owner(owner: &mapping::SourceOwner) -> String {
+        match owner {
+            mapping::SourceOwner::Primary => "primary".into(),
+            mapping::SourceOwner::Named { name } => format!("named {name:?}"),
+        }
+    }
+    fn frame(frame: Option<&[String]>) -> String {
+        match frame {
+            None => "automatic (unresolved)".into(),
+            Some(path) => format!("explicit {path:?}"),
+        }
+    }
+    match node {
+        Node::OwnedSourceField(field) => Some(format!(
+            "Owned source: {}\nPath: {:?}\nFrame: {}\nRead-only; source ownership execution is unavailable",
+            owner(&field.source.owner),
+            field.source.path,
+            frame(field.frame.as_deref()),
+        )),
+        Node::OwnedPosition(position) => Some(format!(
+            "Owned position: {}\nCollection: {}\nRead-only; source ownership execution is unavailable",
+            owner(&position.owner),
+            frame(position.collection.as_deref()),
+        )),
+        _ => None,
+    }
+}
+
 pub(super) fn complete_title(node: Option<&Node>, title: String) -> String {
+    if let Some(owned) = node.and_then(owned_source_title) {
+        return format!(
+            "{title}
+{owned}"
+        );
+    }
     match node {
         Some(Node::XmlMixedContent {
             path,
@@ -222,6 +257,18 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         full_title
     };
     let (icon, summary) = match node {
+        Node::OwnedSourceField(field) => (
+            Icon::ArrowRightFromLine,
+            compact(
+                field
+                    .source
+                    .path
+                    .last()
+                    .map_or("owned root", String::as_str),
+                SUMMARY_CHAR_LIMIT,
+            ),
+        ),
+        Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
         Node::Const { value } => {
             let icon = match value {
                 ir::Value::String(_) => Icon::Type,
@@ -409,6 +456,28 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
     Some(Header { icon, summary })
 }
 
+pub(super) fn show_endpoint_header(ui: &mut Ui, source: bool, full_title: &str) -> Response {
+    let (icon, prefix) = if source {
+        (Icon::ArrowRightFromLine, "Source: ")
+    } else {
+        (Icon::ArrowRightToLine, "Target: ")
+    };
+    let title = full_title.strip_prefix(prefix).unwrap_or(full_title);
+    let response = ui
+        .horizontal(|ui| {
+            let icon = ui.label(crate::icons::text(icon, 16.0));
+            let title = ui.add(
+                egui::Label::new(title)
+                    .truncate()
+                    .show_tooltip_when_elided(false),
+            );
+            icon.union(title)
+        })
+        .inner;
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, full_title));
+    response
+}
+
 pub(super) fn show_header(ui: &mut Ui, header: Header, full_title: &str) -> Response {
     let response = ui
         .horizontal(|ui| {
@@ -427,7 +496,9 @@ pub(super) fn show_header(ui: &mut Ui, header: Header, full_title: &str) -> Resp
 pub(super) fn has_properties(node: &Node) -> bool {
     matches!(
         node,
-        Node::Const { .. }
+        Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }
             | Node::SourceRootField { .. }

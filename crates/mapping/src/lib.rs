@@ -29,6 +29,8 @@ mod reachable;
 mod recursive;
 mod runtime_dependency;
 mod scope_serde;
+mod source_owner;
+mod source_scope;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -82,10 +84,10 @@ pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,
     FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
-    NamedTarget, Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr,
-    SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn, XlsxCompositeLayout,
-    XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
-    XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
+    NamedTarget, Node, NodeId, OwnedPosition, OwnedSourceField, Project, RuntimeValue, Scope,
+    ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
+    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow,
+    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use path_hierarchy::PathHierarchyPlan;
 pub use pdf::{
@@ -100,6 +102,14 @@ pub use pipeline::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage};
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
+pub use source_owner::{
+    OwnedSourceAccess, OwnedSourceRef, SourceOwner, SourceSelector, SourceSelectorMut,
+    SourceSelectorRef,
+};
+pub use source_scope::{
+    SourceScopeLocation, SourceScopeStep, SourceScopeTarget, first_owned_source_scope,
+    first_project_owned_source_scope,
+};
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
     SwiftValueExpr,
@@ -127,3 +137,7 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]
 mod filter_map_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_collection.rs"]
+mod owned_collection_tests;

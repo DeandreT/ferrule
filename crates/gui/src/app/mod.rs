@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::appearance::EditorAppearance;
 use crate::appearance_editor::AppearanceTab;
 use crate::auto_connect::AutoConnectPlan;
-use crate::canvas::{CanvasNode, source_blocks, target_blocks};
+use crate::canvas::{CanvasNode, project_source_blocks, source_conflicts, target_blocks};
 use crate::canvas_layout::{ArrangeMode, arrange_snarl_with_mode};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::document::DocumentLocation;
@@ -43,7 +43,9 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod auto_connect_ui;
 #[path = "canvas.rs"]
 mod canvas_build;
-pub(crate) use canvas_build::sync_endpoint_wires_with_owned_items;
+pub(crate) use canvas_build::{
+    SourcePinPolicy, sync_endpoint_wires_with_owned_items, sync_endpoint_wires_with_policy,
+};
 #[path = "csv_dialect.rs"]
 mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
@@ -291,6 +293,13 @@ impl CanvasDocumentState {
             viewport_width: 1_200.0,
             pending_focus: None,
         }
+    }
+
+    fn reset_endpoint_catalog_view(&mut self) {
+        self.node_sizes.clear();
+        self.endpoint_scroll = Default::default();
+        self.search = Default::default();
+        self.pending_focus = None;
     }
 
     fn reset_view(&mut self) {
@@ -982,6 +991,25 @@ impl FerruleApp {
             .as_ref()
             .is_some_and(|pending| pending.before != self.observed_editor)
             || self.history.can_undo()
+    }
+
+    fn refresh_source_canvases(&mut self, previous_names: &[String]) {
+        self.main_canvas.snarl = canvas_build::rebuild_source_snarl(
+            &self.project,
+            previous_names,
+            &self.main_canvas.snarl,
+            None,
+        );
+        self.main_canvas.reset_endpoint_catalog_view();
+        for (&target, canvas) in &mut self.mapping_workspace.target_canvases {
+            canvas.snarl = canvas_build::rebuild_source_snarl(
+                &self.project,
+                previous_names,
+                &canvas.snarl,
+                Some(target),
+            );
+            canvas.reset_endpoint_catalog_view();
+        }
     }
 
     fn restore_history_snapshot(&mut self, snapshot: EditorSnapshot) {
@@ -1723,3 +1751,6 @@ mod value_map_default_presence_tests;
 
 #[cfg(test)]
 mod typed_value_map_cell_tests;
+
+#[cfg(test)]
+mod named_source_endpoint_tests;

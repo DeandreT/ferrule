@@ -760,7 +760,10 @@ fn legacy_source_and_sequence_fields_select_typed_iteration() {
         r#"{"target_field":"","source":["items"],"bindings":[],"children":[]}"#,
     )
     .unwrap();
-    assert_eq!(source.source(), Some(["items".to_string()].as_slice()));
+    assert_eq!(
+        source.source().expect("legacy fixture selector"),
+        Some(["items".to_string()].as_slice())
+    );
     assert!(source.sequence().is_none());
 
     let sequence: Scope = serde_json::from_str(
@@ -964,9 +967,13 @@ fn join_scope_and_owned_nodes_roundtrip() {
 fn scope_iteration_helpers_replace_and_clear_only_their_form() {
     let mut scope = Scope::default();
     scope.set_source(Some(vec!["rows".into()]));
-    scope.source_mut().unwrap().push("items".into());
+    scope
+        .source_mut()
+        .expect("legacy fixture selector")
+        .unwrap()
+        .push("items".into());
     assert_eq!(
-        scope.source(),
+        scope.source().expect("legacy fixture selector"),
         Some(["rows".into(), "items".into()].as_slice())
     );
 
@@ -996,7 +1003,10 @@ fn dynamic_document_iteration_roundtrips_with_its_source() {
     assert!(encoded.contains(r#""source":["documents"]"#));
     assert!(encoded.contains(r#""output_path":42"#));
     let decoded: Scope = serde_json::from_str(&encoded).unwrap();
-    assert_eq!(decoded.source(), Some(["documents".into()].as_slice()));
+    assert_eq!(
+        decoded.source().expect("legacy fixture selector"),
+        Some(["documents".into()].as_slice())
+    );
     assert_eq!(decoded.output_path(), Some(42));
 }
 
@@ -1059,7 +1069,10 @@ fn dynamic_document_output_path_requires_source_iteration() {
     assert!(scope.set_output_path(Some(42)));
     assert_eq!(scope.output_path(), Some(42));
     assert!(scope.set_output_path(None));
-    assert_eq!(scope.source(), Some([].as_slice()));
+    assert_eq!(
+        scope.source().expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
 }
 
 #[test]
@@ -1324,5 +1337,332 @@ fn csv_utf8_bom_defaults_off_and_survives_format_options_serde() {
         !serde_json::to_string(&legacy)
             .unwrap()
             .contains("csv_utf8_bom")
+    );
+}
+
+#[test]
+fn source_owner_tagged_forms_preserve_exact_names() {
+    assert_eq!(
+        serde_json::to_string(&SourceOwner::Primary).unwrap(),
+        r#"{"kind":"primary"}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<SourceOwner>(r#"{"kind":"primary"}"#).unwrap(),
+        SourceOwner::Primary
+    );
+    for (name, encoded) in [
+        ("Catalog", r#"{"kind":"named","name":"Catalog"}"#),
+        ("catalog", r#"{"kind":"named","name":"catalog"}"#),
+        (" catalog ", r#"{"kind":"named","name":" catalog "}"#),
+        ("参照 é", r#"{"kind":"named","name":"参照 é"}"#),
+        (" ", r#"{"kind":"named","name":" "}"#),
+    ] {
+        let expected = SourceOwner::Named { name: name.into() };
+        let actual: SourceOwner = serde_json::from_str(encoded).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(serde_json::to_string(&actual).unwrap(), encoded);
+    }
+    assert_ne!(
+        SourceOwner::Named {
+            name: "Catalog".into()
+        },
+        SourceOwner::Named {
+            name: "catalog".into()
+        }
+    );
+    assert_ne!(
+        SourceOwner::Named {
+            name: "catalog".into()
+        },
+        SourceOwner::Named {
+            name: " catalog ".into()
+        }
+    );
+}
+
+#[test]
+fn source_owner_rejects_unknown_duplicate_missing_and_malformed_fields() {
+    for encoded in [
+        r#"{}"#,
+        r#"{"name":"catalog"}"#,
+        r#"{"kind":"named"}"#,
+        r#"{"kind":"other"}"#,
+        r#"{"kind":"Primary"}"#,
+        r#"{"kind":"primary","name":"catalog"}"#,
+        r#"{"kind":"primary","extra":0}"#,
+        r#"{"kind":"named","name":"catalog","extra":0}"#,
+        r#"{"kind":"primary","kind":"primary"}"#,
+        r#"{"kind":"named","name":"catalog","name":"catalog"}"#,
+        r#"{"kind":"named","name":""}"#,
+        r#"{"kind":null}"#,
+        r#"{"kind":1}"#,
+        r#"{"kind":"named","name":null}"#,
+        r#"{"kind":"named","name":1}"#,
+        r#"{"kind":"named","name":false}"#,
+        r#"{"kind":"named","name":[]}"#,
+        r#"{"kind":"named","name":{}}"#,
+        r#"null"#,
+        r#""primary""#,
+        r#"[]"#,
+        r#"["primary"]"#,
+        r#"1"#,
+        r#"false"#,
+    ] {
+        assert!(
+            serde_json::from_str::<SourceOwner>(encoded).is_err(),
+            "{encoded}"
+        );
+    }
+}
+
+#[test]
+fn source_owner_refuses_empty_typed_name_when_serializing() {
+    let invalid = SourceOwner::Named {
+        name: String::new(),
+    };
+    assert!(
+        serde_json::to_string(&invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("name cannot be empty")
+    );
+    let invalid_ref = OwnedSourceRef {
+        owner: invalid,
+        path: Vec::new(),
+    };
+    assert!(serde_json::to_string(&invalid_ref).is_err());
+    assert!(serde_json::to_string(&SourceSelector::Owned(invalid_ref)).is_err());
+}
+
+#[test]
+fn owned_source_refs_preserve_explicit_root_nested_and_unrestricted_segments() {
+    for (encoded, expected) in [
+        (
+            r#"{"owner":{"kind":"primary"},"path":[]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: Vec::new(),
+            },
+        ),
+        (
+            r#"{"owner":{"kind":"primary"},"path":["Rows","Value"]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: vec!["Rows".into(), "Value".into()],
+            },
+        ),
+        (
+            r#"{"owner":{"kind":"named","name":" 参照 "},"path":[]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: " 参照 ".into(),
+                },
+                path: Vec::new(),
+            },
+        ),
+        (
+            r#"{"owner":{"kind":"named","name":"catalog"},"path":["","..","a/b","/","\\"," 名 ","\u0000"]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "catalog".into(),
+                },
+                path: vec![
+                    "".into(),
+                    "..".into(),
+                    "a/b".into(),
+                    "/".into(),
+                    "\\".into(),
+                    " 名 ".into(),
+                    "\0".into(),
+                ],
+            },
+        ),
+    ] {
+        let actual: OwnedSourceRef = serde_json::from_str(encoded).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(serde_json::to_string(&actual).unwrap(), encoded);
+    }
+    let long = "名".repeat(1024);
+    let expected = OwnedSourceRef {
+        owner: SourceOwner::Named { name: long.clone() },
+        path: vec![long],
+    };
+    let encoded = serde_json::to_string(&expected).unwrap();
+    assert_eq!(
+        serde_json::from_str::<OwnedSourceRef>(&encoded).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn owned_source_refs_reject_unknown_duplicate_missing_and_malformed_fields() {
+    for encoded in [
+        r#"{}"#,
+        r#"{"owner":{"kind":"primary"}}"#,
+        r#"{"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[],"extra":0}"#,
+        r#"{"owner":{"kind":"primary"},"owner":{"kind":"primary"},"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[],"path":[]}"#,
+        r#"{"owner":{"kind":"primary","kind":"primary"},"path":[]}"#,
+        r#"{"owner":{"kind":"named","name":"a","name":"a"},"path":[]}"#,
+        r#"{"owner":{"kind":"named","name":""},"path":[]}"#,
+        r#"{"owner":null,"path":[]}"#,
+        r#"{"owner":"primary","path":[]}"#,
+        r#"{"owner":[],"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":null}"#,
+        r#"{"owner":{"kind":"primary"},"path":"Rows"}"#,
+        r#"{"owner":{"kind":"primary"},"path":{}}"#,
+        r#"{"owner":{"kind":"primary"},"path":[1]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[null]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[[]]}"#,
+        r#"[{"kind":"primary"},[]]"#,
+        r#"[]"#,
+        r#"null"#,
+    ] {
+        assert!(
+            serde_json::from_str::<OwnedSourceRef>(encoded).is_err(),
+            "{encoded}"
+        );
+    }
+}
+
+#[test]
+fn source_selector_preserves_legacy_arrays_without_migration() {
+    for (encoded, path) in [
+        (r#"[]"#, Vec::new()),
+        (r#"["Rows","Value"]"#, vec!["Rows".into(), "Value".into()]),
+        (
+            r#"["","..","a/b"," 名 "]"#,
+            vec!["".into(), "..".into(), "a/b".into(), " 名 ".into()],
+        ),
+    ] {
+        let actual: SourceSelector = serde_json::from_str(encoded).unwrap();
+        assert_eq!(actual, SourceSelector::Legacy(path));
+        assert_eq!(serde_json::to_string(&actual).unwrap(), encoded);
+    }
+}
+
+#[test]
+fn source_selector_preserves_owned_objects_without_prefix_rewriting() {
+    for (encoded, expected) in [
+        (
+            r#"{"owner":{"kind":"primary"},"path":[]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: Vec::new(),
+            },
+        ),
+        (
+            r#"{"owner":{"kind":"named","name":"reference"},"path":["Rows","Value"]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "reference".into(),
+                },
+                path: vec!["Rows".into(), "Value".into()],
+            },
+        ),
+        (
+            r#"{"owner":{"kind":"named","name":"reference"},"path":["reference","Value"]}"#,
+            OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "reference".into(),
+                },
+                path: vec!["reference".into(), "Value".into()],
+            },
+        ),
+    ] {
+        let actual: SourceSelector = serde_json::from_str(encoded).unwrap();
+        assert_eq!(actual, SourceSelector::Owned(expected));
+        assert_eq!(serde_json::to_string(&actual).unwrap(), encoded);
+    }
+}
+
+#[test]
+fn source_selector_rejects_every_nonarray_nonobject_or_malformed_form() {
+    for encoded in [
+        r#"null"#,
+        r#""Rows""#,
+        r#"1"#,
+        r#"false"#,
+        r#"[1]"#,
+        r#"[null]"#,
+        r#"[[]]"#,
+        r#"[{}]"#,
+        r#"[{"kind":"primary"},[]]"#,
+        r#"{}"#,
+        r#"{"owner":{"kind":"primary"}}"#,
+        r#"{"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[],"extra":0}"#,
+        r#"{"owner":{"kind":"primary"},"owner":{"kind":"primary"},"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":[],"path":[]}"#,
+        r#"{"owner":{"kind":"primary","kind":"primary"},"path":[]}"#,
+        r#"{"owner":{"kind":"named","name":"a","name":"a"},"path":[]}"#,
+        r#"{"owner":{"kind":"named","name":""},"path":[]}"#,
+        r#"{"owner":null,"path":[]}"#,
+        r#"{"owner":{"kind":"primary"},"path":null}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<SourceSelector>(encoded).is_err(),
+            "{encoded}"
+        );
+    }
+}
+
+#[test]
+fn source_selector_null_and_absence_belong_to_outer_option() {
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct Outer {
+        #[serde(default)]
+        source: Option<SourceSelector>,
+    }
+    for encoded in [r#"{}"#, r#"{"source":null}"#] {
+        let actual: Outer = serde_json::from_str(encoded).unwrap();
+        assert_eq!(actual.source, None);
+        assert_eq!(
+            serde_json::to_string(&actual).unwrap(),
+            r#"{"source":null}"#
+        );
+    }
+    assert_eq!(
+        serde_json::from_str::<Outer>(r#"{"source":[]}"#)
+            .unwrap()
+            .source,
+        Some(SourceSelector::Legacy(Vec::new()))
+    );
+    assert_eq!(
+        serde_json::from_str::<Outer>(r#"{"source":{"owner":{"kind":"primary"},"path":[]}}"#)
+            .unwrap()
+            .source,
+        Some(SourceSelector::Owned(OwnedSourceRef {
+            owner: SourceOwner::Primary,
+            path: Vec::new()
+        }))
+    );
+    assert_eq!(
+        serde_json::from_str::<Option<OwnedSourceRef>>("null").unwrap(),
+        None
+    );
+    assert_eq!(
+        serde_json::from_str::<Option<SourceOwner>>("null").unwrap(),
+        None
+    );
+}
+
+#[test]
+fn old_path_array_readers_refuse_owned_objects() {
+    for encoded in [
+        r#"{"owner":{"kind":"primary"},"path":[]}"#,
+        r#"{"owner":{"kind":"named","name":"catalog"},"path":["Rows","Value"]}"#,
+    ] {
+        assert!(serde_json::from_str::<Vec<String>>(encoded).is_err());
+        assert!(serde_json::from_str::<Option<Vec<String>>>(encoded).is_err());
+    }
+    assert_eq!(
+        serde_json::from_str::<Vec<String>>(r#"["Rows","Value"]"#).unwrap(),
+        ["Rows", "Value"]
+    );
+    assert_eq!(
+        serde_json::from_str::<Option<Vec<String>>>("null").unwrap(),
+        None
     );
 }

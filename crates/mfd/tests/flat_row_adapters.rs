@@ -119,7 +119,14 @@ fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
         reimported.project.root.construction,
         ScopeConstruction::CopyCurrentSource
     );
-    assert_eq!(reimported.project.root.source(), Some(&[] as &[String]));
+    assert_eq!(
+        reimported
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
+        Some(&[] as &[String])
+    );
     let roundtrip_output = engine::run(&reimported.project, &source_instance)?;
     assert_eq!(roundtrip_output, output);
     Ok(())

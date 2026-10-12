@@ -76,7 +76,14 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
     let imported = mfd::import(&directory.0.join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    assert_eq!(imported.project.root.source(), Some([].as_slice()));
+    assert_eq!(
+        imported
+            .project
+            .root
+            .source()
+            .expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
     assert!(imported.project.root.output_path().is_some());
     assert_eq!(imported.project.target_path, None);
 
@@ -234,13 +241,19 @@ fn nested_current_and_restarted_collection_sources_roundtrip_distinctly()
         .iter()
         .find(|scope| scope.target_field == "Employee")
         .ok_or("round-trip project has no Employee scope")?;
-    assert_eq!(employee.source(), Some([].as_slice()));
+    assert_eq!(
+        employee.source().expect("legacy fixture selector"),
+        Some([].as_slice())
+    );
     let item = employee
         .children
         .iter()
         .find(|scope| scope.target_field == "Item")
         .ok_or("round-trip project has no Item scope")?;
-    assert_eq!(item.source(), Some(["Item".to_string()].as_slice()));
+    assert_eq!(
+        item.source().expect("legacy fixture selector"),
+        Some(["Item".to_string()].as_slice())
+    );
     assert_eq!(engine::run(&roundtrip.project, &source)?, expected);
     Ok(())
 }

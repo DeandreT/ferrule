@@ -1010,3 +1010,32 @@ fn named_scope_creation_uses_fresh_owners_and_complete_two_target_outputs() {
         }
     );
 }
+
+#[test]
+fn owned_source_ancestor_refuses_filter_map_authoring_before_project_mutation() {
+    let mut app = fixture("identity-all");
+    app.project.root.iteration = ScopeIteration::OwnedSource {
+        source: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Named {
+                name: " Ref 雪 ".into(),
+            },
+            path: vec![],
+        },
+        output_path: Some(7),
+    };
+    assert!(!super::compatible_scope(&app));
+    app.project.root.children[0].set_sequence(None);
+    let before = encoded(&app);
+    assert!(app.create_selected_filter_map().is_err());
+    assert_eq!(encoded(&app), before);
+    let Some(mapping::SourceSelectorRef::Owned(reference)) = app.project.root.source_selector()
+    else {
+        panic!("owned ancestor selector must be retained");
+    };
+    let mapping::SourceOwner::Named { name } = &reference.owner else {
+        panic!("named owner must be retained");
+    };
+    assert_eq!(name, " Ref 雪 ");
+    assert!(reference.path.is_empty());
+    assert_eq!(app.project.root.output_path(), Some(7));
+}

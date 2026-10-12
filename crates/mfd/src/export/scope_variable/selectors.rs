@@ -103,6 +103,10 @@ pub(in crate::export) fn selector_context_warnings(
             let mut owned_anchor = anchor.to_vec();
             let mut private_xml = false;
             match node {
+                Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+                    self.warnings
+                        .insert(format!("owned source node {id} has no export capability"));
+                }
                 Node::Position { collection } => {
                     let owner = frames
                         .iter()
@@ -278,7 +282,10 @@ pub(in crate::export) fn selector_context_warnings(
             }
             let mut frames = parent.to_vec();
             let mut current = anchor.to_vec();
-            if let Some(source) = scope.source() {
+            if let Some(source) = scope
+                .source()
+                .expect("legacy path after ownership boundary")
+            {
                 current = self.source_frames(source, anchor, &mut frames);
             }
             if let Some(sequence) = scope.sequence() {

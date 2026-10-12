@@ -13,6 +13,34 @@ use super::{
     recursive, wsdl, xbrl,
 };
 
+/// Export represents all stored main nodes and every declared function body.
+pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdError> {
+    if let Some(scope) = mapping::first_project_owned_source_scope(project) {
+        return Err(MfdError::UnsupportedSourceIteration { scope });
+    }
+    for (&node, expression) in &project.graph.nodes {
+        if let Some(kind) = expression.owned_source_kind() {
+            return Err(MfdError::UnsupportedSourceOwnership {
+                node,
+                function: None,
+                kind,
+            });
+        }
+    }
+    for (&function, definition) in &project.user_functions {
+        for (&node, expression) in &definition.body.nodes {
+            if let Some(kind) = expression.owned_source_kind() {
+                return Err(MfdError::UnsupportedSourceOwnership {
+                    node,
+                    function: Some(function),
+                    kind,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.source_options.xml_root_view_read_policy
         || project.target_options.xml_root_view_read_policy
@@ -714,7 +742,10 @@ fn validate_copy_current_source(
     root: &Scope,
     target_format: SideFormat,
 ) -> Result<(), MfdError> {
-    let root_row_copy = root.source().is_some_and(<[String]>::is_empty)
+    let root_row_copy = root
+        .source()
+        .expect("legacy path after ownership boundary")
+        .is_some_and(<[String]>::is_empty)
         && collection_root(
             side_format(&project.source_path, &project.source_options),
             &project.source,
@@ -791,7 +822,13 @@ fn validate_copy_scope_shape(
     path: &[String],
     root_row_copy: bool,
 ) -> Result<(), MfdError> {
-    if path.is_empty() && scope.source().is_some() && !root_row_copy {
+    if path.is_empty()
+        && scope
+            .source()
+            .expect("legacy path after ownership boundary")
+            .is_some()
+        && !root_row_copy
+    {
         return Err(MfdError::Unsupported(
             "copy-current-source export requires an uncontrolled document-root copy or an exact row-root collection copy"
                 .to_string(),
@@ -847,7 +884,10 @@ fn scope_source_schema<'a>(
     parent: Option<&'a SchemaNode>,
     scope: &Scope,
 ) -> Option<&'a SchemaNode> {
-    let Some(path) = scope.source() else {
+    let Some(path) = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+    else {
         return if scope.sequence().is_none() && scope.join().is_none() {
             parent
         } else {

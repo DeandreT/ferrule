@@ -109,7 +109,10 @@ fn xbrl_row_uses_database_collection_without_lifting_attribute_feed() -> Result<
 
     let statement = child_scope(&imported.project.root, "Statement")?;
     let row = child_scope(statement, "identifier")?;
-    assert_eq!(row.source(), Some(&[][..]));
+    assert_eq!(
+        row.source().expect("legacy fixture selector"),
+        Some(&[][..])
+    );
 
     let identifier = child_scope(row, "identifier")?;
     let scheme = identifier

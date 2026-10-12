@@ -289,6 +289,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             continue;
         }
         match node {
+            Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+                return Err(MfdError::UnsupportedSourceOwnership {
+                    node: id,
+                    function: None,
+                    kind: node.owned_source_kind().expect("owned node kind"),
+                });
+            }
             Node::Raise { .. } => {
                 return Err(MfdError::Unsupported(format!(
                     "raise node {id} requires an item-owned exception branch for native export"

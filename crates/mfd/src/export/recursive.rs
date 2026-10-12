@@ -221,15 +221,18 @@ fn validate_scope(
     chain: &mut Vec<String>,
     source_anchor: &[String],
 ) -> Result<(), MfdError> {
-    let source_collection = scope.source().map(|source| {
-        if is_named_source_path(project, source) {
-            source.to_vec()
-        } else {
-            let mut absolute = source_anchor.to_vec();
-            absolute.extend_from_slice(source);
-            absolute
-        }
-    });
+    let source_collection = scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .map(|source| {
+            if is_named_source_path(project, source) {
+                source.to_vec()
+            } else {
+                let mut absolute = source_anchor.to_vec();
+                absolute.extend_from_slice(source);
+                absolute
+            }
+        });
     match &scope.construction {
         ScopeConstruction::Scalar { value } => match scope.sequence() {
             Some(SequenceExpr::RecursiveCollect {
@@ -413,7 +416,9 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::SourceField { .. }
+        Node::OwnedSourceField(_)
+        | Node::OwnedPosition(_)
+        | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
@@ -489,7 +494,10 @@ fn require_root_only(chain: &[String], scope: &Scope, kind: &str) -> Result<(), 
 }
 
 fn has_controls_or_content(scope: &Scope) -> bool {
-    scope.source().is_some()
+    scope
+        .source()
+        .expect("legacy path after ownership boundary")
+        .is_some()
         || scope.join().is_some()
         || scope.filter.is_some()
         || scope.post_group_filter.is_some()

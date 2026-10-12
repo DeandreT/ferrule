@@ -887,7 +887,13 @@ fn literal_null_members_lower_and_emit_both_languages_without_building() {
 }
 
 fn assert_empty_membership_emits_both_languages(project: &Project, expected: bool) {
-    assert!(project.root.source().is_some());
+    assert!(
+        project
+            .root
+            .source()
+            .expect("legacy fixture selector")
+            .is_some()
+    );
     assert!(project.root.filter.is_some());
     let program = codegen::lower(project).unwrap();
     assert!(program.expressions.iter().any(|node| matches!(
@@ -990,7 +996,13 @@ fn sqlite_empty_memberships_keep_source_sort_and_window_controls() {
         assert_eq!(oracle(&dir.0, &sql, None, None), expected);
         let projects = projects_after_cycles(&dir.0, import(&path));
         for project in &projects {
-            assert!(project.root.source().is_some());
+            assert!(
+                project
+                    .root
+                    .source()
+                    .expect("legacy fixture selector")
+                    .is_some()
+            );
             assert!(project.root.filter.is_some());
             assert!(project.root.sort_by.is_some());
             assert!(project.root.sort_descending);

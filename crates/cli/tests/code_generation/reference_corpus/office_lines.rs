@@ -127,12 +127,18 @@ pub(super) fn assert_case(
     assert_eq!(root.children.len(), 1);
     assert_eq!(root.bindings.len(), 1);
     let office = &root.children[0];
-    let office_path = office.source().expect("current office iteration");
+    let office_path = office
+        .source()
+        .expect("legacy fixture selector")
+        .expect("current office iteration");
     assert_eq!(office_path.len(), 1);
     assert_eq!(office.children.len(), 1);
     assert_eq!(office.bindings.len(), 5);
     let address = &office.children[0];
-    let address_path = address.source().expect("current address iteration");
+    let address_path = address
+        .source()
+        .expect("legacy fixture selector")
+        .expect("current address iteration");
     assert_eq!(address_path.len(), 1);
     assert!(address.children.is_empty());
     assert_eq!(address.bindings.len(), 4);

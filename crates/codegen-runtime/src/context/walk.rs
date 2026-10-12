@@ -39,39 +39,11 @@ impl<'a> ScopeContext<'a> {
     /// current repeated/document value, or selects one ordinary current
     /// value. Repetition crossed at any depth branches in source order.
     pub fn walk_source(&self, path: &[&str]) -> Vec<Self> {
-        let base = self.frames.iter().rev().find(|frame| match path.first() {
-            Some(first) => frame.instance.field(first).is_some(),
-            None => true,
-        });
-        let extensions = if let Some(base) = base {
-            let prefix = if path.is_empty()
-                && base
-                    .collection
-                    .as_ref()
-                    .is_some_and(CollectionIdentity::is_grouped)
-            {
-                base.collection
-                    .as_ref()
-                    .map(CollectionIdentity::path)
-                    .unwrap_or_default()
-            } else {
-                &[]
-            };
-            walk_source_frames(base.instance, path, prefix, &[])
-        } else if let Some((name, rest)) = path.split_first()
-            && let Some(input) = self.named_input(name)
-        {
-            walk_source_frames(input, rest, &[(*name).to_string()], &[])
-        } else if let Some(base) = self.frames.last() {
-            walk_source_frames(base.instance, path, &[], &[])
-        } else {
-            Vec::new()
-        };
-
-        extensions
-            .into_iter()
-            .map(|extension| self.extend(extension))
-            .collect()
+        let mut observer = LegacyNoop { context: self };
+        match walk_source_observed(self, path, &mut observer) {
+            Ok(contexts) => contexts,
+            Err(impossible) => match impossible {},
+        }
     }
 
     /// Appends source frames from one host-loaded dynamic document while
@@ -460,4 +432,591 @@ fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {
         current = current.field(segment)?;
     }
     current.as_scalar()
+}
+
+// Internal witnesses are produced by this traversal, never reconstructed
+// from a requested name, a second walk, or source pointer equality.
+pub(super) enum LegacySelected {
+    Frame(usize),
+    NamedBinding(usize),
+}
+
+pub(super) trait LegacyWalkObserver<'a> {
+    type Error;
+    type Output;
+    fn selected(&mut self, selected: LegacySelected, prefix_len: usize) -> Result<(), Self::Error>;
+    fn enter(&mut self, instance: &'a Instance, depth: usize) -> Result<(), Self::Error>;
+    fn field_consumed(
+        &mut self,
+        parent: &'a Instance,
+        child: &'a Instance,
+        segment: &str,
+    ) -> Result<(), Self::Error>;
+    fn reserve(&mut self) -> Result<(), Self::Error>;
+    fn stack_capacity(&self) -> usize;
+    fn output_capacity(&self) -> usize;
+    fn path_copy(&mut self, path: &[String], segment: Option<&str>) -> Result<(), Self::Error>;
+    fn path_drop(&mut self, segments: usize);
+    fn frame_push(
+        &mut self,
+        acc: &[ScopeFrame<'a>],
+        path: Option<&[String]>,
+    ) -> Result<(), Self::Error>;
+    fn frame_drop(&mut self, path: Option<&[String]>);
+    fn publish(
+        &mut self,
+        acc: &[ScopeFrame<'a>],
+        terminal: &'a Instance,
+        terminal_path: &[String],
+    ) -> Result<Self::Output, Self::Error>;
+}
+
+struct LegacyNoop<'c, 'a> {
+    context: &'c ScopeContext<'a>,
+}
+impl<'a> LegacyWalkObserver<'a> for LegacyNoop<'_, 'a> {
+    type Error = std::convert::Infallible;
+    type Output = ScopeContext<'a>;
+    fn selected(&mut self, _: LegacySelected, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn enter(&mut self, _: &'a Instance, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn field_consumed(
+        &mut self,
+        _: &'a Instance,
+        _: &'a Instance,
+        _: &str,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn stack_capacity(&self) -> usize {
+        0
+    }
+    fn output_capacity(&self) -> usize {
+        0
+    }
+    fn path_copy(&mut self, _: &[String], _: Option<&str>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn path_drop(&mut self, _: usize) {}
+    fn frame_push(
+        &mut self,
+        _: &[ScopeFrame<'a>],
+        _: Option<&[String]>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn frame_drop(&mut self, _: Option<&[String]>) {}
+    fn publish(
+        &mut self,
+        acc: &[ScopeFrame<'a>],
+        _: &'a Instance,
+        _: &[String],
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(self.context.extend(acc.to_vec()))
+    }
+}
+
+pub(super) fn walk_source_observed<'a, O: LegacyWalkObserver<'a>>(
+    context: &ScopeContext<'a>,
+    path: &[&str],
+    observer: &mut O,
+) -> Result<Vec<O::Output>, O::Error> {
+    #[cfg(test)]
+    super::basic::record_walk_entry();
+    let base = context
+        .frames
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, frame)| match path.first() {
+            Some(first) => frame.instance.field(first).is_some(),
+            None => true,
+        });
+    // Selection is literal legacy order: actual active frame, actual first
+    // supplied named binding, then the actual last-frame fallback.
+    let named = if base.is_none() {
+        path.split_first().and_then(|(name, rest)| {
+            context
+                .named_inputs
+                .iter()
+                .enumerate()
+                .find(|(_, input)| input.name == *name)
+                .map(|(index, input)| (index, input, rest))
+        })
+    } else {
+        None
+    };
+    let selected = if let Some((index, base)) = base {
+        let prefix = if path.is_empty()
+            && base
+                .collection
+                .as_ref()
+                .is_some_and(CollectionIdentity::is_grouped)
+        {
+            base.collection
+                .as_ref()
+                .map(CollectionIdentity::path)
+                .unwrap_or_default()
+        } else {
+            &[]
+        };
+        observer.selected(LegacySelected::Frame(index), prefix.len())?;
+        Some((base.instance, path, prefix, None))
+    } else if let Some((index, input, rest)) = named {
+        observer.selected(LegacySelected::NamedBinding(index), 1)?;
+        Some((input.instance, rest, &[][..], Some(input.name)))
+    } else if let Some((index, base)) = context.frames.iter().enumerate().next_back() {
+        observer.selected(LegacySelected::Frame(index), 0)?;
+        Some((base.instance, path, &[][..], None))
+    } else {
+        None
+    };
+    let Some((instance, path, prefix, named_prefix)) = selected else {
+        return Ok(Vec::new());
+    };
+    observer.reserve()?;
+    let mut acc = Vec::with_capacity(observer.stack_capacity());
+    let mut output = Vec::with_capacity(observer.output_capacity());
+    if let Some(name) = named_prefix {
+        observer.path_copy(&[], Some(name))?;
+        let owned_prefix = vec![name.to_string()];
+        observed_source_frames(
+            instance,
+            path,
+            &owned_prefix,
+            &mut acc,
+            &mut output,
+            observer,
+            0,
+        )?;
+        drop(owned_prefix);
+        observer.path_drop(1);
+    } else {
+        observed_source_frames(instance, path, prefix, &mut acc, &mut output, observer, 0)?;
+    }
+    Ok(output)
+}
+
+fn observed_source_frames<'a, O: LegacyWalkObserver<'a>>(
+    base: &'a Instance,
+    path: &[&str],
+    prefix: &[String],
+    acc: &mut Vec<ScopeFrame<'a>>,
+    output: &mut Vec<O::Output>,
+    observer: &mut O,
+    depth: usize,
+) -> Result<(), O::Error> {
+    observer.enter(base, depth)?;
+    if !path.is_empty()
+        && let Instance::Repeated(items) = base
+    {
+        for (index, item) in items.iter().enumerate() {
+            observer.frame_push(acc, Some(prefix))?;
+            acc.push(collection_frame(
+                item,
+                CollectionIdentity::Repeated {
+                    path: prefix.to_vec(),
+                    index: index + 1,
+                },
+            ));
+            observed_source_frames(item, path, prefix, acc, output, observer, depth + 1)?;
+            drop(acc.pop());
+            observer.frame_drop(Some(prefix));
+        }
+        return Ok(());
+    }
+    match path.split_first() {
+        None => match base {
+            Instance::DocumentSet(documents) => {
+                for (index, document) in documents.iter().enumerate() {
+                    observer.frame_push(acc, Some(prefix))?;
+                    acc.push(document_frame(
+                        document.value(),
+                        CollectionIdentity::Document {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
+                        document.source_path(),
+                    ));
+                    output.push(observer.publish(acc, document.value(), prefix)?);
+                    drop(acc.pop());
+                    observer.frame_drop(Some(prefix));
+                }
+            }
+            Instance::Repeated(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    observer.frame_push(acc, Some(prefix))?;
+                    acc.push(collection_frame(
+                        item,
+                        CollectionIdentity::Repeated {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
+                    ));
+                    output.push(observer.publish(acc, item, prefix)?);
+                    drop(acc.pop());
+                    observer.frame_drop(Some(prefix));
+                }
+            }
+            _ => {
+                observer.frame_push(acc, None)?;
+                acc.push(ScopeFrame {
+                    instance: base,
+                    collection: None,
+                    document_path: None,
+                    join: None,
+                    join_position: None,
+                });
+                output.push(observer.publish(acc, base, prefix)?);
+                drop(acc.pop());
+                observer.frame_drop(None);
+            }
+        },
+        Some((segment, rest)) => {
+            if let Instance::DocumentSet(documents) = base {
+                for (index, document) in documents.iter().enumerate() {
+                    observer.frame_push(acc, Some(prefix))?;
+                    acc.push(document_frame(
+                        document.value(),
+                        CollectionIdentity::Document {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
+                        document.source_path(),
+                    ));
+                    observed_source_frames(
+                        document.value(),
+                        path,
+                        prefix,
+                        acc,
+                        output,
+                        observer,
+                        depth + 1,
+                    )?;
+                    drop(acc.pop());
+                    observer.frame_drop(Some(prefix));
+                }
+                return Ok(());
+            }
+            observer.path_copy(prefix, Some(segment))?;
+            let mut collection_path = Vec::with_capacity(prefix.len() + 1);
+            collection_path.extend(prefix.iter().cloned());
+            collection_path.push((*segment).to_string());
+            let selected_child = base.field(segment);
+            if let Some(child) = selected_child {
+                observer.field_consumed(base, child, segment)?;
+            }
+            match selected_child {
+                None => {}
+                Some(Instance::Repeated(items)) => {
+                    for (index, item) in items.iter().enumerate() {
+                        observer.frame_push(acc, Some(&collection_path))?;
+                        acc.push(collection_frame(
+                            item,
+                            CollectionIdentity::Repeated {
+                                path: collection_path.clone(),
+                                index: index + 1,
+                            },
+                        ));
+                        if rest.is_empty() {
+                            output.push(observer.publish(acc, item, &collection_path)?);
+                        } else {
+                            observed_source_frames(
+                                item,
+                                rest,
+                                &collection_path,
+                                acc,
+                                output,
+                                observer,
+                                depth + 1,
+                            )?;
+                        }
+                        drop(acc.pop());
+                        observer.frame_drop(Some(&collection_path));
+                    }
+                }
+                Some(other) => observed_source_frames(
+                    other,
+                    rest,
+                    &collection_path,
+                    acc,
+                    output,
+                    observer,
+                    depth + 1,
+                )?,
+            }
+            let segments = collection_path.len();
+            drop(collection_path);
+            observer.path_drop(segments);
+        }
+    }
+    Ok(())
+}
+
+pub(super) trait OwnedWalkObserver<'a> {
+    type Error: From<super::OwnedSourceError>;
+    type Output;
+    fn selected(
+        &mut self,
+        key: super::OwnedOwnerKey,
+        base: &'a Instance,
+        identity: bool,
+    ) -> Result<bool, Self::Error>;
+    fn field_consumed(
+        &mut self,
+        parent: &'a Instance,
+        child: &'a Instance,
+        segment: &str,
+    ) -> Result<(), Self::Error>;
+    fn copy_frames(&mut self, frames: &[super::OwnedSourceFrame<'a>]) -> Result<(), Self::Error>;
+    fn push_frame(&mut self, path: &[&str]) -> Result<(), Self::Error>;
+    fn publish(
+        &mut self,
+        context: super::OwnedScopeContext<'a>,
+        terminal: &'a Instance,
+        path: &[&str],
+        identity: bool,
+    ) -> Result<Self::Output, Self::Error>;
+}
+struct OwnedNoop;
+impl<'a> OwnedWalkObserver<'a> for OwnedNoop {
+    type Error = super::OwnedSourceError;
+    type Output = super::OwnedScopeContext<'a>;
+    fn selected(
+        &mut self,
+        _: super::OwnedOwnerKey,
+        _: &'a Instance,
+        _: bool,
+    ) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+    fn field_consumed(
+        &mut self,
+        _: &'a Instance,
+        _: &'a Instance,
+        _: &str,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn copy_frames(&mut self, _: &[super::OwnedSourceFrame<'a>]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn push_frame(&mut self, _: &[&str]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn publish(
+        &mut self,
+        context: super::OwnedScopeContext<'a>,
+        _: &'a Instance,
+        _: &[&str],
+        _: bool,
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(context)
+    }
+}
+
+// One cursor per active repeated ancestor; never enqueue all source items.
+enum OwnedWalkTask<'a> {
+    Visit {
+        instance: &'a Instance,
+        consumed: usize,
+        restore: usize,
+    },
+    Repeated {
+        items: &'a [Instance],
+        consumed: usize,
+        next: usize,
+        restore: usize,
+    },
+}
+
+impl<'a> super::OwnedScopeContext<'a> {
+    /// Walks an exact static source owner with canonical endpoint-relative paths.
+    /// Every repeated boundary records its actual item and one-based position.
+    pub fn walk_owned_source(
+        &self,
+        owner: super::SourceOwnerRef<'_>,
+        path: &[&str],
+    ) -> Result<Vec<Self>, super::OwnedSourceError> {
+        self.walk_owned_source_observed(owner, path, &mut OwnedNoop)
+    }
+
+    pub(super) fn walk_owned_source_observed<O: OwnedWalkObserver<'a>>(
+        &self,
+        owner: super::SourceOwnerRef<'_>,
+        path: &[&str],
+        observer: &mut O,
+    ) -> Result<Vec<O::Output>, O::Error> {
+        use super::{OwnedSourceError, OwnedSourceLimitKind};
+
+        #[cfg(test)]
+        super::basic::record_walk_entry();
+        let mut budget = self.query_budget(owner, path, None)?;
+        let (key, root) = self.resolve_owned_owner(owner)?;
+        let base = self.owned_base(key, path);
+        let identity = base.is_some_and(|frame| frame.collection.len() == path.len());
+        let selected = base.map_or(root, |frame| frame.instance);
+        if !observer.selected(key, selected, identity)? {
+            return Ok(Vec::new());
+        }
+        if identity {
+            super::owned_charge(
+                OwnedSourceLimitKind::WalkContexts,
+                0,
+                1,
+                self.registry.limits.max_walk_contexts,
+            )?;
+            budget.slots.charge(1)?;
+            observer.copy_frames(&self.frames)?;
+            let copied = Self {
+                registry: std::sync::Arc::clone(&self.registry),
+                frames: self.copy_owned_frames(&self.frames, &mut budget)?,
+            };
+            return Ok(vec![observer.publish(copied, selected, path, true)?]);
+        }
+        let (instance, consumed) =
+            base.map_or((root, 0), |frame| (frame.instance, frame.collection.len()));
+        observer.copy_frames(&self.frames)?;
+        let mut frames = self.copy_owned_frames(&self.frames, &mut budget)?;
+        budget.slots.charge(1)?; // Current task reservation, retained through the walk.
+        budget.slots.charge(1)?; // Initial pending Visit cursor.
+        let mut pending = vec![OwnedWalkTask::Visit {
+            instance,
+            consumed,
+            restore: frames.len(),
+        }];
+        let mut output = Vec::new();
+        while let Some(task) = pending.pop() {
+            budget.slots.release(1)?;
+            match task {
+                OwnedWalkTask::Repeated {
+                    items,
+                    consumed,
+                    next,
+                    restore,
+                } => {
+                    for frame in &frames[restore..] {
+                        budget.slots.release(1)?;
+                        budget.slots.release(frame.collection.len())?;
+                    }
+                    frames.truncate(restore);
+                    let Some(item) = items.get(next) else {
+                        continue;
+                    };
+                    let index = next.checked_add(1).ok_or(
+                        OwnedSourceError::MetadataArithmeticOverflow {
+                            kind: OwnedSourceLimitKind::WalkContexts,
+                        },
+                    )?;
+                    super::owned_charge(
+                        OwnedSourceLimitKind::Frames,
+                        frames.len(),
+                        1,
+                        self.registry.limits.max_active_frames,
+                    )?;
+                    budget.slots.charge(1)?;
+                    budget.slots.charge(consumed)?;
+                    budget.borrowed_path(&path[..consumed])?;
+                    observer.push_frame(&path[..consumed])?;
+                    frames.push(super::OwnedSourceFrame {
+                        owner: key,
+                        collection: super::owned_string_path(&path[..consumed]),
+                        instance: item,
+                        index,
+                    });
+                    budget.slots.charge(2)?;
+                    pending.push(OwnedWalkTask::Repeated {
+                        items,
+                        consumed,
+                        next: index,
+                        restore,
+                    });
+                    pending.push(OwnedWalkTask::Visit {
+                        instance: item,
+                        consumed,
+                        restore: frames.len(),
+                    });
+                }
+                OwnedWalkTask::Visit {
+                    mut instance,
+                    mut consumed,
+                    restore,
+                } => {
+                    for frame in &frames[restore..] {
+                        budget.slots.release(1)?;
+                        budget.slots.release(frame.collection.len())?;
+                    }
+                    frames.truncate(restore);
+                    loop {
+                        match instance {
+                            Instance::Scalar(Value::Null | Value::JsonNull(_)) => break,
+                            Instance::Repeated(items) => {
+                                budget.slots.charge(1)?;
+                                pending.push(OwnedWalkTask::Repeated {
+                                    items,
+                                    consumed,
+                                    next: 0,
+                                    restore: frames.len(),
+                                });
+                                break;
+                            }
+                            Instance::DocumentSet(_) | Instance::MappedSequence(_) => {
+                                return Err(OwnedSourceError::UnsupportedSourceKind {
+                                    owner: self.owned_identity(key),
+                                    path: super::owned_string_path(path),
+                                    found: super::owned_instance_kind(instance),
+                                }
+                                .into());
+                            }
+                            _ => {}
+                        }
+                        if consumed == path.len() {
+                            super::owned_charge(
+                                OwnedSourceLimitKind::WalkContexts,
+                                output.len(),
+                                1,
+                                self.registry.limits.max_walk_contexts,
+                            )?;
+                            budget.slots.charge(1)?;
+                            observer.copy_frames(&frames)?;
+                            let copied = Self {
+                                registry: std::sync::Arc::clone(&self.registry),
+                                frames: self.copy_owned_frames(&frames, &mut budget)?,
+                            };
+                            output.push(observer.publish(copied, instance, path, false)?);
+                            break;
+                        }
+                        match instance {
+                            Instance::Group(_) => {
+                                let Some(next) = instance.field(path[consumed]) else {
+                                    break;
+                                };
+                                observer.field_consumed(instance, next, path[consumed])?;
+                                instance = next;
+                                consumed += 1;
+                            }
+                            _ => {
+                                return Err(OwnedSourceError::Traversal {
+                                    owner: self.owned_identity(key),
+                                    source: SourcePathError::CannotTraverse {
+                                        path: super::owned_string_path(path),
+                                        segment: consumed,
+                                        found: super::owned_instance_kind(instance),
+                                    },
+                                }
+                                .into());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(output)
+    }
 }

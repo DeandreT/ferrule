@@ -448,7 +448,21 @@ impl GraphViewer<'_> {
             } else {
                 Default::default()
             };
-            if owned_items.is_empty() {
+            let unavailable_blocks = self.project_references.source_conflicts();
+            if !unavailable_blocks.is_empty() {
+                crate::app::sync_endpoint_wires_with_policy(
+                    self.graph,
+                    self.root_scope,
+                    self.source_blocks,
+                    self.target_blocks,
+                    self.endpoint_scroll,
+                    snarl,
+                    crate::app::SourcePinPolicy {
+                        owned_items: &owned_items,
+                        unavailable_blocks: &unavailable_blocks,
+                    },
+                );
+            } else if owned_items.is_empty() {
                 crate::app::sync_endpoint_wires(
                     self.graph,
                     self.root_scope,
@@ -511,6 +525,68 @@ impl GraphViewer<'_> {
         match node {
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => Some(id),
             CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_) => None,
+        }
+    }
+
+    pub(crate) fn source_block_connection_error(&self, block: usize) -> Option<String> {
+        let index = block.checked_sub(1)?;
+        let source = self.project_references.named_source(index)?;
+        let owner = self.project_references.source_alias_conflict(index)?;
+        Some(format!(
+            "Named input `{}` is unavailable: its name/path conflicts with {owner}. Rename the input to use an unambiguous name. Existing bindings are unchanged.",
+            source.name
+        ))
+    }
+
+    pub(crate) fn source_block_x12(&self, block: usize) -> bool {
+        match block.checked_sub(1) {
+            None => self.source_x12,
+            Some(index) => self
+                .project_references
+                .named_source(index)
+                .is_some_and(|source| {
+                    crate::x12_tooltips::boundary_has_x12(
+                        &source.schema,
+                        Some(&source.path),
+                        &source.options,
+                    )
+                }),
+        }
+    }
+
+    pub(crate) fn source_endpoint_hint(
+        &self,
+        block: usize,
+        section: &SourceBlock,
+    ) -> Option<String> {
+        let context = if let Some(source) = block
+            .checked_sub(1)
+            .and_then(|index| self.project_references.named_source(index))
+        {
+            section
+                .frame
+                .as_deref()
+                .and_then(|frame| frame.get(1..))
+                .and_then(|frame| frame.last())
+                .map(String::as_str)
+                .or(Some(source.schema.name.as_str()))
+        } else {
+            section
+                .frame
+                .as_deref()
+                .and_then(|frame| frame.last())
+                .map(String::as_str)
+        };
+        let hint = crate::x12_tooltips::endpoint_header_hint(
+            self.source_block_x12(block),
+            &section.title,
+            context,
+        );
+        match self.source_block_connection_error(block) {
+            Some(error) => {
+                Some(hint.map_or_else(|| error.clone(), |hint| format!("{hint}\n{error}")))
+            }
+            None => hint,
         }
     }
 
@@ -1137,7 +1213,9 @@ impl GraphViewer<'_> {
             | Node::JoinAggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
-            Node::SourceField { .. }
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
@@ -1340,7 +1418,9 @@ impl GraphViewer<'_> {
 
     fn input_count(node: &Node) -> usize {
         match node {
-            Node::SourceField { .. }
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
@@ -1431,6 +1511,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 let title = match self.graph.nodes.get(id) {
+                    Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
+                    Some(Node::OwnedPosition(_)) => "Owned position".into(),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
@@ -1645,15 +1727,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                 )
                                 .x,
                             ),
-                            crate::x12_tooltips::endpoint_header_hint(
-                                self.source_x12,
-                                &section.title,
-                                section
-                                    .frame
-                                    .as_deref()
-                                    .and_then(|frame| frame.last())
-                                    .map(String::as_str),
-                            ),
+                            self.source_endpoint_hint(block, section),
                         )
                     })
             }
@@ -1684,6 +1758,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             // Account for the nested node/header frame margins. Pin labels are
             // painted independently so right-to-left rows cannot grow sideways.
             ui.set_min_width((width - 32.0).max(0.0));
+            ui.set_max_width((width - 32.0).max(0.0));
         }
         let function_call = Self::mapping_id(canvas_node)
             .and_then(|id| self.graph.nodes.get(&id))
@@ -1698,13 +1773,30 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let compact_header = graph_node
             .and_then(|node| graph_node_presentation::header(node, &full_title, is_output));
         let full_title = graph_node_presentation::complete_title(graph_node, full_title);
-        let header_hint = endpoint_hint
-            .or_else(|| graph_node.map(|node| graph_node_presentation::hint(node, &full_title)));
-        let show_title = |ui: &mut Ui| {
-            if let Some(header) = compact_header {
-                graph_node_presentation::show_header(ui, header, &full_title)
-            } else {
-                ui.label(&full_title)
+        let header_hint = if matches!(
+            canvas_node,
+            CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
+        ) {
+            Some(endpoint_hint.map_or_else(
+                || full_title.clone(),
+                |hint| format!("{full_title}\n{hint}"),
+            ))
+        } else {
+            graph_node.map(|node| graph_node_presentation::hint(node, &full_title))
+        };
+        let show_title = |ui: &mut Ui| match canvas_node {
+            CanvasNode::SourceBlock(_) => {
+                graph_node_presentation::show_endpoint_header(ui, true, &full_title)
+            }
+            CanvasNode::TargetBlock(_) => {
+                graph_node_presentation::show_endpoint_header(ui, false, &full_title)
+            }
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => {
+                if let Some(header) = compact_header {
+                    graph_node_presentation::show_header(ui, header, &full_title)
+                } else {
+                    ui.label(&full_title)
+                }
             }
         };
         let response = if let Some(function) = function_call {
@@ -2053,8 +2145,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             section.leaves.get(semantic),
                             section.pin_labels.get(semantic),
                         ) {
+                            let source_label = block
+                                .checked_sub(1)
+                                .and_then(|index| self.project_references.named_source(index))
+                                .map_or_else(
+                                    || leaf.label.clone(),
+                                    |source| format!("{}/{}", source.name, leaf.label),
+                                );
                             let context = leaf.frame.as_ref().map_or_else(
-                                || format!("Source: {}\nType: {}", leaf.label, leaf.ty.label()),
+                                || format!("Source: {}\nType: {}", source_label, leaf.ty.label()),
                                 |frame| {
                                     let frame = if frame.is_empty() {
                                         "document rows".to_string()
@@ -2063,24 +2162,35 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                     };
                                     format!(
                                         "Source: {}\nType: {}\nRepeating context: {frame}",
-                                        leaf.label,
+                                        source_label,
                                         leaf.ty.label()
                                     )
                                 },
                             );
                             let hover = crate::x12_tooltips::append_segment_for_path(
                                 context,
-                                self.source_x12,
+                                self.source_block_x12(block),
                                 &leaf.label,
                             );
-                            show_endpoint_label(
-                                ui,
-                                label,
-                                egui::Align::Max,
-                                hover,
-                                self.endpoint_search_match
-                                    == Some((CanvasNode::SourceBlock(block), semantic)),
-                            );
+                            let unavailable = self.source_block_connection_error(block);
+                            let (label, hover) = if let Some(error) = &unavailable {
+                                (
+                                    format!("{label} (unavailable)"),
+                                    format!("{hover}\n{error}"),
+                                )
+                            } else {
+                                (label.clone(), hover)
+                            };
+                            ui.add_enabled_ui(unavailable.is_none(), |ui| {
+                                show_endpoint_label(
+                                    ui,
+                                    &label,
+                                    egui::Align::Max,
+                                    hover,
+                                    self.endpoint_search_match
+                                        == Some((CanvasNode::SourceBlock(block), semantic)),
+                                );
+                            });
                         }
                     }
                     Some(EndpointDisplayPin::HiddenBefore) => show_endpoint_proxy_label(
@@ -2113,8 +2223,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             } else {
                 PinInfo::circle()
             };
+            let unavailable = match canvas_node {
+                CanvasNode::SourceBlock(block) => {
+                    self.source_block_connection_error(block).is_some()
+                }
+                _ => false,
+            };
             return pin_info
-                .with_fill(fill.to_egui())
+                .with_fill(if unavailable {
+                    ui.visuals().weak_text_color()
+                } else {
+                    fill.to_egui()
+                })
                 .with_wire_color(self.output_wire_color(pin));
         };
         let full_title = self.title(&canvas_node);
@@ -2225,6 +2345,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .is_some_and(|node| self.read_only_inputs(node))
         {
             self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
+            return;
+        }
+        if let CanvasNode::SourceBlock(block) = from_node
+            && let Some(error) = self.source_block_connection_error(block)
+        {
+            self.error = Some(error);
             return;
         }
         let mutation = (|| -> Result<Option<NodeId>, String> {

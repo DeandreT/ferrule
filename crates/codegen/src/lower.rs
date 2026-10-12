@@ -28,6 +28,13 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         ));
     }
 
+    // Every declared target scope is represented by lowering; expression
+    // reachability and metadata-only expression omissions remain unchanged.
+    if let Some(scope) = mapping::first_project_owned_source_scope(project) {
+        return Err(LowerError::new(vec![
+            Diagnostic::UnsupportedSourceIteration { scope },
+        ]));
+    }
     let primary_xml = project.source_options.xml_root_view_read_policy;
     // Ordinary XML format identity does not make adapter support mandatory.
     // Existing core-only generation survives an unproved ordinary schema.
@@ -731,6 +738,12 @@ fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
 
 fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
     let input: IterationSource = match &scope.iteration {
+        ScopeIteration::OwnedSource { .. } => {
+            return Err(Diagnostic::UnsupportedScope {
+                target_path: vec![scope.target_field.clone()],
+                feature: ScopeFeature::OwnedSourceIteration,
+            });
+        }
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
         ScopeIteration::DynamicDocuments {
             source,
@@ -894,6 +907,14 @@ fn display_target_path(path: &[String], field: &str) -> String {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn owned_test_reachable_nodes(
+    graph: &Graph,
+    roots: impl IntoIterator<Item = NodeId>,
+) -> BTreeSet<NodeId> {
+    reachable_nodes(graph, roots)
+}
+
 fn reachable_nodes(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
     let mut pending: BTreeSet<_> = roots.into_iter().collect();
     let mut reachable = BTreeSet::new();
@@ -1025,6 +1046,18 @@ fn lower_user_function(
 
 fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<ExpressionNode, Diagnostic> {
     let expression = match node {
+        Node::OwnedSourceField(_) => {
+            return Err(Diagnostic::UnsupportedNode {
+                node: id,
+                kind: UnsupportedNodeKind::OwnedSourceField,
+            });
+        }
+        Node::OwnedPosition(_) => {
+            return Err(Diagnostic::UnsupportedNode {
+                node: id,
+                kind: UnsupportedNodeKind::OwnedPosition,
+            });
+        }
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),
