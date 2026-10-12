@@ -197,6 +197,10 @@ internal static partial class Program
             ("owned runtime strict fields and walking", OwnedRuntimeFieldAndWalk),
             ("owned runtime positions and immutable copies", OwnedRuntimePositionsAndCopies),
             ("owned runtime checked resource admission", OwnedRuntimeLimits),
+            ("basic source projection snapshot and ordinal lookup", BasicSourceProjectionSnapshot),
+            ("basic source projection input refusals", BasicSourceProjectionInputRefusals),
+            ("basic source projection exact slot admission", BasicSourceProjectionExactSlotAdmission),
+            ("basic source projection legacy constructors and XML", BasicSourceProjectionLegacyRoutes),
         };
 
         foreach (var test in tests)
