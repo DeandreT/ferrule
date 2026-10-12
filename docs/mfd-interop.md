@@ -801,6 +801,14 @@ outputs retain its item frame, ordering and scalar paths. Array and item facets
 remain intact. Connected descendant overrides, competing structural drivers and
 variable scope controls retain refusals until their construction contracts qualify.
 
+A single direct core constant can drive a repeating group once in the existing parent
+context. Its declared literal must be a string, Boolean, integer or finite
+floating-point value. Empty strings, false and zero each supply one item; they
+are not filter predicates. The constructed scope retains the target schema and
+parent frame, including empty groups and nested source-row bindings. Malformed
+constants, competing structural connectors, computed feeds, structural copy and sequence controls keep their
+existing admission diagnostics.
+
 EDI structure variables resolve their flat declared parameter-root path against
 a complete compiled EDI configuration. The selected value preserves scalar types
 and cardinalities and remains an intermediate component. Scalar outputs resolve

@@ -55,6 +55,9 @@ mod json_parser_ports;
 #[path = "code_generation/json_structure_variables.rs"]
 mod json_structure_variables;
 
+#[path = "code_generation/literal_group_drivers.rs"]
+mod literal_group_drivers;
+
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]

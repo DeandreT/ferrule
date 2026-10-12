@@ -466,6 +466,30 @@ fn build_one(
         .sequence_component
         .and_then(|index| builder.sequence_expr(index));
     if source_path.is_none() && sequence.is_none() && join.is_none() {
+        if iteration.output == IterationOutput::Repeated
+            && !iteration.projects_whole_group
+            && !has_inherited_filter
+            && schema_node_at(&target.schema, &target_path).is_some_and(|node| {
+                node.repeating && matches!(node.kind, SchemaKind::Group { .. })
+            })
+            && target
+                .ports
+                .iter()
+                .filter(|(key, path)| {
+                    target.input_keys.contains(key)
+                        && **path == target_path
+                        && builder.edge_from.contains_key(key)
+                })
+                .count()
+                == 1
+            && direct_literal_group_driver(iteration.feed, &feed, builder)
+        {
+            // A literal contributes one group in the inherited context.
+            // Target cardinality wraps this constructed item as repetition;
+            // no source collection or generated-item frame is introduced.
+            scopes.ensure_scope(&target_path);
+            return;
+        }
         builder.warnings.push(format!(
             "iteration into `{}` comes from an unsupported feed; skipped",
             target_path.join("/")
@@ -831,6 +855,64 @@ fn build_one(
         if let Some(target) = TargetLeaf::from_path(&marker_path) {
             scopes.add_binding(target, type_value);
         }
+    }
+}
+
+fn direct_literal_group_driver(
+    output: u32,
+    feed: &super::iteration::IterationFeed,
+    builder: &GraphBuilder<'_>,
+) -> bool {
+    if feed.source_key != output
+        || feed.computed_source.is_some()
+        || feed.sequence_component.is_some()
+        || feed.db_where_component.is_some()
+        || !feed.source_suffix.is_empty()
+        || feed.has_filter
+        || feed.filter_expr.is_some()
+        || !feed.udf_filters.is_empty()
+        || feed.has_key_grouping
+        || feed.has_start_grouping
+        || feed.has_adjacent_grouping
+        || feed.has_end_grouping
+        || feed.has_block_grouping
+        || feed.distinct_key.is_some()
+        || feed.has_sort
+        || feed.has_windows()
+        || feed.order_issue.is_some()
+        || feed.projects_whole_group
+        || !feed.projections.is_empty()
+    {
+        return false;
+    }
+    let Some(component) = builder
+        .fn_by_output
+        .get(&output)
+        .map(|index| &builder.fn_components[*index])
+    else {
+        return false;
+    };
+    if component.library != "core"
+        || component.name != "constant"
+        || component.kind != 2
+        || !component.inputs.is_empty()
+        || component.outputs.as_slice() != [output]
+    {
+        return false;
+    }
+    let Some((literal, datatype)) = &component.constant else {
+        return false;
+    };
+    if !matches!(
+        datatype.as_str(),
+        "string" | "boolean" | "integer" | "int" | "long" | "decimal" | "double" | "float"
+    ) {
+        return false;
+    }
+    match super::function::parse_constant(literal, datatype) {
+        Value::String(_) | Value::Bool(_) | Value::Int(_) => true,
+        Value::Float(value) => value.is_finite(),
+        _ => false,
     }
 }
 
