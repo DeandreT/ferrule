@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "reclaim", Path(__file__).with_name("reclaim-build-cache.py"))
@@ -108,6 +109,180 @@ class CacheSpaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Special cache file"):
             self.run_reclaim(available=self.capacity)
         self.assertTrue(all(p.exists() for p in self.markers))
+        self.preserve()
+
+    @staticmethod
+    def mount_record(point):
+        escaped = (str(point).replace("\\", r"\134").replace(" ", r"\040")
+                   .replace("\t", r"\011").replace("\n", r"\012"))
+        return f"42 1 0:1 / {escaped} rw shared:7 - ext4 device rw\n"
+
+    def test_synthetic_mounts_refuse_before_either_target_is_trimmed(self):
+        target = self.cache / "workspace-target"
+        release = target / "release"
+        release.mkdir()
+        release_marker = release / "compiled-release"
+        release_marker.write_bytes(b"reproducible release artifact")
+        points = (target, target / "debug", self.markers[1].parent,
+                  self.markers[1], release, release_marker)
+        for point in points:
+            with self.subTest(point=point):
+                self.assertEqual(point.stat().st_dev, self.cache.stat().st_dev)
+                text = self.mount_record(point)
+                with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+                    self.run_reclaim(available=self.capacity,
+                                     mounts=lambda fd, **options: reclaim.reject_mounts(
+                                         fd, mountinfo=text, **options))
+                self.assertTrue(all(p.exists() for p in self.markers))
+                self.assertEqual(release_marker.read_bytes(), b"reproducible release artifact")
+                self.preserve()
+
+    def test_escaped_mountpoint_refuses_before_deletion(self):
+        point = self.markers[1].parent / "space tab\tline\nslash\\leaf"
+        point.mkdir()
+        text = self.mount_record(point)
+        with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+            self.run_reclaim(available=self.capacity,
+                             mounts=lambda fd, **options: reclaim.reject_mounts(
+                                 fd, mountinfo=text, **options))
+        self.assertTrue(all(p.exists() for p in self.markers))
+        self.preserve()
+
+    def test_sibling_mount_is_not_a_cache_descendant(self):
+        sibling = self.cache / "generated-host-target-other" / "debug"
+        sibling.mkdir(parents=True)
+        marker = sibling / "original"
+        marker.write_bytes(b"foreign sibling remains")
+        text = self.mount_record(sibling)
+        result = self.run_reclaim(available=self.capacity,
+                                  mounts=lambda fd, **options: reclaim.reject_mounts(
+                                      fd, mountinfo=text, **options))
+        self.assertEqual(result["reclaimed_targets"], list(reclaim.TARGETS))
+        self.assertEqual(marker.read_bytes(), b"foreign sibling remains")
+        self.preserve()
+
+    def test_malformed_mount_inventory_preserves_all_targets(self):
+        invalid = ("", "\n", "incomplete\n", "42 1 0:1 / relative rw - ext4 device rw\n",
+                   "42 1 0:1 / /unknown\\bad rw - ext4 device rw\n",
+                   "42 1 0:1 / /other rw - ext4 device rw extra\n",
+                   "42 1 0:1 /unknown\\bad /other rw - ext4 device rw\n",
+                   "42 1 0:1 /unknown\\000 /other rw - ext4 device rw\n",
+                   "42 1 0:1 / /other\\777 rw - ext4 device rw\n",
+                   "42 1 0:1 /\x00 /other rw - ext4 device rw\n")
+        for text in invalid + tuple(self.mount_record("/unrelated") + row
+                                    for row in invalid if row):
+            with self.subTest(inventory=text):
+                with self.assertRaisesRegex(ValueError, "Mount inventory"):
+                    self.run_reclaim(available=self.capacity,
+                                     mounts=lambda fd, **options: reclaim.reject_mounts(
+                                         fd, mountinfo=text, **options))
+                self.assertTrue(all(p.exists() for p in self.markers))
+                self.preserve()
+
+    def test_unreadable_mount_inventory_preserves_all_targets(self):
+        read_text = reclaim.Path.read_text
+
+        def unavailable(path, *args, **options):
+            if path == Path("/proc/self/mountinfo"):
+                raise PermissionError("mount inventory")
+            return read_text(path, *args, **options)
+
+        with patch.object(reclaim.Path, "read_text", new=unavailable):
+            with self.assertRaises(PermissionError):
+                self.run_reclaim(available=self.capacity)
+        self.assertTrue(all(p.exists() for p in self.markers))
+        self.preserve()
+
+    def test_mount_after_process_census_refuses_before_any_trim(self):
+        mounted = False
+
+        def mount_admission(fd, **options):
+            point = self.cache / "workspace-target" if mounted else Path("/unrelated")
+            reclaim.reject_mounts(fd, mountinfo=self.mount_record(point), **options)
+
+        def census(_roots):
+            nonlocal mounted
+            mounted = True
+
+        with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+            self.run_reclaim(available=self.capacity, active=census, mounts=mount_admission)
+        self.assertTrue(all(p.exists() for p in self.markers))
+        self.preserve()
+
+    def test_exact_cache_mount_refuses_before_creating_maintenance_lock(self):
+        text = self.mount_record(self.cache)
+        with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+            self.run_reclaim(available=self.capacity,
+                             mounts=lambda fd, **options: reclaim.reject_mounts(
+                                 fd, mountinfo=text, **options))
+        self.assertFalse((self.cache / ".reclaim-lock").exists())
+        self.assertTrue(all(p.exists() for p in self.markers))
+        self.preserve()
+
+    def test_containing_home_mount_does_not_veto_normal_cache(self):
+        text = self.mount_record(self.home)
+        result = self.run_reclaim(available=self.capacity,
+                                  mounts=lambda fd, **options: reclaim.reject_mounts(
+                                      fd, mountinfo=text, **options))
+        self.assertEqual(result["reclaimed_targets"], list(reclaim.TARGETS))
+        self.preserve()
+
+    def test_unavailable_descriptor_mount_identity_preserves_all_targets(self):
+        read_text = reclaim.Path.read_text
+        invalid = (None, "", "mnt_id: invalid\n", "mnt_id: 1\nmnt_id: 2\n")
+        for text in invalid:
+            with self.subTest(fdinfo=text):
+                def unavailable(path, *args, **options):
+                    if str(path).startswith("/proc/self/fdinfo/"):
+                        if text is None:
+                            raise PermissionError("descriptor mount identity")
+                        return text
+                    return read_text(path, *args, **options)
+
+                with patch.object(reclaim.Path, "read_text", new=unavailable):
+                    with self.assertRaises((PermissionError, ValueError)):
+                        self.run_reclaim(available=self.capacity)
+                self.assertFalse((self.cache / ".reclaim-lock").exists())
+                self.assertTrue(all(p.exists() for p in self.markers))
+                self.preserve()
+
+    def test_late_descendant_mount_identity_refuses_before_traversal(self):
+        original = {path: path.read_bytes() for path in self.markers}
+        identity = reclaim.mount_identity
+        admitted = False
+
+        def census(_roots):
+            nonlocal admitted
+            admitted = True
+
+        def mounted_child(fd):
+            current = identity(fd)
+            if admitted and os.readlink(f"/proc/self/fd/{fd}") == str(self.markers[0].parent):
+                return current + 1
+            return current
+
+        with patch.object(reclaim, "mount_identity", new=mounted_child):
+            with self.assertRaisesRegex(ValueError, "Mounted cache tree"):
+                self.run_reclaim(available=self.capacity, active=census)
+        self.assertEqual({path: path.read_bytes() for path in self.markers}, original)
+        self.preserve()
+
+    def test_opened_descendant_owner_change_refuses_before_any_trim(self):
+        original = {path: path.read_bytes() for path in self.markers}
+        fstat = reclaim.os.fstat
+
+        def changed(fd):
+            current = fstat(fd)
+            if os.readlink(f"/proc/self/fd/{fd}") == str(self.markers[1].parent):
+                fields = list(current)
+                fields[4] = os.getuid() + 1
+                return os.stat_result(fields)
+            return current
+
+        with patch.object(reclaim.os, "fstat", new=changed):
+            with self.assertRaisesRegex(ValueError, "changed during admission"):
+                self.run_reclaim(available=self.capacity)
+        self.assertEqual({path: path.read_bytes() for path in self.markers}, original)
         self.preserve()
 
     def held_process(self, code, argument):
