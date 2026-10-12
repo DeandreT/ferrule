@@ -96,7 +96,9 @@ class JobEvidenceTests(unittest.TestCase):
         environment = self.environment | {"GITHUB_RUN_ID": "9" * 20,
             "GITHUB_RUN_ATTEMPT": "9" * 20, "GITHUB_JOB": "g" * 80,
             "FERRULE_CI_SUITE": "codegen", "FERRULE_CI_EVIDENCE_SUITE": "codegen-mappings"}
-        with tempfile.TemporaryDirectory(prefix="f-") as directory:
+        # Model one runner home; inheriting TMPDIR nests that home inside an
+        # existing runner scratch root and tests an artificial double prefix.
+        with tempfile.TemporaryDirectory(prefix="f-", dir="/tmp") as directory:
             home = Path(directory) / "r"
             home.mkdir(mode=0o700)
             settings = evidence.begin(home, environment, nonce="a" * 32)
