@@ -4,74 +4,75 @@ Updated: 2026-10-13
 
 ## Current Basic ownership progress (2026-10-13)
 
-This [#658](https://github.com/DeandreT/ferrule/issues/658) snapshot records
-published main [`848ca45`](https://github.com/DeandreT/ferrule/commit/848ca4580fbb10711867157c42fb9a74e888b269)
-and active follow-ons. It replaces the current-status text for
-these lanes; the earlier dated snapshots below retain their original scope.
+This [#679](https://github.com/DeandreT/ferrule/issues/679) coordination snapshot
+records published main [`23b6167`](https://github.com/DeandreT/ferrule/commit/23b6167895c832b30631289f201ba0bd6e8f2990).
+It replaces the current-status front for these lanes. Earlier dated sections below
+retain their original scope; completed increments do not establish whole-product
+parity.
 
 ### Qualified generated root pins
 
-[#632 / PR638](https://github.com/DeandreT/ferrule/pull/638) qualified all 18
-root-pin returns from the Ferrule interpreter, generated Rust and C#. Public Basic roots, borrowed walks, positions,
-scalar arguments/construction, root and narrow Primary-row failures, and eligible
-First retention remain implemented.
+The finite #632 root-pin and #647 node-provenance results remain qualified;
+the original #640 corpus and error oracles remain historical records. Generated
+error scope metadata remains unknown/unavailable; no scope is inferred.
 
-The original [#640 / PR649](https://github.com/DeandreT/ferrule/pull/649) baseline
-matched 36 per-backend outcomes and recorded missing generated error nodes.
-[#647](https://github.com/DeandreT/ferrule/issues/647) then qualified 36 fresh
-internal cross-engine outcomes, actual node2 and complete typed causes after the
-Rust/C# corrections.
-The original corpus and oracles remain unchanged. Generated error scope metadata remains
-unknown/unavailable; no scope is inferred or extra mismatch claimed. This finite
-proof does not establish full error or total parity.
+The explicit Basic filter profiles are merged in
+[#644 / PR663](https://github.com/DeandreT/ferrule/pull/663) and
+[#645 / PR674](https://github.com/DeandreT/ferrule/pull/674), after the common
+[#657 / PR661](https://github.com/DeandreT/ferrule/pull/661) companion.
+[#662 / PR678](https://github.com/DeandreT/ferrule/pull/678) qualified the six-model
+filter corpus: 12 complete calls per executor, 36 total, with matched outputs and
+first errors. Its generic paired-position contract does not qualify the named
+legacy collection-path gap tracked in [#677](https://github.com/DeandreT/ferrule/issues/677).
+Original failed captures and corrected fixtures remain separate evidence.
+
+| Qualified lane | Local verification |
+| --- | --- |
+| Common filter admission | 423 common tests, including 23 admission controls, production and strict checks. |
+| Rust filters | 357 runtime tests; 158 Rust tests with nine ignored; 14 generated programs and 24 calls; production and strict checks. |
+| C# filters | 155 backend tests, including 77 owned controls; fresh Runtime95; 216 smoke controls and 16 public calls across eight hosts; production and strict checks. |
+| Matched filter corpus | Six models, 36 complete interpreter/Rust/C# outcomes, 12 per executor; all 16 build/run steps passed. |
+| Native observers | 521 engine tests, including 65 trace controls, production and strict checks after #673/PR675. Earlier #654/PR660 lifecycle checks also passed seven CLI and 28 GUI controls. |
+
+These results qualify their stated cohorts. `full_filter_parity=false`,
+`full_error_parity=false` and `total_parity=false`. Public owned trace/debug
+admission remains closed; grouping, generated/dynamic/document iteration and
+other specialized ownership families retain their separate gates.
 
 ### Current delivery checklist
 
-- [x] Merge [#643 / PR652](https://github.com/DeandreT/ferrule/pull/652), the explicit
-  common filter profile: 413 common tests, including 24 Basic, and production/
-  strict checks. Generated filters still need their backend increments.
-- [x] Merge expression events in #639/PR646 and output event context in
-  [#648 / PR653](https://github.com/DeandreT/ferrule/pull/653): earlier PR653 engine
-  qualification passed 493 tests, including 37 trace controls, and production/
-  strict checks. Public owned trace/debug admission stays closed.
-- [x] Merge [#650 / PR655](https://github.com/DeandreT/ferrule/pull/655) Rust node
-  provenance: 345 runtime tests, 152 Rust tests with eight ignored, production/
-  strict checks and 22 generated calls. The 42-test owned subset was verified
-  within that full run.
-- [x] Merge [#651 / PR656](https://github.com/DeandreT/ferrule/pull/656) C# node
-  provenance: 146 backend tests, including 68 owned Basic, production/strict,
-  rebuilt Runtime95, 216 smoke controls, 13 public calls and 23 provenance
-  controls. Passive acceptance reused its retained seven-command run once.
-- [x] Qualify #647's scoped node-provenance correction without rewriting #640's
-  original evidence or claiming broader parity.
-- [x] Merge [#654 / PR660](https://github.com/DeandreT/ferrule/pull/660) lifecycle
-  context after 501 engine tests/45 trace controls, production/strict and eight
-  frontend commands passed (seven CLI and 28 GUI controls, with strict checks).
-  Error observers and public trace/debug activation remain separate.
-- [ ] Qualify [#659](https://github.com/DeandreT/ferrule/issues/659) complete Basic
-  candidate observations after #654; its three-role source implementation is
-  active. Preserve authentic structural positions, bounded previews and exactly
-  one event per entered candidate, including transient First candidates.
-- [x] Merge [#657 / PR661](https://github.com/DeandreT/ferrule/pull/661),
-  the explicit filter-aware legacy admission companion: 423 common tests/23
-  admission tests and production/strict checks; the default API, analyzer and
-  ordering remain preserved.
-- [x] Merge [#644 / PR663](https://github.com/DeandreT/ferrule/pull/663) Rust filters
-  after #657: 357 runtime tests, 158 Rust tests with nine ignored, production/
-  strict checks and 24 calls across 14 generated programs.
-- [ ] Qualify and merge [#645 C#](https://github.com/DeandreT/ferrule/issues/645)
-  filters; source peer review is positive and local qualification is pending.
-  Then qualify [#662](https://github.com/DeandreT/ferrule/issues/662): its active
-  corpus work covers six models/36 interpreter/Rust/C# calls and requires both
-  backends. Sort/windows, broader
-  [#612](https://github.com/DeandreT/ferrule/issues/612) cohorts,
-  [#613](https://github.com/DeandreT/ferrule/issues/613) provenance/failures and
-  final [#606](https://github.com/DeandreT/ferrule/issues/606) acceptance stay pending.
+- [x] Merge the explicit common, Rust and C# filter profiles and the finite
+  #662 matched filter corpus. Preserve ordinary/default API behavior.
+- [x] Merge expression/output/lifecycle/candidate/filter observations and
+  [#673 / PR675](https://github.com/DeandreT/ferrule/pull/675) native sort
+  observations, with authentic borrowed ownership context and closed public
+  observer gates.
+- [ ] Complete [#667](https://github.com/DeandreT/ferrule/issues/667), the active
+  common sort profile and named-input admission increment. After its merge,
+  implement [#668 Rust](https://github.com/DeandreT/ferrule/issues/668) and
+  [#669 C#](https://github.com/DeandreT/ferrule/issues/669) in parallel, then qualify
+  [#670](https://github.com/DeandreT/ferrule/issues/670)'s planned 16-case/48-call
+  matched sort corpus. Both filter orders and stable ties belong to this sequence;
+  generated windows and sorted First remain closed.
+- [ ] Complete the active [#676](https://github.com/DeandreT/ferrule/issues/676)
+  native WindowApplied receiving-context increment. It preserves the full
+  candidate count for eligible First and adds no generated window capability.
+- [ ] Run [#677](https://github.com/DeandreT/ferrule/issues/677)'s nine-call named
+  collection-path probe before production edits. Then qualify the independent
+  [#680 Rust](https://github.com/DeandreT/ferrule/issues/680) and
+  [#681 C#](https://github.com/DeandreT/ferrule/issues/681) runtime increments and
+  rerun the matched alias/filter controls. These are source plans, not executed
+  qualification.
+- [ ] Complete broader [#612](https://github.com/DeandreT/ferrule/issues/612)
+  occurrence/phase cohorts, [#613](https://github.com/DeandreT/ferrule/issues/613)
+  provenance/failures, and [#606](https://github.com/DeandreT/ferrule/issues/606)
+  error/debug/cancellation observers and final Basic acceptance. Public observer
+  activation requires its own checks.
 
 [Current handoffs](docs/parallel-work.md#current-basic-ownership-handoffs-2026-10-13)
-record source ownership and merge prerequisites. The focused filter/sort/window
-sequence remains under #440/#641; locally qualified source and published behavior
-remain distinct evidence scopes.
+record exact source ownership and dependencies under #440/#641. Source preparation
+may proceed independently; shared roles require an explicit handoff, and each
+focused increment needs local qualification before publication.
 
 ## Current public native ownership (2026-10-13)
 

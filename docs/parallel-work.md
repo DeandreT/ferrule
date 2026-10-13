@@ -7,65 +7,90 @@ choose a lane and avoid conflicting changes.
 
 ## Current Basic ownership handoffs (2026-10-13)
 
-This [#658](https://github.com/DeandreT/ferrule/issues/658) snapshot is against
-published main [`848ca45`](https://github.com/DeandreT/ferrule/commit/848ca4580fbb10711867157c42fb9a74e888b269).
+This [#679](https://github.com/DeandreT/ferrule/issues/679) snapshot records
+published main [`23b6167`](https://github.com/DeandreT/ferrule/commit/23b6167895c832b30631289f201ba0bd6e8f2990).
 The [current roadmap](../ROADMAP.md#current-basic-ownership-progress-2026-10-13)
-records merged #643/#639/#648/#650/#651 and the finite #647 node proof across
-the Ferrule interpreter, generated Rust and C#. The
-original #640 corpus/oracles stay historical; generated error scope metadata remains unknown,
-and full error/total parity remains unqualified. Earlier dated sections retain
-their original scope.
+records merged common/Rust/C# filters, the finite #662 corpus and native sort
+observations. Earlier dated sections and the original #640 outcomes retain their
+historical scope. Generated error scope is unknown/unavailable; full filter,
+error and total parity remain incomplete.
 
-All active issues below are assigned to `DeandreT`. Coordinate explicit handoffs
-before editing shared roles; the Rust and C# implementations have distinct
-ownership and can proceed in parallel.
+| Qualified milestone | Completed local checks |
+| --- | --- |
+| #657/PR661 common filter admission | 423 common tests / 23 admission controls, production and strict. |
+| #644/PR663 Rust filters | 357 runtime tests; 158 Rust tests with nine ignored; 14 generated programs / 24 calls, production and strict. |
+| #645/PR674 C# filters | 155 backend tests / 77 owned controls; fresh Runtime95; 216 smoke controls / 16 public calls across eight hosts, production and strict. |
+| #662/PR678 matched filters | Six models / 36 complete outcomes, 12 per executor; all 16 build/run steps passed. The named legacy path gap remains outside this corrected corpus. |
+| #673/PR675 native sort observations | 521 engine tests / 65 trace controls, production and strict. Lifecycle CLI7/GUI28 qualification remains scoped to #654/PR660. |
 
-| Lane | Source ownership | Current gate |
+All current issues below are assigned to `DeandreT`. Source plans do not grant
+execution or merge credit. Agree the preimages and released file ownership before
+editing; a dependency may allow independent preparation while still blocking
+qualification or publication.
+
+| Lane | Source ownership | Handoff and next gate |
 | --- | --- | --- |
-| [#654 Lifecycle context](https://github.com/DeandreT/ferrule/issues/654) | Engine `trace.rs`, `eval_scope.rs`, `tests/trace.rs`; CLI `trace_json.rs`; GUI `run_report.rs` and `run_report_tests.rs`. | Merged in PR660 after 501 engine tests/45 trace controls and eight frontend commands (CLI7/GUI28), production/strict and normal closures. Lifecycle context does not activate public trace/debug or finish candidate/error observations. |
-| [#659 Complete candidate observations](https://github.com/DeandreT/ferrule/issues/659) | Engine `source_iteration.rs`, `eval_scope.rs` and `tests/trace.rs`; coordinate the released #654 scope roles. | Source implementation active after merged #654. Observe the complete original walk before sequence controls, including transient First candidates, with authentic references, bounded previews and no replay duplicates. Qualification remains pending. |
-| [#657 Legacy filter admission](https://github.com/DeandreT/ferrule/issues/657) | `crates/codegen/src/owned_admission.rs`, `lib.rs`, `tests/owned_admission.rs`. | Merged in PR661 after 423 common/23 admission tests and production/strict. `legacy_named_input_admission_plan_with_basic_owned_filters` reuses the same analyzer/order; the default API is unchanged. The shared prerequisite for both backend merges is complete. |
-| [#644 Rust filters](https://github.com/DeandreT/ferrule/issues/644) | Rust backend and source tests; Rust runtime context roles reserved by the lane. | Merged in PR663 after 357 runtime tests, 158 Rust tests with nine ignored, production/strict and 14 generated programs/24 calls. Sort/windows/grouping stay closed; node provenance is preserved. |
-| [#645 C# filters](https://github.com/DeandreT/ferrule/issues/645) | C# backend and source tests; `ScopeContext.cs` and `BasicOwnershipContextTests.cs`. | Source peer review positive; local qualification pending after merged #643/#651/#657. Qualify against the current runtime before merging; retain exact causes and node provenance. |
-| [#662 Matched filters](https://github.com/DeandreT/ferrule/issues/662) | Focused portable fixtures and callers; coordinate any source fix with its owner. | #647's finite internal 36-outcome node2/typed-cause proof is complete. #662 corpus work is active for six filter models/36 calls; qualification requires merged, qualified #644/#645. sorting/windows, nested owners and broader phases remain separate pending cohorts under #440/#641/#612. |
-| [#606 Observers and acceptance](https://github.com/DeandreT/ferrule/issues/606) | Sequence engine/admission and affected host-control roles after their context interfaces. | Expression/output/lifecycle context is merged. Complete candidate observations under #659, error observers, debugging/cancellation, #612/#613 acceptance and public trace/debug activation retain their own checks. |
+| [#667 Common sort profile](https://github.com/DeandreT/ferrule/issues/667) | Common `lib.rs`, `lower.rs`, `owned_admission.rs`, `validate/mod.rs`, `validate/owned_sources.rs`, `tests/basic_owned_emission.rs`, `tests/owned_admission.rs`. | Active after matched #662. Add explicit sort APIs; default/filter-only behavior and closed families remain unchanged. Merge before backend sort qualification. |
+| [#668 Rust sorting](https://github.com/DeandreT/ferrule/issues/668) | Rust backend `lib.rs`, `owned_basic.rs`, `tests/owned_basic.rs`; runtime `context/basic.rs`, `basic_tests.rs`. | Depends on #667. May proceed in parallel with #669; coordinate runtime-file handoff with #680. Qualify complete bounded sort/filter orders and a finite generated driver. |
+| [#669 C# sorting](https://github.com/DeandreT/ferrule/issues/669) | C# backend `lib.rs`, `owned_basic.rs`, `mapping.rs`, `tests/owned_basic.rs`; runtime `ScopeContext.cs`, `BasicOwnershipContextTests.cs`. | Depends on #667. May proceed in parallel with #668; coordinate runtime/backend-test handoff with #681. Fresh runtime and generated consumers precede merge. |
+| [#670 Matched sorting](https://github.com/DeandreT/ferrule/issues/670) | Nine new files under `conformance/basic-owned-sort/`; no production/runtime edits. | After #667/#668/#669 merge, freeze and qualify the planned 16-case/48-call cohort. Preserve occurrence/filter corpora and failed captures. |
+| [#676 Native window observations](https://github.com/DeandreT/ferrule/issues/676) | Engine `eval_scope.rs` and `tests/trace.rs` only. | Active after #673. Report WindowApplied using the actual receiving parent context and logical First count; preserve output, error and budget order. No generated window or public observer activation. |
+| [#677 Named legacy-path probe](https://github.com/DeandreT/ferrule/issues/677) | Focused matched probe; retain the original model/input/outcomes. | Run nine selected-Named calls across owner-relative, prefixed and empty paths in all three executors before choosing a production fix. Probe qualification is pending. |
+| [#680 Rust alias child](https://github.com/DeandreT/ferrule/issues/680) | Runtime `context/basic.rs` and `basic_tests.rs` only. | Preparation only until #677's probe confirms the gap. Preserve default traversal, ownership, phases, limits and first errors; sequence overlapping #668 runtime edits. |
+| [#681 C# alias child](https://github.com/DeandreT/ferrule/issues/681) | Runtime `ScopeContext.cs`, `BasicOwnershipContextTests.cs`; narrow paired-position control in C# `tests/owned_basic.rs`. | Preparation only until the probe confirms the gap. Preserve the original negative helper/model, rebuild the runtime and sequence overlapping #669 files. |
+| [#606 Observers and acceptance](https://github.com/DeandreT/ferrule/issues/606) | Claim each remaining engine/host scope separately. | Lifecycle, candidate, filter and sort observations are merged. Window/error/debug/cancellation observers, public activation and broader #612/#613 acceptance retain independent checks. |
 
 ```mermaid
 flowchart LR
-    Common["#643 Common filter profile<br/>merged PR652"] --> Rust["#644 Rust filters<br/>merged PR663"]
-    Common --> CSharp["#645 C# filters<br/>implementation active"]
-    Admission["#657 Legacy admission<br/>merged PR661"] --> Rust
-    Admission --> CSharp
-    RustNodes["#650 Rust nodes<br/>merged PR655"] --> Rust
-    CSharpNodes["#651 C# nodes<br/>merged PR656"] --> CSharp
-    Rust -. "matched outputs/errors" .-> Filters["#662 Matched filters<br/>planned 36 calls"]
-    CSharp -. "matched outputs/errors" .-> Filters
-    Events["#639/#648 Event context<br/>merged"] --> Lifecycle["#654 Lifecycle<br/>merged PR660"]
-    Lifecycle --> Observers["#606 Observer activation<br/>pending"]
-    Lifecycle --> Candidates["#659 Complete candidates<br/>implementation active"]
-    Candidates -. "candidate evidence" .-> Observers
-    NodeProof["#647 Node2 cohort<br/>36 qualified outcomes"] -. "finite evidence" .-> Broader["#612 Broader phases<br/>pending"]
-    Filters -. "phase qualification" .-> Broader
-    Broader -. "acceptance evidence" .-> Observers
+    Filters["#644/#645/#662 Filters<br/>merged, finite cohort"]
+    SortCommon["#667 Common sort<br/>active"]
+    SortRust["#668 Rust sort<br/>pending"]
+    SortCSharp["#669 C# sort<br/>pending"]
+    SortMatched["#670 Matched sort<br/>planned 48 calls"]
+    SortObserve["#673 Native sort events<br/>merged PR675"]
+    Window["#676 Native windows<br/>active"]
+    AliasProbe["#677 Named-path probe<br/>pending 9 calls"]
+    AliasRust["#680 Rust alias<br/>preparation only"]
+    AliasCSharp["#681 C# alias<br/>preparation only"]
+    AliasMatched["#677 Alias/filter rerun<br/>pending"]
+    Broader["#612/#613 Broader acceptance<br/>pending"]
+    Observers["#606 Observer activation<br/>pending"]
+    Filters --> SortCommon
+    SortCommon --> SortRust
+    SortCommon --> SortCSharp
+    SortRust --> SortMatched
+    SortCSharp --> SortMatched
+    SortObserve --> Window
+    AliasProbe --> AliasRust
+    AliasProbe --> AliasCSharp
+    AliasRust --> AliasMatched
+    AliasCSharp --> AliasMatched
+    Filters -.-> Broader
+    SortMatched -.-> Broader
+    AliasMatched -.-> Broader
+    Window -.-> Observers
+    Broader -.-> Observers
 ```
 
-Solid arrows are merge/activation prerequisites; they do not prevent independent
-source preparation. Dotted arrows carry qualification evidence, with finite
-cohorts qualifying only their stated scope. The unchanged
-[architecture drawing](architecture-parity.drawio) retains the broader design.
+Solid arrows are prerequisites; dotted arrows provide finite qualification
+evidence. They do not imply that broader acceptance or public observer activation
+is complete. The editable [architecture drawing](architecture-parity.drawio)
+retains the broader design and is unchanged.
 
-- [x] Merge common #643, expression/output #639/#648 and node provenance
-  #650/#651; retain #647's actual node2/complete typed causes and the original
-  #640 envelopes separately.
-- [x] Qualify and merge #654 engine/frontend lifecycle and #657 legacy admission.
-- [ ] Qualify #659 complete candidate observations after the #654 source handoff.
-- [ ] Qualify C# #645, then the active #662 matched corpus after both backends; keep
-  sort/windows and broader #612/#613/#606 acceptance as separate increments.
+- [x] Merge #644/#645 and qualify #662's 36 matched filter calls.
+- [x] Merge #673's native sort observations; preserve closed public trace/debug gates.
+- [ ] Hand common sort ownership from #667 to separate #668/#669 owners, then
+  qualify #670. Keep generated windows/grouping and specialized families closed.
+- [ ] Qualify #676 native windows and #677's probe, separate #680/#681 fixes and
+  subsequent alias/filter rerun. Preserve failed captures and original models.
+- [ ] Complete #612/#613 and #606's remaining acceptance checks before activation.
 
-Reserve one shared compiler/artifact lane, check disk headroom and use current
-source/executable identities for each local check. Merge locally verified focused
-increments without waiting for CI. Run graphical checks on an alternate display.
-#658 owns only these two docs; it adds no actor/build/cache or memory-report work.
+Reserve one shared compiler/artifact lane, check disk headroom, and bind each local
+check to current sources and runtime artifacts. Rust and C# source scopes may
+proceed in parallel; overlapping backend/runtime edits and engine window/error
+work require a handoff. Merge locally verified focused increments without waiting
+for CI. Graphical checks use an alternate display. This docs issue owns only the
+two current fronts; it changes no runtime or admission capability.
 
 ## Current public native ownership lanes (2026-10-13)
 
