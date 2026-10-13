@@ -1092,3 +1092,777 @@ fn basic_gate_keeps_failure_value_maps_closed_and_preserves_dynamic_priority() {
         }
     }
 }
+
+// Explicit common capability controls. No renderer or execution entry point opts in.
+fn filter_program(owner: Option<SourceOwner>) -> Program {
+    let mut p = program(false);
+    repeat_target(&mut p);
+    p.expressions.push(node(
+        2,
+        Expression::Const {
+            value: Value::Bool(true),
+        },
+    ));
+    let input: crate::IterationSource = match owner.clone() {
+        Some(owner) => crate::OwnedSourceIteration::new(OwnedSourceRef {
+            owner,
+            path: path(&["Rows"]),
+        })
+        .into(),
+        None => SourceIteration::new(path(&["Rows"])).into(),
+    };
+    p.root.iteration = Some(IterationPlan::new(
+        input,
+        Some(2),
+        None,
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    if let Some(owner) = owner {
+        p.expressions[0].expression = field(owner, &["Rows", "Value"], Some(path(&["Rows"])));
+    }
+    p
+}
+fn filter_scope_error(
+    owner: Option<Owner>,
+    route: SourceScopeLocation,
+    reason: Reason,
+) -> Result<(), ProgramValidationError> {
+    capability(
+        Location::Iteration {
+            scope: route.clone(),
+        },
+        owner.map(|owner| Request::Iteration {
+            owner,
+            path: path(&["Rows"]),
+        }),
+        reason,
+        Origin::Scope { scope: route },
+    )
+}
+fn filter_observed(label: &str, p: &Program) -> Result<(), ProgramValidationError> {
+    eprintln!("INPUT {label} complete Program={p:#?}");
+    let result = crate::validate_basic_owned_filter_emission(p);
+    eprintln!("RAW {label} complete Result={result:#?}");
+    let program_result = crate::validate_program_with_basic_owned_filters(p);
+    eprintln!("RAW {label} complete opt-in Program Result={program_result:#?}");
+    assert_eq!(program_result, result);
+    result
+}
+
+#[test]
+fn basic_filter_profile_requires_explicit_static_repeated_capability() {
+    for owner in [
+        SourceOwner::Primary,
+        SourceOwner::Named { name: "Ref".into() },
+        SourceOwner::Named {
+            name: " Ref 雪 ".into(),
+        },
+        SourceOwner::Named { name: "ref".into() },
+        SourceOwner::Named {
+            name: "primary".into(),
+        },
+    ] {
+        for frame in [None, Some(Vec::new()), Some(path(&["Rows"]))] {
+            let mut p = filter_program(Some(owner.clone()));
+            p.expressions[1].expression = field(owner.clone(), &["Rows", "Flag"], frame);
+            let before = p.clone();
+            let expected =
+                filter_scope_error(Some((&owner).into()), primary(), Reason::ScopeControl);
+            assert_eq!(validate_program(&p), expected);
+            assert_eq!(validate_basic_owned_emission(&p), expected);
+            assert_eq!(validate_owned_emission(&p), expected);
+            assert_eq!(
+                filter_observed("F643-01 exact owner/filter/frame", &p),
+                Ok(())
+            );
+            assert_eq!(p, before);
+        }
+    }
+    for owned_predicate in [false, true] {
+        let mut p = filter_program(None);
+        if owned_predicate {
+            p.expressions[1].expression = field(
+                SourceOwner::Named {
+                    name: " Ref 雪 ".into(),
+                },
+                &["Rows", "Flag"],
+                Some(path(&["Rows"])),
+            );
+        }
+        assert_eq!(filter_observed("F643-02 legacy static filter", &p), Ok(()));
+        assert_eq!(
+            validate_basic_owned_emission(&p),
+            if owned_predicate {
+                capability(
+                    Location::Expression {
+                        namespace: Namespace::Main,
+                        node: 2,
+                        scope: Some(primary()),
+                    },
+                    Some(Request::Field {
+                        owner: Owner::Named {
+                            name: " Ref 雪 ".into(),
+                        },
+                        path: path(&["Rows", "Flag"]),
+                        frame: Some(path(&["Rows"])),
+                    }),
+                    Reason::ScopeControl,
+                    Origin::Scope { scope: primary() },
+                )
+            } else {
+                scope_error(Reason::ScopeControl)
+            }
+        );
+    }
+}
+
+#[test]
+fn basic_filter_profile_lowering_retains_the_exact_predicate_and_default_refusal() {
+    let mut project = super::supported_project();
+    project.source = input_schema();
+    project.target = SchemaNode::group(
+        "Output",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    )
+    .repeating();
+    project.graph.nodes = std::collections::BTreeMap::from([
+        (
+            1,
+            mapping::Node::OwnedSourceField(OwnedSourceField {
+                source: OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Rows", "Value"]),
+                },
+                frame: Some(path(&["Rows"])),
+            }),
+        ),
+        (
+            2,
+            mapping::Node::OwnedSourceField(OwnedSourceField {
+                source: OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Rows", "Flag"]),
+                },
+                frame: Some(path(&["Rows"])),
+            }),
+        ),
+        (
+            99,
+            mapping::Node::OwnedSourceField(OwnedSourceField {
+                source: OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Value"]),
+                },
+                frame: None,
+            }),
+        ),
+    ]);
+    project.root = mapping::Scope {
+        iteration: mapping::ScopeIteration::OwnedSource {
+            source: OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: path(&["Rows"]),
+            },
+            output_path: None,
+        },
+        filter: Some(2),
+        bindings: vec![mapping::Binding {
+            target_field: "Value".into(),
+            node: 1,
+        }],
+        ..Default::default()
+    };
+    let before = format!("{project:#?}");
+    let ordinary = crate::lower(&project);
+    let opted = crate::lower_with_basic_owned_filters(&project);
+    eprintln!("INPUT F643-03 Project={project:#?} RAW default={ordinary:#?} opt-in={opted:#?}");
+    let Err(ProgramValidationError::OwnedSource { diagnostic }) =
+        filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl)
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        ordinary,
+        Err(crate::LowerError::new(vec![
+            crate::Diagnostic::OwnedSource { diagnostic }
+        ]))
+    );
+    let lowered = opted.unwrap();
+    assert_eq!(lowered.root.iteration.as_ref().unwrap().filter(), Some(2));
+    assert_eq!(
+        lowered
+            .root
+            .iteration
+            .as_ref()
+            .unwrap()
+            .owned_source_iteration()
+            .unwrap()
+            .source(),
+        &OwnedSourceRef {
+            owner: SourceOwner::Primary,
+            path: path(&["Rows"])
+        }
+    );
+    assert_eq!(
+        lowered.expressions,
+        vec![
+            node(
+                1,
+                field(
+                    SourceOwner::Primary,
+                    &["Rows", "Value"],
+                    Some(path(&["Rows"]))
+                )
+            ),
+            node(
+                2,
+                field(
+                    SourceOwner::Primary,
+                    &["Rows", "Flag"],
+                    Some(path(&["Rows"]))
+                )
+            )
+        ]
+    );
+    assert_eq!(
+        filter_observed("F643-03 exact lowered controls", &lowered),
+        Ok(())
+    );
+    assert_eq!(format!("{project:#?}"), before);
+}
+
+#[test]
+fn basic_filter_profile_preserves_control_free_programs_and_lowering() {
+    for owned in [false, true] {
+        let p = program(owned);
+        let before = p.clone();
+        assert_eq!(
+            filter_observed("F643-04 no filter", &p),
+            validate_basic_owned_emission(&p)
+        );
+        assert_eq!(p, before);
+    }
+    let project = super::supported_project();
+    let ordinary = crate::lower(&project);
+    let opted = crate::lower_with_basic_owned_filters(&project);
+    eprintln!("RAW F643-05 complete control-free default={ordinary:#?} opt-in={opted:#?}");
+    assert_eq!(opted, ordinary);
+    assert!(opted.is_ok());
+}
+
+#[test]
+fn basic_filter_profile_preserves_structure_before_capability() {
+    for (owner, parts, frame, reason) in [
+        (
+            SourceOwner::Named {
+                name: "Absent".into(),
+            },
+            path(&["Rows", "Flag"]),
+            Some(path(&["Rows"])),
+            Structure::UnknownOwner,
+        ),
+        (
+            SourceOwner::Primary,
+            path(&["Rows", "Absent"]),
+            Some(path(&["Rows"])),
+            Structure::MissingOwnedPath { segment: 1 },
+        ),
+        (
+            SourceOwner::Primary,
+            path(&["Rows", "Flag"]),
+            Some(path(&["D"])),
+            Structure::IncompatibleFramePath,
+        ),
+    ] {
+        let mut p = filter_program(Some(SourceOwner::Primary));
+        p.expressions[1].expression = Expression::OwnedSourceField(OwnedSourceField {
+            source: OwnedSourceRef {
+                owner: owner.clone(),
+                path: parts.clone(),
+            },
+            frame: frame.clone(),
+        });
+        let expected = Err(ProgramValidationError::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Structure {
+                location: Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 2,
+                    scope: None,
+                },
+                request: Request::Field {
+                    owner: (&owner).into(),
+                    path: parts,
+                    frame,
+                },
+                reason,
+            }),
+        });
+        assert_eq!(
+            filter_observed("F643-06 complete owned structural refusal", &p),
+            expected
+        );
+        assert_eq!(validate_basic_owned_emission(&p), expected);
+    }
+    let mut p = filter_program(Some(SourceOwner::Primary));
+    p.expressions.push(node(
+        2,
+        Expression::Const {
+            value: Value::Bool(false),
+        },
+    ));
+    assert_eq!(
+        filter_observed("F643-07 duplicate before scope control", &p),
+        Err(ProgramValidationError::DuplicateExpression { node: 2 })
+    );
+    let mut p = filter_program(Some(SourceOwner::Primary));
+    p.expressions.pop();
+    assert_eq!(
+        filter_observed("F643-08 missing predicate before scope control", &p),
+        Err(ProgramValidationError::MissingFilterExpression {
+            target_path: Vec::new(),
+            expression: 2
+        })
+    );
+}
+
+#[test]
+fn basic_filter_profile_retains_full_combined_control_envelopes() {
+    for control in 0..9 {
+        let mut p = filter_program(Some(SourceOwner::Primary));
+        p.expressions.push(node(
+            3,
+            Expression::Const {
+                value: Value::Int(1),
+            },
+        ));
+        let sort = (control == 0).then(|| {
+            crate::SortPlan::new(
+                crate::SortKey {
+                    expression: 1,
+                    descending: false,
+                },
+                Vec::new(),
+                crate::SortFilterOrder::FilterThenSort,
+            )
+        });
+        let windows = match control {
+            1 => vec![crate::SequenceWindow::SkipFirst { count: 3 }],
+            2 => vec![crate::SequenceWindow::First { count: 3 }],
+            3 => vec![crate::SequenceWindow::From { position: 3 }],
+            4 => vec![crate::SequenceWindow::FromTo { first: 3, last: 3 }],
+            5 => vec![crate::SequenceWindow::Last { count: 3 }],
+            _ => Vec::new(),
+        };
+        let output = if control == 8 {
+            p.root.repeating = false;
+            p.target.repeating = false;
+            IterationOutput::First
+        } else {
+            IterationOutput::Repeated
+        };
+        let mut iteration = IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: path(&["Rows"]),
+            }),
+            Some(2),
+            sort,
+            windows,
+            output,
+        );
+        if control == 6 {
+            iteration = iteration.with_grouping(crate::GroupingPlan::By { key: 1 });
+        }
+        if control == 7 {
+            iteration = iteration.with_filtered_grouping(crate::GroupingPlan::By { key: 1 }, 2);
+        }
+        p.root.iteration = Some(iteration);
+        let expected = filter_scope_error(
+            Some(Owner::Primary),
+            primary(),
+            if control == 6 || control == 7 {
+                Reason::Grouping
+            } else {
+                Reason::ScopeControl
+            },
+        );
+        assert_eq!(validate_basic_owned_emission(&p), expected);
+        assert_eq!(
+            filter_observed("F643-09 combined controls remain closed", &p),
+            expected
+        );
+    }
+}
+
+#[test]
+fn basic_filter_profile_preserves_nested_inherited_closure_and_named_routes() {
+    let mut p = filter_program(None);
+    let mut child = filter_program(Some(SourceOwner::Primary)).root;
+    child.target_field = "Child".into();
+    p.root.children.push(child);
+    p.target = SchemaNode::group(
+        "Output",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::String),
+            SchemaNode::group(
+                "Child",
+                vec![SchemaNode::scalar("Value", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    )
+    .repeating();
+    p.expressions[0].expression = field(
+        SourceOwner::Primary,
+        &["Rows", "Value"],
+        Some(path(&["Rows"])),
+    );
+    let child_route = primary().descendant(mapping::SourceScopeStep::Child(0));
+    assert_eq!(
+        filter_observed("F643-10 nested filter capability", &p),
+        Ok(())
+    );
+    assert_eq!(
+        validate_basic_owned_emission(&p),
+        capability(
+            Location::Expression {
+                namespace: Namespace::Main,
+                node: 1,
+                scope: Some(primary())
+            },
+            Some(Request::Field {
+                owner: Owner::Primary,
+                path: path(&["Rows", "Value"]),
+                frame: Some(path(&["Rows"]))
+            }),
+            Reason::ScopeControl,
+            Origin::Scope { scope: primary() }
+        )
+    );
+    p.expressions[0].expression = Expression::Const {
+        value: Value::String("root".into()),
+    };
+    let parent = p.root.iteration.as_ref().unwrap().input().clone();
+    p.expressions.push(node(
+        3,
+        Expression::Const {
+            value: Value::Int(1),
+        },
+    ));
+    p.root.iteration = Some(IterationPlan::new(
+        parent,
+        Some(2),
+        None,
+        vec![crate::SequenceWindow::First { count: 3 }],
+        IterationOutput::Repeated,
+    ));
+    let expected = capability(
+        Location::Iteration { scope: child_route },
+        Some(Request::Iteration {
+            owner: Owner::Primary,
+            path: path(&["Rows"]),
+        }),
+        Reason::ScopeControl,
+        Origin::Scope { scope: primary() },
+    );
+    assert_eq!(
+        filter_observed("F643-11 child inherits earlier parent closure", &p),
+        expected
+    );
+    assert_eq!(validate_basic_owned_emission(&p), expected);
+    let mut p = filter_program(Some(SourceOwner::Primary));
+    let mut named = filter_program(Some(SourceOwner::Named { name: "Ref".into() }));
+    named.expressions[0].expression = Expression::Const {
+        value: Value::String("named".into()),
+    };
+    let input = named.root.iteration.as_ref().unwrap().input().clone();
+    named.root.iteration = Some(IterationPlan::new(
+        input,
+        Some(2),
+        None,
+        vec![crate::SequenceWindow::First { count: 3 }],
+        IterationOutput::Repeated,
+    ));
+    p.expressions.push(node(
+        3,
+        Expression::Const {
+            value: Value::Int(1),
+        },
+    ));
+    p.extra_targets.push(NamedTargetProgram {
+        name: " Target 雪 ".into(),
+        target: named.target,
+        root: named.root,
+    });
+    let route = SourceScopeLocation::root(SourceScopeTarget::Named {
+        index: 0,
+        name: " Target 雪 ".into(),
+    });
+    assert_eq!(
+        filter_observed("F643-12 exact named target route", &p),
+        filter_scope_error(
+            Some(Owner::Named { name: "Ref".into() }),
+            route,
+            Reason::ScopeControl
+        )
+    );
+    assert_eq!(
+        validate_basic_owned_emission(&p),
+        filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl)
+    );
+}
+
+#[test]
+fn basic_filter_profile_retains_dead_and_potential_dynamic_predicate_edges() {
+    for input_kind in 0..4 {
+        for frame in [None, Some(path(&["D"])), Some(Vec::new())] {
+            for reached in [false, true] {
+                let mut p = filter_program(None);
+                dynamic(&mut p);
+                p.expressions[1].expression = Expression::Const {
+                    value: Value::Bool(false),
+                };
+                p.expressions.push(node(
+                    99,
+                    Expression::SourceField {
+                        path: path(&["D", "Flag"]),
+                        frame: frame.clone(),
+                    },
+                ));
+                let predicate = match input_kind {
+                    0 => Expression::If {
+                        condition: 2,
+                        then: 99,
+                        else_: 2,
+                    },
+                    1 => Expression::RuntimeParameterDefault {
+                        name: "predicate".into(),
+                        ty: ScalarType::Bool,
+                        default: 99,
+                    },
+                    2 => Expression::Raise { message: Some(99) },
+                    _ => Expression::ValueMap {
+                        input: 99,
+                        input_type: Some(ScalarType::Bool),
+                        table: vec![(Value::Bool(false), Value::Bool(true))],
+                        default: Some(Value::Bool(true)),
+                    },
+                };
+                p.expressions.push(node(3, predicate));
+                if reached {
+                    let input = p.root.iteration.as_ref().unwrap().input().clone();
+                    p.root.iteration = Some(IterationPlan::new(
+                        input,
+                        Some(3),
+                        None,
+                        Vec::new(),
+                        IterationOutput::Repeated,
+                    ));
+                }
+                let before = p.clone();
+                assert_eq!(
+                    filter_observed("F643-13 potential predicate dependencies", &p),
+                    if reached && frame.as_ref().is_none_or(|frame| !frame.is_empty()) {
+                        retained(99, Reason::UnsupportedBasicContext)
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert_eq!(p, before);
+            }
+        }
+    }
+}
+
+#[test]
+fn basic_filter_profile_keeps_failure_function_and_dynamic_loader_ownership_closed() {
+    let mut p = filter_program(Some(SourceOwner::Primary));
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+        selection: FailureSelection::All,
+        message: Some(1),
+    });
+    assert_eq!(
+        filter_observed("F643-14 ordinary failure ownership stays closed", &p),
+        capability(
+            Location::Expression {
+                namespace: Namespace::Main,
+                node: 1,
+                scope: None
+            },
+            Some(Request::Field {
+                owner: Owner::Primary,
+                path: path(&["Rows", "Value"]),
+                frame: Some(path(&["Rows"]))
+            }),
+            Reason::FailureRule,
+            Origin::Failure { index: 0 }
+        )
+    );
+    let mut p = filter_program(Some(SourceOwner::Primary));
+    dynamic(&mut p);
+    p.extra_sources[4].dynamic.as_mut().unwrap().path = 1;
+    assert_eq!(
+        filter_observed("F643-15 retained dynamic path ownership stays closed", &p),
+        capability(
+            Location::Expression {
+                namespace: Namespace::Main,
+                node: 1,
+                scope: None
+            },
+            Some(Request::Field {
+                owner: Owner::Primary,
+                path: path(&["Rows", "Value"]),
+                frame: Some(path(&["Rows"]))
+            }),
+            Reason::DynamicLoader,
+            Origin::DynamicSource {
+                index: 4,
+                name: "D".into()
+            }
+        )
+    );
+    let mut p = filter_program(None);
+    unused_function(&mut p);
+    assert_eq!(
+        filter_observed("F643-16 isolated function stays closed", &p),
+        capability(
+            Location::Expression {
+                namespace: Namespace::Function(FunctionId::new(7)),
+                node: 0,
+                scope: None
+            },
+            None,
+            Reason::IsolatedFunction,
+            Origin::FunctionBody {
+                function: FunctionId::new(7)
+            }
+        )
+    );
+}
+
+#[test]
+fn basic_filter_profile_keeps_generated_and_stored_specialized_domains_closed() {
+    let mut p = filter_program(None);
+    p.expressions.extend([
+        node(
+            3,
+            Expression::Const {
+                value: Value::Int(2),
+            },
+        ),
+        node(
+            4,
+            Expression::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ),
+    ]);
+    p.root.iteration = Some(IterationPlan::new(
+        GeneratedSequence::Range {
+            from: None,
+            to: 3,
+            item: 4,
+        },
+        Some(2),
+        None,
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    assert_eq!(
+        filter_observed("F643-17 generated filter stays closed", &p),
+        scope_error(Reason::GeneratedItem)
+    );
+    let mut p = filter_program(None);
+    p.expressions.push(node(99, Expression::SourceDocumentPath));
+    assert_eq!(
+        filter_observed("F643-18 stored document leaf stays closed", &p),
+        retained(99, Reason::Document)
+    );
+    let mut p = filter_program(None);
+    dynamic(&mut p);
+    p.root.iteration = Some(IterationPlan::new(
+        SourceIteration::new(path(&["D", "Rows"])),
+        Some(2),
+        None,
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    assert_eq!(
+        filter_observed("F643-19 dynamic legacy iteration stays closed", &p),
+        scope_error(Reason::DynamicLoader)
+    );
+}
+
+#[test]
+fn basic_filter_profile_retains_dynamic_owner_requests_on_every_potential_edge() {
+    for input_kind in 0..4 {
+        for reached in [false, true] {
+            let mut p = filter_program(None);
+            dynamic(&mut p);
+            p.expressions[1].expression = Expression::Const {
+                value: Value::Bool(false),
+            };
+            p.expressions.push(node(
+                99,
+                field(
+                    SourceOwner::Named { name: "D".into() },
+                    &["Rows", "Flag"],
+                    Some(path(&["Rows"])),
+                ),
+            ));
+            let predicate = match input_kind {
+                0 => Expression::If {
+                    condition: 2,
+                    then: 99,
+                    else_: 2,
+                },
+                1 => Expression::RuntimeParameterDefault {
+                    name: "predicate".into(),
+                    ty: ScalarType::Bool,
+                    default: 99,
+                },
+                2 => Expression::Raise { message: Some(99) },
+                _ => Expression::ValueMap {
+                    input: 99,
+                    input_type: Some(ScalarType::Bool),
+                    table: Vec::new(),
+                    default: Some(Value::Bool(true)),
+                },
+            };
+            p.expressions.push(node(3, predicate));
+            if reached {
+                let input = p.root.iteration.as_ref().unwrap().input().clone();
+                p.root.iteration = Some(IterationPlan::new(
+                    input,
+                    Some(3),
+                    None,
+                    Vec::new(),
+                    IterationOutput::Repeated,
+                ));
+            }
+            assert_eq!(
+                filter_observed("F643-20 retained dynamic owner keeps its exact origin", &p),
+                capability(
+                    Location::Expression {
+                        namespace: Namespace::Main,
+                        node: 99,
+                        scope: reached.then(primary)
+                    },
+                    Some(Request::Field {
+                        owner: Owner::Named { name: "D".into() },
+                        path: path(&["Rows", "Flag"]),
+                        frame: Some(path(&["Rows"]))
+                    }),
+                    Reason::DynamicOwner,
+                    Origin::DynamicSource {
+                        index: 4,
+                        name: "D".into()
+                    }
+                )
+            );
+        }
+    }
+}

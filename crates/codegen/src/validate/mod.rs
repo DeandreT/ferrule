@@ -48,6 +48,23 @@ use targets::TargetOwner;
 /// This check protects the public programmatic API from emitting recursive or
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_profile(program, owned_sources::BasicOwnedProfile::ControlFree)
+}
+
+/// Validates the complete Basic filter-only capability, explicitly.
+///
+/// Unlike the default validator, this admits an ordinary static repeated filter.
+/// Every structural check and all other Basic capability refusals still apply.
+pub fn validate_program_with_basic_owned_filters(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_filter_emission(program)
+}
+
+fn validate_program_with_owned_profile(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -98,7 +115,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts(program)
+    owned_sources::validate_closed_contexts_with_profile(program, profile)
 }
 
 fn validate_schema_metadata(
@@ -1288,7 +1305,7 @@ fn validate_scope(
     Ok(())
 }
 
-pub use owned_sources::validate_basic_owned_emission;
+pub use owned_sources::{validate_basic_owned_emission, validate_basic_owned_filter_emission};
 
 #[cfg(test)]
 mod tests;

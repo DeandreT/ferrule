@@ -15,6 +15,20 @@ use crate::{
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, validate_program)
+}
+
+/// Lowers the explicit static Basic filter-only profile without changing controls.
+///
+/// Default lowering and existing emitter entry points retain their closed policy.
+pub fn lower_with_basic_owned_filters(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, crate::validate_program_with_basic_owned_filters)
+}
+
+fn lower_with_validator(
+    project: &Project,
+    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+) -> Result<Program, LowerError> {
     let validation = engine::validate(project);
     if !validation.is_empty() {
         return Err(LowerError::new(
@@ -377,7 +391,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     };
     if ordinary_xml
         && matches!(
-            validate_program(&program),
+            validator(&program),
             Err(ProgramValidationError::InvalidXmlBoundary { .. })
         )
     {
@@ -385,7 +399,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         // Observed input policies above retain their strict typed refusal.
         program.xml_boundary = None;
     }
-    if let Err(error) = validate_program(&program) {
+    if let Err(error) = validator(&program) {
         let diagnostic = portable_context_error(&error).unwrap_or_else(|| Diagnostic::Validation {
             location: "code generation".into(),
             message: error.to_string(),
