@@ -21,6 +21,123 @@ choose a lane and avoid conflicting changes.
    and next step. Release ownership when pausing or handing off so another
    contributor can take it.
 
+## Basic public-family milestone and next lanes
+
+The [#519](https://github.com/DeandreT/ferrule/issues/519) public-family
+milestone is complete: C# [PR588](https://github.com/DeandreT/ferrule/pull/588)
+and Rust [PR591](https://github.com/DeandreT/ferrule/pull/591) are merged, and
+#519's acceptance checklist is complete. This
+[#590](https://github.com/DeandreT/ferrule/issues/590) coordination snapshot is
+against merged main
+[`a42ef0d`](https://github.com/DeandreT/ferrule/commit/a42ef0df53a2675f3ec1fdc2a43c899f5f0695f0),
+tree `99eb55be41fca3fa4a7e22f70d5d43ff75a28296`.
+
+C# [PR588](https://github.com/DeandreT/ferrule/pull/588) is merged at
+[`5e9aaff`](https://github.com/DeandreT/ferrule/commit/5e9aaff86cf45c869edf9307e51c6e742ece0878).
+Its qualification covers 42 Basic source controls, eight existing controls,
+the 120-test inventory, default production compilation, strict checks, and
+seven nonfriend external consumers / 24 calls. The checked-input/source-rule
+prerequisites are merged in C#
+[PR579](https://github.com/DeandreT/ferrule/pull/579) /
+[PR581](https://github.com/DeandreT/ferrule/pull/581), and Rust
+[PR584](https://github.com/DeandreT/ferrule/pull/584) /
+[PR587](https://github.com/DeandreT/ferrule/pull/587).
+
+Rust PR591's final current-main qualification covers the 141-test driver,
+exact 23-entry Basic module inventory, ordered completion of all 17 source
+controls, four existing controls, and strict checks. Source correspondence
+retains the accepted production compiler invocations for current IR, common
+codegen, and the Rust backend, default public-symbol exposure, and five
+external modules / 14 calls with the corrected #580 fixture. Keep earlier
+failed checks distinct from their qualified successors.
+
+The [roadmap milestone](../ROADMAP.md#basic-owned-source-public-family-milestone)
+records the publication checklist and the compatibility boundary. Basic static
+ownership is one bounded capability; whole-product parity remains incomplete.
+Ordinary APIs keep their existing ownership gates, and public target ValueMap
+admission stays closed until the separate #582 change lands.
+
+### Current Basic file ownership and delivery gates
+
+These are coordinated maintainer scopes, not an unassigned-work list. Check the
+live issue assignee and agree a source handoff before editing a shared file.
+Source acceptance, compiler qualification, external-consumer qualification, and
+merge status are separate states.
+
+| Lane | Exclusive implementation scope | Dependency and next acceptance gate |
+| --- | --- | --- |
+| [#566 private target ValueMap increment](https://github.com/DeandreT/ferrule/issues/566) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs`; shared public admission read-only | Follow the public-family baseline. Verify current-source/default-driver and private consumer contracts, then publish one focused increment. #566 remains open until all four acceptance areas in its issue are settled. |
+| [#585 C# retention/emission](https://github.com/DeandreT/ferrule/issues/585) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs` | Production retention and emission changes plus focused tests; follow the published C# family. Serialize these shared-file edits with #566, with an explicit handoff and fresh checks on the integrated source. |
+| [#586 Rust dynamic ordinary-failure diagnostics / PR592](https://github.com/DeandreT/ferrule/pull/592) | Rust `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs` | Merged after the Rust public-family milestone: 22 source tests passed with six ignored, all 35 new labeled cases, four existing controls, and strict checks. Qualification retains exact rule index, node, location, request, per-rule priority, stored order, and ordinary/operator envelopes. Hand off these shared Rust files before the dependent #589 increment. |
+| [#589 private specialized-failure inventory/envelopes](https://github.com/DeandreT/ferrule/issues/589) | Assess Rust and C# `owned_basic.rs` plus their `tests/owned_basic.rs`; agree exact language/file ownership before implementation | Follow #585, #586, and the private #566 increment. Agree the operator/diagnostic matrix first; if fixes need both languages, use separate dependent PRs with the same-language owner. This scope may include production fixes. Common/public failure gates remain unchanged. |
+| [#582 public target ValueMap admission](https://github.com/DeandreT/ferrule/issues/582) | Common `crates/codegen/src/validate/owned_sources.rs` and `crates/codegen/src/tests/basic_owned_emission.rs`; backend/runtime files read-only | Two-role source-only proposal with four proposed tests / 54 controls. Current dependencies are #519 and the full #566 issue; keep that recorded dependency until explicitly revised. Qualify the target input edges and all independent failure refusals on the integrated sources. |
+| [#590 milestone documentation](https://github.com/DeandreT/ferrule/issues/590) | `ROADMAP.md` and `docs/parallel-work.md` only | The actual Rust public merge and #519 completion are recorded above. Publish the two-doc refresh with accepted merge and verification metadata; preserve dated snapshots and historical diagrams. |
+
+The Rust #586 increment is merged. Its Rust source owner can hand those files
+to the dependent #589 lane while C# #566/#585 planning proceeds independently.
+C# #566 and #585 share both implementation files and need a serialized source queue.
+The common #582 proposal can be reviewed independently, but implementation
+qualification/publication follows its recorded dependencies. #589 crosses the
+two language queues: split any fixes into explicit dependent increments instead
+of combining the matrix and both backends in one catch-all PR.
+
+```mermaid
+flowchart LR
+    P519["#519 public-family milestone<br/>PR588 and PR591 merged"]
+    T566["#566 private target ValueMap increment<br/>verification pending"]
+    F566["#566 tracker<br/>all four acceptance areas required"]
+    C585["#585 C# retention/emission<br/>production plus tests"]
+    R586["#586 Rust dynamic failure priority<br/>PR592 merged"]
+    O589["#589 private operator inventory/envelopes<br/>dependent language PRs"]
+    V582["#582 common public target ValueMap<br/>source proposal only"]
+    D590["#590 milestone docs<br/>publish after actual milestone"]
+    P519 --> T566
+    P519 --> C585
+    P519 --> R586
+    T566 --> O589
+    C585 --> O589
+    R586 --> O589
+    T566 -.->|one acceptance area| F566
+    P519 --> V582
+    F566 --> V582
+    P519 --> D590
+```
+
+Solid arrows show delivery prerequisites. The dotted edge records that the
+private target ValueMap increment contributes to #566; it does not close all
+four acceptance areas. #582's full-#566 dependency remains recorded. File
+ownership in the table adds serialization requirements even where the diagram
+shows independent lanes.
+
+### Milestone publication gate
+
+- [x] Merge the four checked-input/source-failure bridge PRs: 579, 581, 584, 587.
+- [x] Merge the qualified C# public family in PR588.
+- [x] Accept the Rust family's final current-main driver/module/source-order,
+  ordinary-control, and strict checks, retaining its production, symbol, and
+  five-module / 14-call contracts.
+- [x] Merge the Rust public family in PR591 and record the final main/tree above.
+- [x] Close #519 with its acceptance checklist complete.
+- [ ] Publish this two-document #590 refresh from the accepted milestone records.
+- [x] Merge #586 in PR592 after its 22-source / six-ignored, 35-case, old-four,
+  and strict qualification.
+- [ ] Keep #566's four acceptance areas and the independent #585/#589/#582
+  follow-on acceptance gates open until each has its own qualified result.
+
+Reserve the shared compiler/build-artifact slot before builds. Check current
+capacity and reuse compatible artifacts with bounded jobs; source timestamps
+and a successful cached test are not enough to establish the intended input.
+Use complete current-main source mappings and exact driver inventories. GUI
+verification uses an alternate virtual display. These coordination rules do
+not widen any lane's source ownership or qualification claim.
+
+The next section keeps the earlier `2d52eba` Basic snapshot, including its seven
+nodes/eight dependency edges, unchanged. Its publication state is dated history;
+use this milestone section for the current Basic handoff. The four other
+historical diagram bodies and the unrelated contributor snapshots below also
+retain their original evidence scope. Diagram syntax here is reviewed manually;
+this refresh claims no rendered-diagram verification.
+
 ## Basic owned-source contributor lanes
 
 Snapshot: 2026-10-12, against merged main
