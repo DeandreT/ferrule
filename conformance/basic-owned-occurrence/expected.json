@@ -1,0 +1,1162 @@
+{
+  "fixture": "basic-owned-occurrence-v1",
+  "issue": 640,
+  "counts": {
+    "programs": 2,
+    "cases": 3,
+    "selections": 2,
+    "calls_each_lane": 12,
+    "total": 36
+  },
+  "calls": [
+    {
+      "id": "OCCURRENCE-native-primary-mixed-all",
+      "lane": "native",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-primary-mixed-primary",
+      "lane": "native",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-primary-empty-all",
+      "lane": "native",
+      "program": "primary",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-primary-empty-primary",
+      "lane": "native",
+      "program": "primary",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-primary-singleton-all",
+      "lane": "native",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": 2,
+        "scope": null,
+        "node_field_present": true,
+        "scope_field_present": true
+      }
+    },
+    {
+      "id": "OCCURRENCE-native-primary-singleton-primary",
+      "lane": "native",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": 2,
+        "scope": null,
+        "node_field_present": true,
+        "scope_field_present": true
+      }
+    },
+    {
+      "id": "OCCURRENCE-native-named-mixed-all",
+      "lane": "native",
+      "program": "named",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-named-mixed-primary",
+      "lane": "native",
+      "program": "named",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-named-empty-all",
+      "lane": "native",
+      "program": "named",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-named-empty-primary",
+      "lane": "native",
+      "program": "named",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-native-named-singleton-all",
+      "lane": "native",
+      "program": "named",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": 2,
+        "scope": null,
+        "node_field_present": true,
+        "scope_field_present": true
+      }
+    },
+    {
+      "id": "OCCURRENCE-native-named-singleton-primary",
+      "lane": "native",
+      "program": "named",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": 2,
+        "scope": null,
+        "node_field_present": true,
+        "scope_field_present": true
+      }
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-mixed-all",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-mixed-primary",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-empty-all",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-empty-primary",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-singleton-all",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node_field_present": false,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-Rust-primary-singleton-primary",
+      "lane": "Rust",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node_field_present": false,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-mixed-all",
+      "lane": "Rust",
+      "program": "named",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-mixed-primary",
+      "lane": "Rust",
+      "program": "named",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-empty-all",
+      "lane": "Rust",
+      "program": "named",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-empty-primary",
+      "lane": "Rust",
+      "program": "named",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-singleton-all",
+      "lane": "Rust",
+      "program": "named",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node_field_present": false,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-Rust-named-singleton-primary",
+      "lane": "Rust",
+      "program": "named",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node_field_present": false,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-mixed-all",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-mixed-primary",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-empty-all",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-empty-primary",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-singleton-all",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": null,
+        "node_field_present": true,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-CSharp-primary-singleton-primary",
+      "lane": "CSharp",
+      "program": "primary",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": true,
+          "name": null
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": null,
+        "node_field_present": true,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-mixed-all",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "mixed",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-mixed-primary",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "mixed",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": [
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept1"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 2
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "kept2"
+                  }
+                },
+                {
+                  "name": "Position",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-empty-all",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "empty",
+      "selection": "all",
+      "expected": {
+        "kind": "All",
+        "primary": {
+          "kind": "Repeated",
+          "items": []
+        },
+        "extras": []
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-empty-primary",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "empty",
+      "selection": "primary",
+      "expected": {
+        "kind": "SelectedPrimary",
+        "instance": {
+          "kind": "Repeated",
+          "items": []
+        }
+      },
+      "expected_error_provenance": null
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-singleton-all",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "singleton",
+      "selection": "all",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": null,
+        "node_field_present": true,
+        "native_semantic_node": 2
+      }
+    },
+    {
+      "id": "OCCURRENCE-CSharp-named-singleton-primary",
+      "lane": "CSharp",
+      "program": "named",
+      "input": "singleton",
+      "selection": "primary",
+      "expected": {
+        "kind": "Error",
+        "semantic_kind": "InactiveSourceFrame",
+        "owner": {
+          "is_primary": false,
+          "name": "Ref"
+        },
+        "collection": []
+      },
+      "expected_error_provenance": {
+        "node": null,
+        "node_field_present": true,
+        "native_semantic_node": 2
+      }
+    }
+  ],
+  "classification": {
+    "successful_tree_parity": "Requires full typed All/SelectedPrimary outputs equal each frozen tree in every lane.",
+    "inactive_semantic_error_contract": "Requires exact typed owner and present-empty collection after expression2 is reached, plus each actual backend envelope and complete error chain.",
+    "full_error_parity": false,
+    "known_source_provenance_difference": "Native nodeSome(2)/scopeNone; Rust OwnedSource cause has no node or scope field; CSharp runtime Node is null. Actual36 observations must retain this as a provenance gap, then create a separately scoped issue before any production fix.",
+    "no_generated_node2_metadata_fabrication": true,
+    "execution_status": "UNRUN",
+    "fixture_protocol_qualification_is_not_total_parity": true
+  }
+}

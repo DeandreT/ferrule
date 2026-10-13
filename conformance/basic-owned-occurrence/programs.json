@@ -1,0 +1,98 @@
+{
+  "fixture": "basic-owned-occurrence-v1",
+  "issue": 640,
+  "programs": [
+    {
+      "id": "primary",
+      "owner": {
+        "is_primary": true,
+        "name": null
+      }
+    },
+    {
+      "id": "named",
+      "owner": {
+        "is_primary": false,
+        "name": "Ref"
+      }
+    }
+  ],
+  "selected_endpoint": {
+    "kind": "Group",
+    "name": "Input",
+    "repeating": false,
+    "children": [
+      {
+        "name": "Value",
+        "kind": "Scalar",
+        "type": "String"
+      }
+    ]
+  },
+  "named_primary_collision": {
+    "Value": "primary.shadow",
+    "Ref": {
+      "Value": "embedded.shadow"
+    }
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "kind": "OwnedSourceField",
+      "path": [
+        "Value"
+      ],
+      "frame": [],
+      "frame_is_present": true
+    },
+    {
+      "id": 2,
+      "kind": "OwnedPosition",
+      "collection": [],
+      "collection_is_present": true
+    }
+  ],
+  "root_scope": {
+    "construction": "Constructed",
+    "iteration": "OwnedSource",
+    "path": [],
+    "output_path": null,
+    "output": "Repeated",
+    "bindings": [
+      {
+        "target_field": "Value",
+        "node": 1,
+        "type": "String"
+      },
+      {
+        "target_field": "Position",
+        "node": 2,
+        "type": "Int"
+      }
+    ],
+    "filter": null,
+    "sort": null,
+    "windows": [],
+    "grouping": null,
+    "children": []
+  },
+  "cases": [
+    "mixed",
+    "empty",
+    "singleton"
+  ],
+  "selections": [
+    "all",
+    "primary"
+  ],
+  "extra_targets": [],
+  "failure_rules": [],
+  "user_functions": [],
+  "limits": {
+    "max_roots": 16,
+    "max_active_frames": 8,
+    "max_path_segments": 16,
+    "max_metadata_bytes": 1048576,
+    "max_walk_contexts": 64
+  }
+}
