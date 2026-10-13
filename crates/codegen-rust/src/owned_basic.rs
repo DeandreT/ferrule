@@ -148,6 +148,40 @@ fn check_scope(
     Ok(())
 }
 
+fn dynamic_failure_path(program: &Program, path: &[String]) -> bool {
+    path.first().is_some_and(|name| {
+        program
+            .extra_sources
+            .iter()
+            .any(|source| source.name == *name && source.dynamic.is_some())
+    })
+}
+
+fn failure_expression_nodes(program: &Program, root: u32) -> std::collections::BTreeSet<u32> {
+    let mut pending = vec![root];
+    let mut found = std::collections::BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !found.insert(id) {
+            continue;
+        }
+        let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
+            continue;
+        };
+        match &node.expression {
+            Expression::Call { args, .. } => pending.extend(args.iter().copied()),
+            Expression::If {
+                condition,
+                then,
+                else_,
+            } => pending.extend([*condition, *then, *else_]),
+            Expression::RuntimeParameterDefault { default, .. } => pending.push(*default),
+            Expression::Raise { message } => pending.extend(message.iter().copied()),
+            _ => {}
+        }
+    }
+    found
+}
+
 fn check_inventory(program: &Program) -> Result<(), EmitError> {
     let primary = SourceScopeLocation::root(SourceScopeTarget::Primary);
     check_scope(program, &program.root, primary.clone())?;
@@ -161,22 +195,49 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
             }),
         )?;
     }
-    // Ordinary source-backed rules share only the legacy view of the paired
-    // context. Common validation keeps owned rule expressions closed; generated
-    // and dynamic failure sources remain unsupported in this private bridge.
+    // Inspect ordered ordinary rules as iteration, predicate, then message.
+    // Only dynamic failure leaves receive a rule origin here; the original
+    // retained-expression inventory keeps every other operator's envelope.
     for (index, rule) in program.failure_rules.iter().enumerate() {
         match &rule.iteration {
             codegen::FailureIteration::Generated(_) => {
                 return Err(failure_refusal(index, Capability::FailureRule));
             }
             codegen::FailureIteration::Source(source) => {
-                if source.path().first().is_some_and(|name| {
-                    program
-                        .extra_sources
-                        .iter()
-                        .any(|source| source.name == *name && source.dynamic.is_some())
-                }) {
+                if dynamic_failure_path(program, source.path()) {
                     return Err(failure_refusal(index, Capability::DynamicLoader));
+                }
+            }
+        }
+        for root in rule.selection.predicate().into_iter().chain(rule.message) {
+            let retained = failure_expression_nodes(program, root);
+            // Membership follows potential dependencies; priority follows the
+            // stored expression order, independently for predicate and message.
+            for node in &program.expressions {
+                if !retained.contains(&node.id) {
+                    continue;
+                }
+                let dynamic = match &node.expression {
+                    Expression::SourceField { path, frame } => {
+                        dynamic_failure_path(program, frame.as_ref().unwrap_or(path))
+                    }
+                    Expression::DynamicSourceField { .. } => true,
+                    _ => false,
+                };
+                if dynamic {
+                    return Err(ProgramValidationError::OwnedSource {
+                        diagnostic: Box::new(Diagnostic::Capability {
+                            location: Location::Expression {
+                                namespace: codegen::OwnedSourceNamespace::Main,
+                                node: node.id,
+                                scope: None,
+                            },
+                            request: None,
+                            reason: Capability::DynamicLoader,
+                            origin: Origin::Failure { index },
+                        }),
+                    }
+                    .into());
                 }
             }
         }
