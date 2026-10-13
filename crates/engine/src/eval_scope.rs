@@ -1337,7 +1337,14 @@ fn eval_basic_owned_scope<'a>(
             budget.reserve(extensions.len()).map_err(access)?;
         }
     }
-    extensions = apply_sequence_windows(extensions, &windows, None, trace_scope);
+    extensions = apply_basic_owned_sequence_windows(
+        extensions,
+        &windows,
+        receiving_program,
+        positions,
+        trace_scope,
+        retain_first.then_some(candidates),
+    );
     budget.reserve(extensions.len()).map_err(access)?;
     let mut produced = Vec::new();
     let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
@@ -1460,6 +1467,34 @@ fn eval_sequence_window(
             EvaluatedWindow::Last(eval_item_count(program, count, context, positions)?)
         }
     })
+}
+
+fn apply_basic_owned_sequence_windows<T>(
+    mut items: Vec<T>,
+    windows: &[EvaluatedWindow],
+    receiving_program: EvalProgram<'_>,
+    positions: &[PositionFrame],
+    trace_scope: &TraceScope,
+    bounded_first_before: Option<usize>,
+) -> Vec<T> {
+    for (index, window) in windows.iter().enumerate() {
+        // Only eligible implicit First retains a prefix before window application.
+        // Its original cohort was fully traversed and accounted without retaining it.
+        let before = if index == 0 {
+            bounded_first_before.unwrap_or(items.len())
+        } else {
+            items.len()
+        };
+        items = apply_sequence_windows(items, std::slice::from_ref(window), None, trace_scope);
+        record_owned_event(receiving_program, positions, || TraceEvent::WindowApplied {
+            scope: trace_scope.clone(),
+            window_index: index + 1,
+            window: (*window).into(),
+            before,
+            after: items.len(),
+        });
+    }
+    items
 }
 
 fn apply_sequence_windows<T>(
