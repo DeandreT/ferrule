@@ -247,7 +247,7 @@ fn basic_c02_named_current_and_legacy_broadcast() {
             .as_ref()
             .unwrap()
             .path(),
-        path(&["Ref", "Rows"])
+        path(&["Rows"])
     );
     assert_eq!(q.owned.frames.last().unwrap().collection, path(&["Rows"]));
     assert_eq!(
@@ -3569,7 +3569,7 @@ fn filter644_named_collision_and_null_gaps_preserve_owner() {
             SourceOwnerRef::Named("Ref"),
             "named.root",
             ["N2", "N4"],
-            &["Ref", "Rows"][..],
+            &["Rows"][..],
         ),
     ] {
         let original = parent.walk_owned_source_cohort(owner, &["Rows"]).unwrap();
@@ -4201,4 +4201,438 @@ fn filter644_runtime_admission_converts_into_callback_error() {
             .into()
         ))
     );
+}
+
+// Native owned selectors project owner-relative legacy collection paths. The
+// original three-path matched probe remains retained before this correction.
+#[test]
+fn basic_alias680_named_paths_preserve_native_query_and_borrowed_owner() {
+    let primary = common();
+    let named = named();
+    for name in ["Ref", "ref", " Ref 雪 "] {
+        let declarations = [DeclaredNamedSourceRoot {
+            name,
+            instance: Some(&named),
+        }];
+        let roots = roots(&primary, &declarations);
+        let parent = roots.captured_root_context();
+        let rows = parent.captured_walk_owned_source(SourceOwnerRef::Named(name), &["Rows"]);
+        raw_rows("ALIAS680_NAMED", &rows);
+        let current = rows[1].context();
+        let actual = (
+            current.legacy_position(&[name, "Rows"]),
+            current.legacy_position(&["Rows"]),
+            current.legacy_position(&[]),
+            current.captured_owned_position(SourceOwnerRef::Named(name), Some(&["Rows"])),
+            current.captured_legacy_field(&["Value"], Some(&["Rows"])),
+            current.owned_field_with_root_pin(
+                SourceOwnerRef::Named(name),
+                &["Value"],
+                Some(&[]),
+                true,
+            ),
+            current.owned_field_with_root_pin(SourceOwnerRef::Primary, &["Value"], Some(&[]), true),
+        );
+        eprintln!("RAW ALIAS680_NAMED name={name:?} actual={actual:?}");
+        assert_eq!(
+            actual,
+            (
+                1,
+                2,
+                2,
+                Ok(2),
+                Ok(string("N2")),
+                Ok(string("N.root")),
+                Ok(string("P.root"))
+            )
+        );
+        let item = &named.field("Rows").unwrap().as_repeated().unwrap()[1];
+        assert!(std::ptr::eq(
+            current.legacy.frames.last().unwrap().instance,
+            item
+        ));
+        assert!(std::ptr::eq(
+            current.owned.frames.last().unwrap().instance,
+            item
+        ));
+        assert!(std::ptr::eq(
+            current.owned.registry.named[0].instance.unwrap(),
+            &named
+        ));
+        assert_eq!(
+            current
+                .legacy
+                .frames
+                .last()
+                .unwrap()
+                .collection
+                .as_ref()
+                .unwrap()
+                .path(),
+            path(&["Rows"])
+        );
+        assert_eq!(
+            current.owned.frames.last().unwrap().owner,
+            OwnedOwnerKey::Named(0)
+        );
+        assert_eq!(
+            current.origins.last().unwrap().owner,
+            OwnedOwnerKey::Named(0)
+        );
+        assert_eq!(current.origins.last().unwrap().path, path(&["Rows"]));
+        assert_eq!(current.origins.last().unwrap().raw_index, Some(2));
+        assert_eq!(rows[1].raw_source_ordinal(), Some(2));
+    }
+}
+
+#[test]
+fn basic_alias680_actual_outer_prefixed_frame_survives_named_inner_phase() {
+    let primary = group([field(
+        "Ref",
+        group([field("Rows", repeated([row("P1"), row("P2")]))]),
+    )]);
+    let named = named();
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let roots = roots(&primary, &declarations);
+    let parent = roots.captured_root_context();
+    let outer = parent.captured_walk_source(&["Ref", "Rows"]);
+    let inner = outer[1]
+        .context()
+        .captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Rows"]);
+    raw_rows("ALIAS680_OUTER", &outer);
+    raw_rows("ALIAS680_INNER", &inner);
+    let compact = inner[2].captured_phase_position(1);
+    raw_rows("ALIAS680_COMPACT", std::slice::from_ref(&compact));
+    for (candidate, inner_position) in [(&inner[2], 3), (&compact, 1)] {
+        let current = candidate.context();
+        let actual = (
+            current.legacy_position(&["Ref", "Rows"]),
+            current.legacy_position(&["Rows"]),
+            current.legacy_position(&[]),
+            current.captured_owned_position(SourceOwnerRef::Primary, Some(&["Ref", "Rows"])),
+            current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&["Rows"])),
+            current.captured_owned_field(SourceOwnerRef::Primary, &["Ref", "Rows", "Value"], None),
+            current.captured_owned_field(SourceOwnerRef::Named("Ref"), &["Rows", "Value"], None),
+        );
+        eprintln!("RAW ALIAS680_OUTER_PHASE inner_position={inner_position} actual={actual:?}");
+        assert_eq!(
+            actual,
+            (
+                2,
+                inner_position,
+                inner_position,
+                Ok(2),
+                Ok(inner_position),
+                Ok(string("P2")),
+                Ok(string("N3"))
+            )
+        );
+        assert_eq!(candidate.raw_source_ordinal(), Some(3));
+        assert_eq!(current.origins.last().unwrap().raw_index, Some(3));
+        assert_eq!(
+            current
+                .legacy
+                .frames
+                .last()
+                .unwrap()
+                .collection
+                .as_ref()
+                .unwrap()
+                .path(),
+            path(&["Rows"])
+        );
+        assert!(std::ptr::eq(
+            current.owned.frames[0].instance,
+            &primary
+                .field("Ref")
+                .unwrap()
+                .field("Rows")
+                .unwrap()
+                .as_repeated()
+                .unwrap()[1]
+        ));
+        assert!(std::ptr::eq(
+            current.owned.frames[1].instance,
+            &named.field("Rows").unwrap().as_repeated().unwrap()[2]
+        ));
+    }
+    assert_eq!(inner[2].context().legacy_position(&["Rows"]), 3);
+    assert_eq!(outer[1].context().legacy_position(&["Ref", "Rows"]), 2);
+}
+
+#[test]
+fn basic_alias680_named_root_repetition_and_singleton_identity_use_actual_paths() {
+    let primary = common();
+    let named = repeated([row("N1"), row("N2"), row("N3")]);
+    let singleton = row("singleton");
+    let declarations = [
+        DeclaredNamedSourceRoot {
+            name: "Ref",
+            instance: Some(&named),
+        },
+        DeclaredNamedSourceRoot {
+            name: "single",
+            instance: Some(&singleton),
+        },
+    ];
+    let roots = roots(&primary, &declarations);
+    let parent = roots.captured_root_context();
+    let rows = parent.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &[]);
+    raw_rows("ALIAS680_ROOT", &rows);
+    let compact = rows[2].captured_phase_position(1);
+    let current = rows[1].context();
+    let actual = (
+        current.legacy_position(&["Ref"]),
+        current.legacy_position(&[]),
+        current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&[])),
+        current.captured_owned_field(SourceOwnerRef::Named("Ref"), &["Value"], Some(&[])),
+    );
+    eprintln!("RAW ALIAS680_ROOT actual={actual:?}");
+    assert_eq!(actual, (1, 2, Ok(2), Ok(string("N2"))));
+    assert_eq!(
+        current
+            .legacy
+            .frames
+            .last()
+            .unwrap()
+            .collection
+            .as_ref()
+            .unwrap()
+            .path(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        current.owned.frames.last().unwrap().collection,
+        Vec::<String>::new()
+    );
+    assert_eq!(compact.context().legacy_position(&[]), 1);
+    assert_eq!(compact.raw_source_ordinal(), Some(3));
+    let single = current.captured_walk_owned_source(SourceOwnerRef::Named("single"), &[]);
+    raw_rows("ALIAS680_SINGLE", &single);
+    assert_eq!(single.len(), 1);
+    assert!(single[0].cursor.is_none());
+    assert_eq!(single[0].context().legacy_position(&[]), 2);
+    assert_eq!(
+        single[0].context().owned.frames.len(),
+        current.owned.frames.len()
+    );
+    // This fresh owner has no active frame: its singleton is a plain terminal.
+    assert!(std::ptr::eq(
+        single[0].context().legacy.frames.last().unwrap().instance,
+        &singleton
+    ));
+    assert!(
+        single[0]
+            .context()
+            .legacy
+            .frames
+            .last()
+            .unwrap()
+            .collection
+            .is_none()
+    );
+    assert_eq!(
+        single[0].context().legacy.frames.len(),
+        current.legacy.frames.len() + 1
+    );
+    let inherited = &single[0].context().legacy.frames[current.legacy.frames.len() - 1];
+    assert!(std::ptr::eq(
+        inherited.instance,
+        current.legacy.frames.last().unwrap().instance
+    ));
+    assert_eq!(
+        inherited.collection.as_ref().unwrap().path(),
+        Vec::<String>::new()
+    );
+    assert_eq!(inherited.collection.as_ref().unwrap().index(), 2);
+    assert_eq!(
+        single[0]
+            .context()
+            .captured_owned_field(SourceOwnerRef::Named("single"), &["Value"], None),
+        Ok(string("singleton"))
+    );
+}
+
+#[test]
+fn basic_alias680_nested_named_projection_keeps_canonical_origins_and_outer_owner() {
+    let primary = common();
+    let named = group([
+        field("Value", scalar(string("N.root"))),
+        field(
+            "Rows",
+            repeated([
+                group([
+                    field("Value", scalar(string("N1"))),
+                    field("Rows", repeated([row("I11")])),
+                ]),
+                group([
+                    field("Value", scalar(string("N2"))),
+                    field("Rows", repeated([row("I21"), row("I22")])),
+                ]),
+            ]),
+        ),
+    ]);
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let roots = roots(&primary, &declarations);
+    let parent = roots.captured_root_context();
+    let primary_rows = parent.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    let named_rows = primary_rows[1]
+        .context()
+        .captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Rows"]);
+    let nested = named_rows[1]
+        .context()
+        .captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Rows", "Rows"]);
+    raw_rows("ALIAS680_NESTED", &nested);
+    let current = nested[1].context();
+    let actual = (
+        current.legacy_position(&["Ref", "Rows"]),
+        current.legacy_position(&["Rows", "Rows"]),
+        current.legacy_position(&[]),
+        current.captured_owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+        current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&["Rows"])),
+        current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&["Rows", "Rows"])),
+        current.captured_owned_field(
+            SourceOwnerRef::Named("Ref"),
+            &["Rows", "Rows", "Value"],
+            None,
+        ),
+        current.captured_legacy_field(&["Value"], Some(&["Rows", "Rows"])),
+    );
+    eprintln!("RAW ALIAS680_NESTED actual={actual:?}");
+    assert_eq!(
+        actual,
+        (
+            1,
+            2,
+            2,
+            Ok(2),
+            Ok(2),
+            Ok(2),
+            Ok(string("I22")),
+            Ok(string("I22"))
+        )
+    );
+    assert_eq!(
+        current
+            .legacy
+            .frames
+            .iter()
+            .filter_map(|frame| frame.collection.as_ref().map(|c| c.path().to_vec()))
+            .collect::<Vec<_>>(),
+        vec![path(&["Rows"]), path(&["Rows"]), path(&["Rows", "Rows"])]
+    );
+    assert_eq!(
+        current
+            .origins
+            .iter()
+            .filter(|origin| origin.owned_frame.is_some())
+            .map(|origin| (origin.owner, origin.path.clone(), origin.raw_index))
+            .collect::<Vec<_>>(),
+        vec![
+            (OwnedOwnerKey::Primary, path(&["Rows"]), Some(2)),
+            (OwnedOwnerKey::Named(0), path(&["Rows"]), Some(2)),
+            (OwnedOwnerKey::Named(0), path(&["Rows", "Rows"]), Some(2)),
+        ]
+    );
+    assert!(std::ptr::eq(
+        current.owned.frames.last().unwrap().instance,
+        &named.field("Rows").unwrap().as_repeated().unwrap()[1]
+            .field("Rows")
+            .unwrap()
+            .as_repeated()
+            .unwrap()[1]
+    ));
+    let error =
+        current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&["Ref", "Rows"]));
+    eprintln!("RAW ALIAS680_NO_OWNER_ALIAS error={error:?}");
+    assert_eq!(
+        error,
+        Err(OwnedSourceError::InactiveSourceFrame {
+            owner: OwnedSourceIdentity::Named("Ref".into()),
+            collection: Some(path(&["Ref", "Rows"]))
+        }
+        .into())
+    );
+}
+
+#[test]
+fn basic_alias680_projection_validation_and_cumulative_limits_remain_typed() {
+    let primary = common();
+    let named = named();
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let roots = roots(&primary, &declarations);
+    let parent = roots.captured_root_context();
+    let rows = parent.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Rows"]);
+    let mut observer = BasicOwnedObserver {
+        parent: &parent,
+        budget: PairedBudget {
+            slots: 0,
+            maximum: 2,
+            bytes: 0,
+            byte_maximum: 7,
+        },
+        bounds: paired_bounds(limits()).unwrap(),
+        cohort: Arc::clone(&rows[0].cohort),
+        key: OwnedOwnerKey::Named(0),
+        produced: 0,
+    };
+    let first = observer.legacy_path(&path(&["Rows"]));
+    eprintln!(
+        "RAW ALIAS680_BUDGET first={first:?} slots={} bytes={}",
+        observer.budget.slots, observer.budget.bytes
+    );
+    assert_eq!(first, Ok(path(&["Rows"])));
+    assert_eq!((observer.budget.slots, observer.budget.bytes), (1, 4));
+    let second = observer.legacy_path(&path(&["Rows"]));
+    eprintln!(
+        "RAW ALIAS680_BUDGET second={second:?} slots={} bytes={}",
+        observer.budget.slots, observer.budget.bytes
+    );
+    assert_eq!(
+        second,
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::MetadataBytes,
+            used: 4,
+            requested: 4,
+            max: 7
+        }
+        .into())
+    );
+    assert_eq!((observer.budget.slots, observer.budget.bytes), (2, 4));
+    let third = observer.legacy_path(&path(&["Rows"]));
+    eprintln!(
+        "RAW ALIAS680_BUDGET third={third:?} slots={} bytes={}",
+        observer.budget.slots, observer.budget.bytes
+    );
+    assert_eq!(
+        third,
+        Err(BasicSourceBridgeError::PairedMetadataLimit {
+            component: "MetadataSlots",
+            used: 2,
+            requested: 1,
+            maximum: 2
+        }
+        .into())
+    );
+    assert_eq!((observer.budget.slots, observer.budget.bytes), (2, 4));
+    observer.key = OwnedOwnerKey::Named(1);
+    let invalid = observer.legacy_path(&path(&["Rows"]));
+    eprintln!(
+        "RAW ALIAS680_INVALID_DECLARATION invalid={invalid:?} slots={} bytes={}",
+        observer.budget.slots, observer.budget.bytes
+    );
+    assert_eq!(
+        invalid,
+        Err(BasicSourceBridgeError::InvalidDeclarationWitness { index: 1, count: 1 }.into())
+    );
+    assert_eq!((observer.budget.slots, observer.budget.bytes), (2, 4));
 }
