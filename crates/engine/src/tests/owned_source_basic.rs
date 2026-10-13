@@ -1811,3 +1811,509 @@ fn empty_root_pins_keep_metadata_path_and_inactive_pin_bounds() {
         assert_eq!(OwnedContext::new(&roots).field(&request), Err(expected));
     }
 }
+
+fn first_selection<'a, 'query>(
+    context: &'query OwnedContext<'a>,
+    source: &'query OwnedSourceRef,
+    retain_first: bool,
+) -> Result<
+    (
+        crate::source_iteration::ObservedSelection<'a, 'query>,
+        crate::owned_context::WorkBudget,
+    ),
+    Access,
+> {
+    let (owner, base, prefix, tail, budget) = context.select(source)?;
+    let offset = context
+        .frames
+        .iter()
+        .map(|frame| frame.position_slot + 1)
+        .max()
+        .unwrap_or(0);
+    let selected = crate::source_iteration::select_observed(
+        crate::source_iteration::ObservedWalkRequest {
+            base,
+            path: tail,
+            raw_prefix: prefix,
+            canonical_prefix: prefix,
+            owner: Some(owner),
+            context,
+            position_offset: offset,
+            strict_collection: true,
+        },
+        &budget,
+        retain_first,
+    )?;
+    Ok((selected, budget))
+}
+
+fn assert_same_first_extension(left: &ObservedExtension<'_>, right: &ObservedExtension<'_>) {
+    assert_eq!(
+        left.extension.instances.len(),
+        right.extension.instances.len()
+    );
+    for (a, b) in left
+        .extension
+        .instances
+        .iter()
+        .zip(&right.extension.instances)
+    {
+        assert!(std::ptr::eq(*a, *b));
+    }
+    let positions = |extension: &ObservedExtension<'_>| {
+        extension
+            .extension
+            .positions
+            .iter()
+            .map(|frame| {
+                (
+                    frame.collection.clone(),
+                    frame.index,
+                    frame.grouped,
+                    frame.join,
+                    frame.join_position,
+                    frame.document_path.clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(positions(left), positions(right));
+    assert_eq!(left.frames.len(), right.frames.len());
+    for (a, b) in left.frames.iter().zip(&right.frames) {
+        assert_eq!(
+            (a.owner, &a.collection, a.position_slot),
+            (b.owner, &b.collection, b.position_slot)
+        );
+        assert!(std::ptr::eq(a.item, b.item));
+    }
+    assert_eq!(left.origins.len(), right.origins.len());
+    for (a, b) in left.origins.iter().zip(&right.origins) {
+        assert_eq!((a.owner, &a.path), (b.owner, &b.path));
+        assert!(std::ptr::eq(a.item, b.item));
+    }
+}
+
+fn charge_first_preselection(
+    selected: &crate::source_iteration::ObservedSelection<'_, '_>,
+    budget: &crate::owned_context::WorkBudget,
+    positions: &[PositionFrame],
+    context_len: usize,
+) -> Result<(), Access> {
+    use crate::source_iteration::reserve_observed_copy;
+    budget.reserve(0)?; // Empty sort-key vector.
+    budget.reserve(1)?; // Implicit First window vector.
+    budget.reserve(selected.candidates)?; // No-op filter result vector.
+    let mut copy = |extension: ObservedExtension<'_>| {
+        reserve_observed_copy(
+            budget,
+            &extension.frames,
+            &extension.origins,
+            positions,
+            context_len,
+        )?;
+        reserve_observed_copy(
+            budget,
+            &[],
+            &[],
+            &extension.extension.positions,
+            extension.extension.instances.len(),
+        )
+    };
+    if let Some(replay) = &selected.replay {
+        replay.request.visit(&replay.budget, &mut copy)?;
+    } else {
+        for extension in &selected.extensions {
+            reserve_observed_copy(
+                budget,
+                &extension.frames,
+                &extension.origins,
+                positions,
+                context_len,
+            )?;
+            reserve_observed_copy(
+                budget,
+                &[],
+                &[],
+                &extension.extension.positions,
+                extension.extension.instances.len(),
+            )?;
+        }
+    }
+    budget.reserve(selected.candidates)?; // First(1) window's input vector.
+    budget.reserve(usize::from(selected.candidates != 0))?; // Selected output vector.
+    Ok(())
+}
+
+#[test]
+fn first_retention_preserves_complete_counts_frames_and_preselection_ledger() {
+    let p = project();
+    let (input, supplied) = fixture();
+    let roots = SourceRoots::new(&p, &input, &supplied, OwnedLimits::default()).unwrap();
+    let context = OwnedContext::new(&roots);
+    for (owner, parts) in [
+        (SourceOwner::Primary, vec!["Rows"]),
+        (SourceOwner::Primary, vec!["Rows", "Rows"]),
+        (named("Ref"), vec!["Rows"]),
+        (SourceOwner::Primary, vec![]),
+    ] {
+        let source = OwnedSourceRef {
+            owner,
+            path: path(&parts),
+        };
+        let (all, all_budget) = first_selection(&context, &source, false).unwrap();
+        let (first, first_budget) = first_selection(&context, &source, true).unwrap();
+        assert_eq!(all.candidates, all.extensions.len());
+        assert_eq!(first.candidates, all.candidates);
+        assert_eq!(first.extensions.len(), usize::from(all.candidates != 0));
+        assert_eq!(all_budget.usage(), first_budget.usage());
+        if let (Some(a), Some(b)) = (all.extensions.first(), first.extensions.first()) {
+            assert_same_first_extension(a, b);
+        }
+        charge_first_preselection(&all, &all_budget, &[], 1).unwrap();
+        charge_first_preselection(&first, &first_budget, &[], 1).unwrap();
+        assert_eq!(all_budget.usage(), first_budget.usage());
+    }
+    let outer = walk(&context, SourceOwner::Primary, &["Rows"]).unwrap();
+    let nested = child(&context, &outer[0]);
+    // Identity re-entry preserves the selected occurrence and every outer frame.
+    let source = OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: path(&["Rows"]),
+    };
+    let (all, all_budget) = first_selection(&nested, &source, false).unwrap();
+    let (first, first_budget) = first_selection(&nested, &source, true).unwrap();
+    assert_eq!(first.candidates, 1);
+    assert!(first.extensions[0].extension.positions.is_empty());
+    assert_same_first_extension(&all.extensions[0], &first.extensions[0]);
+    charge_first_preselection(&all, &all_budget, &outer[0].extension.positions, 2).unwrap();
+    charge_first_preselection(&first, &first_budget, &outer[0].extension.positions, 2).unwrap();
+    assert_eq!(all_budget.usage(), first_budget.usage());
+}
+
+#[test]
+fn first_retention_does_not_hide_later_walk_errors_or_tighten_terminal_items() {
+    let mut p = project();
+    p.extra_sources.clear();
+    let empty = group(vec![]);
+    for bad in [
+        Instance::Scalar(Value::Int(9)),
+        Instance::DocumentSet(vec![]),
+        Instance::MappedSequence(vec![]),
+    ] {
+        let input = group(vec![(
+            "Rows",
+            Instance::Repeated(vec![
+                group(vec![("Rows", Instance::Repeated(vec![row("first")]))]),
+                group(vec![("Rows", bad)]),
+            ]),
+        )]);
+        let roots = SourceRoots::new(&p, &input, &empty, OwnedLimits::default()).unwrap();
+        let context = OwnedContext::new(&roots);
+        let source = OwnedSourceRef {
+            owner: SourceOwner::Primary,
+            path: path(&["Rows", "Rows"]),
+        };
+        let all_error = first_selection(&context, &source, false)
+            .err()
+            .expect("later traversal fails");
+        let first_error = first_selection(&context, &source, true)
+            .err()
+            .expect("later traversal still fails");
+        assert_eq!(first_error, all_error);
+    }
+    // Terminal repeated members retain the original permissive shape contract.
+    let input = group(vec![(
+        "Rows",
+        Instance::Repeated(vec![
+            Instance::DocumentSet(vec![]),
+            Instance::MappedSequence(vec![]),
+            Instance::Scalar(Value::Int(9)),
+            row("last"),
+        ]),
+    )]);
+    let roots = SourceRoots::new(&p, &input, &empty, OwnedLimits::default()).unwrap();
+    let context = OwnedContext::new(&roots);
+    let source = OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: path(&["Rows"]),
+    };
+    let (all, all_budget) = first_selection(&context, &source, false).unwrap();
+    let (first, first_budget) = first_selection(&context, &source, true).unwrap();
+    assert_eq!(first.candidates, 4);
+    assert_same_first_extension(&all.extensions[0], &first.extensions[0]);
+    assert_eq!(first_budget.usage(), all_budget.usage());
+}
+
+#[test]
+fn first_retention_preserves_lowered_walk_resource_errors() {
+    let mut p = project();
+    p.extra_sources.clear();
+    let (input, supplied) = fixture();
+    for limits in [
+        OwnedLimits {
+            walk_contexts: 1,
+            ..OwnedLimits::default()
+        },
+        OwnedLimits {
+            depth: 1,
+            ..OwnedLimits::default()
+        },
+        OwnedLimits {
+            path_segments: 1,
+            ..OwnedLimits::default()
+        },
+        OwnedLimits {
+            metadata_bytes: 64,
+            ..OwnedLimits::default()
+        },
+    ] {
+        let roots = SourceRoots::new(&p, &input, &supplied, limits).unwrap();
+        let context = OwnedContext::new(&roots);
+        let source = OwnedSourceRef {
+            owner: SourceOwner::Primary,
+            path: path(&["Rows", "Rows"]),
+        };
+        let all = first_selection(&context, &source, false)
+            .err()
+            .expect("limited full walk fails");
+        let first = first_selection(&context, &source, true)
+            .err()
+            .expect("limited retained walk fails");
+        assert_eq!(first, all);
+    }
+}
+
+#[test]
+fn first_retention_guard_keeps_explicit_sequence_controls_on_the_full_path() {
+    use crate::eval_scope::retain_first_source_candidate as eligible;
+    let mut scope = owned_scope(SourceOwner::Primary, &["Rows"]);
+    scope.iteration_output = mapping::IterationOutput::First;
+    assert!(eligible(&scope));
+    let mut changed = scope.clone();
+    changed.filter = Some(99);
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.sort_by = Some(99);
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.sort_then_by.push(mapping::SortKey {
+        node: 99,
+        descending: false,
+    });
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed
+        .windows
+        .push(mapping::SequenceWindow::First { count: 99 });
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.group_by = Some(99);
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.post_group_filter = Some(99);
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.construction = mapping::ScopeConstruction::CopyCurrentSource;
+    assert!(!eligible(&changed));
+    let mut changed = scope.clone();
+    changed.iteration = ScopeIteration::None;
+    assert!(!eligible(&changed));
+    let mut changed = scope;
+    changed.iteration = ScopeIteration::OwnedSource {
+        source: OwnedSourceRef {
+            owner: SourceOwner::Primary,
+            path: path(&["Rows"]),
+        },
+        output_path: Some(99),
+    };
+    assert!(!eligible(&changed));
+}
+
+#[test]
+fn public_first_retention_keeps_null_raw_ordinals_nested_pins_and_identity() {
+    let mut p = value_position_project(SourceOwner::Primary, &["Rows"]);
+    p.extra_sources.clear();
+    p.root.iteration_output = mapping::IterationOutput::First;
+    p.graph.nodes.extend([
+        (
+            3,
+            Node::OwnedSourceField(field(
+                SourceOwner::Primary,
+                &["Rows", "Rows", "Value"],
+                Some(&["Rows", "Rows"]),
+            )),
+        ),
+        (
+            4,
+            Node::OwnedPosition(OwnedPosition {
+                owner: SourceOwner::Primary,
+                collection: Some(path(&["Rows", "Rows"])),
+            }),
+        ),
+    ]);
+    p.root.children = vec![
+        Scope {
+            target_field: "Selected".into(),
+            iteration_output: mapping::IterationOutput::First,
+            bindings: vec![
+                Binding {
+                    target_field: "Value".into(),
+                    node: 3,
+                },
+                Binding {
+                    target_field: "Position".into(),
+                    node: 4,
+                },
+                Binding {
+                    target_field: "Outer".into(),
+                    node: 2,
+                },
+            ],
+            ..owned_scope(SourceOwner::Primary, &["Rows", "Rows"])
+        },
+        Scope {
+            target_field: "Identity".into(),
+            iteration_output: mapping::IterationOutput::First,
+            bindings: vec![
+                Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                },
+                Binding {
+                    target_field: "Position".into(),
+                    node: 2,
+                },
+            ],
+            ..owned_scope(SourceOwner::Primary, &["Rows"])
+        },
+    ];
+    p.target = SchemaNode::group(
+        "Output",
+        vec![
+            scalar("Value"),
+            SchemaNode::scalar("Position", ScalarType::Int),
+            SchemaNode::group(
+                "Selected",
+                vec![
+                    scalar("Value"),
+                    SchemaNode::scalar("Position", ScalarType::Int),
+                    SchemaNode::scalar("Outer", ScalarType::Int),
+                ],
+            ),
+            SchemaNode::group(
+                "Identity",
+                vec![
+                    scalar("Value"),
+                    SchemaNode::scalar("Position", ScalarType::Int),
+                ],
+            ),
+        ],
+    );
+    let input = group(vec![(
+        "Rows",
+        Instance::Repeated(vec![
+            Instance::Scalar(Value::Null),
+            group(vec![
+                ("Value", text("parent")),
+                (
+                    "Rows",
+                    Instance::Repeated(vec![
+                        Instance::Scalar(Value::json_null()),
+                        row("child"),
+                        row("unused"),
+                    ]),
+                ),
+            ]),
+            group(vec![
+                ("Value", text("unused-parent")),
+                ("Rows", Instance::DocumentSet(vec![])),
+            ]),
+        ]),
+    )]);
+    assert_eq!(
+        crate::run(&p, &input),
+        Ok(group(vec![
+            ("Value", text("parent")),
+            ("Position", Instance::Scalar(Value::Int(1))),
+            (
+                "Selected",
+                group(vec![
+                    ("Value", text("child")),
+                    ("Position", Instance::Scalar(Value::Int(1))),
+                    ("Outer", Instance::Scalar(Value::Int(1)))
+                ])
+            ),
+            (
+                "Identity",
+                group(vec![
+                    ("Value", text("parent")),
+                    ("Position", Instance::Scalar(Value::Int(1)))
+                ])
+            ),
+        ]))
+    );
+    let empty = group(vec![(
+        "Rows",
+        Instance::Repeated(vec![Instance::Scalar(Value::Null)]),
+    )]);
+    assert_eq!(crate::run(&p, &empty), Ok(group(vec![])));
+}
+
+#[test]
+fn first_retention_bounds_the_retained_vector_without_losing_large_walk_count() {
+    let mut p = project();
+    p.extra_sources.clear();
+    let input = group(vec![(
+        "Rows",
+        Instance::Repeated((0..1_000).map(|_| row("same")).collect()),
+    )]);
+    let empty = group(vec![]);
+    let roots = SourceRoots::new(&p, &input, &empty, OwnedLimits::default()).unwrap();
+    let context = OwnedContext::new(&roots);
+    let source = OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: path(&["Rows"]),
+    };
+    let (selected, budget) = first_selection(&context, &source, true).unwrap();
+    assert_eq!(selected.candidates, 1_000);
+    assert_eq!(selected.extensions.len(), 1);
+    assert_eq!(budget.usage().2, 1_000);
+    assert_eq!(selected.extensions[0].extension.positions[0].index, 1);
+}
+
+#[test]
+fn first_retention_preserves_late_domain_priority_over_noop_filter_budget() {
+    let mut p = project();
+    p.extra_sources.clear();
+    let input = group(vec![(
+        "Rows",
+        Instance::Repeated(vec![
+            group(vec![("Rows", Instance::Repeated(vec![row("first")]))]),
+            group(vec![("Rows", Instance::DocumentSet(vec![]))]),
+        ]),
+    )]);
+    let empty = group(vec![]);
+    // Traversal reaches the later document at exactly 120 charged UTF-8 bytes.
+    // Premature no-op filter copies of the first row would exceed this budget.
+    let limits = OwnedLimits {
+        metadata_bytes: 120,
+        ..OwnedLimits::default()
+    };
+    let roots = SourceRoots::new(&p, &input, &empty, limits).unwrap();
+    let context = OwnedContext::new(&roots);
+    let source = OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: path(&["Rows", "Rows"]),
+    };
+    let expected = Access::UnsupportedSourceDomain {
+        found: "a document set",
+    };
+    assert_eq!(
+        first_selection(&context, &source, false).err(),
+        Some(expected.clone())
+    );
+    assert_eq!(
+        first_selection(&context, &source, true).err(),
+        Some(expected)
+    );
+}
