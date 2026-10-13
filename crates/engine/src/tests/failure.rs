@@ -1238,3 +1238,665 @@ fn legacy_root_failure_repetition_is_preserved_when_a_different_target_uses_owne
         }
     );
 }
+
+fn primary_failure_field(path: &[&str], frame: Option<&[&str]>) -> Node {
+    Node::OwnedSourceField(mapping::OwnedSourceField {
+        source: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Primary,
+            path: path.iter().map(|part| (*part).into()).collect(),
+        },
+        frame: frame.map(|path| path.iter().map(|part| (*part).into()).collect()),
+    })
+}
+fn primary_failure_project() -> Project {
+    let mut p = root_failure_project(mapping::SourceOwner::Primary, None);
+    let mut rows = root_failure_schema();
+    rows.name = "Rows".into();
+    rows.repeating = true;
+    p.source = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::scalar("Flag", ScalarType::Bool),
+            SchemaNode::scalar("Message", ScalarType::String),
+            rows,
+            SchemaNode::group(
+                "Ref",
+                vec![SchemaNode::scalar("Message", ScalarType::String)],
+            ),
+        ],
+    );
+    p.failure_rules[0].iteration = FailureIteration::Source {
+        collection: vec!["Rows".into()],
+    };
+    p.graph
+        .nodes
+        .insert(1, primary_failure_field(&["Rows", "Flag"], None));
+    p.graph
+        .nodes
+        .insert(2, primary_failure_field(&["Rows", "Message"], None));
+    p.graph.nodes.insert(
+        3,
+        Node::OwnedPosition(mapping::OwnedPosition {
+            owner: mapping::SourceOwner::Primary,
+            collection: Some(vec!["Rows".into()]),
+        }),
+    );
+    p
+}
+fn primary_failure_input(rows: Vec<Instance>) -> Instance {
+    root_failure_group(vec![
+        ("Flag", Instance::Scalar(Value::Bool(false))),
+        ("Message", root_failure_text("primary.root")),
+        ("Rows", Instance::Repeated(rows)),
+        (
+            "Ref",
+            root_failure_group(vec![("Message", root_failure_text("primary.shadow"))]),
+        ),
+    ])
+}
+fn primary_failure_success_every_selection(
+    p: &Project,
+    input: &Instance,
+    extras: Vec<(String, Instance)>,
+) {
+    let primary = root_failure_group(vec![("Value", root_failure_text("primary.out"))]);
+    let named = crate::NamedOutput {
+        name: "Other".into(),
+        instance: root_failure_group(vec![("Value", root_failure_text("named.out"))]),
+    };
+    let execution = crate::ExecutionContext::new(std::path::Path::new("test.json"));
+    assert_eq!(
+        crate::run_with_sources(p, input, extras.clone()),
+        Ok(primary.clone())
+    );
+    let crate::ExecutionOutputs {
+        primary: actual_primary,
+        extras: actual_extras,
+    } = crate::run_outputs_with_sources_and_context(p, input, extras.clone(), &execution).unwrap();
+    assert_eq!(
+        (actual_primary, actual_extras),
+        (primary.clone(), vec![named.clone()])
+    );
+    assert_eq!(
+        crate::run_selected_target_with_sources_and_context(
+            p,
+            input,
+            extras.clone(),
+            &execution,
+            crate::TargetSelection::Primary
+        ),
+        Ok(crate::SelectedTargetOutput::Primary(primary))
+    );
+    assert_eq!(
+        crate::run_selected_target_with_sources_and_context(
+            p,
+            input,
+            extras,
+            &execution,
+            crate::TargetSelection::Named("Other")
+        ),
+        Ok(crate::SelectedTargetOutput::Named(named))
+    );
+}
+fn primary_failure_refusal() -> EngineError {
+    EngineError::UnsupportedOwnedContext {
+        node: None,
+        function: None,
+        scope: None,
+        context: crate::OwnedCapabilityContext::FailureRule,
+    }
+}
+
+#[test]
+fn owned_primary_failure_rows_keep_exact_items_and_structural_positions() {
+    let mut p = primary_failure_project();
+    p.extra_sources.push(NamedSource {
+        name: "Rows".into(),
+        path: "rows.json".into(),
+        schema: root_failure_schema().repeating(),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    let input = primary_failure_input(vec![
+        root_failure_input(false, "first"),
+        root_failure_input(true, "second"),
+        root_failure_input(true, "third"),
+    ]);
+    let extras = vec![(
+        "Rows".into(),
+        Instance::Repeated(vec![root_failure_input(true, "foreign.first")]),
+    )];
+    for pin in [None, Some(vec!["Rows".into()])] {
+        p.graph.nodes.insert(
+            2,
+            Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Primary,
+                    path: vec!["Rows".into(), "Message".into()],
+                },
+                frame: pin,
+            }),
+        );
+        assert_root_failure_every_selection(&p, &input, extras.clone(), || {
+            EngineError::MappingFailure {
+                rule: 1,
+                message: Some("second".into()),
+            }
+        });
+    }
+    for collection in [None, Some(vec!["Rows".into()])] {
+        p.graph.nodes.insert(
+            3,
+            Node::OwnedPosition(mapping::OwnedPosition {
+                owner: mapping::SourceOwner::Primary,
+                collection,
+            }),
+        );
+        p.failure_rules[0].message = Some(3);
+        assert_root_failure_every_selection(&p, &input, extras.clone(), || {
+            EngineError::MappingFailure {
+                rule: 1,
+                message: Some("2".into()),
+            }
+        });
+    }
+    p.graph
+        .nodes
+        .insert(2, primary_failure_field(&["Message"], None));
+    p.failure_rules[0].message = Some(2);
+    assert_root_failure_every_selection(&p, &input, extras, || EngineError::MappingFailure {
+        rule: 1,
+        message: Some("primary.root".into()),
+    });
+    p.graph.nodes.insert(10, Node::Raise { message: None });
+    p.graph.nodes.insert(11, Node::Raise { message: None });
+    assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+        rule: 1,
+        message: Some("primary.root".into()),
+    });
+}
+
+#[test]
+fn owned_primary_failure_row_predicates_and_messages_remain_lazy() {
+    let mut p = primary_failure_project();
+    p.graph.nodes.insert(
+        2,
+        root_failure_field(
+            mapping::SourceOwner::Named { name: "Ref".into() },
+            "Message",
+            Some(vec![]),
+        ),
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    p.graph.nodes.insert(5, Node::Raise { message: None });
+    p.graph.nodes.insert(
+        6,
+        Node::If {
+            condition: 4,
+            then: 2,
+            else_: 5,
+        },
+    );
+    p.failure_rules[0].message = Some(6);
+    for selection in [
+        crate::TargetSelection::Primary,
+        crate::TargetSelection::Named("Other"),
+    ] {
+        let required = crate::required_sources_for_target(&p, selection).unwrap();
+        assert_eq!(required.static_sources.len(), 1);
+        assert!(std::ptr::eq(
+            required.static_sources[0],
+            &p.extra_sources[0]
+        ));
+        assert!(required.dynamic_sources.is_empty());
+    }
+    let unselected = primary_failure_input(vec![root_failure_input(false, "unread")]);
+    primary_failure_success_every_selection(&p, &unselected, vec![]);
+    primary_failure_success_every_selection(
+        &p,
+        &unselected,
+        vec![("Ref".into(), root_failure_text("unread malformed"))],
+    );
+    let selected = primary_failure_input(vec![
+        root_failure_input(false, "first"),
+        root_failure_input(true, "second"),
+    ]);
+    assert_root_failure_every_selection(
+        &p,
+        &selected,
+        vec![("Ref".into(), root_failure_input(false, "lazy.named"))],
+        || EngineError::MappingFailure {
+            rule: 1,
+            message: Some("lazy.named".into()),
+        },
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: Value::Bool(false),
+        },
+    );
+    assert_root_failure_every_selection(&p, &selected, vec![], || EngineError::MappingException {
+        node: 5,
+        message: None,
+    });
+    p.graph
+        .nodes
+        .insert(2, primary_failure_field(&["Rows", "Message"], None));
+    p.failure_rules[0].message = Some(2);
+    let input = primary_failure_input(vec![
+        root_failure_group(vec![
+            ("Flag", Instance::Scalar(Value::Bool(false))),
+            ("Message", root_failure_group(vec![])),
+        ]),
+        root_failure_input(true, "selected.message"),
+    ]);
+    assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+        rule: 1,
+        message: Some("selected.message".into()),
+    });
+}
+
+#[test]
+fn owned_primary_failure_first_selected_row_precedes_later_unsupported_rows() {
+    let mut p = primary_failure_project();
+    for unsupported in [
+        Instance::DocumentSet(vec![]),
+        Instance::DocumentSet(vec![
+            ir::DocumentMember::new("member.json", root_failure_input(true, "document")).unwrap(),
+        ]),
+        Instance::MappedSequence(vec![]),
+        Instance::MappedSequence(vec![root_failure_input(true, "generated")]),
+    ] {
+        let input = primary_failure_input(vec![
+            root_failure_input(true, "first.selected"),
+            unsupported.clone(),
+        ]);
+        assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+            rule: 1,
+            message: Some("first.selected".into()),
+        });
+        p.graph.nodes.insert(1, Node::Raise { message: None });
+        p.failure_rules[0].message = Some(3);
+        let input =
+            primary_failure_input(vec![unsupported.clone(), root_failure_input(true, "later")]);
+        assert_root_failure_every_selection(&p, &input, vec![], primary_failure_refusal);
+        p.graph.nodes.insert(
+            2,
+            root_failure_field(
+                mapping::SourceOwner::Named { name: "Ref".into() },
+                "Message",
+                None,
+            ),
+        );
+        p.failure_rules[0].message = Some(2);
+        assert_root_failure_every_selection(
+            &p,
+            &input,
+            vec![("Ref".into(), root_failure_input(false, "named"))],
+            primary_failure_refusal,
+        );
+        p.graph
+            .nodes
+            .insert(1, primary_failure_field(&["Rows", "Flag"], None));
+        p.graph
+            .nodes
+            .insert(2, primary_failure_field(&["Rows", "Message"], None));
+        p.failure_rules[0].message = Some(2);
+    }
+    primary_failure_success_every_selection(&p, &primary_failure_input(vec![]), vec![]);
+}
+
+#[test]
+fn owned_primary_failure_named_root_reads_do_not_use_primary_row_frames() {
+    let mut p = primary_failure_project();
+    let input = primary_failure_input(vec![root_failure_input(true, "row.shadow")]);
+    for pin in [None, Some(vec![])] {
+        p.graph.nodes.insert(
+            2,
+            root_failure_field(
+                mapping::SourceOwner::Named { name: "Ref".into() },
+                "Message",
+                pin,
+            ),
+        );
+        assert_root_failure_every_selection(
+            &p,
+            &input,
+            vec![("Ref".into(), root_failure_input(false, "exact.named"))],
+            || EngineError::MappingFailure {
+                rule: 1,
+                message: Some("exact.named".into()),
+            },
+        );
+    }
+    p.graph.nodes.insert(
+        2,
+        root_failure_field(
+            mapping::SourceOwner::Named { name: "Ref".into() },
+            "Message",
+            None,
+        ),
+    );
+    assert_root_failure_every_selection(&p, &input, vec![], || EngineError::OwnedSourceAccess {
+        node: Some(2),
+        scope: None,
+        source: crate::OwnedSourceError::SourceUnavailable {
+            owner: mapping::SourceOwner::Named { name: "Ref".into() },
+        },
+    });
+    assert_root_failure_every_selection(
+        &p,
+        &input,
+        vec![(
+            "Ref".into(),
+            Instance::Repeated(vec![
+                root_failure_input(false, "first"),
+                root_failure_input(false, "sibling"),
+            ]),
+        )],
+        || EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::UniteratedOwnedRepetition {
+                path: vec!["Message".into()],
+            },
+        },
+    );
+    for (named, context) in [
+        (
+            Instance::DocumentSet(vec![]),
+            crate::OwnedCapabilityContext::Document,
+        ),
+        (
+            Instance::MappedSequence(vec![]),
+            crate::OwnedCapabilityContext::GeneratedItem,
+        ),
+    ] {
+        assert_root_failure_every_selection(&p, &input, vec![("Ref".into(), named)], || {
+            EngineError::UnsupportedOwnedContext {
+                node: Some(2),
+                function: None,
+                scope: None,
+                context,
+            }
+        });
+    }
+}
+
+#[test]
+fn owned_primary_failure_empty_null_and_singleton_collection_behavior_is_legacy() {
+    let mut p = primary_failure_project();
+    primary_failure_success_every_selection(&p, &primary_failure_input(vec![]), vec![]);
+    primary_failure_success_every_selection(&p, &root_failure_input(false, "absent"), vec![]);
+    p.failure_rules[0].selection = FailureSelection::All;
+    p.failure_rules[0].message = Some(3);
+    for null in [Value::Null, Value::json_null()] {
+        let input = primary_failure_input(vec![
+            Instance::Scalar(null),
+            root_failure_input(true, "second"),
+        ]);
+        assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+            rule: 1,
+            message: Some("1".into()),
+        });
+    }
+    let singleton = root_failure_group(vec![("Rows", root_failure_input(true, "singleton"))]);
+    assert_root_failure_every_selection(&p, &singleton, vec![], || {
+        EngineError::OwnedSourceAccess {
+            node: Some(3),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: mapping::SourceOwner::Primary,
+                collection: Some(vec!["Rows".into()]),
+            },
+        }
+    });
+    p.failure_rules[0].message = Some(2);
+    assert_root_failure_every_selection(&p, &singleton, vec![], || EngineError::MappingFailure {
+        rule: 1,
+        message: Some("singleton".into()),
+    });
+    p.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: Value::Bool(false),
+        },
+    );
+    p.failure_rules[0].selection = FailureSelection::WhenTrue { predicate: 1 };
+    for null in [Value::Null, Value::json_null()] {
+        primary_failure_success_every_selection(
+            &p,
+            &root_failure_group(vec![("Rows", Instance::Scalar(null))]),
+            vec![],
+        );
+    }
+    let ir::SchemaKind::Group { children, .. } = &mut p.source.kind else {
+        unreachable!()
+    };
+    children
+        .iter_mut()
+        .find(|child| child.name == "Rows")
+        .unwrap()
+        .repeating = false;
+    p.graph
+        .nodes
+        .insert(1, primary_failure_field(&["Rows", "Flag"], None));
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_input(true, "actual.repeated")]),
+        vec![],
+        || EngineError::MappingFailure {
+            rule: 1,
+            message: Some("actual.repeated".into()),
+        },
+    );
+}
+
+#[test]
+fn owned_primary_failure_row_reads_preserve_full_malformed_and_inactive_errors() {
+    let mut p = primary_failure_project();
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_group(vec![(
+            "Message",
+            root_failure_text("missing flag"),
+        )])]),
+        vec![],
+        || EngineError::NotABool {
+            node: 1,
+            found: "null",
+        },
+    );
+    for (row, source) in [
+        (
+            root_failure_text("bad.row"),
+            crate::OwnedSourceError::MalformedOwnedTraversal {
+                path: vec!["Flag".into()],
+                found: "a non-null scalar",
+            },
+        ),
+        (
+            root_failure_group(vec![(
+                "Flag",
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::Bool(true)),
+                    Instance::Scalar(Value::Bool(false)),
+                ]),
+            )]),
+            crate::OwnedSourceError::UniteratedOwnedRepetition {
+                path: vec!["Flag".into()],
+            },
+        ),
+        (
+            root_failure_group(vec![("Flag", root_failure_group(vec![]))]),
+            crate::OwnedSourceError::MalformedOwnedTraversal {
+                path: vec!["Flag".into()],
+                found: "a group",
+            },
+        ),
+    ] {
+        assert_root_failure_every_selection(&p, &primary_failure_input(vec![row]), vec![], || {
+            EngineError::OwnedSourceAccess {
+                node: Some(1),
+                scope: None,
+                source: source.clone(),
+            }
+        });
+    }
+    p.graph.nodes.insert(
+        2,
+        primary_failure_field(&["Other", "Message"], Some(&["Other"])),
+    );
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_input(true, "row")]),
+        vec![],
+        || EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: mapping::SourceOwner::Primary,
+                collection: Some(vec!["Other".into()]),
+            },
+        },
+    );
+    p.graph
+        .nodes
+        .insert(2, primary_failure_field(&["Rows", "Message"], None));
+    let later = root_failure_group(vec![
+        ("Flag", Instance::Scalar(Value::Bool(true))),
+        (
+            "Message",
+            Instance::Repeated(vec![
+                root_failure_text("first"),
+                root_failure_text("sibling"),
+            ]),
+        ),
+    ]);
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_input(true, "earlier"), later]),
+        vec![],
+        || EngineError::MappingFailure {
+            rule: 1,
+            message: Some("earlier".into()),
+        },
+    );
+}
+
+#[test]
+fn owned_primary_failure_foreign_wrapper_base_refuses_before_expressions() {
+    let mut p = primary_failure_project();
+    p.extra_sources.push(NamedSource {
+        name: "Rows".into(),
+        path: "rows.json".into(),
+        schema: root_failure_schema().repeating(),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    p.graph.nodes.insert(1, Node::Raise { message: None });
+    let extras = vec![(
+        "Rows".into(),
+        Instance::Repeated(vec![root_failure_input(true, "foreign")]),
+    )];
+    assert_root_failure_every_selection(
+        &p,
+        &root_failure_input(false, "absent"),
+        extras.clone(),
+        primary_failure_refusal,
+    );
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_input(true, "primary")]),
+        extras,
+        || EngineError::MappingException {
+            node: 1,
+            message: None,
+        },
+    );
+    for input in [
+        Instance::Repeated(vec![root_failure_input(true, "ownerless root")]),
+        Instance::MappedSequence(vec![]),
+        Instance::DocumentSet(vec![]),
+    ] {
+        assert_root_failure_every_selection(&p, &input, vec![], primary_failure_refusal);
+    }
+}
+
+#[test]
+fn legacy_row_failures_and_static_root_rules_are_preserved_with_owned_targets() {
+    let mut p = primary_failure_project();
+    p.graph.nodes.insert(
+        1,
+        Node::SourceField {
+            path: vec!["Flag".into()],
+            frame: None,
+        },
+    );
+    p.failure_rules[0].message = None;
+    p.graph
+        .nodes
+        .insert(11, primary_failure_field(&["Message"], None));
+    let input = primary_failure_input(vec![
+        root_failure_input(false, "first"),
+        root_failure_input(true, "legacy.second"),
+    ]);
+    assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+        rule: 1,
+        message: None,
+    });
+    p.graph
+        .nodes
+        .insert(1, primary_failure_field(&["Rows", "Flag"], None));
+    p.failure_rules[0].message = Some(2);
+    p.graph.nodes.insert(
+        8,
+        Node::Const {
+            value: Value::String("later.rule".into()),
+        },
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::All,
+        message: Some(8),
+    });
+    assert_root_failure_every_selection(&p, &input, vec![], || EngineError::MappingFailure {
+        rule: 1,
+        message: Some("legacy.second".into()),
+    });
+    assert_root_failure_every_selection(
+        &p,
+        &primary_failure_input(vec![root_failure_input(false, "none")]),
+        vec![],
+        || EngineError::MappingFailure {
+            rule: 2,
+            message: Some("later.rule".into()),
+        },
+    );
+    let execution = crate::ExecutionContext::new(std::path::Path::new("test.json"));
+    assert_eq!(
+        crate::run_selected_target_with_sources_and_context(
+            &p,
+            &input,
+            vec![],
+            &execution,
+            crate::TargetSelection::Named("Absent")
+        ),
+        Err(EngineError::UnknownTarget {
+            name: "Absent".into()
+        })
+    );
+    p.failure_rules[0].iteration = FailureIteration::Source { collection: vec![] };
+    assert_root_failure_every_selection(
+        &p,
+        &Instance::Repeated(vec![input]),
+        vec![],
+        primary_failure_refusal,
+    );
+}

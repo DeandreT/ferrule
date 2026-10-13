@@ -104,6 +104,12 @@ fn admit_roots<'a>(
         if root_owned {
             admission.push_root_failure(rule.selection.predicate());
             admission.push_root_failure(rule.message);
+        } else if matches!(&rule.iteration,
+            FailureIteration::Source { collection } if primary_row_failure_is_static(project, collection))
+            && failure_rule_uses_owned(&project.graph, rule)
+        {
+            admission.push_primary_row_failure(rule.selection.predicate());
+            admission.push_primary_row_failure(rule.message);
         } else {
             admission.push(
                 None,
@@ -130,11 +136,13 @@ struct Admission<'a> {
         OwnedCapabilityContext,
         bool,
         bool,
+        bool,
         NodeId,
     )>,
     visited: BTreeSet<(
         Option<FunctionId>,
         OwnedCapabilityContext,
+        bool,
         bool,
         bool,
         NodeId,
@@ -166,15 +174,32 @@ impl<'a> Admission<'a> {
         self.pending.extend(
             nodes
                 .into_iter()
-                .map(|node| (function, context, ancestry, false, node)),
+                .map(|node| (function, context, ancestry, false, false, node)),
         );
     }
     fn push_root_failure(&mut self, nodes: impl IntoIterator<Item = NodeId>) {
-        self.pending.extend(
-            nodes
-                .into_iter()
-                .map(|node| (None, OwnedCapabilityContext::FailureRule, false, true, node)),
-        );
+        self.pending.extend(nodes.into_iter().map(|node| {
+            (
+                None,
+                OwnedCapabilityContext::FailureRule,
+                false,
+                true,
+                false,
+                node,
+            )
+        }));
+    }
+    fn push_primary_row_failure(&mut self, nodes: impl IntoIterator<Item = NodeId>) {
+        self.pending.extend(nodes.into_iter().map(|node| {
+            (
+                None,
+                OwnedCapabilityContext::FailureRule,
+                false,
+                false,
+                true,
+                node,
+            )
+        }));
     }
     fn scopes(
         &mut self,
@@ -444,11 +469,17 @@ impl<'a> Admission<'a> {
         }
     }
     fn graph(&mut self) -> Result<(), EngineError> {
-        while let Some((function, context, ancestry, root_failure, id)) = self.pending.pop() {
-            if !self
-                .visited
-                .insert((function, context, ancestry, root_failure, id))
-            {
+        while let Some((function, context, ancestry, root_failure, primary_row_failure, id)) =
+            self.pending.pop()
+        {
+            if !self.visited.insert((
+                function,
+                context,
+                ancestry,
+                root_failure,
+                primary_row_failure,
+                id,
+            )) {
                 continue;
             }
             let project = self.project;
@@ -470,6 +501,14 @@ impl<'a> Admission<'a> {
                     context: OwnedCapabilityContext::FailureRule,
                 });
             }
+            if primary_row_failure && !primary_row_failure_node_is_static(project, node) {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: Some(id),
+                    function,
+                    scope: None,
+                    context: OwnedCapabilityContext::FailureRule,
+                });
+            }
             if let Some(kind) = node.owned_source_kind() {
                 if function.is_some() {
                     return Err(EngineError::UnsupportedSourceOwnership {
@@ -481,7 +520,10 @@ impl<'a> Admission<'a> {
                 let root_field = root_failure
                     && context == OwnedCapabilityContext::FailureRule
                     && matches!(node, Node::OwnedSourceField(_));
-                if context != OwnedCapabilityContext::Basic && !root_field {
+                let row_value = primary_row_failure
+                    && context == OwnedCapabilityContext::FailureRule
+                    && matches!(node, Node::OwnedSourceField(_) | Node::OwnedPosition(_));
+                if context != OwnedCapabilityContext::Basic && !root_field && !row_value {
                     return Err(EngineError::UnsupportedOwnedContext {
                         node: Some(id),
                         function,
@@ -535,11 +577,17 @@ impl<'a> Admission<'a> {
                     context: child_context,
                 });
             }
-            self.pending.extend(
-                node.dependencies()
-                    .into_iter()
-                    .map(|node| (function, child_context, ancestry, root_failure, node)),
-            );
+            self.pending
+                .extend(node.dependencies().into_iter().map(|node| {
+                    (
+                        function,
+                        child_context,
+                        ancestry,
+                        root_failure,
+                        primary_row_failure,
+                        node,
+                    )
+                }));
             match node {
                 Node::SourceField { path, frame }
                 | Node::DynamicSourceField {
@@ -624,6 +672,36 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
                         .any(|source| source.name == *name && source.dynamic_path.is_some())
                 })
         }
+        _ => true,
+    }
+}
+
+/// The iteration has no owner field, so dynamic aliases stay closed before input acquisition.
+fn primary_row_failure_is_static(project: &Project, collection: &[String]) -> bool {
+    collection.len() == 1
+        && !collection[0].is_empty()
+        && !project
+            .extra_sources
+            .iter()
+            .any(|source| source.name == collection[0] && source.dynamic_path.is_some())
+}
+
+fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
+    if node_context(node) != OwnedCapabilityContext::Basic {
+        return false;
+    }
+    match node {
+        Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
+        Node::OwnedSourceField(field) => match &field.source.owner {
+            SourceOwner::Primary => true,
+            SourceOwner::Named { .. } => field.frame.as_ref().is_none_or(Vec::is_empty),
+        },
+        Node::SourceField { path, .. } => !path.first().is_some_and(|name| {
+            project
+                .extra_sources
+                .iter()
+                .any(|source| source.name == *name && source.dynamic_path.is_some())
+        }),
         _ => true,
     }
 }
