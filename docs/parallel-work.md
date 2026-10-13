@@ -27,10 +27,10 @@ The [#519](https://github.com/DeandreT/ferrule/issues/519) public-family
 milestone is complete: C# [PR588](https://github.com/DeandreT/ferrule/pull/588)
 and Rust [PR591](https://github.com/DeandreT/ferrule/pull/591) are merged, and
 #519's acceptance checklist is complete. This
-[#600](https://github.com/DeandreT/ferrule/issues/600) coordination snapshot is
+[#608](https://github.com/DeandreT/ferrule/issues/608) coordination snapshot is
 against merged main
-[`fecf591`](https://github.com/DeandreT/ferrule/commit/fecf5914420ae313f328887b592711be8b097b23),
-tree `f7d7c9182c0b1f74fbafb1437950d90c04b04bfc`.
+[`5f180df`](https://github.com/DeandreT/ferrule/commit/5f180df2d1b0592c9d4a0fdff2ceea05ab72251c),
+tree `f857774a5da0e15b7d41c2c7c0d166e0c8c7d054`.
 
 C# [PR588](https://github.com/DeandreT/ferrule/pull/588) is merged at
 [`5e9aaff`](https://github.com/DeandreT/ferrule/commit/5e9aaff86cf45c869edf9307e51c6e742ece0878).
@@ -58,8 +58,9 @@ Ordinary APIs keep their existing ownership gates. Public target ValueMap is
 merged in [#582 / PR599](https://github.com/DeandreT/ferrule/pull/599), alongside
 private C# target support in [PR596](https://github.com/DeandreT/ferrule/pull/596)
 and retained inventory in [#585 / PR598](https://github.com/DeandreT/ferrule/pull/598).
-Shared/public failure-rule ValueMap admission stays closed; the private failure
-increment #594 remains open; the separate Rust refusal alignment in #595 is merged.
+Shared/public failure-rule ValueMap admission stays closed. Private C# failure
+ValueMap is merged in #594 / PR607, alongside Rust refusal alignment in
+#595 / PR601; the scoped #589 and #566 trackers are closed after independent review.
 
 Recorded local verification distinguishes each increment: PR596 passed 48 focused
 source tests, eight existing controls, the 126-test default inventory, production
@@ -80,8 +81,26 @@ control and strict checks passed. The corrected JoinAggregate witness expects
 upstream root-context refusal: the 30 variants classify as eight upstream
 refusals, 11 specialized failure refusals, ten admitted and one dynamic refusal.
 This diagnostic increment widens no admission and needs no new generated runtime
-hosts. The matched two-program / eight-call private failure qualification in
-#594 remains pending; #589 and #566 remain open.
+hosts. Private C# failure ValueMap is merged in
+[#594 / PR607](https://github.com/DeandreT/ferrule/pull/607): production compilation,
+the exact 138-test inventory, all 60 Basic source tests, eight existing controls
+and strict checks passed. Two matched generated programs / eight calls per
+backend passed with complete typed results/errors, nodes and same-walk cohorts.
+The consumer repair changes only five `FromBool` calls to `FromBoolean` and four
+`Primary` uses to `Primary()`; its initial failed build and unchanged inputs,
+generated mappings and typed oracles remain recorded. Independent final review
+completed #589/#566 acceptance, and both trackers are closed.
+
+Native interpretation is the next separate [#436](https://github.com/DeandreT/ferrule/issues/436)
+sequence after completed #435. #603's test-scoped borrowed-root foundation is
+merged in [PR609](https://github.com/DeandreT/ferrule/pull/609) and closed after
+all 375 engine library tests, including 14 new controls, and production/default
+inventory/strict checks passed. The helper does not change interpreter execution
+or production admission. #604 adds walks/frames after #603, and #605 integrates
+through a private execution seam
+after #603/#604, and #606 qualifies and activates only the Basic core after
+#605. Native Basic admission remains closed throughout helper preparation and
+private integration. These stages do not claim native or whole-product parity.
 
 ### Current Basic file ownership and delivery gates
 
@@ -92,35 +111,47 @@ merge status are separate states.
 
 | Lane | Exclusive implementation scope | Dependency and next acceptance gate |
 | --- | --- | --- |
-| [#566 private inventory and ValueMap tracker](https://github.com/DeandreT/ferrule/issues/566) | Coordinate each private backend's existing renderer/test files; common/public gates read-only outside their own increments | PR596, PR598 and PR592 are merged. Keep the tracker open until complete typed oracles, fixture corrections, appropriate source/generated checks and independent review settle all four acceptance areas. |
-| [#585 C# retention / PR598](https://github.com/DeandreT/ferrule/pull/598) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs` | Merged and closed after the local qualification above. Omit dead valid ordinary nodes/unreferenced ordinary definitions; retain stored calls and potential dependencies, exact referenced-body refusals and stored owned validation. Hand these files to #594 on the actual merged source. |
-| [#586 Rust dynamic ordinary-failure diagnostics / PR592](https://github.com/DeandreT/ferrule/pull/592) | Rust `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs` | Merged after 22 source tests passed with six ignored, all 35 new labeled cases, four existing controls, and strict checks. Preserve exact rule index, node, location, request, per-rule priority and stored order when handing these files to #595. |
-| [#594 private C# failure ValueMap](https://github.com/DeandreT/ferrule/issues/594) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs`; Rust counterpart read-only | Open after merged PR596 and PR598. Qualify private predicate/message maps, hits/misses/defaults, laziness, global failure order and full typed generated outcomes. Preserve the existing failure walker, retained-input and owned/called-function diagnostic priority, and all shared/public refusals. |
-| [#595 private Rust failure envelopes / PR601](https://github.com/DeandreT/ferrule/pull/601) | Rust `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs`; C# counterpart read-only | Merged and closed after the 28-active / seven-ignored, 54-control, existing-three / package-one and strict source qualification above. Preserve dynamic-first complete per-rule refusals, private ValueMap/input behavior and actual target called-body/general diagnostics. The JoinAggregate witness's upstream root-context correction is recorded; no operator admission is broadened. |
-| [#589 private failure alignment tracker](https://github.com/DeandreT/ferrule/issues/589) | Complete operator/envelope assessment and coordinated acceptance for the two separate backend scopes | The 30-operator contract and merged Rust refusal alignment (PR601) are recorded. #594 still owns private C# ValueMap admission and its pending matched two-program / eight-call generated qualification. Keep #589 and #566 open until complete matched outcomes and remaining acceptance qualify; preserve target and shared/public regressions. |
-| [#582 public target ValueMap / PR599](https://github.com/DeandreT/ferrule/pull/599) | Common `crates/codegen/src/validate/owned_sources.rs` and `crates/codegen/src/tests/basic_owned_emission.rs`, plus each backend's `tests/owned_basic.rs`; backend production/runtime files read-only | Merged and closed after the paired public qualification above. Preserve the retained target input edge and independent failure refusal walker; public failure maps and broader #566 acceptance remain separate. |
-| [#600 milestone documentation](https://github.com/DeandreT/ferrule/issues/600) | `ROADMAP.md` and `docs/parallel-work.md` only | Publish this focused refresh after documentation review. Bind any later #594/#595 status amendment to its actual accepted source/generated result and merge; preserve dated snapshots and unrelated parser/EDI progress. |
+| [#566 private inventory and ValueMap tracker](https://github.com/DeandreT/ferrule/issues/566) | Completed coordination of each private backend's renderer/test scopes | Closed after all four acceptance areas and independent review. PR596/598/592/599/601/607 and complete source/generated outcomes are recorded; shared/public failure gates remain closed. |
+| [#585 C# retention / PR598](https://github.com/DeandreT/ferrule/pull/598) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs` | Merged and closed. Preserve stored owned validation, retained potential dependencies and exact referenced-body refusals in separately claimed follow-ons. |
+| [#586 Rust dynamic ordinary-failure diagnostics / PR592](https://github.com/DeandreT/ferrule/pull/592) | Rust `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs` | Merged after 22 source tests / six ignored, 35 labeled cases, old-four and strict checks. Preserve exact rule/node/location/request origins and stored priority. |
+| [#594 private C# failure ValueMap / PR607](https://github.com/DeandreT/ferrule/pull/607) | C# `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs`; Rust counterpart read-only | Merged and closed after production/default138/source60/old8/strict and two matched programs / eight calls per backend. Preserve existing failure traversal, retained-input and owned/called-body diagnostic priority and all shared/public refusals. |
+| [#595 private Rust failure envelopes / PR601](https://github.com/DeandreT/ferrule/pull/601) | Rust `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs`; C# counterpart read-only | Merged and closed after 28-active / seven-ignored, 54-control, existing-three / package-one and strict qualification. Retain the corrected JoinAggregate upstream refusal, dynamic-first per-rule envelopes and unchanged operator admission. |
+| [#589 private failure alignment tracker](https://github.com/DeandreT/ferrule/issues/589) | Completed operator/envelope assessment and independent acceptance of the separate backend increments | Closed after PR601/607 and matched complete outcomes. This tracking completion leaves target and shared/public gates unchanged. |
+| [#582 public target ValueMap / PR599](https://github.com/DeandreT/ferrule/pull/599) | Common owned-source validation/tests plus each backend's `tests/owned_basic.rs`; backend production/runtime files unchanged by this increment | Merged and closed after paired source and two-program / seven-call checks per backend. Preserve retained target input edges and the separate closed failure walker. |
+| [#600 milestone documentation / PR602](https://github.com/DeandreT/ferrule/pull/602) | `ROADMAP.md` and `docs/parallel-work.md` only | Merged after source/history preservation and the corrected six-row Markdown table check. Retain those historical anchors and parser/EDI progress. |
+| [#436 native Basic interpreter core](https://github.com/DeandreT/ferrule/issues/436) | Parent coordination for the four dependent engine increments | Open after completed #435 and merged #603 / PR609. Hand the helper/tests to #604; reconcile #605 integration files before implementation. Admission stays closed until #606's actual integrated checks qualify. |
+| [#603 borrowed exact-owner roots / PR609](https://github.com/DeandreT/ferrule/pull/609) | `crates/engine/src/owned_source_context.rs`, `crates/engine/src/tests/owned_source_context.rs`, test-scoped registration in `crates/engine/src/lib.rs` | Merged and closed after all 375 engine library tests, including 14 new root/scalar controls, and production/default-inventory/strict checks passed. Preserve borrowed exact identities, absent/null roots and legacy refusals through the #604 handoff. No execution integration or production admission. |
+| [#604 owner walks and provenance frames](https://github.com/DeandreT/ferrule/issues/604) | The same `owned_source_context` module and focused tests | Depends on #603; use a serialized source handoff. Qualify borrowed owner-local walks, nested ancestry, pinned reads and structural/filtered/sorted/window positions. Leave default admission and specialized domains unchanged. |
+| [#605 private execution integration](https://github.com/DeandreT/ferrule/issues/605) | Current engine Program/resolve/eval_expr/eval_scope/required_sources/trace paths and tests; reconcile exact ownership before editing | Depends on #603/#604. Integrate through a private seam with equivalent complete native outcomes; preserve acquisition, global failure order, laziness, structural validation and ordinary ownership refusals. |
+| [#606 verified native Basic activation](https://github.com/DeandreT/ferrule/issues/606) | Engine admission boundary and affected #493 host controls; reconcile exact files after #605 | Depends on #605 and its foundations. Compare native/generated Basic cases before activation; preserve serialization, legacy behavior and unsupported domains. #440 controls and grouping/join/document/dynamic/generated/function provenance stay separate. |
+| [#608 completed alignment and native queue documentation](https://github.com/DeandreT/ferrule/issues/608) | `ROADMAP.md` and `docs/parallel-work.md` only | Publish this focused refresh after source, Markdown table and diagram syntax checks. This snapshot records actual #603 qualification and PR609 merge; later native increments need their own accepted checks and actual publication proof. |
 
-The Rust #595 increment is merged in PR601. C# #594 retains separate backend
-ownership and reads Rust's accepted private ValueMap contract without changing
-it. #589 coordinates the operator matrix, complete refusal envelopes and pending
-matched generated outcomes; it does not combine both languages into one PR.
-Same-language changes still require a source handoff and fresh checks on the
-actual integrated source. Public target admission is complete in PR599 and is
-independent of the remaining private failure qualification.
+The generated Basic foundations and private alignment are complete within their
+recorded scopes. Native work is assigned as #603 → #604 → #605 → #606 under #436.
+#603 and #604 share the helper/tests and need a serialized handoff. #605 must
+reconcile the current engine integration paths before editing them; #606 alone
+owns verified default admission and affected #493 controls. Documentation can
+proceed independently. Reserve shared verification space before checks, and
+claim further generated, GUI or specialized work through separate issues.
 
 ```mermaid
 flowchart LR
     P519["#519 public-family milestone<br/>PR588 and PR591 merged"]
     T566["#566 private C# target ValueMap<br/>PR596 merged"]
-    F566["#566 tracker<br/>remaining acceptance open"]
+    F566["#566 tracker<br/>all acceptance complete; closed"]
     C585["#585 C# retention<br/>PR598 merged"]
     R586["#586 Rust dynamic failure priority<br/>PR592 merged"]
-    C594["#594 private C# failure ValueMap<br/>source/generated qualification pending"]
+    C594["#594 private C# failure ValueMap<br/>PR607 merged; matched checks passed"]
     R595["#595 private Rust refusal envelopes<br/>PR601 merged"]
-    O589["#589 private failure alignment tracker<br/>#594 qualification remaining"]
+    O589["#589 private failure alignment<br/>independent acceptance complete; closed"]
     V582["#582 paired public target ValueMap<br/>PR599 merged"]
-    D600["#600 milestone docs<br/>review and publication pending"]
+    P435["#435 ownership model<br/>complete"]
+    N603["#603 exact borrowed roots<br/>PR609 merged; test-scoped foundation"]
+    N604["#604 owner walks and frames<br/>queued after #603"]
+    N605["#605 private execution seam<br/>queued after roots and frames"]
+    N606["#606 verified Basic activation<br/>queued after integrated checks"]
+    N436["#436 native Basic tracker<br/>admission closed until activation qualifies"]
+    D608["#608 milestone docs<br/>review and publication pending"]
     P519 --> T566
     T566 --> C585
     P519 --> R586
@@ -137,17 +168,25 @@ flowchart LR
     P519 --> V582
     T566 --> V582
     C585 --> V582
-    T566 --> D600
-    C585 --> D600
-    V582 --> D600
+    P435 --> N603
+    N603 --> N604
+    N603 --> N605
+    N604 --> N605
+    N605 --> N606
+    N606 --> N436
+    F566 -.->|generated comparison cases| N606
+    C594 --> D608
+    R595 --> D608
+    F566 --> D608
 ```
 
-Solid arrows show increment prerequisites and remaining tracking acceptance.
-Dotted edges record already-qualified contributions to #566 without closing the
-whole tracker. PR599 followed the public foundations and the qualified private
-target/retention increments; its merge does not depend on treating the remaining
-#566 acceptance as complete. File ownership adds serialization requirements even
-where the diagram shows independent language lanes.
+Solid arrows show increment prerequisites and tracking acceptance. Dotted edges
+record qualified contributions to #566 or existing generated comparison cases;
+they do not create a new native implementation prerequisite. #566 and #589 are
+closed for their scoped contracts. #436 remains open, and #603/#604 helpers or
+#605 private integration do not activate native Basic admission. File ownership
+adds serialization requirements even where documentation or language lanes can
+proceed independently.
 
 ### Milestone publication gate
 
@@ -170,11 +209,21 @@ where the diagram shows independent language lanes.
   two generated programs / seven calls per backend; close #582.
 - [x] Merge private Rust refusal alignment in PR601 after its corrected source
   qualification; close #595 without widening admission.
-- [ ] Qualify and publish private C# failure ValueMap in #594, including the
-  pending matched two-program / eight-call generated outcomes.
-- [ ] Complete #589's matched private failure acceptance and #566's remaining
-  complete-oracle, fixture-correction, verification and review acceptance.
-- [ ] Publish this two-document #600 refresh after documentation review.
+- [x] Merge private C# failure ValueMap in PR607 after source60/default138/old8,
+  production/strict and two-program / eight-call checks per backend.
+- [x] Complete independent #589/#566 acceptance and close both trackers, retaining
+  all original failures and documented fixture corrections.
+- [x] Publish the two-document #600 refresh in
+  [PR602](https://github.com/DeandreT/ferrule/pull/602).
+- [x] Merge #603's test-scoped root/scalar helper in PR609 after all 375 engine
+  library tests, including 14 new controls, and production/default-inventory/strict
+  checks passed; keep interpreter execution and production admission unchanged.
+- [ ] Qualify #604's walks/frames and hand the source to #605 private integration.
+- [ ] Compare integrated native outcomes in #605 while default admission stays
+  closed, then qualify #606 activation and affected #493 controls.
+- [ ] Settle #436 from actual Basic execution evidence; keep separate specialized
+  and GUI scopes open.
+- [ ] Publish this two-document #608 refresh after documentation checks.
 
 Reserve the shared compiler/build-artifact slot before builds. Check current
 capacity and reuse compatible artifacts with bounded jobs; source timestamps
