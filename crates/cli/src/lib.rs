@@ -2584,7 +2584,7 @@ pub(crate) fn closed_owned_source_test_project() -> mapping::Project {
 }
 
 #[cfg(test)]
-pub(crate) fn closed_owned_collection_test_project() -> mapping::Project {
+pub(crate) fn owned_collection_with_closed_source_function_test_project() -> mapping::Project {
     let mut project = closed_owned_source_test_project();
     project.root.iteration = mapping::ScopeIteration::OwnedSource {
         source: mapping::OwnedSourceRef {
@@ -2668,8 +2668,9 @@ mod owned_collection_filesystem_admission_tests {
     use super::*;
 
     #[test]
-    fn owned_collection_refusal_precedes_input_open_and_publication_callback() {
-        let project = closed_owned_collection_test_project();
+    fn closed_source_function_refusal_with_owned_iteration_precedes_input_open_and_publication_callback()
+     {
+        let project = owned_collection_with_closed_source_function_test_project();
         let published = std::cell::Cell::new(0);
         let publish = || {
             published.set(published.get() + 1);
@@ -2688,12 +2689,11 @@ mod owned_collection_filesystem_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedOwnedContext {
-                node: Some(9),
-                function: None,
-                scope: None,
-                context: engine::OwnedCapabilityContext::IsolatedFunction
-            })
+            Some(engine::EngineError::UnsupportedSourceOwnership {
+                node: 9,
+                function: Some(function),
+                kind: "owned_source_field"
+            }) if *function == mapping::FunctionId::new(7)
         ));
         assert_eq!(published.get(), 0);
     }
