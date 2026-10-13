@@ -309,6 +309,168 @@ internal static partial class Program
         OwnedValue("B489-C18.literal-lower", Text("literal.lowercase"), BasicReached("F03.subject.42", () => literals.ResolveOwnedField(OwnedNamedOwner("ref"), new[] { "Value" })));
         BasicOwnedError("B489-C18.empty", FerruleOwnedSourceErrorKind.InvalidNamedOwner,
             () => BasicReached("F03.subject.43", () => literals.ResolveOwnedField(OwnedNamedOwner(""), new[] { "Value" })));
+        BasicNamedOwnedLegacyProjectionNativePaths();
+    }
+
+    private static void BasicNamedOwnedLegacyProjectionNativePaths()
+    {
+        var owner = OwnedNamedOwner("Ref");
+        var namedRow1 = BasicValue("N1");
+        var child1 = BasicValue("NN21"); var child2 = BasicValue("NN22");
+        var namedRow2 = Group(Field("Value", Scalar(Text("N2"))), Field("Rows", Repeated(child1, child2)));
+        var named = Group(Field("Value", Scalar(Text("N.root"))), Field("Rows", Repeated(namedRow1, namedRow2)));
+        var primaryRow1 = BasicValue("P.Ref.1"); var primaryRow2 = BasicValue("P.Ref.2");
+        var primary = Group(Field("Value", Scalar(Text("P.root"))),
+            Field("Ref", Group(Field("Rows", Repeated(primaryRow1, primaryRow2)))));
+        OwnedRaw("N681.input", new { classification = "complete_constructed_input_before_subject",
+            primary = BasicInstanceSnapshot(primary), named = BasicInstanceSnapshot(named), name = "Ref",
+            path = new[] { "Rows" }, prefixed = new[] { "Ref", "Rows" }, relative = new[] { "Rows" },
+            generic = Array.Empty<string>() });
+        var root = BasicReached("N681.root", () => BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Ref", named)));
+        var original = BasicReached("N681.walk", () => root.WalkOwnedSourceCohort(owner, new[] { "Rows" }));
+        BasicPhaseRaw("N681.original", original);
+        Equal(2, original.Count);
+        var second = original[1];
+        Equal<nuint>(2, second.Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal(1L, second.Context.LegacyPosition(new[] { "Ref", "Rows" }));
+        Equal(2L, second.Context.LegacyPosition(new[] { "Rows" }));
+        Equal(2L, second.Context.LegacyPosition(Array.Empty<string>()));
+        Equal(true, second.Context.LegacyView.BasicCollectionPath(0).SequenceEqual(new[] { "Rows" }));
+        Equal(true, ReferenceEquals(namedRow2, second.Context.OwnedView.FrameAt(0).Item));
+        Equal(true, ReferenceEquals(namedRow2, second.Context.LegacyView.Frames[^1]));
+        Equal<nuint?>(2, second.RawSourceOrdinal);
+        OwnedValue("N681.original.value", Text("N2"), second.Context.ResolveOwnedField(owner, new[] { "Rows", "Value" }));
+        OwnedValue("N681.original.root", Text("N.root"), second.Context.ResolveOwnedFieldWithRootPin(owner,
+            new[] { "Value" }, Array.Empty<string>(), true));
+
+        // A real ordinary named wrapper remains qualified; owned projection does not rewrite it.
+        var ordinaryPrimary = BasicValue("P.root");
+        OwnedRaw("N681.ordinary.input", new { primary = BasicInstanceSnapshot(ordinaryPrimary), named = BasicInstanceSnapshot(named), name = "Ref" });
+        var ordinaryRoot = BasicRoot(ordinaryPrimary, new FerruleDeclaredNamedSourceRoot("Ref", named));
+        var ordinary = BasicReached("N681.ordinary.walk", () => ordinaryRoot.WalkSourceCohort(new[] { "Ref", "Rows" }));
+        BasicPhaseRaw("N681.ordinary", ordinary);
+        Equal(2, ordinary.Count);
+        Equal(true, ordinary[1].Context.LegacyView.BasicCollectionPath(0).SequenceEqual(new[] { "Ref", "Rows" }));
+        Equal(2L, ordinary[1].Context.LegacyPosition(new[] { "Ref", "Rows" }));
+        Equal<nuint>(2, ordinary[1].Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal(true, ReferenceEquals(namedRow2, ordinary[1].Context.LegacyView.Frames[^1]));
+        Equal(true, ReferenceEquals(namedRow2, ordinary[1].Context.OwnedView.FrameAt(0).Item));
+
+        // The genuine outer Primary Ref/Rows cursor survives inner named compaction.
+        var outer = BasicReached("N681.outer.walk", () => root.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Ref", "Rows" }));
+        var parent = outer[1].Context;
+        var inner = BasicReached("N681.inner.walk", () => parent.WalkOwnedSourceCohort(owner, new[] { "Rows" }));
+        var phase = BasicReached("N681.inner.begin", () => parent.BeginRetainedFilterPhase(inner));
+        var produced = BasicReached("N681.inner.produce", () => phase.Produce(1));
+        BasicPhaseRaw("N681.outer", outer); BasicPhaseRaw("N681.inner.original", inner);
+        BasicPhaseRaw("N681.inner.compact", new[] { produced });
+        Equal<nuint>(2, produced.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Ref", "Rows" }));
+        Equal<nuint>(1, produced.Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal(2L, produced.Context.LegacyPosition(new[] { "Ref", "Rows" }));
+        Equal(1L, produced.Context.LegacyPosition(new[] { "Rows" }));
+        Equal(1L, produced.Context.LegacyPosition(Array.Empty<string>()));
+        Equal(2, produced.Context.LegacyView.BasicCollectionIndex(0));
+        Equal(1, produced.Context.LegacyView.BasicCollectionIndex(1));
+        Equal(true, produced.Context.LegacyView.BasicCollectionPath(0).SequenceEqual(new[] { "Ref", "Rows" }));
+        Equal(true, produced.Context.LegacyView.BasicCollectionPath(1).SequenceEqual(new[] { "Rows" }));
+        Equal(true, ReferenceEquals(primaryRow2, produced.Context.OwnedView.FrameAt(0).Item));
+        Equal(true, ReferenceEquals(namedRow2, produced.Context.OwnedView.FrameAt(1).Item));
+        Equal(true, ReferenceEquals(primaryRow2, produced.Context.LegacyView.Frames[^2]));
+        Equal(true, ReferenceEquals(namedRow2, produced.Context.LegacyView.Frames[^1]));
+        Equal<nuint?>(2, produced.RawSourceOrdinal); Equal<nuint?>(2, produced.Context.OriginAt(3).RawOrdinal);
+        Equal<nuint>(2, inner[1].Context.OwnedPosition(owner, new[] { "Rows" }));
+        // Framed fields select the nearest nonempty suffix; this inner Rows item is N2.
+        // The Ref/Rows position above remains the genuine outer cursor 2.
+        OwnedValue("N681.outer.framed", Text("N2"), produced.Context.ResolveLegacyField(new[] { "Value" }, new[] { "Ref", "Rows" }));
+        OwnedValue("N681.inner.value", Text("N2"), produced.Context.ResolveOwnedField(owner, new[] { "Rows", "Value" }));
+
+        var nested = BasicReached("N681.nested.walk", () => second.Context.WalkOwnedSourceCohort(owner, new[] { "Rows", "Rows" }));
+        BasicPhaseRaw("N681.nested", nested);
+        Equal(2, nested.Count);
+        Equal<nuint>(2, nested[1].Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal<nuint>(2, nested[1].Context.OwnedPosition(owner, new[] { "Rows", "Rows" }));
+        Equal(1L, nested[1].Context.LegacyPosition(new[] { "Ref", "Rows" }));
+        Equal(2L, nested[1].Context.LegacyPosition(new[] { "Rows", "Rows" }));
+        Equal(true, nested[1].Context.LegacyView.BasicCollectionPath(1).SequenceEqual(new[] { "Rows", "Rows" }));
+        Equal(true, ReferenceEquals(namedRow2, nested[1].Context.OwnedView.FrameAt(0).Item));
+        Equal(true, ReferenceEquals(child2, nested[1].Context.OwnedView.FrameAt(1).Item));
+        Equal(true, ReferenceEquals(child2, nested[1].Context.LegacyView.Frames[^1]));
+        OwnedValue("N681.nested.value", Text("NN22"), nested[1].Context.ResolveOwnedField(owner, new[] { "Rows", "Rows", "Value" }));
+
+        var repeat1 = BasicValue("R1"); var repeat2 = BasicValue("R2");
+        var repeating = Repeated(repeat1, repeat2);
+        OwnedRaw("N681.repeating.input", new { primary = BasicInstanceSnapshot(ordinaryPrimary), named = BasicInstanceSnapshot(repeating), name = "Ref", path = Array.Empty<string>() });
+        var repeatingRoot = BasicRoot(ordinaryPrimary, new FerruleDeclaredNamedSourceRoot("Ref", repeating));
+        var rootRows = BasicReached("N681.repeating.walk", () => repeatingRoot.WalkOwnedSourceCohort(owner, Array.Empty<string>()));
+        var identity = BasicReached("N681.identity.walk", () => rootRows[1].Context.WalkOwnedSourceCohort(owner, Array.Empty<string>()));
+        BasicPhaseRaw("N681.repeating", rootRows); BasicPhaseRaw("N681.identity", identity);
+        Equal(2, rootRows.Count); Equal(1, identity.Count);
+        Equal(0, rootRows[1].Context.LegacyView.BasicCollectionPath(0).Count);
+        Equal(1L, rootRows[1].Context.LegacyPosition(new[] { "Ref" }));
+        Equal(2L, identity[0].Context.LegacyPosition(Array.Empty<string>()));
+        Equal<nuint>(2, identity[0].Context.OwnedPosition(owner, Array.Empty<string>()));
+        Equal(false, identity[0].HasNewCursor); Equal<nuint?>(null, identity[0].RawSourceOrdinal);
+        Equal(1, identity[0].Context.OwnedView.FrameCount);
+        Equal(true, ReferenceEquals(rootRows[1].Context.LegacyView, identity[0].Context.LegacyView));
+        Equal(true, ReferenceEquals(repeat2, identity[0].Context.OwnedView.FrameAt(0).Item));
+        Equal(true, ReferenceEquals(repeat2, identity[0].Context.LegacyView.Frames[^1]));
+        OwnedValue("N681.identity.value", Text("R2"), identity[0].Context.ResolveOwnedField(owner,
+            new[] { "Value" }, Array.Empty<string>()));
+
+        var gapRow3 = BasicValue("N3");
+        var gaps = Group(Field("Value", Scalar(Text("N.root"))), Field("Rows", Repeated(
+            Scalar(FerruleValue.Null), namedRow1, Scalar(FerruleValue.JsonNull), namedRow2, gapRow3)));
+        OwnedRaw("N681.phase.input", new { primary = BasicInstanceSnapshot(primary), named = BasicInstanceSnapshot(gaps), name = "Ref", acceptedOriginalIndices = new[] { 1, 2 } });
+        var gapRoot = BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Ref", gaps));
+        var gapOriginal = BasicReached("N681.phase.walk", () => gapRoot.WalkOwnedSourceCohort(owner, new[] { "Rows" }));
+        var gapPhase = BasicReached("N681.phase.begin", () => gapRoot.BeginRetainedFilterPhase(gapOriginal));
+        var gapFirst = BasicReached("N681.phase.first", () => gapPhase.Produce(1));
+        var gapSecond = BasicReached("N681.phase.second", () => gapPhase.Produce(2));
+        BasicPhaseRaw("N681.phase.original", gapOriginal); BasicPhaseRaw("N681.phase.compact", new[] { gapFirst, gapSecond });
+        Equal(3, gapOriginal.Count);
+        var raw = new nuint[] { 2, 4, 5 };
+        for (var i = 0; i < raw.Length; i++) Equal(raw[i], gapOriginal[i].Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal<nuint?>(4, gapFirst.RawSourceOrdinal); Equal<nuint?>(5, gapSecond.RawSourceOrdinal);
+        Equal<nuint>(1, gapFirst.Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal<nuint>(2, gapSecond.Context.OwnedPosition(owner, new[] { "Rows" }));
+        Equal(1L, gapFirst.Context.LegacyPosition(Array.Empty<string>()));
+        Equal(2L, gapSecond.Context.LegacyPosition(Array.Empty<string>()));
+        Equal(1L, gapSecond.Context.LegacyPosition(new[] { "Ref", "Rows" }));
+        Equal(true, ReferenceEquals(namedRow2, gapFirst.Context.LegacyView.Frames[^1]));
+        Equal(true, ReferenceEquals(gapRow3, gapSecond.Context.OwnedView.FrameAt(0).Item));
+
+        // Isolate the new projection storage; this is not a whole-operation budget claim.
+        // Root registration, query, original-cohort retention and phase charges remain separate.
+        OwnedRaw("N681.accounting.input", new { classification = "isolated_ProjectBasicOwned_storage_only",
+            observedCandidate = 1, inheritedOwnedFrames = 0, path = new[] { "Rows" },
+            exactNewPathSlots = 1, exactAssociationSlots = 1, exactProjectionSlots = 9,
+            exactPathUtf8Bytes = 4, noDeclarationNamePathCellOrText = true });
+        var exactBudget = new BasicSourceBudget(BasicLimits with { MaxMetadataBytes = 4 }, true);
+        var projected = BasicReached("N681.accounting.exact", () => root.LegacyView.ProjectBasicOwned(
+            second.Context.OwnedView, 0, namedRow2, new[] { "Rows" }, false, exactBudget));
+        OwnedRaw("N681.accounting.exact.counter", new { slots = (ulong)exactBudget.Slots.Used, bytes = (ulong)exactBudget.Bytes.Used,
+            path = projected.BasicCollectionPath(0), actualItemSame = ReferenceEquals(namedRow2, projected.Frames[^1]) });
+        Equal<nuint>(9, exactBudget.Slots.Used); Equal<nuint>(4, exactBudget.Bytes.Used);
+        var shortBudget = new BasicSourceBudget(BasicLimits with { MaxMetadataBytes = 3 }, true);
+        var shortPath = BasicBridgeFailure("N681.accounting.short", FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+            () => root.LegacyView.ProjectBasicOwned(second.Context.OwnedView, 0, namedRow2, new[] { "Rows" }, false, shortBudget),
+            () => new { slots = (ulong)shortBudget.Slots.Used, bytes = (ulong)shortBudget.Bytes.Used });
+        Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataBytes, shortPath.Component);
+        Equal<nuint?>(0, shortPath.Used); Equal<nuint?>(4, shortPath.Requested); Equal<nuint?>(3, shortPath.Maximum);
+        Equal<nuint>(9, shortBudget.Slots.Used); Equal<nuint>(0, shortBudget.Bytes.Used);
+        var exactSlots = new BasicSourceBudget(BasicLimits, true);
+        exactSlots.Charge(exactSlots.Slots.Maximum - 9);
+        BasicReached("N681.accounting.slots.exact", () => root.LegacyView.ProjectBasicOwned(
+            second.Context.OwnedView, 0, namedRow2, new[] { "Rows" }, false, exactSlots));
+        Equal(exactSlots.Slots.Maximum, exactSlots.Slots.Used);
+        var shortSlots = new BasicSourceBudget(BasicLimits, true);
+        shortSlots.Charge(shortSlots.Slots.Maximum - 8);
+        var slotsFailure = BasicBridgeFailure("N681.accounting.slots.short", FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+            () => root.LegacyView.ProjectBasicOwned(second.Context.OwnedView, 0, namedRow2, new[] { "Rows" }, false, shortSlots),
+            () => new { slots = (ulong)shortSlots.Slots.Used, maximum = (ulong)shortSlots.Slots.Maximum });
+        Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataSlots, slotsFailure.Component);
+        Equal<nuint?>(shortSlots.Slots.Maximum - 1, slotsFailure.Used);
+        Equal<nuint?>(2, slotsFailure.Requested); Equal<nuint?>(shortSlots.Slots.Maximum, slotsFailure.Maximum);
     }
 
     private static void BasicPairedNestedAndIdentity()

@@ -2298,14 +2298,13 @@ public sealed partial class ScopeContext
         for (var i = 0; i < extra; i++)
         {
             var f = observed.FrameAt(inheritedOwnedFrames + i);
-            var name = observed.Roots.Name(f.Owner);
-            var length = BasicSourceAccounting.Add((nuint)f.Path.Count, name is null ? 0 : (nuint)1);
+            // Owned walks publish the actual owner-relative collection, as native does.
+            // Ordinary named wrapper paths are retained by the separate legacy walker.
+            var length = (nuint)f.Path.Count;
             budget.Charge(BasicSourceAccounting.Add(length, 1));
-            budget.Path(f.Path); if (name is not null) budget.Text(OwnedSourceAccounting.Text(name));
+            budget.Path(f.Path);
             var path = new string[BasicSourceAccounting.ArrayLength(length)];
-            var offset = name is null ? 0 : 1;
-            if (name is not null) path[0] = name;
-            for (var j = 0; j < f.Path.Count; j++) path[j + offset] = f.Path[j];
+            for (var j = 0; j < f.Path.Count; j++) path[j] = f.Path[j];
             frames[_frames.Count + i] = f.Item;
             collections[_collections.Count + i] = new CollectionIdentity(path, f.Item, checked((int)f.Index));
         }

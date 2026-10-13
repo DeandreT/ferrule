@@ -6462,9 +6462,34 @@ fn public_basic_filter_companion_preserves_control_free_bytes_and_closed_routes(
     );
 }
 
+fn filter_681_positive_pairing_program() -> Program {
+    let mut program = filter_645_program();
+    let paired_position = program
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 4)
+        .unwrap();
+    paired_position.expression = Expression::Position {
+        collection: path(&[]),
+    };
+    program
+}
+
 #[test]
 fn public_basic_filter_streams_raw_predicates_compact_outputs_and_all_selected_targets() {
-    let p = filter_645_program();
+    // The original qualified-path model stays intact for closed-route and alias probes.
+    // This positive pairing subject explicitly asks for the innermost compact cursor.
+    let p = filter_681_positive_pairing_program();
+    assert_eq!(
+        p.expressions
+            .iter()
+            .find(|node| node.id == 4)
+            .unwrap()
+            .expression,
+        Expression::Position {
+            collection: path(&[])
+        }
+    );
     let source = retain_public_filter_consumer("public-filter-645-phases", &p, PUBLIC645_PHASES);
     assert_eq!(
         source.matches("BeginRetainedFilterPhase(cohort_").count(),
