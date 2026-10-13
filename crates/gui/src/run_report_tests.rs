@@ -1140,3 +1140,141 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
     std::fs::remove_file(first).expect("first output is removed");
     std::fs::remove_file(second).expect("second output is removed");
 }
+
+#[test]
+fn owned_source_trace_iteration_labels_distinguish_root_and_named_primary() {
+    for (owner, path, expected) in [
+        (
+            mapping::SourceOwner::Primary,
+            Vec::new(),
+            "iterate owned source Primary path=[]",
+        ),
+        (
+            mapping::SourceOwner::Named {
+                name: "primary".into(),
+            },
+            Vec::new(),
+            "iterate owned source Named(\"primary\") path=[]",
+        ),
+        (
+            mapping::SourceOwner::Primary,
+            vec![String::new()],
+            "iterate owned source Primary path=[\"\"]",
+        ),
+    ] {
+        assert_eq!(
+            format_trace_iteration(&cli::TraceIteration::OwnedSource {
+                source: mapping::OwnedSourceRef { owner, path },
+            }),
+            expected
+        );
+    }
+}
+
+#[test]
+fn owned_source_trace_iteration_labels_preserve_exact_metadata() {
+    for (name, path, expected) in [
+        (
+            " RéF/West ",
+            vec!["", "Rows/Lines", "é", " \t "],
+            "iterate owned source Named(\" RéF/West \") path=[\"\", \"Rows/Lines\", \"é\", \" \\t \"]",
+        ),
+        (
+            "\"Desk\"\\North\n",
+            vec!["\"leaf\"", "a\\b", "\n"],
+            r#"iterate owned source Named("\"Desk\"\\North\n") path=["\"leaf\"", "a\\b", "\n"]"#,
+        ),
+    ] {
+        assert_eq!(
+            format_trace_iteration(&cli::TraceIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Named { name: name.into() },
+                    path: path.iter().map(|segment| (*segment).into()).collect(),
+                },
+            }),
+            expected
+        );
+    }
+}
+
+#[test]
+fn owned_source_scope_rows_keep_incoming_context_and_finish_counts() {
+    let started = cli::TraceEvent::ScopeStarted {
+        scope: trace_scope(),
+        iteration: cli::TraceIteration::OwnedSource {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Named {
+                    name: "primary".into(),
+                },
+                path: vec!["Rows/Lines".into()],
+            },
+        },
+        positions: vec![cli::TracePosition {
+            collection: vec!["Outer".into()],
+            index: 7,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: None,
+        }],
+    };
+    assert_eq!(
+        trace_row(0, &started),
+        "     1  scope named:Audit:/Orders/Line #1.3  start iterate owned source Named(\"primary\") path=[\"Rows/Lines\"]  Outer[7]"
+    );
+    assert_eq!(
+        trace_row(
+            1,
+            &cli::TraceEvent::ScopeFinished {
+                scope: trace_scope(),
+                candidates: 2,
+                produced: 1,
+                kind: cli::TraceOutputKind::Repeated,
+            },
+        ),
+        "     2  scope named:Audit:/Orders/Line #1.3  finish candidates=2 produced=1 repeated"
+    );
+}
+
+#[test]
+fn legacy_iteration_labels_are_unchanged_with_owned_source_metadata() {
+    for (iteration, expected) in [
+        (cli::TraceIteration::Once, "once"),
+        (
+            cli::TraceIteration::Source { path: Vec::new() },
+            "iterate source <current>",
+        ),
+        (
+            cli::TraceIteration::Source {
+                path: vec!["Rows".into(), "Lines".into()],
+            },
+            "iterate source Rows/Lines",
+        ),
+        (
+            cli::TraceIteration::DynamicDocuments { source: Vec::new() },
+            "dynamic documents <current>",
+        ),
+        (
+            cli::TraceIteration::DynamicDocuments {
+                source: vec!["Rows".into(), "Lines".into()],
+            },
+            "dynamic documents Rows/Lines",
+        ),
+        (
+            cli::TraceIteration::Generated { kind: "tokenize" },
+            "generate tokenize",
+        ),
+        (
+            cli::TraceIteration::Join {
+                join: mapping::JoinId::new(7),
+            },
+            "join 7",
+        ),
+        (
+            cli::TraceIteration::Concatenate { segments: 2 },
+            "concatenate 2 segments",
+        ),
+    ] {
+        assert_eq!(format_trace_iteration(&iteration), expected);
+    }
+}

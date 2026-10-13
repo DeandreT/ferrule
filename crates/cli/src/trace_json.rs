@@ -619,6 +619,14 @@ fn iteration_value(iteration: &TraceIteration) -> JsonValue {
     match iteration {
         TraceIteration::Once => json!({"kind": "once"}),
         TraceIteration::Source { path } => json!({"kind": "source", "path": path}),
+        TraceIteration::OwnedSource { source } => json!({
+            "kind": "owned_source",
+            "owner": match &source.owner {
+                mapping::SourceOwner::Primary => json!({"kind": "primary"}),
+                mapping::SourceOwner::Named { name } => json!({"kind": "named", "name": name}),
+            },
+            "path": source.path,
+        }),
         TraceIteration::DynamicDocuments { source } => {
             json!({"kind": "dynamic_documents", "source": source})
         }
@@ -992,6 +1000,171 @@ mod tests {
         assert_eq!(input["event"]["consumer"], 4);
         assert_eq!(input["event"]["input"], 3);
         assert_eq!(input["event"]["input_index"], 1);
+    }
+
+    #[test]
+    fn owned_source_iteration_json_distinguishes_primary_and_named_root() {
+        for (owner, expected_owner) in [
+            (mapping::SourceOwner::Primary, json!({"kind": "primary"})),
+            (
+                mapping::SourceOwner::Named {
+                    name: "primary".into(),
+                },
+                json!({"kind": "named", "name": "primary"}),
+            ),
+        ] {
+            let iteration = TraceIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner,
+                    path: Vec::new(),
+                },
+            };
+            assert_eq!(
+                iteration_value(&iteration),
+                json!({"kind": "owned_source", "owner": expected_owner, "path": []})
+            );
+        }
+    }
+
+    #[test]
+    fn owned_source_iteration_json_preserves_exact_name_and_path_segments() {
+        for (name, path) in [
+            (" RéF/West ", vec!["", "Rows/Lines", "é", " \t "]),
+            ("\"Desk\"\\North\n", vec!["\"leaf\"", "a\\b", "\n"]),
+        ] {
+            let iteration = TraceIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Named { name: name.into() },
+                    path: path.iter().map(|segment| (*segment).into()).collect(),
+                },
+            };
+            let value = iteration_value(&iteration);
+            assert_eq!(
+                value,
+                json!({
+                    "kind": "owned_source",
+                    "owner": {"kind": "named", "name": name},
+                    "path": path,
+                })
+            );
+            assert_eq!(
+                serde_json::from_str::<JsonValue>(&value.to_string()).expect("JSON round trip"),
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn owned_source_scope_lifecycle_json_keeps_context_and_finish_counts() {
+        let started = TraceEvent::ScopeStarted {
+            scope: scope(),
+            iteration: TraceIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Named {
+                        name: "primary".into(),
+                    },
+                    path: vec!["Rows/Lines".into()],
+                },
+            },
+            positions: vec![TracePosition {
+                collection: vec!["Outer".into()],
+                index: 7,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: None,
+            }],
+        };
+        assert_eq!(
+            trace_line(7, &started),
+            json!({
+                "schema_version": 5,
+                "sequence": 7,
+                "event": {
+                    "kind": "scope_started",
+                    "scope": {
+                        "target": {"kind": "named", "name": "audit"},
+                        "target_path": ["Rows"],
+                        "structural_path": [2],
+                    },
+                    "iteration": {
+                        "kind": "owned_source",
+                        "owner": {"kind": "named", "name": "primary"},
+                        "path": ["Rows/Lines"],
+                    },
+                    "positions": [{
+                        "collection": ["Outer"],
+                        "index": 7,
+                        "grouped": false,
+                        "join": null,
+                        "join_position": null,
+                        "document_path": null,
+                    }],
+                },
+            })
+        );
+        assert_eq!(
+            event_value(&TraceEvent::ScopeFinished {
+                scope: scope(),
+                candidates: 2,
+                produced: 1,
+                kind: TraceOutputKind::Repeated,
+            }),
+            json!({
+                "kind": "scope_finished",
+                "scope": {
+                    "target": {"kind": "named", "name": "audit"},
+                    "target_path": ["Rows"],
+                    "structural_path": [2],
+                },
+                "candidates": 2,
+                "produced": 1,
+                "output_kind": "repeated",
+            })
+        );
+    }
+
+    #[test]
+    fn legacy_iteration_json_is_unchanged_with_owned_source_metadata() {
+        for (iteration, expected) in [
+            (TraceIteration::Once, json!({"kind": "once"})),
+            (
+                TraceIteration::Source { path: Vec::new() },
+                json!({"kind": "source", "path": []}),
+            ),
+            (
+                TraceIteration::Source {
+                    path: vec!["Rows".into(), "Lines".into()],
+                },
+                json!({"kind": "source", "path": ["Rows", "Lines"]}),
+            ),
+            (
+                TraceIteration::DynamicDocuments { source: Vec::new() },
+                json!({"kind": "dynamic_documents", "source": []}),
+            ),
+            (
+                TraceIteration::DynamicDocuments {
+                    source: vec!["Rows".into(), "Lines".into()],
+                },
+                json!({"kind": "dynamic_documents", "source": ["Rows", "Lines"]}),
+            ),
+            (
+                TraceIteration::Generated { kind: "tokenize" },
+                json!({"kind": "generated", "sequence": "tokenize"}),
+            ),
+            (
+                TraceIteration::Join {
+                    join: mapping::JoinId::new(7),
+                },
+                json!({"kind": "join", "join": 7}),
+            ),
+            (
+                TraceIteration::Concatenate { segments: 2 },
+                json!({"kind": "concatenate", "segments": 2}),
+            ),
+        ] {
+            assert_eq!(iteration_value(&iteration), expected);
+        }
     }
 }
 

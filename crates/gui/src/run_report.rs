@@ -1358,6 +1358,13 @@ fn format_trace_iteration(iteration: &cli::TraceIteration) -> String {
                 path.join("/")
             }
         ),
+        cli::TraceIteration::OwnedSource { source } => {
+            let owner = match &source.owner {
+                mapping::SourceOwner::Primary => "Primary".to_string(),
+                mapping::SourceOwner::Named { name } => format!("Named({name:?})"),
+            };
+            format!("iterate owned source {owner} path={:?}", source.path)
+        }
         cli::TraceIteration::DynamicDocuments { source } => format!(
             "dynamic documents {}",
             if source.is_empty() {

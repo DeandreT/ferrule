@@ -22,8 +22,8 @@ use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceOutputKind, TraceScope, TraceSortKey,
-    TraceSourceRow, TraceTargetFieldBinding, TraceValue, TraceWindow, bounded_text, record,
-    record_owned_event, scope_iteration, trace_positions,
+    TraceSourceRow, TraceTargetFieldBinding, TraceValue, TraceWindow, basic_scope_iteration,
+    bounded_text, record, record_owned_event, scope_iteration, trace_positions,
 };
 use crate::{DynamicSourceLoader, EngineError};
 
@@ -827,6 +827,9 @@ fn eval_basic_owned_scope<'a>(
     use crate::source_iteration::{
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
     };
+    // Scope boundaries observe the incoming receiving context and phase.
+    // Traversal and item producers retain their existing explicit phase programs.
+    let receiving_program = program;
     let program = program.with_owned_trace_phase(crate::TraceOwnedPhase::Structural);
     let state = program
         .owned_context
@@ -859,6 +862,12 @@ fn eval_basic_owned_scope<'a>(
             context: domain,
         });
     }
+    record_owned_event(receiving_program, positions, || TraceEvent::ScopeStarted {
+        scope: trace_scope.clone(),
+        iteration: basic_scope_iteration(&scope.iteration)
+            .expect("Basic scope domain admitted before lifecycle metadata"),
+        positions: trace_positions(positions),
+    });
     let retain_first = retain_first_source_candidate(scope);
     let (mut extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
@@ -1247,11 +1256,19 @@ fn eval_basic_owned_scope<'a>(
             produced.push(item.instance);
         }
     }
-    finalize_scope_output(
+    let produced_count = produced.len();
+    let result = finalize_scope_output(
         scope,
         target.is_some_and(|target| target.repeating),
         produced,
-    )
+    )?;
+    record_owned_event(receiving_program, positions, || TraceEvent::ScopeFinished {
+        scope: trace_scope.clone(),
+        candidates,
+        produced: produced_count,
+        kind: TraceOutputKind::of(&result),
+    });
+    Ok(result)
 }
 
 #[derive(Debug, Clone, Copy)]
