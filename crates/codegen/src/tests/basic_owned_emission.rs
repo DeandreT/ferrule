@@ -198,8 +198,11 @@ fn repeat_target(p: &mut Program) {
     p.root.repeating = true;
 }
 fn value_map() -> Expression {
+    value_map_from(1)
+}
+fn value_map_from(input: u32) -> Expression {
     Expression::ValueMap {
-        input: 1,
+        input,
         input_type: None,
         table: vec![(
             Value::String("P.root".into()),
@@ -546,9 +549,9 @@ fn basic_gate_checks_stored_specialized_leaves_without_changing_ordinary_gates()
         }
         let ordinary = validate_owned_emission(&p);
         eprintln!("RAW R08 unchanged ordinary gate={ordinary:#?}");
-        let actual = observed("R08 ValueMap common intersection", &p);
+        let actual = observed("A10 stored target ValueMap", &p);
         assert_eq!(ordinary, Ok(()));
-        assert_eq!(actual, retained(99, Reason::UnsupportedBasicContext));
+        assert_eq!(actual, Ok(()));
     }
     for reached in [false, true] {
         let mut p = program(false);
@@ -763,4 +766,329 @@ fn basic_gate_does_not_change_project_dead_node_omission_or_ordinary_programs() 
     assert_eq!(gate, Ok(()));
     assert_eq!(old_gate, Ok(()));
     assert_eq!(ordinary_structure, Ok(()));
+}
+
+#[test]
+fn basic_gate_accepts_target_value_map_payloads_and_owned_scalar_inputs() {
+    for owner in [
+        SourceOwner::Primary,
+        SourceOwner::Named {
+            name: " Ref 雪 ".into(),
+        },
+    ] {
+        for input_kind in 0..6 {
+            let mut p = program(true);
+            p.expressions[0].expression = field(owner.clone(), &["Value"], None);
+            p.expressions.push(node(
+                2,
+                Expression::Const {
+                    value: Value::Bool(false),
+                },
+            ));
+            let expression = match input_kind {
+                0 => None,
+                1 => Some(Expression::Call {
+                    function: crate::ScalarFunction::Upper,
+                    args: vec![1],
+                }),
+                2 => Some(Expression::If {
+                    condition: 2,
+                    then: 1,
+                    else_: 1,
+                }),
+                3 => Some(Expression::RuntimeParameterDefault {
+                    name: "Input".into(),
+                    ty: ScalarType::String,
+                    default: 1,
+                }),
+                4 => Some(Expression::Raise { message: Some(1) }),
+                _ => Some(value_map_from(1)),
+            };
+            let input = if let Some(expression) = expression {
+                p.expressions.push(node(4, expression));
+                4
+            } else {
+                1
+            };
+            p.expressions.push(node(
+                3,
+                Expression::ValueMap {
+                    input,
+                    input_type: [
+                        None,
+                        Some(ScalarType::String),
+                        Some(ScalarType::Int),
+                        Some(ScalarType::Float),
+                        Some(ScalarType::Bool),
+                        None,
+                    ][input_kind],
+                    table: vec![
+                        (Value::Null, Value::String("absent".into())),
+                        (Value::XmlNil(ir::XmlNil), Value::XmlNil(ir::XmlNil)),
+                        (Value::Bool(false), Value::Bool(true)),
+                        (Value::Int(1), Value::Int(2)),
+                        (Value::Float(1.0), Value::Float(2.0)),
+                        (Value::String("1".into()), Value::String("first".into())),
+                        (Value::String("1".into()), Value::String("later".into())),
+                    ],
+                    default: (input_kind % 2 == 0).then_some(Value::Null),
+                },
+            ));
+            p.root.bindings[0].expression = 3;
+            let original = p.clone();
+            let actual = observed(
+                "VM01 exact target map payload and potential scalar input",
+                &p,
+            );
+            assert_eq!(actual, Ok(()));
+            assert_eq!(p, original);
+        }
+    }
+}
+
+#[test]
+fn basic_gate_retains_target_value_map_input_edges_and_empty_frame_replacement() {
+    for input_kind in 0..6 {
+        for frame in [None, Some(path(&["D"])), Some(Vec::new())] {
+            for reached in [false, true] {
+                let mut p = program(false);
+                dynamic(&mut p);
+                p.expressions.extend([
+                    node(
+                        2,
+                        Expression::Const {
+                            value: Value::Bool(false),
+                        },
+                    ),
+                    node(
+                        99,
+                        Expression::SourceField {
+                            path: path(&["D", "Value"]),
+                            frame: frame.clone(),
+                        },
+                    ),
+                ]);
+                let expression = match input_kind {
+                    0 => None,
+                    1 => Some(Expression::Call {
+                        function: crate::ScalarFunction::Upper,
+                        args: vec![99],
+                    }),
+                    2 => Some(Expression::If {
+                        condition: 2,
+                        then: 99,
+                        else_: 1,
+                    }),
+                    3 => Some(Expression::RuntimeParameterDefault {
+                        name: "Input".into(),
+                        ty: ScalarType::String,
+                        default: 99,
+                    }),
+                    4 => Some(Expression::Raise { message: Some(99) }),
+                    _ => Some(value_map_from(99)),
+                };
+                let input = if let Some(expression) = expression {
+                    p.expressions.push(node(4, expression));
+                    4
+                } else {
+                    99
+                };
+                p.expressions.push(node(3, value_map_from(input)));
+                // The outer lazy branch retains the potential map input even
+                // when its condition would select the ordinary constant.
+                p.expressions.push(node(
+                    5,
+                    Expression::If {
+                        condition: 2,
+                        then: 3,
+                        else_: 1,
+                    },
+                ));
+                let expression = if reached { 5 } else { 1 };
+                match input_kind % 3 {
+                    0 => p.root.bindings[0].expression = expression,
+                    1 => {
+                        p.target = SchemaNode::group(
+                            "Output",
+                            vec![
+                                SchemaNode::scalar("Value", ScalarType::String),
+                                SchemaNode::scalar("Child", ScalarType::String),
+                            ],
+                        );
+                        p.root.children.push(TargetScope {
+                            target_field: "Child".into(),
+                            repeating: false,
+                            iteration: None,
+                            construction: TargetConstruction::Scalar {
+                                expression,
+                                target_domain: ScalarTargetDomain::Single(ScalarType::String),
+                            },
+                            bindings: Vec::new(),
+                            children: Vec::new(),
+                        });
+                    }
+                    _ => p.extra_targets.push(NamedTargetProgram {
+                        name: "Mapped".into(),
+                        target: SchemaNode::scalar("Mapped", ScalarType::String),
+                        root: TargetScope {
+                            target_field: String::new(),
+                            repeating: false,
+                            iteration: None,
+                            construction: TargetConstruction::Scalar {
+                                expression,
+                                target_domain: ScalarTargetDomain::Single(ScalarType::String),
+                            },
+                            bindings: Vec::new(),
+                            children: Vec::new(),
+                        },
+                    }),
+                }
+                let original = p.clone();
+                let ordinary = validate_owned_emission(&p);
+                let actual = observed("VM02 target-only map edge and replacing frame", &p);
+                eprintln!("RAW VM02 unchanged ordinary gate={ordinary:#?}");
+                assert_eq!(ordinary, Ok(()));
+                assert_eq!(
+                    actual,
+                    if reached && frame.as_ref().is_none_or(|frame| !frame.is_empty()) {
+                        retained(99, Reason::UnsupportedBasicContext)
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert_eq!(p, original);
+            }
+        }
+    }
+}
+
+#[test]
+fn basic_gate_keeps_target_value_map_structural_priority() {
+    let mut p = program(false);
+    unused_function(&mut p);
+    p.expressions.push(node(99, value_map_from(123)));
+    p.root.bindings[0].expression = 99;
+    let actual = observed("VM03 missing map input before function capability", &p);
+    assert_eq!(
+        actual,
+        Err(ProgramValidationError::MissingDependency {
+            node: 99,
+            dependency: 123,
+        })
+    );
+    let mut p = program(true);
+    unused_function(&mut p);
+    p.expressions[0].expression = field(
+        SourceOwner::Named {
+            name: "Absent".into(),
+        },
+        &["Value"],
+        None,
+    );
+    p.expressions.extend([
+        node(
+            2,
+            Expression::Const {
+                value: Value::Bool(false),
+            },
+        ),
+        node(
+            4,
+            Expression::If {
+                condition: 2,
+                then: 1,
+                else_: 2,
+            },
+        ),
+        node(3, value_map_from(4)),
+    ]);
+    p.root.bindings[0].expression = 3;
+    let actual = observed(
+        "VM04 potential owned map input keeps structural priority",
+        &p,
+    );
+    assert_eq!(
+        actual,
+        Err(ProgramValidationError::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Structure {
+                location: Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 1,
+                    scope: None,
+                },
+                request: Request::Field {
+                    owner: Owner::Named {
+                        name: "Absent".into(),
+                    },
+                    path: path(&["Value"]),
+                    frame: None,
+                },
+                reason: Structure::UnknownOwner,
+            }),
+        })
+    );
+}
+
+#[test]
+fn basic_gate_keeps_failure_value_maps_closed_and_preserves_dynamic_priority() {
+    for separate_dynamic in [false, true] {
+        for dynamic_first in [false, true] {
+            let mut p = program(false);
+            dynamic(&mut p);
+            let dynamic_input = node(
+                99,
+                Expression::SourceField {
+                    path: path(&["D", "Value"]),
+                    frame: None,
+                },
+            );
+            let map = node(3, value_map_from(99));
+            p.expressions.extend(if dynamic_first {
+                [dynamic_input, map]
+            } else {
+                [map, dynamic_input]
+            });
+            let message = if separate_dynamic {
+                p.expressions.push(node(
+                    4,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Concat,
+                        args: vec![99, 3],
+                    },
+                ));
+                4
+            } else {
+                3
+            };
+            p.failure_rules.push(FailureRule {
+                iteration: FailureIteration::Source(SourceIteration::new(Vec::new())),
+                selection: FailureSelection::All,
+                message: Some(message),
+            });
+            let ordinary = validate_owned_emission(&p);
+            let actual = observed(
+                "VM05 closed failure map input and stored refusal priority",
+                &p,
+            );
+            eprintln!("RAW VM05 unchanged ordinary gate={ordinary:#?}");
+            assert_eq!(ordinary, Ok(()));
+            assert_eq!(
+                actual,
+                if separate_dynamic && dynamic_first {
+                    capability(
+                        Location::Expression {
+                            namespace: Namespace::Main,
+                            node: 99,
+                            scope: None,
+                        },
+                        None,
+                        Reason::DynamicLoader,
+                        Origin::Failure { index: 0 },
+                    )
+                } else {
+                    failure_error(Reason::FailureRule)
+                }
+            );
+        }
+    }
 }
