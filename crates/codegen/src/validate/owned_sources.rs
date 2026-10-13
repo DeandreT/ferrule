@@ -856,6 +856,7 @@ pub fn validate_basic_owned_emission(program: &Program) -> Result<(), ProgramVal
             | Expression::Const { .. }
             | Expression::Call { .. }
             | Expression::If { .. }
+            | Expression::ValueMap { .. }
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }
             | Expression::RuntimeParameterDefault { .. }
@@ -1027,7 +1028,24 @@ fn basic_target_expressions(program: &Program) -> std::collections::BTreeSet<Nod
     for target in &program.extra_targets {
         roots(&target.root, &mut pending);
     }
-    basic_expression_nodes(program, pending)
+    let mut retained = basic_expression_nodes(program, pending);
+    let mut pending = retained.iter().copied().collect::<Vec<_>>();
+    while let Some(id) = pending.pop() {
+        let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
+            continue;
+        };
+        let Expression::ValueMap { input, .. } = &node.expression else {
+            continue;
+        };
+        // ValueMap adds only its input edge to target admission. Failure
+        // traversal keeps its independent, closed ordinary scalar subset.
+        for dependency in basic_expression_nodes(program, [*input]) {
+            if retained.insert(dependency) {
+                pending.push(dependency);
+            }
+        }
+    }
+    retained
 }
 
 fn basic_failure_refusal(index: usize, reason: Capability) -> ProgramValidationError {
