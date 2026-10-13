@@ -16,16 +16,21 @@ use codegen::{
 use std::collections::BTreeSet;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false)
+    render_basic_owned_mapping_profile(program, false, false)
 }
 
 fn render_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
+    allow_filters: bool,
 ) -> Result<String, EmitError> {
-    codegen::validate_program(program)?;
+    if allow_filters {
+        codegen::validate_program_with_basic_owned_filters(program)?;
+    } else {
+        codegen::validate_program(program)?;
+    }
     let retained = retained_expressions(program);
-    validate_private_inventory(program, &retained)?;
+    validate_private_inventory(program, &retained, allow_filters)?;
     let mut body = String::new();
     let (primary, extras) = mapping::render_basic_scopes(program, &mut body)?;
     let mut output = String::from(
@@ -166,6 +171,7 @@ fn check_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
+    allow_filters: bool,
 ) -> Result<(), EmitError> {
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
@@ -178,7 +184,7 @@ fn check_scope(
         if let Some(reason) = reason {
             return Err(scope_error(scope, route, reason));
         }
-        if iteration.filter().is_some()
+        if (!allow_filters && iteration.filter().is_some())
             || iteration.sort().is_some()
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
@@ -213,6 +219,7 @@ fn check_scope(
             program,
             child,
             route.clone().descendant(SourceScopeStep::Child(index)),
+            allow_filters,
         )?;
     }
     Ok(())
@@ -240,6 +247,9 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
             pending.push(*expression);
         }
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
+        if let Some(iteration) = &scope.iteration {
+            pending.extend(iteration.filter());
+        }
         for child in &scope.children {
             roots(child, pending);
         }
@@ -340,12 +350,14 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
 fn validate_private_inventory(
     program: &Program,
     retained: &BTreeSet<NodeId>,
+    allow_filters: bool,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     check_scope(
         program,
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
+        allow_filters,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         check_scope(
@@ -355,6 +367,7 @@ fn validate_private_inventory(
                 index,
                 name: target.name.clone(),
             }),
+            allow_filters,
         )?;
     }
     validate_basic_failures(program)?;
@@ -677,19 +690,24 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false)
+    render_checked_basic_owned_mapping_profile(program, false, false)
 }
 
 fn render_checked_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
+    allow_filters: bool,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
-        render_basic_owned_mapping_profile(program, true)?
+        render_basic_owned_mapping_profile(program, true, allow_filters)?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = codegen::legacy_named_input_admission_plan(program)?;
+    let plan = if allow_filters {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_filters(program)?
+    } else {
+        codegen::legacy_named_input_admission_plan(program)?
+    };
     let (primary, extras) = mapping::render_basic_scopes(program, &mut String::new())?;
     // Reuse the ordinary NamedInput spelling and exact record declaration.
     source.push_str("\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic static partial class GeneratedMapping\n{\n");
@@ -830,7 +848,15 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, false)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_filter_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }

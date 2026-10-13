@@ -80,12 +80,34 @@ pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, E
     emit_mapping_artifacts(program, generated_mapping)
 }
 
+/// Emits static Basic source filters with explicit caller limits.
+///
+/// Predicates use original source positions; accepted output contexts use compact
+/// positions. Other scope controls and the existing emitter families stay closed.
+pub fn emit_with_basic_owned_filters(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_filters(program)?;
+    codegen::validate_basic_owned_filter_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_filter_mapping(program)?;
+    // The explicit Basic inventory checked every primary/named/child scope and
+    // rejected DynamicDocuments before rendering. The XML classifier can therefore
+    // only select None or SingleDocument; its dynamic-document extension is false.
+    // Calling xml_output_mode here would re-enter the default ControlFree validator.
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
 ) -> Result<ArtifactSet, EmitError> {
     let dynamic_input_document_outputs = program.xml_output_mode()?
         == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments);
+    emit_mapping_files(generated_mapping, dynamic_input_document_outputs)
+}
+
+fn emit_mapping_files(
+    generated_mapping: String,
+    dynamic_input_document_outputs: bool,
+) -> Result<ArtifactSet, EmitError> {
     let mut files = Vec::with_capacity(
         runtime::SOURCES.len() + 3 + usize::from(dynamic_input_document_outputs),
     );
