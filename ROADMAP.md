@@ -4,84 +4,74 @@ Updated: 2026-10-13
 
 ## Current Basic ownership progress (2026-10-13)
 
-This [#635](https://github.com/DeandreT/ferrule/issues/635) snapshot is against
-merged main [`0f8b252`](https://github.com/DeandreT/ferrule/commit/0f8b252aedbb8ad99e51e7fc317919ca77f84870).
-It supersedes the earlier current-status sections below for these ownership
-lanes; all earlier snapshots retain their recorded evidence scope.
-
-Public Basic roots, scoped borrowed walks, positions, caller-owned scalar
-arguments and scalar target construction are implemented. Static root global
-failure predicates/messages are merged in
-[#627 / PR630](https://github.com/DeandreT/ferrule/pull/630), with one stored-order
-pre-target pass and lazy messages. The narrow primary-row failure increment is
-merged in [#633 / PR637](https://github.com/DeandreT/ferrule/pull/637): one nonempty
-static collection segment from the actual Primary Group root, structural
-positions and immutable named-root reads. Deeper/named-row, repeated-root
-Source[], sequence/dynamic/generated and specialized owned row provenance
-remain closed.
-
-Eligible constructed owned-source First scopes now retain one candidate while
-completing traversal, preserving cumulative work accounting and error priority
-in [#622 / PR634](https://github.com/DeandreT/ferrule/pull/634). Engine sources are
-unchanged from the qualified PR637 snapshot: all 477 library tests passed,
-including 38 Basic, 35 core, 25 failure, 26 admission and 21 trace tests, plus
-production compilation and strict checks. PR634's retention probe completed 31 commands and matched all
-29 complete outcomes. Those retained-input
-engine probes do not establish a whole-file parser or total-memory cap.
-
-Production borrowed trace-context witnesses and bounded snapshots are merged in
-[#631 / PR636](https://github.com/DeandreT/ferrule/pull/636). Snapshotting validates
-supplied metadata; producers must supply authentic root/frame references.
-Event integration, public owned tracing and debugging remain gated under
-[#606](https://github.com/DeandreT/ferrule/issues/606).
+This [#658](https://github.com/DeandreT/ferrule/issues/658) snapshot records
+published main [`848ca45`](https://github.com/DeandreT/ferrule/commit/848ca4580fbb10711867157c42fb9a74e888b269)
+and active follow-ons. It replaces the current-status text for
+these lanes; the earlier dated snapshots below retain their original scope.
 
 ### Qualified generated root pins
 
-[#632 / PR638](https://github.com/DeandreT/ferrule/pull/638) fixes
-declared nonrepeating empty-root pins in generated Rust and C#. Local source
-qualification passed 339 runtime tests, 149 Rust backend tests with eight ignored,
-and 142 C# backend tests, including 64 owned Basic tests, plus production and
-strict checks for all three packages. Six generated Rust programs passed their
-22 calls. The newly built 95-file C# runtime passed all 216 smoke controls.
+[#632 / PR638](https://github.com/DeandreT/ferrule/pull/638) qualified all 18
+root-pin returns from the Ferrule interpreter, generated Rust and C#. Public Basic roots, borrowed walks, positions,
+scalar arguments/construction, root and narrow Primary-row failures, and eligible
+First retention remain implemented.
 
-The fresh matched probe completed 18 successful native/Rust/C# returns across
-all, primary and named routes:
-
-| Root field pin | Native | Generated Rust | Generated C# |
-| --- | --- | --- | --- |
-| None | 3 successes | 3 successes | 3 successes |
-| Some([]) | 3 successes | 3 successes | 3 successes |
-
-The earlier probe's six generated InactiveSourceFrame refusals remain historical
-evidence of the fixed gap. The original C# RequestedName caller failure is
-retained separately from its corrected qualification and composed returns.
-This focused root-pin evidence does not qualify broader occurrence/phase,
-row-failure, observer or specialized behavior.
+The original [#640 / PR649](https://github.com/DeandreT/ferrule/pull/649) baseline
+matched 36 per-backend outcomes and recorded missing generated error nodes.
+[#647](https://github.com/DeandreT/ferrule/issues/647) then qualified 36 fresh
+internal cross-engine outcomes, actual node2 and complete typed causes after the
+Rust/C# corrections.
+The original corpus and oracles remain unchanged. Generated error scope metadata remains
+unknown/unavailable; no scope is inferred or extra mismatch claimed. This finite
+proof does not establish full error or total parity.
 
 ### Current delivery checklist
 
-- [x] Merge static root global failures in #627/PR630.
-- [x] Merge bounded eligible First retention in #622/PR634, with native checks
-  and complete probe outcomes.
-- [x] Complete the fresh matched 18-return root-pin probe against the qualified
-  runtime/backend sources and retain the original caller negative separately.
-- [x] Merge and qualify production borrowed trace-context witnesses in
-  #631/PR636; event integration and observer activation remain separate #606
-  increments.
-- [x] Qualify and merge the independently owned Rust and C# empty-root-pin fixes
-  in #632/PR638, with source, runtime and matched root-pin checks.
-- [x] Merge and qualify the narrow primary-row failure increment in #633/PR637,
-  under [#613](https://github.com/DeandreT/ferrule/issues/613); broader provenance
-  and matched generated failure qualification remain pending.
-- [ ] Complete broader public occurrence/phase qualification under
-  [#612](https://github.com/DeandreT/ferrule/issues/612) and final Basic observer
-  acceptance under #606.
+- [x] Merge [#643 / PR652](https://github.com/DeandreT/ferrule/pull/652), the explicit
+  common filter profile: 413 common tests, including 24 Basic, and production/
+  strict checks. Generated filters still need their backend increments.
+- [x] Merge expression events in #639/PR646 and output event context in
+  [#648 / PR653](https://github.com/DeandreT/ferrule/pull/653): earlier PR653 engine
+  qualification passed 493 tests, including 37 trace controls, and production/
+  strict checks. Public owned trace/debug admission stays closed.
+- [x] Merge [#650 / PR655](https://github.com/DeandreT/ferrule/pull/655) Rust node
+  provenance: 345 runtime tests, 152 Rust tests with eight ignored, production/
+  strict checks and 22 generated calls. The 42-test owned subset was verified
+  within that full run.
+- [x] Merge [#651 / PR656](https://github.com/DeandreT/ferrule/pull/656) C# node
+  provenance: 146 backend tests, including 68 owned Basic, production/strict,
+  rebuilt Runtime95, 216 smoke controls, 13 public calls and 23 provenance
+  controls. Passive acceptance reused its retained seven-command run once.
+- [x] Qualify #647's scoped node-provenance correction without rewriting #640's
+  original evidence or claiming broader parity.
+- [x] Merge [#654 / PR660](https://github.com/DeandreT/ferrule/pull/660) lifecycle
+  context after 501 engine tests/45 trace controls, production/strict and eight
+  frontend commands passed (seven CLI and 28 GUI controls, with strict checks).
+  Error observers and public trace/debug activation remain separate.
+- [ ] Qualify [#659](https://github.com/DeandreT/ferrule/issues/659) complete Basic
+  candidate observations after #654; its three-role source implementation is
+  active. Preserve authentic structural positions, bounded previews and exactly
+  one event per entered candidate, including transient First candidates.
+- [x] Merge [#657 / PR661](https://github.com/DeandreT/ferrule/pull/661),
+  the explicit filter-aware legacy admission companion: 423 common tests/23
+  admission tests and production/strict checks; the default API, analyzer and
+  ordering remain preserved.
+- [x] Merge [#644 / PR663](https://github.com/DeandreT/ferrule/pull/663) Rust filters
+  after #657: 357 runtime tests, 158 Rust tests with nine ignored, production/
+  strict checks and 24 calls across 14 generated programs.
+- [ ] Qualify and merge [#645 C#](https://github.com/DeandreT/ferrule/issues/645)
+  filters; source peer review is positive and local qualification is pending.
+  Then qualify [#662](https://github.com/DeandreT/ferrule/issues/662): its active
+  corpus work covers six models/36 interpreter/Rust/C# calls and requires both
+  backends. Sort/windows, broader
+  [#612](https://github.com/DeandreT/ferrule/issues/612) cohorts,
+  [#613](https://github.com/DeandreT/ferrule/issues/613) provenance/failures and
+  final [#606](https://github.com/DeandreT/ferrule/issues/606) acceptance stay pending.
 
 [Current handoffs](docs/parallel-work.md#current-basic-ownership-handoffs-2026-10-13)
-record the exact source lanes and prerequisite diagram. Keep generated backend,
-row-failure and observer increments in separate PRs with their own local checks.
-Superseded PR619 and private-only #616 stay retired; their historical tests do
-not supply current public qualification.
+record source ownership and merge prerequisites. The focused filter/sort/window
+sequence remains under #440/#641; locally qualified source and published behavior
+remain distinct evidence scopes.
 
 ## Current public native ownership (2026-10-13)
 
