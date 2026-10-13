@@ -119,6 +119,7 @@ pub(super) fn read(
         input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys,
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

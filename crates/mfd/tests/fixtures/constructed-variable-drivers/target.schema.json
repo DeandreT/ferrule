@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "Records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Text": {
+            "type": "string"
+          },
+          "Count": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false,
+  "title": "Report"
+}

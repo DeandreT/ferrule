@@ -112,6 +112,7 @@ fn read_db(component: &roxmltree::Node, warnings: &mut Vec<String>) -> Option<Sc
         input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

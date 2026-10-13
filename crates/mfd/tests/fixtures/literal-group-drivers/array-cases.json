@@ -1,0 +1,28 @@
+[
+  {
+    "input": "{}",
+    "expected": [
+      {}
+    ]
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": [
+      {}
+    ]
+  },
+  {
+    "input": "{\"Rows\":[{\"Label\":\"ignored\"}]}",
+    "expected": [
+      {}
+    ]
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Extra\":1}",
+    "reject": true
+  }
+]

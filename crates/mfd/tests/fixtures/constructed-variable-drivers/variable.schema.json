@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "Stored": {
+      "type": "object",
+      "properties": {
+        "Text": {
+          "type": "string"
+        },
+        "Count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "title": "Buffer"
+}

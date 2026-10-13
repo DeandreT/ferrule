@@ -1,0 +1,98 @@
+[
+  {
+    "input": "{}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Count\":7,\"Choose\":true}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 7
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Count\":-2,\"Choose\":true}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": -2
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Count\":7,\"Choose\":false}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Count\":-2}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Count\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Count\":\"7\",\"Choose\":false}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":1}",
+    "reject": true
+  },
+  {
+    "input": "{\"Other\":1}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]

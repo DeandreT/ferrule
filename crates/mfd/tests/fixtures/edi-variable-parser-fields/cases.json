@@ -1,0 +1,54 @@
+[
+  {
+    "input": "{\"Text\":\"alpha\",\"Count\":7,\"ParserErrors_Code\":\"ordinary\"}",
+    "expected": {
+      "Text": "alpha",
+      "Count": 7,
+      "ParserErrors_Code": "ordinary"
+    }
+  },
+  {
+    "input": "{\"Text\":\"参照 é\",\"Count\":-3,\"ParserErrors_Code\":\"名前\"}",
+    "expected": {
+      "Text": "参照 é",
+      "Count": -3,
+      "ParserErrors_Code": "名前"
+    }
+  },
+  {
+    "input": "{\"ParserErrors_Code\":\"\"}",
+    "expected": {
+      "ParserErrors_Code": ""
+    }
+  },
+  {
+    "input": "{\"Text\":\"optional\"}",
+    "expected": {
+      "Text": "optional"
+    }
+  },
+  {
+    "input": "{}",
+    "expected": {}
+  },
+  {
+    "input": "{\"ParserErrors_Code\":7}",
+    "reject": true
+  },
+  {
+    "input": "{\"ParserErrors_Code\":{\"Detail\":\"virtual\"}}",
+    "reject": true
+  },
+  {
+    "input": "{\"Count\":1.5}",
+    "reject": true
+  },
+  {
+    "input": "{\"Unexpected\":1}",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]
