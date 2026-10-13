@@ -354,6 +354,7 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
 pub(super) enum BasicOwnedProfile {
     ControlFree,
     FilterOnly,
+    SortAndFilter,
 }
 impl BasicOwnedProfile {
     fn permits_filter(self, scope: &TargetScope) -> bool {
@@ -369,6 +370,26 @@ impl BasicOwnedProfile {
                         IterationSource::Source(_) | IterationSource::OwnedSource(_)
                     )
                     && iteration.sort().is_none()
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+                    && iteration.windows().is_empty()
+                    && iteration.output() == IterationOutput::Repeated
+            })
+            || self == Self::SortAndFilter
+                && (Self::FilterOnly.permits_filter(scope) || self.permits_sort(scope))
+    }
+    fn permits_sort(self, scope: &TargetScope) -> bool {
+        self == Self::SortAndFilter
+            && matches!(
+                scope.construction,
+                TargetConstruction::Group | TargetConstruction::Scalar { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.sort().is_some()
+                    && matches!(
+                        iteration.input(),
+                        IterationSource::Source(_) | IterationSource::OwnedSource(_)
+                    )
                     && iteration.grouping().is_none()
                     && iteration.post_group_filter().is_none()
                     && iteration.windows().is_empty()
@@ -511,7 +532,7 @@ impl<'a> Admission<'a> {
                 if iteration.grouping().is_some() || iteration.post_group_filter().is_some() {
                     Some(Capability::Grouping)
                 } else if iteration.filter().is_some() && !self.profile.permits_filter(scope)
-                    || iteration.sort().is_some()
+                    || iteration.sort().is_some() && !self.profile.permits_sort(scope)
                     || !iteration.windows().is_empty()
                 {
                     Some(Capability::ScopeControl)
@@ -572,6 +593,7 @@ impl<'a> Admission<'a> {
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
             | TargetConstruction::AdjacencyTree { .. } => Some(Capability::TreeOperator),
+            TargetConstruction::Scalar { .. } if self.profile.permits_sort(scope) => None,
             TargetConstruction::CopyCurrentSource | TargetConstruction::Scalar { .. } => {
                 Some(Capability::SpecialConstruction)
             }
@@ -851,6 +873,14 @@ pub fn validate_basic_owned_filter_emission(
     validate_basic_owned_with_profile(program, BasicOwnedProfile::FilterOnly)
 }
 
+/// Explicitly admits static Basic repeated sorting, with an optional filter.
+///
+/// Existing default and filter-only routes retain their policies. Both stored
+/// filter orders are supported; explicit and implicit windows remain closed.
+pub fn validate_basic_owned_sort_emission(program: &Program) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_profile(program, BasicOwnedProfile::SortAndFilter)
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -992,7 +1022,7 @@ fn basic_scope(
             return Err(basic_scope_refusal(scope, route, reason));
         }
         if iteration.filter().is_some() && !profile.permits_filter(scope)
-            || iteration.sort().is_some()
+            || iteration.sort().is_some() && !profile.permits_sort(scope)
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
             || !iteration.windows().is_empty()
@@ -1087,6 +1117,16 @@ fn basic_target_expressions(
                     .as_ref()
                     .and_then(|iteration| iteration.filter()),
             );
+        }
+        if profile.permits_sort(scope)
+            && let Some(sort) = scope
+                .iteration
+                .as_ref()
+                .and_then(|iteration| iteration.sort())
+        {
+            // Every stored key retains its potential scalar dependencies;
+            // static admission does not skip secondary or inactive key edges.
+            output.extend(sort.keys().map(|key| key.expression));
         }
         for child in &scope.children {
             roots(child, profile, output);
