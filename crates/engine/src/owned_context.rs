@@ -306,6 +306,7 @@ pub(crate) struct SourceRoots<'a> {
     pub primary: &'a Instance,
     pub extras_wrapper: &'a Instance,
     declared: &'a [NamedSource],
+    primary_repeating: bool,
     pub budget: OwnedBudget,
 }
 
@@ -320,6 +321,7 @@ impl<'a> SourceRoots<'a> {
             primary,
             extras_wrapper: extras,
             declared: &project.extra_sources,
+            primary_repeating: project.source.repeating,
             budget: OwnedBudget::new(project, limits)?,
         })
     }
@@ -454,17 +456,27 @@ impl<'a> OwnedContext<'a> {
                         frame: pin.to_vec(),
                     });
                 };
-                self.roots.root(key)?;
-                let frame = self
-                    .frames
-                    .iter()
-                    .rev()
-                    .find(|frame| frame.owner == key && frame.collection == pin)
-                    .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
-                        owner: field.source.owner.clone(),
-                        collection: Some(pin.to_vec()),
-                    })?;
-                (frame.item, suffix)
+                let root = self.roots.root(key)?;
+                let declared_repeating = match key {
+                    OwnerKey::Primary => self.roots.primary_repeating,
+                    OwnerKey::Named(index) => self.roots.declared[index].schema.repeating,
+                };
+                // An empty pin selects the exact root unless it needs a real occurrence.
+                // Neither a different owner's frame nor the first repeated item can supply it.
+                if pin.is_empty() && !declared_repeating && !matches!(root, Instance::Repeated(_)) {
+                    (root, suffix)
+                } else {
+                    let frame = self
+                        .frames
+                        .iter()
+                        .rev()
+                        .find(|frame| frame.owner == key && frame.collection == pin)
+                        .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+                            owner: field.source.owner.clone(),
+                            collection: Some(pin.to_vec()),
+                        })?;
+                    (frame.item, suffix)
+                }
             }
             None => {
                 match self.frames.iter().rev().find(|frame| {
