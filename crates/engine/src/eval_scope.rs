@@ -2000,7 +2000,7 @@ fn passes_scope_filter(
         _ => crate::TraceOwnedPhase::Selection,
     });
     let passed = passes_filter(program, Some(node), context, positions)?;
-    record(program.trace_sink, || TraceEvent::FilterDecision {
+    record_owned_event(program, positions, || TraceEvent::FilterDecision {
         scope: trace_scope.clone(),
         node,
         phase,
