@@ -896,16 +896,43 @@ mod source_ownership_admission {
         project
     }
 
+    fn isolated(mut project: Project, node: u32, output_type: ScalarType) -> Project {
+        let function = mapping::FunctionId::new(7);
+        let owned = project.graph.nodes[&node].clone();
+        project.user_functions.insert(
+            function,
+            mapping::UserFunction {
+                library: "tests".into(),
+                name: "closed_owned_value".into(),
+                description: None,
+                parameters: vec![],
+                output_name: "value".into(),
+                output_type,
+                body: Graph {
+                    nodes: [(node, owned)].into(),
+                },
+                output: node,
+            },
+        );
+        project.graph.nodes.insert(
+            node,
+            Node::UserFunctionCall {
+                function,
+                args: vec![],
+            },
+        );
+        project
+    }
+
     fn cases() -> Vec<Case> {
-        let mut direct = unused_owned_project(false);
+        let mut direct = isolated(unused_owned_project(false), 47, ScalarType::String);
         direct.root = bound(47);
         let expected = || engine::EngineError::UnsupportedSourceOwnership {
             node: 47,
-            function: None,
+            function: Some(mapping::FunctionId::new(7)),
             kind: "owned_source_field",
         };
-        let field_display =
-            "source ownership for owned_source_field node 47 (function None) is not supported";
+        let field_display = "source ownership for owned_source_field node 47 (function Some(FunctionId(7))) is not supported";
         let mut position = project();
         position.target =
             SchemaNode::group("Record", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
@@ -917,8 +944,9 @@ mod source_ownership_admission {
             }),
         );
         position.root = bound(48);
+        position = isolated(position, 48, ScalarType::Int);
 
-        let mut hidden = unused_owned_project(false);
+        let mut hidden = isolated(unused_owned_project(false), 47, ScalarType::String);
         hidden.extra_targets.push(NamedTarget {
             name: "hidden".into(),
             path: Some("hidden.json".into()),
@@ -963,7 +991,7 @@ mod source_ownership_admission {
         );
         called.root = bound(61);
 
-        let mut potential = unused_owned_project(false);
+        let mut potential = isolated(unused_owned_project(false), 47, ScalarType::String);
         potential.graph.nodes.insert(
             62,
             Node::Const {
@@ -1010,10 +1038,10 @@ mod source_ownership_admission {
                 published_stage: "one",
                 expected: engine::EngineError::UnsupportedSourceOwnership {
                     node: 48,
-                    function: None,
+                    function: Some(mapping::FunctionId::new(7)),
                     kind: "owned_position",
                 },
-                display: "source ownership for owned_position node 48 (function None) is not supported",
+                display: "source ownership for owned_position node 48 (function Some(FunctionId(7))) is not supported",
             },
             Case {
                 name: "unselected-named-target",
@@ -1167,12 +1195,13 @@ mod source_ownership_admission {
             pipeline: one(project),
             stage: "one",
             published_stage: "one",
-            expected: engine::EngineError::UnsupportedSourceOwnership {
-                node: 47,
+            expected: engine::EngineError::UnsupportedOwnedContext {
+                node: Some(47),
                 function: None,
-                kind: "owned_source_field",
+                scope: None,
+                context: engine::OwnedCapabilityContext::DynamicLoader,
             },
-            display: "source ownership for owned_source_field node 47 (function None) is not supported",
+            display: "owned source context DynamicLoader is unsupported (node Some(47), function None, scope None)",
         };
         let pipeline_path = dir.pipeline(&case.pipeline)?;
         let input_path = dir.0.join("absent-primary.json");
@@ -1270,6 +1299,63 @@ mod source_ownership_admission {
             );
             assert_eq!(tree, serde_json::json!({"Value":"original"}));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn supported_basic_field_executes_and_malformed_host_input_preserves_output()
+    -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let mut project = unused_owned_project(false);
+        project.root = bound(47);
+        let pipeline_path = dir.pipeline(&one(project))?;
+        let input_path = dir.input()?;
+        std::fs::write(&input_path, br#"{"Value":"supported"}"#)?;
+        let destination = dir.0.join("selected.json");
+        std::fs::write(&destination, b"old-output")?;
+        let outcome = cli::run_pipeline_file(
+            &pipeline_path,
+            &[input(&input_path)],
+            &[output("one", None, &destination)],
+        )?;
+        assert_eq!(
+            outcome,
+            cli::PipelineRunOutcome {
+                stages_executed: vec!["one".into()],
+                artifacts: vec![cli::PipelineArtifact {
+                    stage: "one".into(),
+                    target: None,
+                    path: destination.clone(),
+                    records_written: 1,
+                }],
+            }
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&destination)?)?,
+            serde_json::json!({"Value":"supported"})
+        );
+        std::fs::write(&destination, b"old-output")?;
+        std::fs::write(&input_path, b"not-json")?;
+        let error = cli::run_pipeline_file(
+            &pipeline_path,
+            &[input(&input_path)],
+            &[output("one", None, &destination)],
+        )
+        .expect_err("supported capability must allow malformed host input to reach its parser");
+        assert!(format!("{error:#}").to_ascii_lowercase().contains("json"));
+        assert!(error.downcast_ref::<engine::EngineError>().is_none());
+        assert!(!matches!(
+            error.downcast_ref::<engine::PipelineError>(),
+            Some(engine::PipelineError::StageExecution {
+                source: engine::EngineError::UnsupportedSourceOwnership { .. }
+                    | engine::EngineError::UnsupportedOwnedContext { .. },
+                ..
+            })
+        ));
+        assert_eq!(
+            std::fs::read(&destination)?.as_slice(),
+            b"old-output".as_slice()
+        );
         Ok(())
     }
 }

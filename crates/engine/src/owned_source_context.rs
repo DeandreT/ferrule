@@ -1,7 +1,7 @@
 //! Borrowed endpoint roots for the first owner-aware interpreter foundation.
 //!
-//! This module is test-scoped until execution admission is implemented. Inputs
-//! are the existing host values before construction of the legacy wrapper.
+//! Test helpers borrow declared source roots and retain the original host
+//! values before construction of the legacy wrapper.
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
 use mapping::{NamedSource, OwnedSourceField, Project, SourceOwner};

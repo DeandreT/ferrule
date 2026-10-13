@@ -54,9 +54,16 @@ fn project() -> Project {
         root: Scope::default(),
     }
 }
-fn expected(target: SourceScopeTarget, path: Vec<SourceScopeStep>) -> EngineError {
-    EngineError::UnsupportedSourceIteration {
-        scope: SourceScopeLocation { target, path },
+fn expected(
+    target: SourceScopeTarget,
+    path: Vec<SourceScopeStep>,
+    context: crate::OwnedCapabilityContext,
+) -> EngineError {
+    EngineError::UnsupportedOwnedContext {
+        node: None,
+        function: None,
+        scope: Some(SourceScopeLocation { target, path }),
+        context,
     }
 }
 
@@ -152,21 +159,11 @@ fn selected_legacy_target_runs_while_unselected_owned_target_stays_storable() {
     let input = Instance::Group(Default::default());
     assert!(crate::run_selected_target(&p, &input, TargetSelection::Primary).is_ok());
     assert!(crate::required_sources_for_target(&p, TargetSelection::Primary).is_ok());
-    let error = expected(
-        SourceScopeTarget::Named {
-            index: 0,
-            name: "primary".into(),
-        },
-        vec![],
+    assert!(
+        crate::check_source_ownership_capability(&p, Some(TargetSelection::Named("primary")))
+            .is_ok()
     );
-    assert_eq!(
-        crate::check_source_ownership_capability(&p, Some(TargetSelection::Named("primary"))),
-        Err(error)
-    );
-    assert!(matches!(
-        crate::run_outputs(&p, &input),
-        Err(EngineError::UnsupportedSourceIteration { .. })
-    ));
+    assert!(crate::run_outputs(&p, &input).is_ok());
     assert!(matches!(
         crate::required_sources_for_target(&p, TargetSelection::Named("missing")),
         Err(EngineError::UnknownTarget { .. })
@@ -177,13 +174,7 @@ fn selected_legacy_target_runs_while_unselected_owned_target_stays_storable() {
 fn child_dynamic_child_and_segment_locations_are_distinct_before_evaluation() {
     let mut p = project();
     p.root.children.push(owned(SourceOwner::Primary, &[]));
-    assert_eq!(
-        crate::check_source_ownership_capability(&p, None),
-        Err(expected(
-            SourceScopeTarget::Primary,
-            vec![SourceScopeStep::Child(0)]
-        ))
-    );
+    assert!(crate::check_source_ownership_capability(&p, None).is_ok());
     p.root.children.clear();
     p.root.dynamic_children.push(mapping::DynamicChild {
         key: 9,
@@ -193,7 +184,8 @@ fn child_dynamic_child_and_segment_locations_are_distinct_before_evaluation() {
         crate::check_source_ownership_capability(&p, None),
         Err(expected(
             SourceScopeTarget::Primary,
-            vec![SourceScopeStep::DynamicChild(0)]
+            vec![SourceScopeStep::DynamicChild(0)],
+            crate::OwnedCapabilityContext::DynamicTarget
         ))
     );
     p.root.dynamic_children.clear();
@@ -205,7 +197,8 @@ fn child_dynamic_child_and_segment_locations_are_distinct_before_evaluation() {
         crate::check_source_ownership_capability(&p, None),
         Err(expected(
             SourceScopeTarget::Primary,
-            vec![SourceScopeStep::Segment(1)]
+            vec![SourceScopeStep::Segment(1)],
+            crate::OwnedCapabilityContext::Concatenate
         ))
     );
 }
@@ -249,13 +242,21 @@ fn owned_scope_admission_precedes_demanded_loader_and_trace_callbacks() {
         .with_trace_sink(&sink);
     assert_eq!(
         crate::run_with_context(&p, &Instance::Group(Default::default()), &execution),
-        Err(expected(SourceScopeTarget::Primary, vec![]))
+        Err(expected(
+            SourceScopeTarget::Primary,
+            vec![],
+            crate::OwnedCapabilityContext::DynamicOwner
+        ))
     );
     assert_eq!(loader.0.get(), 0);
     assert_eq!(sink.0.get(), 0);
     assert_eq!(
         crate::required_sources_for_target(&p, TargetSelection::Primary).unwrap_err(),
-        expected(SourceScopeTarget::Primary, vec![])
+        expected(
+            SourceScopeTarget::Primary,
+            vec![],
+            crate::OwnedCapabilityContext::DynamicOwner
+        )
     );
 }
 

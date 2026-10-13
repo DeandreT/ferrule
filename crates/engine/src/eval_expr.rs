@@ -30,6 +30,7 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) first_failure_reported: &'a Cell<bool>,
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
+    pub(crate) owned_context: Option<&'a crate::owned_context::OwnedContext<'a>>,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
     pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
 }
@@ -49,6 +50,7 @@ impl<'a> EvalProgram<'a> {
             first_failure_reported,
             purpose: ExecutionPurpose::Run,
             primary_source: None,
+            owned_context: None,
             filter_map_run_state: None,
             filter_map_work: None,
         }
@@ -77,6 +79,26 @@ impl<'a> EvalProgram<'a> {
     pub(crate) fn with_filter_map_work(mut self, work: FilterMapWork<'a>) -> Self {
         self.filter_map_work = Some(work);
         self
+    }
+
+    pub(crate) fn with_owned_context<'b>(
+        self,
+        context: &'b crate::owned_context::OwnedContext<'b>,
+    ) -> EvalProgram<'b>
+    where
+        'a: 'b,
+    {
+        EvalProgram {
+            owned_context: Some(context),
+            ..self
+        }
+    }
+
+    pub(crate) fn without_owned_context(self) -> Self {
+        Self {
+            owned_context: None,
+            ..self
+        }
     }
 
     pub(super) fn purpose(self) -> ExecutionPurpose {
@@ -137,13 +159,69 @@ fn eval_expr_inner(
         .ok_or(EngineError::MissingNode(node_id))?;
 
     let result = match node {
-        Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
-            Err(EngineError::UnsupportedSourceOwnership {
+        Node::OwnedSourceField(field) => match program.owned_context {
+            Some(context) => context.field(field).map_err(|source| match source {
+                crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+                    EngineError::UnsupportedOwnedContext {
+                        node: Some(node_id),
+                        function: None,
+                        scope: None,
+                        context: if found == "a document set" {
+                            crate::OwnedCapabilityContext::Document
+                        } else {
+                            crate::OwnedCapabilityContext::GeneratedItem
+                        },
+                    }
+                }
+                source => EngineError::OwnedSourceAccess {
+                    node: Some(node_id),
+                    scope: None,
+                    source,
+                },
+            }),
+            None => Err(EngineError::UnsupportedSourceOwnership {
                 node: node_id,
                 function: None,
-                kind: node.owned_source_kind().expect("owned node kind"),
-            })
-        }
+                kind: "owned_source_field",
+            }),
+        },
+        Node::OwnedPosition(position) => match program.owned_context {
+            Some(context) => {
+                let slot = context
+                    .position_slot(&position.owner, position.collection.as_deref())
+                    .map_err(|source| EngineError::OwnedSourceAccess {
+                        node: Some(node_id),
+                        scope: None,
+                        source,
+                    })?;
+                let index = positions
+                    .get(slot)
+                    .ok_or_else(|| EngineError::OwnedSourceAccess {
+                        node: Some(node_id),
+                        scope: None,
+                        source: crate::OwnedSourceError::InactiveSourceFrame {
+                            owner: position.owner.clone(),
+                            collection: position.collection.clone(),
+                        },
+                    })?
+                    .index;
+                i64::try_from(index)
+                    .map(Value::Int)
+                    .map_err(|_| EngineError::OwnedSourceAccess {
+                        node: Some(node_id),
+                        scope: None,
+                        source: crate::OwnedSourceError::ResourceLimit {
+                            resource: "position integer",
+                            limit: i64::MAX as usize,
+                        },
+                    })
+            }
+            None => Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: None,
+                kind: "owned_position",
+            }),
+        },
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)

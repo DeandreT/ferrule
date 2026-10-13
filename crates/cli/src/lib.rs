@@ -47,6 +47,8 @@ mod trace_json;
 
 #[cfg(test)]
 mod dynamic_source_load_tests;
+#[cfg(test)]
+mod owned_observer_preflight_tests;
 
 pub use code_generation::{
     GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_json_adapters,
@@ -390,7 +392,14 @@ fn run_project_value_with_pdf_reader(
     )?;
     let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
     output_documents::reject_protected_static_targets(&targets, options.protected_output_paths)?;
-    engine::check_source_ownership_capability(project, options.target)?;
+    engine::check_source_ownership_capability_with_observers(
+        project,
+        options.target,
+        engine::SourceOwnershipObservers {
+            tracing: options.trace_sink.is_some(),
+            debugging: options.debug_hook.is_some(),
+        },
+    )?;
     let required_sources = options
         .target
         .map(|selection| engine::required_sources_for_target(project, selection))
@@ -2545,12 +2554,68 @@ pub(crate) fn owned_source_test_project() -> mapping::Project {
 }
 
 #[cfg(test)]
+pub(crate) fn closed_owned_source_test_project() -> mapping::Project {
+    let mut project = owned_source_test_project();
+    let function = mapping::FunctionId::new(7);
+    let owned = project.graph.nodes[&9].clone();
+    project.user_functions.insert(
+        function,
+        mapping::UserFunction {
+            library: "tests".into(),
+            name: "closed_owned_value".into(),
+            description: None,
+            parameters: vec![],
+            output_name: "value".into(),
+            output_type: ir::ScalarType::String,
+            body: mapping::Graph {
+                nodes: [(9, owned)].into(),
+            },
+            output: 9,
+        },
+    );
+    project.graph.nodes.insert(
+        9,
+        mapping::Node::UserFunctionCall {
+            function,
+            args: vec![],
+        },
+    );
+    project
+}
+
+#[cfg(test)]
+pub(crate) fn closed_owned_collection_test_project() -> mapping::Project {
+    let mut project = closed_owned_source_test_project();
+    project.root.iteration = mapping::ScopeIteration::OwnedSource {
+        source: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Primary,
+            path: vec![],
+        },
+        output_path: None,
+    };
+    project
+}
+
+#[cfg(test)]
+pub(crate) fn owned_host_test_directory(label: &str) -> anyhow::Result<std::path::PathBuf> {
+    let directory = std::env::temp_dir().join(format!(
+        "ferrule-owned-host-{label}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory)?;
+    Ok(directory)
+}
+
+#[cfg(test)]
 mod owned_source_filesystem_admission_tests {
     use super::*;
 
     #[test]
     fn owned_refusal_precedes_input_open_and_publication_callback() {
-        let project = owned_source_test_project();
+        let project = closed_owned_source_test_project();
         let published = std::cell::Cell::new(0);
         let publish = || {
             published.set(published.get() + 1);
@@ -2571,9 +2636,9 @@ mod owned_source_filesystem_admission_tests {
             error.downcast_ref::<engine::EngineError>(),
             Some(engine::EngineError::UnsupportedSourceOwnership {
                 node: 9,
-                function: None,
+                function: Some(function),
                 kind: "owned_source_field"
-            })
+            }) if *function == mapping::FunctionId::new(7)
         ));
         assert_eq!(published.get(), 0);
     }
@@ -2604,7 +2669,7 @@ mod owned_collection_filesystem_admission_tests {
 
     #[test]
     fn owned_collection_refusal_precedes_input_open_and_publication_callback() {
-        let project = owned_collection_test_project();
+        let project = closed_owned_collection_test_project();
         let published = std::cell::Cell::new(0);
         let publish = || {
             published.set(published.get() + 1);
@@ -2623,8 +2688,105 @@ mod owned_collection_filesystem_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+            Some(engine::EngineError::UnsupportedOwnedContext {
+                node: Some(9),
+                function: None,
+                scope: None,
+                context: engine::OwnedCapabilityContext::IsolatedFunction
+            })
         ));
         assert_eq!(published.get(), 0);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn owned_collection_host_positive_project() -> mapping::Project {
+    let mut project = owned_collection_test_project();
+    project.source.repeating = true;
+    project.target.repeating = true;
+    project.source_options.json_document = true;
+    project.target_options.json_document = true;
+    project
+}
+
+#[cfg(test)]
+mod owned_basic_filesystem_transition_tests {
+    use super::*;
+    #[test]
+    fn basic_field_and_collection_execute_with_publication_and_malformed_precedence()
+    -> anyhow::Result<()> {
+        for collection in [false, true] {
+            let directory = owned_host_test_directory("filesystem")?;
+            let input = directory.join("input.json");
+            let output = directory.join("output.json");
+            let path = directory.join("project.json");
+            let project = if collection {
+                owned_collection_host_positive_project()
+            } else {
+                owned_source_test_project()
+            };
+            let bytes: &[u8] = if collection {
+                br#"[{"Value":"one"},{"Value":"two"}]"#
+            } else {
+                br#"{"Value":"supported"}"#
+            };
+            std::fs::write(&input, bytes)?;
+            std::fs::write(&output, b"old-output")?;
+            let calls = std::cell::Cell::new(0);
+            let publish = || {
+                calls.set(calls.get() + 1);
+                true
+            };
+            let options = RunOptions::new().with_before_publish(&publish);
+            let outcome =
+                run_project_value_with_filesystem_policy(&project, &path, &options, None)?;
+            let actual: serde_json::Value = serde_json::from_slice(&std::fs::read(&output)?)?;
+            let expected = if collection {
+                serde_json::json!([{"Value":"legacy"},{"Value":"legacy"}])
+            } else {
+                serde_json::json!({"Value":"supported"})
+            };
+            assert_eq!(actual, expected);
+            assert_eq!(outcome.records_written, if collection { 2 } else { 1 });
+            assert_eq!(calls.get(), 1);
+            std::fs::write(&output, b"old-output")?;
+            std::fs::write(&input, b"not JSON")?;
+            calls.set(0);
+            let error = run_project_value_with_filesystem_policy(&project, &path, &options, None)
+                .unwrap_err();
+            assert!(error.downcast_ref::<engine::EngineError>().is_none());
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "{} {}",
+                    if collection {
+                        "reading JSON input"
+                    } else {
+                        "reading input"
+                    },
+                    input.display()
+                )
+            );
+            assert_eq!(calls.get(), 0);
+            assert_eq!(std::fs::read(&output)?.as_slice(), b"old-output".as_slice());
+            std::fs::write(&input, bytes)?;
+            let cancel = || false;
+            let error = run_project_value_with_filesystem_policy(
+                &project,
+                &path,
+                &RunOptions::new().with_before_publish(&cancel),
+                None,
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<engine::EngineError>(),
+                Some(&engine::EngineError::DebugCancelled)
+            );
+            assert_eq!(std::fs::read(&output)?.as_slice(), b"old-output".as_slice());
+            std::fs::remove_file(input)?;
+            std::fs::remove_file(output)?;
+            std::fs::remove_dir(directory)?;
+        }
+        Ok(())
     }
 }
