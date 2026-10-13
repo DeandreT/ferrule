@@ -576,14 +576,14 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         return OwnedCapabilityContext::Concatenate;
     }
     match scope.construction {
-        ScopeConstruction::Constructed => OwnedCapabilityContext::Basic,
+        ScopeConstruction::Constructed | ScopeConstruction::Scalar { .. } => {
+            OwnedCapabilityContext::Basic
+        }
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
         ScopeConstruction::RecursiveFilter { .. }
         | ScopeConstruction::PathHierarchy { .. }
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,
-        ScopeConstruction::Scalar { .. } | ScopeConstruction::CopyCurrentSource => {
-            OwnedCapabilityContext::SpecialConstruction
-        }
+        ScopeConstruction::CopyCurrentSource => OwnedCapabilityContext::SpecialConstruction,
     }
 }
 

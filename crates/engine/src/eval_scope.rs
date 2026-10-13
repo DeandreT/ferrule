@@ -760,6 +760,10 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
         .bindings
         .iter()
         .map(|binding| binding.node)
+        .chain(match &scope.construction {
+            ScopeConstruction::Scalar { value } => Some(*value),
+            _ => None,
+        })
         .chain(scope.filter)
         .chain(scope.sort_keys().map(|key| key.node))
         .chain(

@@ -1949,3 +1949,616 @@ fn whole_current_copy_retains_each_group_occurrences_own_xml_origin() {
         Ok(ir::XmlTypeOrigin::Explicit("child"))
     );
 }
+
+fn owned_scalar_construction_project(owner: mapping::SourceOwner, parts: &[&str]) -> Project {
+    let source = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::String),
+            SchemaNode::group("Ref", vec![SchemaNode::scalar("Value", ScalarType::String)]),
+            SchemaNode::group(
+                "Rows",
+                vec![
+                    SchemaNode::scalar("Value", ScalarType::String),
+                    SchemaNode::group(
+                        "Rows",
+                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    Project {
+        source: source.clone(),
+        target: SchemaNode::scalar("Output", ScalarType::String),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: [" Ref 雪 ", "Ref"]
+            .into_iter()
+            .map(|name| mapping::NamedSource {
+                name: name.into(),
+                path: format!("{name}.json"),
+                schema: source.clone(),
+                options: Default::default(),
+                dynamic_path: None,
+            })
+            .collect(),
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: graph_from(vec![(
+            1,
+            Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner,
+                    path: parts.iter().map(|part| (*part).into()).collect(),
+                },
+                frame: Some(vec![]),
+            }),
+        )]),
+        root: Scope {
+            construction: ScopeConstruction::Scalar { value: 1 },
+            ..Scope::default()
+        },
+    }
+}
+
+fn scalar_construction_input(value: &str, rows: &[(&str, &[&str])]) -> Instance {
+    Instance::Group(
+        vec![
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+            (
+                "Ref".into(),
+                Instance::Group(
+                    vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("primary.Ref".into())),
+                    )]
+                    .into(),
+                ),
+            ),
+            (
+                "Rows".into(),
+                Instance::Repeated(
+                    rows.iter()
+                        .map(|(outer, inner)| {
+                            Instance::Group(
+                                vec![
+                                    (
+                                        "Value".into(),
+                                        Instance::Scalar(Value::String((*outer).into())),
+                                    ),
+                                    (
+                                        "Rows".into(),
+                                        Instance::Repeated(
+                                            inner
+                                                .iter()
+                                                .map(|inner| {
+                                                    Instance::Group(
+                                                        vec![(
+                                                            "Value".into(),
+                                                            Instance::Scalar(Value::String(
+                                                                (*inner).into(),
+                                                            )),
+                                                        )]
+                                                        .into(),
+                                                    )
+                                                })
+                                                .collect(),
+                                        ),
+                                    ),
+                                ]
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+        ]
+        .into(),
+    )
+}
+
+#[test]
+fn owned_scalar_construction_reads_primary_named_and_literal_root_values() {
+    let input = scalar_construction_input("primary", &[]);
+    let extras = vec![
+        ("Ref".into(), scalar_construction_input("named.Ref", &[])),
+        (
+            " Ref 雪 ".into(),
+            scalar_construction_input("named.literal", &[]),
+        ),
+    ];
+    for (owner, parts, expected) in [
+        (mapping::SourceOwner::Primary, vec!["Value"], "primary"),
+        (
+            mapping::SourceOwner::Primary,
+            vec!["Ref", "Value"],
+            "primary.Ref",
+        ),
+        (
+            mapping::SourceOwner::Named { name: "Ref".into() },
+            vec!["Value"],
+            "named.Ref",
+        ),
+        (
+            mapping::SourceOwner::Named {
+                name: " Ref 雪 ".into(),
+            },
+            vec!["Value"],
+            "named.literal",
+        ),
+    ] {
+        let mut p = owned_scalar_construction_project(owner.clone(), &parts);
+        assert_eq!(
+            run_with_sources(&p, &input, extras.clone()),
+            Ok(Instance::Scalar(Value::String(expected.into())))
+        );
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner,
+                    path: parts.iter().map(|part| (*part).into()).collect(),
+                },
+                frame: None,
+            }),
+        );
+        assert_eq!(
+            run_with_sources(&p, &input, extras.clone()),
+            Ok(Instance::Scalar(Value::String(expected.into())))
+        );
+    }
+}
+
+#[test]
+fn owned_scalar_construction_preserves_scalar_roots_null_and_target_type_adaptation() {
+    let mut p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &[]);
+    p.source = SchemaNode::scalar("Input", ScalarType::Int);
+    p.target = SchemaNode::scalar("Output", ScalarType::Float);
+    p.extra_sources.clear();
+    assert_eq!(
+        run(&p, &Instance::Scalar(Value::Int(7))),
+        Ok(Instance::Scalar(Value::Float(7.0)))
+    );
+    for value in [Value::Null, Value::JsonNull(ir::JsonNull)] {
+        assert_eq!(
+            run(&p, &Instance::Scalar(value.clone())),
+            Ok(Instance::Scalar(value))
+        );
+    }
+    p.source = SchemaNode::group("Input", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
+    p.graph.nodes.insert(
+        1,
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec!["Value".into()],
+            },
+            frame: Some(vec![]),
+        }),
+    );
+    assert_eq!(
+        run(
+            &p,
+            &Instance::Group(vec![("Value".into(), Instance::Scalar(Value::Int(8)))].into())
+        ),
+        Ok(Instance::Scalar(Value::Float(8.0)))
+    );
+}
+
+#[test]
+fn owned_scalar_construction_keeps_root_pins_and_positions_in_owned_rows() {
+    let input = scalar_construction_input("primary", &[("p1", &[]), ("p2", &[])]);
+    let supplied = scalar_construction_input("named.Ref", &[("n1", &[]), ("n2", &[]), ("n3", &[])]);
+    for (owner, count, expected) in [
+        (mapping::SourceOwner::Primary, 2usize, "primary"),
+        (
+            mapping::SourceOwner::Named { name: "Ref".into() },
+            3,
+            "named.Ref",
+        ),
+    ] {
+        let mut p = owned_scalar_construction_project(owner.clone(), &["Value"]);
+        p.root.iteration = mapping::ScopeIteration::OwnedSource {
+            source: mapping::OwnedSourceRef {
+                owner: owner.clone(),
+                path: vec!["Rows".into()],
+            },
+            output_path: None,
+        };
+        assert_eq!(
+            run_with_sources(&p, &input, vec![("Ref".into(), supplied.clone())]),
+            Ok(Instance::Repeated(
+                (0..count)
+                    .map(|_| Instance::Scalar(Value::String(expected.into())))
+                    .collect(),
+            ))
+        );
+        p.target = SchemaNode::scalar("Output", ScalarType::Int);
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedPosition(mapping::OwnedPosition {
+                owner,
+                collection: Some(vec!["Rows".into()]),
+            }),
+        );
+        assert_eq!(
+            run_with_sources(&p, &input, vec![("Ref".into(), supplied.clone())]),
+            Ok(Instance::Repeated(
+                (1..=count)
+                    .map(|index| Instance::Scalar(Value::Int(index as i64)))
+                    .collect(),
+            ))
+        );
+    }
+}
+
+#[test]
+fn owned_scalar_construction_preserves_nested_same_name_occurrence_ancestry() {
+    let input = scalar_construction_input("primary", &[("p1", &["p11", "p12"]), ("p2", &["p21"])]);
+    let supplied = scalar_construction_input(
+        "named.Ref",
+        &[("n1", &["n11"]), ("n2", &["n21", "n22", "n23"])],
+    );
+    for (owner, expected) in [
+        (
+            mapping::SourceOwner::Primary,
+            vec![vec!["p11", "p12"], vec!["p21"]],
+        ),
+        (
+            mapping::SourceOwner::Named { name: "Ref".into() },
+            vec![vec!["n11"], vec!["n21", "n22", "n23"]],
+        ),
+    ] {
+        let mut p = owned_scalar_construction_project(owner.clone(), &["Rows", "Rows", "Value"]);
+        p.target = SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Nested", ScalarType::String).repeating()],
+        );
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner: owner.clone(),
+                    path: vec!["Rows".into(), "Rows".into(), "Value".into()],
+                },
+                frame: Some(vec!["Rows".into(), "Rows".into()]),
+            }),
+        );
+        p.root = Scope {
+            iteration: mapping::ScopeIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner: owner.clone(),
+                    path: vec!["Rows".into()],
+                },
+                output_path: None,
+            },
+            children: vec![Scope {
+                target_field: "Nested".into(),
+                iteration: mapping::ScopeIteration::OwnedSource {
+                    source: mapping::OwnedSourceRef {
+                        owner,
+                        path: vec!["Rows".into(), "Rows".into()],
+                    },
+                    output_path: None,
+                },
+                construction: ScopeConstruction::Scalar { value: 1 },
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        let expected = Instance::Repeated(
+            expected
+                .into_iter()
+                .map(|values| {
+                    Instance::Group(
+                        vec![(
+                            "Nested".into(),
+                            Instance::Repeated(
+                                values
+                                    .into_iter()
+                                    .map(|value| Instance::Scalar(Value::String(value.into())))
+                                    .collect(),
+                            ),
+                        )]
+                        .into(),
+                    )
+                })
+                .collect(),
+        );
+        assert_eq!(
+            run_with_sources(&p, &input, vec![("Ref".into(), supplied.clone())]),
+            Ok(expected)
+        );
+    }
+}
+
+#[test]
+fn owned_scalar_construction_selected_targets_keep_potential_source_order_and_lazy_reads() {
+    let mut p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &["Value"]);
+    p.graph.nodes.insert(
+        2,
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Named { name: "Ref".into() },
+                path: vec!["Value".into()],
+            },
+            frame: Some(vec![]),
+        }),
+    );
+    p.graph.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Named {
+                    name: " Ref 雪 ".into(),
+                },
+                path: vec!["Value".into()],
+            },
+            frame: Some(vec![]),
+        }),
+    );
+    p.graph.nodes.insert(
+        5,
+        Node::If {
+            condition: 3,
+            then: 2,
+            else_: 4,
+        },
+    );
+    p.extra_targets.push(mapping::NamedTarget {
+        name: "Other".into(),
+        path: None,
+        schema: p.target.clone(),
+        options: Default::default(),
+        root: Scope {
+            construction: ScopeConstruction::Scalar { value: 5 },
+            ..Scope::default()
+        },
+    });
+    let primary_required = required_sources_for_target(&p, TargetSelection::Primary).unwrap();
+    assert!(
+        primary_required.static_sources.is_empty() && primary_required.dynamic_sources.is_empty()
+    );
+    let named_required = required_sources_for_target(&p, TargetSelection::Named("Other")).unwrap();
+    assert_eq!(
+        named_required
+            .static_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![" Ref 雪 ", "Ref"]
+    );
+    assert!(named_required.dynamic_sources.is_empty());
+    assert!(std::ptr::eq(
+        named_required.static_sources[0],
+        &p.extra_sources[0]
+    ));
+    assert!(std::ptr::eq(
+        named_required.static_sources[1],
+        &p.extra_sources[1]
+    ));
+    let input = scalar_construction_input("primary", &[]);
+    let supplied = scalar_construction_input("named.Ref", &[]);
+    let execution = ExecutionContext::new(Path::new("scalar-test.json"));
+    assert_eq!(
+        run_selected_target(&p, &input, TargetSelection::Primary),
+        Ok(SelectedTargetOutput::Primary(Instance::Scalar(
+            Value::String("primary".into())
+        )))
+    );
+    assert_eq!(
+        run_selected_target_with_sources_and_context(
+            &p,
+            &input,
+            vec![("Ref".into(), supplied.clone())],
+            &execution,
+            TargetSelection::Named("Other")
+        ),
+        Ok(SelectedTargetOutput::Named(NamedOutput {
+            name: "Other".into(),
+            instance: Instance::Scalar(Value::String("named.Ref".into()))
+        }))
+    );
+    let outputs = run_outputs_with_sources_and_context(
+        &p,
+        &input,
+        vec![("Ref".into(), supplied.clone())],
+        &execution,
+    )
+    .unwrap();
+    assert_eq!(
+        outputs.primary,
+        Instance::Scalar(Value::String("primary".into()))
+    );
+    assert_eq!(
+        outputs.extras,
+        vec![NamedOutput {
+            name: "Other".into(),
+            instance: Instance::Scalar(Value::String("named.Ref".into()))
+        }]
+    );
+    p.graph.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::Bool(false),
+        },
+    );
+    assert_eq!(
+        run_selected_target_with_sources_and_context(
+            &p,
+            &input,
+            vec![("Ref".into(), supplied)],
+            &execution,
+            TargetSelection::Named("Other")
+        ),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(4),
+            scope: None,
+            source: OwnedSourceError::SourceUnavailable {
+                owner: mapping::SourceOwner::Named {
+                    name: " Ref 雪 ".into()
+                }
+            }
+        })
+    );
+    assert_eq!(
+        run_selected_target(&p, &input, TargetSelection::Named("Missing")),
+        Err(EngineError::UnknownTarget {
+            name: "Missing".into()
+        })
+    );
+}
+
+#[test]
+fn owned_scalar_construction_preserves_complete_missing_and_malformed_errors() {
+    let input = scalar_construction_input("primary", &[]);
+    let p = owned_scalar_construction_project(
+        mapping::SourceOwner::Named { name: "Ref".into() },
+        &["Value"],
+    );
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: OwnedSourceError::SourceUnavailable {
+                owner: mapping::SourceOwner::Named { name: "Ref".into() }
+            }
+        })
+    );
+    assert_eq!(
+        run_with_sources(
+            &p,
+            &input,
+            vec![("Ref".into(), Instance::Group(Vec::new().into()))]
+        ),
+        Ok(Instance::Scalar(Value::Null))
+    );
+    let p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &["Value"]);
+    assert_eq!(
+        run(&p, &Instance::Scalar(Value::Int(9))),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: OwnedSourceError::MalformedOwnedTraversal {
+                path: vec!["Value".into()],
+                found: "a non-null scalar"
+            }
+        })
+    );
+    let p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &["Rows", "Value"]);
+    let input = scalar_construction_input(
+        "root cannot unwrap rows",
+        &[("first", &[]), ("second", &[])],
+    );
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: OwnedSourceError::UniteratedOwnedRepetition {
+                path: vec!["Rows".into(), "Value".into()]
+            }
+        })
+    );
+}
+
+#[test]
+fn ordinary_scalar_construction_keeps_legacy_route_with_dead_owned_values() {
+    let mut p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &["Value"]);
+    p.graph.nodes.insert(
+        2,
+        Node::SourceField {
+            path: vec!["Value".into()],
+            frame: None,
+        },
+    );
+    p.root.construction = ScopeConstruction::Scalar { value: 2 };
+    let input = scalar_construction_input("legacy scalar", &[]);
+    assert!(
+        !source_ownership::admit_project(&p, None)
+            .unwrap()
+            .used_owned
+    );
+    assert_eq!(
+        run(&p, &input),
+        Ok(Instance::Scalar(Value::String("legacy scalar".into())))
+    );
+}
+
+#[test]
+fn owned_scalar_construction_retains_document_dynamic_generated_and_specialized_refusals() {
+    let input = scalar_construction_input("primary", &[]);
+    for domain in [
+        OwnedCapabilityContext::Document,
+        OwnedCapabilityContext::Grouping,
+        OwnedCapabilityContext::DynamicTarget,
+        OwnedCapabilityContext::GeneratedItem,
+        OwnedCapabilityContext::XmlOperator,
+        OwnedCapabilityContext::SpecialConstruction,
+    ] {
+        let mut p = owned_scalar_construction_project(mapping::SourceOwner::Primary, &["Value"]);
+        p.graph.nodes.insert(
+            2,
+            Node::Const {
+                value: Value::String("closed".into()),
+            },
+        );
+        match domain {
+            OwnedCapabilityContext::Document => {
+                p.root.iteration = mapping::ScopeIteration::Source(vec![]);
+                assert!(p.root.set_output_path(Some(2)));
+            }
+            OwnedCapabilityContext::Grouping => p.root.group_by = Some(2),
+            OwnedCapabilityContext::DynamicTarget => p.root.merge_dynamic_fields = true,
+            OwnedCapabilityContext::GeneratedItem => {
+                p.root.iteration =
+                    mapping::ScopeIteration::Sequence(SequenceExpr::RecursiveCollect {
+                        collection: vec![],
+                        children: vec!["Rows".into()],
+                        descent_value: vec!["Value".into()],
+                        values: vec!["Rows".into()],
+                        value: vec!["Value".into()],
+                        prefix: 2,
+                        separator: 2,
+                        item: 1,
+                    })
+            }
+            OwnedCapabilityContext::XmlOperator => {
+                p.root.iteration_output = IterationOutput::MappedSequence
+            }
+            OwnedCapabilityContext::SpecialConstruction => {
+                p.root.construction = ScopeConstruction::CopyCurrentSource;
+                p.root.bindings = vec![Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }];
+            }
+            _ => unreachable!("fixed closed-domain fixture"),
+        }
+        assert_eq!(
+            run(&p, &input),
+            Err(EngineError::UnsupportedOwnedContext {
+                node: Some(1),
+                function: None,
+                scope: None,
+                context: domain
+            })
+        );
+    }
+}
