@@ -934,3 +934,74 @@ mod owned_core_controls {
         assert_eq!(legacy_position, 1);
     }
 }
+
+mod root_pin632_generic_profiles {
+    use super::owned_source_fixtures as fixture;
+    use crate::{
+        DeclaredNamedSourceRoot, OwnedSourceError, OwnedSourceIdentity, SourceOwnerRef, Value,
+    };
+
+    #[test]
+    fn generic_nonrepeating_empty_pins_remain_inactive_for_each_exact_owner() {
+        let primary = fixture::primary();
+        let named = fixture::named_ref();
+        let declarations = [DeclaredNamedSourceRoot {
+            name: "Ref",
+            instance: Some(&named),
+        }];
+        let root = fixture::context(&primary, &declarations);
+        for (owner, identity, expected) in [
+            (
+                SourceOwnerRef::Primary,
+                OwnedSourceIdentity::Primary,
+                "P.root",
+            ),
+            (
+                SourceOwnerRef::Named("Ref"),
+                OwnedSourceIdentity::Named("Ref".into()),
+                "N.root",
+            ),
+        ] {
+            let before = root.owned_field(owner, &["Value"], Some(&[]));
+            let direct = root.owned_field(owner, &["Value"], None);
+            eprintln!("RAW GENERIC632 owner={owner:?} explicit={before:?} direct={direct:?}");
+            assert_eq!(
+                before,
+                Err(OwnedSourceError::InactiveSourceFrame {
+                    owner: identity,
+                    collection: Some(Vec::new())
+                })
+            );
+            assert_eq!(direct, Ok(Value::String(expected.into())));
+        }
+    }
+
+    #[test]
+    fn generic_empty_and_nonempty_frame_behavior_survives_active_rows() {
+        let primary = fixture::primary();
+        let root = fixture::context(&primary, &[]);
+        let rows = root
+            .walk_owned_source(SourceOwnerRef::Primary, &["Rows"])
+            .unwrap();
+        let current = &rows[1];
+        let raw = (
+            current.owned_field(SourceOwnerRef::Primary, &["Value"], Some(&[])),
+            current.owned_field(SourceOwnerRef::Primary, &["Rows", "Value"], Some(&["Rows"])),
+            current.owned_field(SourceOwnerRef::Primary, &["Rows", "Value"], None),
+            current.owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+        );
+        eprintln!("RAW GENERIC632 active_rows={raw:?}");
+        assert_eq!(
+            raw,
+            (
+                Err(OwnedSourceError::InactiveSourceFrame {
+                    owner: OwnedSourceIdentity::Primary,
+                    collection: Some(Vec::new())
+                }),
+                Ok(Value::String("P2".into())),
+                Ok(Value::String("P2".into())),
+                Ok(2),
+            )
+        );
+    }
+}

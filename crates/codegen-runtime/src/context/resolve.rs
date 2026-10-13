@@ -680,6 +680,18 @@ impl super::OwnedScopeContext<'_> {
         path: &[&str],
         frame: Option<&[&str]>,
     ) -> Result<Value, OwnedSourceError> {
+        self.owned_field_with_root_pin(owner, path, frame, false)
+    }
+
+    // Only the Basic bridge opts in with the emitter's declared schema flag.
+    // Generic readers retain their existing explicit-frame requirement.
+    pub(super) fn owned_field_with_root_pin(
+        &self,
+        owner: super::SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+        declared_nonrepeating: bool,
+    ) -> Result<Value, OwnedSourceError> {
         self.query_budget(owner, path, frame)?;
         let (key, root) = self.resolve_owned_owner(owner)?;
         let selected = if let Some(frame) = frame {
@@ -690,13 +702,19 @@ impl super::OwnedScopeContext<'_> {
                     path: super::owned_string_path(path),
                 });
             }
-            let index = self.owned_frame_index(key, Some(frame)).ok_or_else(|| {
-                OwnedSourceError::InactiveSourceFrame {
-                    owner: self.owned_identity(key),
-                    collection: Some(super::owned_string_path(frame)),
-                }
-            })?;
-            Some(&self.frames[index])
+            if frame.is_empty() && declared_nonrepeating && !matches!(root, Instance::Repeated(_)) {
+                // Explicit root selection must not choose a same-owner active
+                // row prefix, as an implicit None read may do.
+                None
+            } else {
+                let index = self.owned_frame_index(key, Some(frame)).ok_or_else(|| {
+                    OwnedSourceError::InactiveSourceFrame {
+                        owner: self.owned_identity(key),
+                        collection: Some(super::owned_string_path(frame)),
+                    }
+                })?;
+                Some(&self.frames[index])
+            }
         } else {
             self.owned_base(key, path)
         };

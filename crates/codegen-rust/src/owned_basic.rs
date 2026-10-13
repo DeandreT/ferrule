@@ -28,6 +28,28 @@ pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, Emi
              ScalarType, SourceOwnerRef, TargetSelection, Value, adapt_target_value,\n\
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
+    if program.expressions.iter().any(|node| {
+        retained.contains(&node.id)
+            && matches!(&node.expression, Expression::OwnedSourceField(field)
+                if field.frame.as_ref().is_some_and(Vec::is_empty))
+    }) {
+        // Compile exact declaration metadata into the query; no registry flags
+        // or inferred wrapper owners are retained at runtime.
+        source.push_str("fn basic_declared_root_nonrepeating(owner: SourceOwnerRef<'_>) -> bool {\n    match owner {\n");
+        source.push_str(&format!(
+            "        SourceOwnerRef::Primary => {},\n",
+            !program.source.repeating,
+        ));
+        source.push_str("        SourceOwnerRef::Named(name) => match name {\n");
+        for input in &program.extra_sources {
+            source.push_str(&format!(
+                "            {} => {},\n",
+                rust_string(&input.name),
+                !input.source.repeating,
+            ));
+        }
+        source.push_str("            _ => false,\n        },\n    }\n}\n\n");
+    }
     source.push_str(&render_entries(program));
     for node in &program.expressions {
         if retained.contains(&node.id) {
@@ -354,7 +376,13 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
                 || "None".into(),
                 |frame| format!("Some(&[{}][..])", render_string_path(frame)),
             );
-            Some(format!("context.owned_field({owner}, &[{path}], {frame})"))
+            if field.frame.as_ref().is_some_and(Vec::is_empty) {
+                Some(format!(
+                    "context.owned_field_with_root_pin({owner}, &[{path}], {frame}, basic_declared_root_nonrepeating({owner}))"
+                ))
+            } else {
+                Some(format!("context.owned_field({owner}, &[{path}], {frame})"))
+            }
         }
         Expression::OwnedPosition(position) => {
             let owner = owner_literal(&position.owner);
