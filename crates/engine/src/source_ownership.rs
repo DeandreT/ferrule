@@ -589,7 +589,8 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
 
 fn node_context(node: &Node) -> OwnedCapabilityContext {
     match node {
-        Node::UserFunctionCall { .. } => OwnedCapabilityContext::IsolatedFunction,
+        // Arguments execute in the caller; function() visits the body separately.
+        Node::UserFunctionCall { .. } => OwnedCapabilityContext::Basic,
         Node::Aggregate { .. } | Node::Lookup { .. } | Node::CollectionFind { .. } => {
             OwnedCapabilityContext::AggregateLookup
         }

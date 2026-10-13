@@ -598,3 +598,520 @@ fn explicit_nonempty_selectors_require_repetition_but_not_group_shape() {
         assert!(validate(&project).is_empty());
     }
 }
+
+fn udf_identity(name: &str, ty: ScalarType) -> UserFunction {
+    let parameter = mapping::FunctionParameterId::new(1);
+    UserFunction {
+        library: "tests".into(),
+        name: name.into(),
+        description: None,
+        parameters: vec![mapping::FunctionParameter {
+            id: parameter,
+            name: "argument".into(),
+            ty,
+        }],
+        output_name: "value".into(),
+        output_type: ty,
+        body: Graph {
+            nodes: BTreeMap::from([(2, Node::FunctionParameter { parameter })]),
+        },
+        output: 2,
+    }
+}
+fn udf_unused_argument(ty: ScalarType) -> UserFunction {
+    let mut body = function(1);
+    body.parameters.push(mapping::FunctionParameter {
+        id: mapping::FunctionParameterId::new(1),
+        name: "unused".into(),
+        ty,
+    });
+    body
+}
+fn udf_text(value: &str) -> Instance {
+    Instance::Scalar(Value::String(value.into()))
+}
+fn udf_group(fields: Vec<(&str, Instance)>) -> Instance {
+    Instance::Group(
+        fields
+            .into_iter()
+            .map(|(name, value)| (name.into(), value))
+            .collect::<Vec<_>>()
+            .into(),
+    )
+}
+
+#[test]
+fn public_udf_scalar_arguments_keep_exact_root_owners_and_source_discovery() {
+    let mut p = project();
+    let id = FunctionId::new(7);
+    p.user_functions
+        .insert(id, udf_identity("root_identity", ScalarType::String));
+    let ir::SchemaKind::Group { children, .. } = &mut p.source.kind else {
+        unreachable!();
+    };
+    children.push(SchemaNode::group(" Ref 雪 ", vec![scalar("Value")]));
+    p.graph
+        .nodes
+        .insert(4, owned(named(" Ref 雪 "), &["Value"], None));
+    for (node, argument) in [(3, 2), (5, 4)] {
+        p.graph.nodes.insert(
+            node,
+            Node::UserFunctionCall {
+                function: id,
+                args: vec![argument],
+            },
+        );
+    }
+    p.graph.nodes.insert(
+        6,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![3, 5],
+        },
+    );
+    p.root = scope(6);
+    assert!(validate(&p).is_empty());
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    let required = required_sources_for_target(&p, TargetSelection::Primary).unwrap();
+    assert_eq!(required.static_sources.len(), 1);
+    assert!(std::ptr::eq(
+        required.static_sources[0],
+        &p.extra_sources[0]
+    ));
+    assert!(required.dynamic_sources.is_empty());
+    let primary = udf_group(vec![
+        ("Value", udf_text("P.root")),
+        (" Ref 雪 ", udf_group(vec![("Value", udf_text("shadow"))])),
+    ]);
+    let output = crate::run_with_sources(
+        &p,
+        &primary,
+        vec![(
+            " Ref 雪 ".into(),
+            udf_group(vec![("Value", udf_text("N.root"))]),
+        )],
+    )
+    .unwrap();
+    assert_eq!(output, udf_group(vec![("Value", udf_text("P.rootN.root"))]));
+}
+
+#[test]
+fn public_udf_row_arguments_keep_owned_ancestry_frames_and_positions() {
+    let mut p = project();
+    let identity = FunctionId::new(7);
+    let position = FunctionId::new(8);
+    p.user_functions
+        .insert(identity, udf_identity("row_identity", ScalarType::String));
+    p.user_functions
+        .insert(position, udf_identity("position_identity", ScalarType::Int));
+    let ir::SchemaKind::Group { children, .. } = &mut p.source.kind else {
+        unreachable!();
+    };
+    children.push(SchemaNode::group(
+        " Ref 雪 ",
+        vec![SchemaNode::group("Rows", vec![scalar("Value")]).repeating()],
+    ));
+    let ir::SchemaKind::Group { children, .. } = &mut p.extra_sources[0].schema.kind else {
+        unreachable!();
+    };
+    children.push(SchemaNode::group("Rows", vec![scalar("Value")]).repeating());
+    let ir::SchemaKind::Group { children, .. } = &mut p.target.kind else {
+        unreachable!();
+    };
+    children.push(SchemaNode::scalar("Position", ScalarType::Int));
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: identity,
+            args: vec![2],
+        },
+    );
+    p.graph.nodes.insert(
+        7,
+        Node::UserFunctionCall {
+            function: position,
+            args: vec![6],
+        },
+    );
+    let primary = udf_group(vec![
+        ("Value", udf_text("P.root")),
+        (
+            "Rows",
+            Instance::Repeated(vec![
+                udf_group(vec![("Value", udf_text("P1"))]),
+                udf_group(vec![("Value", udf_text("P2"))]),
+            ]),
+        ),
+        (
+            " Ref 雪 ",
+            udf_group(vec![(
+                "Rows",
+                Instance::Repeated(vec![udf_group(vec![("Value", udf_text("shadow"))])]),
+            )]),
+        ),
+    ]);
+    let supplied = udf_group(vec![(
+        "Rows",
+        Instance::Repeated(vec![
+            udf_group(vec![("Value", udf_text("N1"))]),
+            udf_group(vec![("Value", udf_text("N2"))]),
+            udf_group(vec![("Value", udf_text("N3"))]),
+        ]),
+    )]);
+    for (owner, expected) in [
+        (SourceOwner::Primary, vec!["P1", "P2"]),
+        (named(" Ref 雪 "), vec!["N1", "N2", "N3"]),
+    ] {
+        p.graph
+            .nodes
+            .insert(2, owned(owner.clone(), &["Rows", "Value"], Some(&["Rows"])));
+        p.graph.nodes.insert(
+            6,
+            Node::OwnedPosition(OwnedPosition {
+                owner: owner.clone(),
+                collection: Some(vec!["Rows".into()]),
+            }),
+        );
+        p.root = scope(3);
+        p.root.bindings.push(Binding {
+            target_field: "Position".into(),
+            node: 7,
+        });
+        p.root.iteration = mapping::ScopeIteration::OwnedSource {
+            source: OwnedSourceRef {
+                owner,
+                path: vec!["Rows".into()],
+            },
+            output_path: None,
+        };
+        assert!(validate(&p).is_empty());
+        assert!(check_source_ownership_capability(&p, None).is_ok());
+        let output =
+            crate::run_with_sources(&p, &primary, vec![(" Ref 雪 ".into(), supplied.clone())])
+                .unwrap();
+        let expected = Instance::Repeated(
+            expected
+                .into_iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    udf_group(vec![
+                        ("Value", udf_text(value)),
+                        (
+                            "Position",
+                            Instance::Scalar(Value::Int(i64::try_from(index + 1).unwrap())),
+                        ),
+                    ])
+                })
+                .collect(),
+        );
+        assert_eq!(output, expected);
+    }
+}
+
+#[test]
+fn public_udf_unused_scalar_arguments_are_eager_but_if_branches_stay_lazy() {
+    let input = udf_group(vec![
+        ("Value", udf_text("root")),
+        (
+            "Rows",
+            Instance::Repeated(vec![udf_group(vec![("Value", udf_text("row"))])]),
+        ),
+    ]);
+    for (argument, ty, safe) in [
+        (
+            owned(SourceOwner::Primary, &["Rows", "Value"], Some(&["Rows"])),
+            ScalarType::String,
+            Value::String("safe".into()),
+        ),
+        (
+            Node::OwnedPosition(OwnedPosition {
+                owner: SourceOwner::Primary,
+                collection: Some(vec!["Rows".into()]),
+            }),
+            ScalarType::Int,
+            Value::Int(7),
+        ),
+    ] {
+        let mut p = project();
+        let id = FunctionId::new(7);
+        p.user_functions.insert(id, udf_unused_argument(ty));
+        p.graph.nodes.insert(2, argument);
+        p.graph.nodes.insert(
+            3,
+            Node::UserFunctionCall {
+                function: id,
+                args: vec![2],
+            },
+        );
+        p.root = scope(3);
+        let inactive = || EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(vec!["Rows".into()]),
+            },
+        };
+        assert!(validate(&p).is_empty());
+        assert!(check_source_ownership_capability(&p, None).is_ok());
+        assert_eq!(run(&p, &input), Err(inactive()));
+        p.graph.nodes.insert(
+            4,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        );
+        p.graph.nodes.insert(5, Node::Const { value: safe });
+        p.graph.nodes.insert(
+            6,
+            Node::If {
+                condition: 4,
+                then: 5,
+                else_: 2,
+            },
+        );
+        p.graph.nodes.insert(
+            3,
+            Node::UserFunctionCall {
+                function: id,
+                args: vec![6],
+            },
+        );
+        assert!(check_source_ownership_capability(&p, None).is_ok());
+        assert_eq!(
+            run(&p, &input),
+            Ok(udf_group(vec![("Value", udf_text("function"))]))
+        );
+        p.graph.nodes.insert(
+            4,
+            Node::Const {
+                value: Value::Bool(false),
+            },
+        );
+        assert_eq!(run(&p, &input), Err(inactive()));
+    }
+}
+
+#[test]
+fn public_udf_nested_caller_arguments_keep_body_namespaces_isolated() {
+    let mut p = project();
+    let inner = FunctionId::new(7);
+    let outer = FunctionId::new(8);
+    p.user_functions
+        .insert(inner, udf_identity("inner_identity", ScalarType::String));
+    p.user_functions
+        .insert(outer, udf_identity("outer_identity", ScalarType::String));
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: inner,
+            args: vec![2],
+        },
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::UserFunctionCall {
+            function: outer,
+            args: vec![3],
+        },
+    );
+    p.root = scope(4);
+    let input = udf_group(vec![("Value", udf_text("caller"))]);
+    assert!(validate(&p).is_empty());
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    assert_eq!(
+        run(&p, &input),
+        Ok(udf_group(vec![("Value", udf_text("caller"))]))
+    );
+    let mut body = function(1);
+    body.body.nodes.insert(
+        1,
+        Node::UserFunctionCall {
+            function: inner,
+            args: vec![2],
+        },
+    );
+    p.user_functions.insert(outer, body);
+    p.graph.nodes.insert(
+        4,
+        Node::UserFunctionCall {
+            function: outer,
+            args: vec![],
+        },
+    );
+    refuse(&p, None, 2, Some(outer), "owned_source_field");
+    // A dead body-owned 2 must neither be evaluated nor hide main argument 2.
+    p.user_functions
+        .insert(outer, udf_unused_argument(ScalarType::String));
+    p.graph.nodes.insert(
+        4,
+        Node::UserFunctionCall {
+            function: outer,
+            args: vec![2],
+        },
+    );
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    assert_eq!(
+        run(&p, &input),
+        Ok(udf_group(vec![("Value", udf_text("function"))]))
+    );
+}
+
+#[test]
+fn public_udf_unknown_functions_keep_argument_errors_before_callee_lookup() {
+    let mut p = project();
+    let missing = FunctionId::new(999);
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: missing,
+            args: vec![2],
+        },
+    );
+    p.root = scope(3);
+    let input = udf_group(vec![("Value", udf_text("caller"))]);
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    assert!(validate(&p).iter().any(|issue| issue.owner
+        == Some(ValidationOwner::GraphNode {
+            function: None,
+            node: 3,
+        })));
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::MissingUserFunction { function: missing })
+    );
+    p.graph.nodes.insert(4, Node::Raise { message: None });
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: missing,
+            args: vec![2, 4],
+        },
+    );
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::MappingException {
+            node: 4,
+            message: None,
+        })
+    );
+    p.graph.nodes.insert(
+        2,
+        owned(SourceOwner::Primary, &["Rows", "Value"], Some(&["Rows"])),
+    );
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: missing,
+            args: vec![2],
+        },
+    );
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(vec!["Rows".into()]),
+            },
+        })
+    );
+}
+
+#[test]
+fn public_udf_scalar_arguments_keep_specialized_contexts_and_visit_keys() {
+    let mut p = project();
+    let id = FunctionId::new(7);
+    p.user_functions
+        .insert(id, udf_identity("context_identity", ScalarType::String));
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![2],
+        },
+    );
+    p.root = scope(3);
+    use crate::OwnedCapabilityContext as Domain;
+    for context in [
+        Domain::IsolatedFunction,
+        Domain::FailureRule,
+        Domain::GeneratedItem,
+        Domain::Grouping,
+        Domain::Join,
+        Domain::AggregateLookup,
+        Domain::XmlOperator,
+        Domain::TreeOperator,
+        Domain::DynamicOwner,
+        Domain::DynamicLoader,
+        Domain::Document,
+        Domain::DynamicTarget,
+        Domain::Concatenate,
+        Domain::SpecialConstruction,
+    ] {
+        assert_eq!(
+            crate::source_ownership::check_context_reuse_for_test(&p, 3, context),
+            Err(EngineError::UnsupportedOwnedContext {
+                node: Some(2),
+                function: None,
+                scope: None,
+                context,
+            })
+        );
+    }
+}
+
+#[test]
+fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() {
+    let mut p = project();
+    let id = FunctionId::new(7);
+    p.user_functions
+        .insert(id, udf_identity("loader_identity", ScalarType::String));
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![2],
+        },
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::WhenTrue { predicate: 3 },
+        message: None,
+    });
+    refuse_context(&p, None, 2, crate::OwnedCapabilityContext::FailureRule);
+    p.failure_rules.clear();
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+        node: 3,
+        iteration: vec![],
+    });
+    p.graph.nodes.insert(
+        4,
+        Node::SourceField {
+            path: vec![" Ref 雪 ".into(), "Value".into()],
+            frame: None,
+        },
+    );
+    p.root = scope(4);
+    refuse_context(&p, None, 2, crate::OwnedCapabilityContext::DynamicLoader);
+    struct Loader(Cell<usize>);
+    impl DynamicSourceLoader for Loader {
+        fn load(&self, _: &str, _: &str) -> Result<Arc<Instance>, String> {
+            self.0.set(self.0.get() + 1);
+            Err("unexpected acquisition".into())
+        }
+    }
+    let loader = Loader(Cell::new(0));
+    let execution =
+        ExecutionContext::new(Path::new("test.json")).with_dynamic_source_loader(&loader);
+    assert!(matches!(
+        run_with_context(&p, &Instance::Group(Default::default()), &execution),
+        Err(EngineError::UnsupportedOwnedContext {
+            node: Some(2),
+            context: crate::OwnedCapabilityContext::DynamicLoader,
+            ..
+        })
+    ));
+    assert_eq!(loader.0.get(), 0);
+}
