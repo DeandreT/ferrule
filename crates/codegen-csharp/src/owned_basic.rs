@@ -1,4 +1,4 @@
-//! Test-only private typed prototype. Public emitters remain gated by #516.
+//! Internal Basic rendering for explicit-policy emitters and private tests.
 //! Caller-prepared declarations must match every Program source name and original
 //! ordinal; acquisition/supplied-input normalization belongs to #527/#519.
 //! Five limits are required and cover qualified runtime primitive metadata, not
@@ -690,4 +690,30 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
             return item is null ? default : new(item.Name, item.Instance);
         }
     }
+"#;
+
+pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping(program)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+const PUBLIC_BASIC_CHECKED_ENTRIES: &str = r#"
+public static partial class GeneratedMapping
+{
+    public static ExecutionOutputs ExecuteWithBasicOwnedSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution)
+        => ExecuteCheckedOwnedBasic(source, supplied, limits, execution);
+
+    public static SelectedTargetOutput ExecuteSelectedWithBasicOwnedSources(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleTargetSelection selection,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution)
+        => ExecuteSelectedCheckedOwnedBasic(source, selection, supplied, limits, execution);
+}
 "#;

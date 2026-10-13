@@ -12,7 +12,6 @@ mod filter_map_guard_tests;
 mod json5_output;
 mod literal;
 mod mapping;
-#[cfg(test)]
 mod owned_basic;
 mod runtime;
 mod static_documents;
@@ -66,6 +65,18 @@ fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     codegen::validate_owned_emission(program)?;
     let generated_mapping = mapping::render_typed(program)?;
+    emit_mapping_artifacts(program, generated_mapping)
+}
+
+/// Emits typed Basic source entry points with an explicit caller policy.
+///
+/// The generated all-output and selected-output methods require the existing
+/// five-field native limits and an explicit execution context argument. Ordinary
+/// emitters and document adapters retain their existing admission and APIs.
+pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
+    validate_program(program)?;
+    codegen::validate_basic_owned_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
     emit_mapping_artifacts(program, generated_mapping)
 }
 

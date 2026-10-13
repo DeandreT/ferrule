@@ -1767,7 +1767,6 @@ const fn scalar_type_name(value: ScalarType) -> &'static str {
 #[derive(Clone, Copy)]
 enum ExpressionContext {
     Legacy,
-    #[cfg(test)]
     Basic,
 }
 
@@ -1786,20 +1785,17 @@ fn render_expression(
             "context",
             "Position",
         ),
-        #[cfg(test)]
         ExpressionContext::Basic => (
             "global::Ferrule.Runtime.FerruleBasicScopeContext",
             "context.LegacyView",
             "LegacyPosition",
         ),
     };
-    #[cfg(test)]
     if matches!(mode, ExpressionContext::Basic) {
         output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        return NodeBody_{node}(context);\n    }}\n"));
     }
     let method = match mode {
         ExpressionContext::Legacy => format!("Node_{node}"),
-        #[cfg(test)]
         ExpressionContext::Basic => format!("NodeBody_{node}"),
     };
     output.push('\n');
@@ -1808,7 +1804,6 @@ fn render_expression(
     ));
     match expression {
         Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
-            #[cfg(test)]
             if matches!(mode, ExpressionContext::Basic) {
                 return crate::owned_basic::render_owned_leaf(node, expression, output);
             }
@@ -1820,7 +1815,6 @@ fn render_expression(
             .into());
         }
         Expression::SourceField { frame, path } => {
-            #[cfg(test)]
             if matches!(mode, ExpressionContext::Basic) {
                 output.push_str(" =>\n        context.ResolveLegacyField(");
                 render_path(path, output);
@@ -2346,7 +2340,6 @@ fn render_bound_group(scope_index: usize, scope: &ScopePlan<'_>, output: &mut St
     output.push_str("    }\n");
 }
 
-#[cfg(test)]
 pub(super) fn render_optional_path(path: Option<&[String]>, output: &mut String) {
     match path {
         Some(path) => render_path(path, output),
@@ -2354,7 +2347,6 @@ pub(super) fn render_optional_path(path: Option<&[String]>, output: &mut String)
     }
 }
 
-#[cfg(test)]
 pub(super) fn render_basic_expression(
     node: NodeId,
     expression: &Expression,
@@ -2370,20 +2362,16 @@ pub(super) fn render_basic_expression(
     )
 }
 
-#[cfg(test)]
 pub(super) fn basic_selected_output_types() -> &'static str {
     SELECTED_TARGET_OUTPUT_TYPES
 }
 
-#[cfg(test)]
 pub(super) fn basic_path(path: &[String], output: &mut String) {
     render_path(path, output);
 }
 
-#[cfg(test)]
 type BasicScopeIndices<'a> = (usize, Vec<(&'a str, usize)>);
 
-#[cfg(test)]
 pub(super) fn render_basic_scopes<'a>(
     program: &'a Program,
     output: &mut String,
