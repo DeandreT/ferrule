@@ -17,7 +17,8 @@ use std::collections::BTreeSet;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
     codegen::validate_program(program)?;
-    validate_private_inventory(program)?;
+    let retained = retained_expressions(program);
+    validate_private_inventory(program, &retained)?;
     let mut body = String::new();
     let (primary, extras) = mapping::render_basic_scopes(program, &mut body)?;
     let mut output = String::from(
@@ -70,7 +71,9 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
     let mut nodes = program.expressions.iter().collect::<Vec<_>>();
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
-        mapping::render_basic_expression(node.id, &node.expression, &mut output)?;
+        if retained.contains(&node.id) {
+            mapping::render_basic_expression(node.id, &node.expression, &mut output)?;
+        }
     }
     output.push_str(&body);
     output.push_str("}\n");
@@ -208,11 +211,11 @@ fn dynamic_legacy_path(program: &Program, path: &[String]) -> bool {
     })
 }
 
-// Only potential represented target roots retain a legacy leaf. Both If arms
-// and parameter defaults remain potential demands; unused declarations and
-// dead legacy leaves do not activate a dynamic source. Earlier private checks
-// close functions and specialized failure/scope domains; the following graph
-// inventory continues to refuse unsupported operators.
+// Rendered targets, ordinary failures and every stored user-function call
+// retain their potential dependencies. Both If arms and parameter defaults
+// remain demands; unused ordinary definitions and dead nodes are omitted.
+// Stored ownership still receives unconditional structural/context validation;
+// unused declarations never activate a dynamic source.
 fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, pending: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
@@ -228,6 +231,17 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
     for target in &program.extra_targets {
         roots(&target.root, &mut pending);
     }
+    for rule in &program.failure_rules {
+        pending.extend(rule.selection.predicate());
+        pending.extend(rule.message);
+        if let codegen::FailureIteration::Generated(sequence) = &rule.iteration {
+            pending.extend(sequence.roots());
+        }
+    }
+    // Keep the same stored-call policy as the ordinary Rust inventory.
+    pending.extend(program.expressions.iter().filter_map(|node| {
+        matches!(&node.expression, Expression::UserFunctionCall { .. }).then_some(node.id)
+    }));
     let mut retained = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !retained.insert(id) {
@@ -236,23 +250,79 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
         let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
             continue;
         };
-        match &node.expression {
-            Expression::Call { args, .. } => pending.extend(args.iter().copied()),
-            Expression::If {
-                condition,
-                then,
-                else_,
-            } => pending.extend([*condition, *then, *else_]),
-            Expression::ValueMap { input, .. } => pending.push(*input),
-            Expression::RuntimeParameterDefault { default, .. } => pending.push(*default),
-            Expression::Raise { message } => pending.extend(message.iter().copied()),
-            _ => {}
-        }
+        pending.extend(retained_expression_inputs(&node.expression));
     }
     retained
 }
 
-fn validate_private_inventory(program: &Program) -> Result<(), EmitError> {
+fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
+    match expression {
+        Expression::DynamicSourceField { key, .. } => vec![*key],
+        Expression::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
+        Expression::RuntimeParameterDefault { default, .. } => vec![*default],
+        Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
+        Expression::DelimitedTextField { input, .. } | Expression::ValueMap { input, .. } => {
+            vec![*input]
+        }
+        Expression::If {
+            condition,
+            then,
+            else_,
+        } => vec![*condition, *then, *else_],
+        Expression::Raise { message } => message.iter().copied().collect(),
+        Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
+        Expression::Aggregate { value, arg, .. } => {
+            value.expression().into_iter().chain(*arg).collect()
+        }
+        Expression::JoinAggregate {
+            expression, arg, ..
+        } => expression.iter().copied().chain(*arg).collect(),
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.roots().chain([*predicate]).collect(),
+        Expression::SequenceItemAt { sequence, index } => {
+            sequence.roots().chain([*index]).collect()
+        }
+        Expression::SequenceAggregate {
+            sequence,
+            predicate,
+            expression,
+            arg,
+            ..
+        } => sequence
+            .roots()
+            .chain(*predicate)
+            .chain(*expression)
+            .chain(*arg)
+            .collect(),
+        Expression::OwnedSourceField(_)
+        | Expression::OwnedPosition(_)
+        | Expression::SourceField { .. }
+        | Expression::SourceRootXmlTypeEquals { .. }
+        | Expression::SourceRootField { .. }
+        | Expression::XmlSerialize { .. }
+        | Expression::SourceDocumentPath
+        | Expression::Position { .. }
+        | Expression::JoinField { .. }
+        | Expression::JoinPosition { .. }
+        | Expression::Const { .. }
+        | Expression::FunctionParameter { .. }
+        | Expression::RuntimeValue { .. }
+        | Expression::RuntimeParameter { .. } => Vec::new(),
+    }
+}
+
+fn validate_private_inventory(
+    program: &Program,
+    retained: &BTreeSet<NodeId>,
+) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     check_scope(
         program,
@@ -269,25 +339,31 @@ fn validate_private_inventory(program: &Program) -> Result<(), EmitError> {
             }),
         )?;
     }
-    if let Some(function) = program.user_functions.first() {
-        return Err(capability(
-            Location::Expression {
-                namespace: Namespace::Function(function.id),
-                node: function.output,
-                scope: None,
-            },
-            None,
-            Reason::IsolatedFunction,
-            Origin::FunctionBody {
-                function: function.id,
-            },
-        ));
-    }
     validate_basic_failures(program)?;
-    let retained = retained_expressions(program);
     for node in &program.expressions {
+        if !retained.contains(&node.id) {
+            continue;
+        }
+        if let Expression::UserFunctionCall { function, .. } = &node.expression
+            && let Some(body) = program
+                .user_functions
+                .iter()
+                .find(|body| body.id == *function)
+        {
+            return Err(capability(
+                Location::Expression {
+                    namespace: Namespace::Function(*function),
+                    node: body.output,
+                    scope: None,
+                },
+                None,
+                Reason::IsolatedFunction,
+                Origin::FunctionBody {
+                    function: *function,
+                },
+            ));
+        }
         if let Expression::SourceField { path, frame } = &node.expression
-            && retained.contains(&node.id)
             && dynamic_legacy_path(program, frame.as_ref().unwrap_or(path))
         {
             return Err(codegen::owned_expression_emission_error(
