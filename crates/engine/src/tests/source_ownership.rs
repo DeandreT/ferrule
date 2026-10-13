@@ -265,9 +265,20 @@ fn disconnected_and_unselected_nodes_do_not_close_legacy_execution() {
 #[test]
 fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
     let mut project = project();
+    project.graph.nodes.insert(
+        90,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    project.graph.nodes.insert(91, Node::Unconnected);
     project.failure_rules.push(FailureRule {
-        iteration: FailureIteration::Source {
-            collection: vec!["Rows".into()],
+        iteration: FailureIteration::Sequence {
+            sequence: mapping::SequenceExpr::Generate {
+                from: None,
+                to: 90,
+                item: 91,
+            },
         },
         selection: FailureSelection::WhenTrue { predicate: 2 },
         message: None,
@@ -1067,6 +1078,13 @@ fn public_udf_scalar_arguments_keep_specialized_contexts_and_visit_keys() {
 #[test]
 fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() {
     let mut p = project();
+    p.graph.nodes.insert(
+        90,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    p.graph.nodes.insert(91, Node::Unconnected);
     let id = FunctionId::new(7);
     p.user_functions
         .insert(id, udf_identity("loader_identity", ScalarType::String));
@@ -1078,8 +1096,12 @@ fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() 
         },
     );
     p.failure_rules.push(FailureRule {
-        iteration: FailureIteration::Source {
-            collection: vec!["Rows".into()],
+        iteration: FailureIteration::Sequence {
+            sequence: mapping::SequenceExpr::Generate {
+                from: None,
+                to: 90,
+                item: 91,
+            },
         },
         selection: FailureSelection::WhenTrue { predicate: 3 },
         message: None,
@@ -1135,7 +1157,7 @@ fn root_failure_permission_has_distinct_visit_keys_from_rows_and_sequences() {
     p.failure_rules = vec![
         FailureRule {
             iteration: FailureIteration::Source {
-                collection: vec!["Rows".into()],
+                collection: vec!["Rows".into(), "Items".into()],
             },
             selection: FailureSelection::All,
             message: Some(2),
@@ -1295,4 +1317,371 @@ fn root_failure_dynamic_legacy_demand_is_rejected_before_acquisition() {
         })
     );
     assert_eq!(loader.0.get(), 0);
+}
+
+fn primary_failure_admission_project() -> Project {
+    let mut p = project();
+    p.graph
+        .nodes
+        .insert(2, owned(SourceOwner::Primary, &["Rows", "Value"], None));
+    p.graph.nodes.insert(
+        3,
+        Node::OwnedPosition(OwnedPosition {
+            owner: SourceOwner::Primary,
+            collection: Some(vec!["Rows".into()]),
+        }),
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source {
+            collection: vec!["Rows".into()],
+        },
+        selection: FailureSelection::All,
+        message: Some(2),
+    });
+    p
+}
+fn primary_failure_admission_input() -> Instance {
+    udf_group(vec![
+        ("Value", udf_text("root.value")),
+        (
+            "Rows",
+            Instance::Repeated(vec![udf_group(vec![("Value", udf_text("row.value"))])]),
+        ),
+    ])
+}
+fn primary_failure_admission_error(node: u32) -> EngineError {
+    EngineError::UnsupportedOwnedContext {
+        node: Some(node),
+        function: None,
+        scope: None,
+        context: crate::OwnedCapabilityContext::FailureRule,
+    }
+}
+
+#[test]
+fn primary_failure_row_permission_has_distinct_root_and_sequence_visit_keys() {
+    let mut p = primary_failure_admission_project();
+    p.failure_rules[0].message = Some(3);
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    let row = p.failure_rules[0].clone();
+    p.failure_rules = vec![
+        FailureRule {
+            iteration: FailureIteration::Source { collection: vec![] },
+            selection: FailureSelection::All,
+            message: Some(3),
+        },
+        row.clone(),
+    ];
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(3))
+    );
+    p.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    p.graph.nodes.insert(8, Node::Unconnected);
+    p.failure_rules = vec![
+        FailureRule {
+            iteration: FailureIteration::Sequence {
+                sequence: mapping::SequenceExpr::Generate {
+                    from: None,
+                    to: 7,
+                    item: 8,
+                },
+            },
+            selection: FailureSelection::All,
+            message: Some(3),
+        },
+        row.clone(),
+    ];
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(3))
+    );
+    p.failure_rules = vec![row];
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+        node: 3,
+        iteration: vec![],
+    });
+    p.graph.nodes.insert(
+        4,
+        Node::SourceField {
+            path: vec![" Ref 雪 ".into(), "Value".into()],
+            frame: None,
+        },
+    );
+    p.root = scope(4);
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(EngineError::UnsupportedOwnedContext {
+            node: Some(3),
+            function: None,
+            scope: None,
+            context: crate::OwnedCapabilityContext::DynamicLoader
+        })
+    );
+}
+
+#[test]
+fn primary_failure_row_admission_is_limited_to_one_static_primary_collection() {
+    let mut p = primary_failure_admission_project();
+    p.failure_rules[0].message = Some(3);
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    for collection in [vec![], vec!["Rows".into(), "Items".into()], vec!["".into()]] {
+        p.failure_rules[0].iteration = FailureIteration::Source { collection };
+        assert_eq!(
+            check_source_ownership_capability(&p, None),
+            Err(primary_failure_admission_error(3))
+        );
+    }
+    p = primary_failure_admission_project();
+    p.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    p.graph.nodes.insert(6, Node::SourceDocumentPath);
+    p.graph.nodes.insert(
+        4,
+        Node::If {
+            condition: 5,
+            then: 2,
+            else_: 6,
+        },
+    );
+    p.failure_rules[0].message = Some(4);
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(6))
+    );
+    p = primary_failure_admission_project();
+    p.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: Value::String("rows.json".into()),
+        },
+    );
+    p.extra_sources.push(NamedSource {
+        name: "Rows".into(),
+        path: "rows.json".into(),
+        schema: SchemaNode::group("Rows", vec![scalar("Value")]).repeating(),
+        options: Default::default(),
+        dynamic_path: Some(DynamicSourcePath {
+            node: 7,
+            iteration: vec![],
+        }),
+    });
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(2))
+    );
+    struct Loader(Cell<usize>);
+    impl DynamicSourceLoader for Loader {
+        fn load(&self, _: &str, _: &str) -> Result<Arc<Instance>, String> {
+            self.0.set(self.0.get() + 1);
+            Err("unexpected acquisition".into())
+        }
+    }
+    let loader = Loader(Cell::new(0));
+    let execution =
+        ExecutionContext::new(Path::new("test.json")).with_dynamic_source_loader(&loader);
+    assert_eq!(
+        run_with_context(&p, &primary_failure_admission_input(), &execution),
+        Err(primary_failure_admission_error(2))
+    );
+    assert_eq!(loader.0.get(), 0);
+}
+
+#[test]
+fn primary_failure_row_named_reads_keep_root_only_pins_and_positions_closed() {
+    let mut p = primary_failure_admission_project();
+    let input = primary_failure_admission_input();
+    for pin in [None, Some(&[][..])] {
+        p.graph
+            .nodes
+            .insert(2, owned(named(" Ref 雪 "), &["Value"], pin));
+        assert!(check_source_ownership_capability(&p, None).is_ok());
+        assert_eq!(
+            crate::run_with_sources(
+                &p,
+                &input,
+                vec![(
+                    " Ref 雪 ".into(),
+                    udf_group(vec![("Value", udf_text("named.root"))])
+                )]
+            ),
+            Err(EngineError::MappingFailure {
+                rule: 1,
+                message: Some("named.root".into())
+            })
+        );
+    }
+    p.graph.nodes.insert(
+        2,
+        owned(named(" Ref 雪 "), &["Rows", "Value"], Some(&["Rows"])),
+    );
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(2))
+    );
+    p.graph.nodes.insert(
+        2,
+        Node::OwnedPosition(OwnedPosition {
+            owner: named(" Ref 雪 "),
+            collection: None,
+        }),
+    );
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(2))
+    );
+    for (name, source) in [
+        ("", crate::OwnedSourceError::InvalidNamedOwner),
+        (
+            "Unknown",
+            crate::OwnedSourceError::UnknownOwner {
+                name: "Unknown".into(),
+            },
+        ),
+    ] {
+        p.graph
+            .nodes
+            .insert(2, owned(named(name), &["Value"], None));
+        assert_eq!(
+            check_source_ownership_capability(&p, None),
+            Err(EngineError::OwnedSourceAccess {
+                node: Some(2),
+                scope: None,
+                source
+            })
+        );
+    }
+    p.graph
+        .nodes
+        .insert(2, owned(named(" Ref 雪 "), &["Value"], None));
+    p.extra_sources.push(p.extra_sources[0].clone());
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::AmbiguousOwner {
+                name: " Ref 雪 ".into()
+            }
+        })
+    );
+    p.extra_sources.pop();
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+        node: 1,
+        iteration: vec![],
+    });
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(EngineError::UnsupportedOwnedContext {
+            node: Some(2),
+            function: None,
+            scope: None,
+            context: crate::OwnedCapabilityContext::DynamicOwner
+        })
+    );
+    p.extra_sources[0].dynamic_path = None;
+    p.graph.nodes.insert(
+        2,
+        owned(SourceOwner::Primary, &["Other", "Value"], Some(&["Other"])),
+    );
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(vec!["Other".into()])
+            }
+        })
+    );
+}
+
+#[test]
+fn primary_failure_row_call_arguments_keep_context_and_isolated_bodies() {
+    let mut p = primary_failure_admission_project();
+    let id = FunctionId::new(7);
+    let nested = FunctionId::new(8);
+    p.user_functions
+        .insert(id, udf_identity("row_failure_identity", ScalarType::String));
+    p.user_functions.insert(
+        nested,
+        udf_identity("row_failure_nested", ScalarType::String),
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![2],
+        },
+    );
+    p.graph.nodes.insert(
+        8,
+        Node::UserFunctionCall {
+            function: nested,
+            args: vec![4],
+        },
+    );
+    p.failure_rules[0].message = Some(8);
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    assert_eq!(
+        run(&p, &primary_failure_admission_input()),
+        Err(EngineError::MappingFailure {
+            rule: 1,
+            message: Some("row.value".into())
+        })
+    );
+    p.user_functions
+        .get_mut(&id)
+        .unwrap()
+        .body
+        .nodes
+        .insert(9, owned(SourceOwner::Primary, &["Value"], None));
+    p.user_functions.get_mut(&id).unwrap().output = 9;
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(EngineError::UnsupportedSourceOwnership {
+            node: 9,
+            function: Some(id),
+            kind: "owned_source_field"
+        })
+    );
+    p.user_functions
+        .insert(id, udf_identity("row_failure_identity", ScalarType::String));
+    p.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    p.graph.nodes.insert(9, Node::SourceDocumentPath);
+    p.graph.nodes.insert(
+        6,
+        Node::If {
+            condition: 5,
+            then: 2,
+            else_: 9,
+        },
+    );
+    p.graph.nodes.insert(
+        4,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![6],
+        },
+    );
+    assert_eq!(
+        check_source_ownership_capability(&p, None),
+        Err(primary_failure_admission_error(9))
+    );
 }
