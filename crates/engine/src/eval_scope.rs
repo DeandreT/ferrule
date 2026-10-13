@@ -813,6 +813,54 @@ pub(crate) fn retain_first_source_candidate(scope: &Scope) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn record_basic_candidate<'tree>(
+    program: EvalProgram<'_>,
+    state: &crate::owned_context::OwnedContext<'tree>,
+    positions: &[PositionFrame],
+    trace_scope: &TraceScope,
+    extension: &mut crate::source_iteration::ObservedExtension<'tree>,
+    ordinal: usize,
+    own: bool,
+    has_source: bool,
+) {
+    let Some(sink) = program.trace_sink else {
+        return;
+    };
+    let mut candidate_positions = positions.to_vec();
+    candidate_positions.extend_from_slice(&extension.extension.positions);
+    // Move the already-budgeted metadata into this transient borrowed view.
+    // Restore it before traversal retains or drops the candidate; no tree is cloned.
+    let candidate: crate::owned_context::OwnedContext<'tree> = crate::owned_context::OwnedContext {
+        roots: state.roots,
+        frames: std::mem::take(&mut extension.frames),
+        origins: std::mem::take(&mut extension.origins),
+        owned_ancestry: state.owned_ancestry || own,
+    };
+    record_owned_event(
+        program
+            .with_owned_context(&candidate)
+            .with_owned_trace_phase(crate::TraceOwnedPhase::Structural),
+        &candidate_positions,
+        || TraceEvent::IterationCandidate {
+            scope: trace_scope.clone(),
+            ordinal,
+            positions: trace_positions(&candidate_positions),
+            source_row: if has_source && sink.wants_source_row() {
+                extension
+                    .extension
+                    .instances
+                    .last()
+                    .map(|instance| TraceSourceRow::new(instance))
+            } else {
+                None
+            },
+        },
+    );
+    extension.frames = candidate.frames;
+    extension.origins = candidate.origins;
+}
+
+#[allow(clippy::too_many_arguments)]
 fn eval_basic_owned_scope<'a>(
     program: EvalProgram<'a>,
     scope: &Scope,
@@ -826,6 +874,7 @@ fn eval_basic_owned_scope<'a>(
     use crate::owned_context::OwnedContext;
     use crate::source_iteration::{
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
+        select_observed_with_candidate_observer,
     };
     // Scope boundaries observe the incoming receiving context and phase.
     // Traversal and item producers retain their existing explicit phase programs.
@@ -869,23 +918,46 @@ fn eval_basic_owned_scope<'a>(
         positions: trace_positions(positions),
     });
     let retain_first = retain_first_source_candidate(scope);
+    let has_source = scope.source_selector().is_some();
+    let own_source = matches!(
+        scope.source_selector(),
+        Some(mapping::SourceSelectorRef::Owned(_))
+    );
+    let mut observe_candidate = |extension: &mut ObservedExtension<'a>, ordinal| {
+        record_basic_candidate(
+            program,
+            state,
+            positions,
+            trace_scope,
+            extension,
+            ordinal,
+            own_source,
+            has_source,
+        );
+    };
     let (mut extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
-            let selected = select_observed(
-                ObservedWalkRequest {
-                    base,
-                    path: tail,
-                    raw_prefix: prefix,
-                    canonical_prefix: prefix,
-                    owner: Some(owner),
-                    context: state,
-                    position_offset: positions.len(),
-                    strict_collection: true,
-                },
-                &budget,
-                retain_first,
-            )
+            let request = ObservedWalkRequest {
+                base,
+                path: tail,
+                raw_prefix: prefix,
+                canonical_prefix: prefix,
+                owner: Some(owner),
+                context: state,
+                position_offset: positions.len(),
+                strict_collection: true,
+            };
+            let selected = if program.trace_sink.is_some() {
+                select_observed_with_candidate_observer(
+                    request,
+                    &budget,
+                    retain_first,
+                    &mut observe_candidate,
+                )
+            } else {
+                select_observed(request, &budget, retain_first)
+            }
             .map_err(access)?;
             (
                 selected.extensions,
@@ -938,7 +1010,19 @@ fn eval_basic_owned_scope<'a>(
                         strict_collection: false,
                     }
                 };
-                Some(select_observed(request, &budget, retain_first).map_err(access)?)
+                Some(
+                    if program.trace_sink.is_some() {
+                        select_observed_with_candidate_observer(
+                            request,
+                            &budget,
+                            retain_first,
+                            &mut observe_candidate,
+                        )
+                    } else {
+                        select_observed(request, &budget, retain_first)
+                    }
+                    .map_err(access)?,
+                )
             } else {
                 None
             };
@@ -963,20 +1047,16 @@ fn eval_basic_owned_scope<'a>(
             budget.reserve(1).map_err(access)?;
             reserve_observed_copy(&budget, &state.frames, &state.origins, &[], 0)
                 .map_err(access)?;
-            (
-                vec![ObservedExtension {
-                    extension: WalkExtension {
-                        instances: Vec::new(),
-                        positions: Vec::new(),
-                    },
-                    frames: state.frames.clone(),
-                    origins: state.origins.clone(),
-                }],
-                budget,
-                false,
-                1,
-                None,
-            )
+            let mut extension = ObservedExtension {
+                extension: WalkExtension {
+                    instances: Vec::new(),
+                    positions: Vec::new(),
+                },
+                frames: state.frames.clone(),
+                origins: state.origins.clone(),
+            };
+            observe_candidate(&mut extension, 1);
+            (vec![extension], budget, false, 1, None)
         }
     };
     let ancestry = state.owned_ancestry || own;

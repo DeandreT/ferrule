@@ -333,6 +333,37 @@ pub(crate) fn select_observed<'a, 'query>(
     })
 }
 
+/// Observe each candidate synchronously before retaining or dropping it. The
+/// accounting replay deliberately carries no observer, so First emits once.
+pub(crate) fn select_observed_with_candidate_observer<'a, 'query>(
+    request: ObservedWalkRequest<'a, 'query>,
+    budget: &crate::owned_context::WorkBudget,
+    retain_first: bool,
+    observer: &mut impl FnMut(&mut ObservedExtension<'a>, usize),
+) -> Result<ObservedSelection<'a, 'query>, crate::OwnedSourceError> {
+    let replay = retain_first.then(|| ObservedReplay {
+        request,
+        budget: budget.fork(),
+    });
+    let mut extensions = Vec::new();
+    let mut candidates = 0usize;
+    request.visit(budget, &mut |mut extension| {
+        candidates = candidates
+            .checked_add(1)
+            .ok_or_else(|| budget.slot_overflow())?;
+        observer(&mut extension, candidates);
+        if !retain_first || extensions.is_empty() {
+            extensions.push(extension);
+        }
+        Ok(())
+    })?;
+    Ok(ObservedSelection {
+        extensions,
+        candidates,
+        replay,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_observed<'a>(
     base: &'a Instance,
