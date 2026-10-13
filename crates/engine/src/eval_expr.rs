@@ -31,6 +31,8 @@ pub(crate) struct EvalProgram<'a> {
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
     pub(crate) owned_context: Option<&'a crate::owned_context::OwnedContext<'a>>,
+    pub(crate) owned_trace_registry: Option<&'a dyn crate::trace::TraceOwnedRegistryView>,
+    pub(crate) owned_trace_phase: crate::TraceOwnedPhase,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
     pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
 }
@@ -51,6 +53,8 @@ impl<'a> EvalProgram<'a> {
             purpose: ExecutionPurpose::Run,
             primary_source: None,
             owned_context: None,
+            owned_trace_registry: None,
+            owned_trace_phase: crate::TraceOwnedPhase::Structural,
             filter_map_run_state: None,
             filter_map_work: None,
         }
@@ -94,9 +98,23 @@ impl<'a> EvalProgram<'a> {
         }
     }
 
+    pub(crate) fn with_owned_trace_registry(
+        mut self,
+        registry: &'a dyn crate::trace::TraceOwnedRegistryView,
+    ) -> Self {
+        self.owned_trace_registry = Some(registry);
+        self
+    }
+
+    pub(crate) fn with_owned_trace_phase(mut self, phase: crate::TraceOwnedPhase) -> Self {
+        self.owned_trace_phase = phase;
+        self
+    }
+
     pub(crate) fn without_owned_context(self) -> Self {
         Self {
             owned_context: None,
+            owned_trace_registry: None,
             ..self
         }
     }
@@ -646,7 +664,7 @@ fn eval_expr_inner(
 
     in_progress.remove(&node_id);
     if let Ok(value) = &result {
-        record_node_value(program.trace_sink, node_id, positions, value);
+        record_node_value(program, node_id, positions, value);
         crate::debug::after_node_value(
             program.debug_hook,
             node_id,
@@ -669,14 +687,7 @@ pub(super) fn eval_node_input(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
     let value = eval_expr(program, input, context, positions, in_progress)?;
-    record_node_input_value(
-        program.trace_sink,
-        consumer,
-        input,
-        input_index,
-        positions,
-        &value,
-    );
+    record_node_input_value(program, consumer, input, input_index, positions, &value);
     crate::debug::after_node_input(
         program.debug_hook,
         consumer,

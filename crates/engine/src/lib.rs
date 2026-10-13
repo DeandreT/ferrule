@@ -64,13 +64,13 @@ pub use pipeline::{
     run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
 };
 pub use trace::{
-    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TraceOwnedDomain,
-    TraceOwnedFrame, TraceOwnedFrameRef, TraceOwnedLocation, TraceOwnedOrigin, TraceOwnedOriginRef,
-    TraceOwnedOwner, TraceOwnedOwnerRef, TraceOwnedPath, TraceOwnedPhase, TraceOwnedPosition,
-    TraceOwnedPositionRef, TraceOwnedRoot, TraceOwnedRootRef, TraceOwnedSnapshot, TraceOwnedValue,
-    TraceOwnedWitness, TraceOwnedWitnessError, TracePosition, TraceScope, TraceSink, TraceSortKey,
-    TraceSourceField, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
-    TraceValue, TraceWindow,
+    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,
+    TraceOwnedContextError, TraceOwnedDomain, TraceOwnedFrame, TraceOwnedFrameRef,
+    TraceOwnedLocation, TraceOwnedOrigin, TraceOwnedOriginRef, TraceOwnedOwner, TraceOwnedOwnerRef,
+    TraceOwnedPath, TraceOwnedPhase, TraceOwnedPosition, TraceOwnedPositionRef, TraceOwnedRoot,
+    TraceOwnedRootRef, TraceOwnedSnapshot, TraceOwnedValue, TraceOwnedWitness,
+    TraceOwnedWitnessError, TracePosition, TraceScope, TraceSink, TraceSortKey, TraceSourceField,
+    TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding, TraceValue, TraceWindow,
 };
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
@@ -957,6 +957,9 @@ fn evaluate_run<R>(
             source,
         })?;
     let owned = roots.as_ref().map(owned_context::OwnedContext::new);
+    let owned_trace_registry = roots
+        .as_ref()
+        .map(|roots| trace::TraceOwnedRegistry::new(project, roots));
     let first_failure_reported = Cell::new(false);
     let filter_map_run_state = filter_map::FilterMapRunState::new(
         execution.map_or_else(FilterMapLimits::default, |execution| {
@@ -976,6 +979,10 @@ fn evaluate_run<R>(
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
     let program = match owned.as_ref() {
         Some(owned) => program.with_owned_context(owned),
+        None => program,
+    };
+    let program = match owned_trace_registry.as_ref() {
+        Some(registry) => program.with_owned_trace_registry(registry),
         None => program,
     };
     failure::evaluate(program, &project.failure_rules, &context)?;
