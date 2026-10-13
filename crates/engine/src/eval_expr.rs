@@ -30,6 +30,8 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) first_failure_reported: &'a Cell<bool>,
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
+    #[cfg(test)]
+    root_reader: Option<&'a dyn crate::owned_source_execution::RootReader>,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
     pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
 }
@@ -49,6 +51,8 @@ impl<'a> EvalProgram<'a> {
             first_failure_reported,
             purpose: ExecutionPurpose::Run,
             primary_source: None,
+            #[cfg(test)]
+            root_reader: None,
             filter_map_run_state: None,
             filter_map_work: None,
         }
@@ -61,6 +65,15 @@ impl<'a> EvalProgram<'a> {
 
     pub(crate) fn with_purpose(mut self, purpose: ExecutionPurpose) -> Self {
         self.purpose = purpose;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_private_root_reader(
+        mut self,
+        reader: Option<&'a dyn crate::owned_source_execution::RootReader>,
+    ) -> Self {
+        self.root_reader = reader;
         self
     }
 
@@ -138,11 +151,26 @@ fn eval_expr_inner(
 
     let result = match node {
         Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
-            Err(EngineError::UnsupportedSourceOwnership {
+            #[cfg(test)]
+            let reader = program
+                .root_reader
+                .filter(|_| matches!(node, Node::OwnedSourceField(_)));
+            #[cfg(test)]
+            let result = match reader {
+                Some(reader) => reader.read(node_id),
+                None => Err(EngineError::UnsupportedSourceOwnership {
+                    node: node_id,
+                    function: None,
+                    kind: node.owned_source_kind().expect("owned node kind"),
+                }),
+            };
+            #[cfg(not(test))]
+            let result = Err(EngineError::UnsupportedSourceOwnership {
                 node: node_id,
                 function: None,
                 kind: node.owned_source_kind().expect("owned node kind"),
-            })
+            });
+            result
         }
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,

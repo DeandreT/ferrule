@@ -25,6 +25,8 @@ mod iteration_output;
 mod join;
 #[cfg(test)]
 mod owned_source_context;
+#[cfg(test)]
+mod owned_source_execution;
 mod path_hierarchy;
 mod pipeline;
 mod recursive_filter;
@@ -788,6 +790,27 @@ fn evaluate_run<R>(
     execution: Option<&ExecutionContext<'_>>,
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
+    let extras_frame = Instance::Group(extras.into());
+    evaluate_prepared(
+        project,
+        source,
+        &extras_frame,
+        execution,
+        #[cfg(test)]
+        None,
+        evaluate,
+    )
+}
+
+/// Shared native evaluator core. The private seam borrows caller-retained inputs.
+fn evaluate_prepared<R>(
+    project: &Project,
+    source: &Instance,
+    extras_frame: &Instance,
+    execution: Option<&ExecutionContext<'_>>,
+    #[cfg(test)] root_reader: Option<&dyn owned_source_execution::RootReader>,
+    evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
+) -> Result<R, EngineError> {
     project.validate_filter_map_v1()?;
     let issues = validate::validate_filter_map_contexts(project);
     if !issues.is_empty() {
@@ -824,8 +847,7 @@ fn evaluate_run<R>(
             .collect::<Vec<_>>())
         .into(),
     );
-    let extras_frame = Instance::Group((extras).into());
-    let context = [&runtime_frame, &extras_frame, source];
+    let context = [&runtime_frame, extras_frame, source];
     let first_failure_reported = Cell::new(false);
     let filter_map_run_state = filter_map::FilterMapRunState::new(
         execution.map_or_else(FilterMapLimits::default, |execution| {
@@ -843,10 +865,15 @@ fn evaluate_run<R>(
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
+    #[cfg(test)]
+    let program = program.with_private_root_reader(root_reader);
     failure::evaluate(program, &project.failure_rules, &context)?;
     evaluate(program, &context)
 }
 
+#[cfg(test)]
+#[path = "tests/owned_source_execution.rs"]
+mod owned_source_execution_tests;
 #[cfg(test)]
 #[path = "tests/source_ownership.rs"]
 mod source_ownership_tests;

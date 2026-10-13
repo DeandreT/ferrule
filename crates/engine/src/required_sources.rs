@@ -62,12 +62,60 @@ pub(crate) fn required_for_target<'a>(
     })
 }
 
+#[cfg(test)]
+pub(crate) fn required_for_private_roots<'a>(
+    project: &'a Project,
+    selection: Option<TargetSelection<'_>>,
+) -> Result<crate::RequiredTargetSources<'a>, crate::owned_source_execution::RootExecutionError<'a>>
+{
+    crate::owned_source_execution::admit(project, selection)?;
+    let mut analysis = Analysis::new(project);
+    analysis.private_owners = true;
+    match selection {
+        Some(selection) => {
+            let selected = selected_target(project, selection)
+                .map_err(crate::owned_source_execution::RootExecutionError::Engine)?;
+            analysis.inspect_scope(selected.map_or(&project.root, |target| &target.root));
+        }
+        None => {
+            analysis.inspect_scope(&project.root);
+            for target in &project.extra_targets {
+                analysis.inspect_scope(&target.root);
+            }
+        }
+    }
+    analysis.inspect_failure_rules();
+    analysis.inspect_graph();
+    Ok(crate::RequiredTargetSources {
+        static_sources: project
+            .extra_sources
+            .iter()
+            .enumerate()
+            .filter(|(index, source)| {
+                source.dynamic_path.is_none() && analysis.required.contains(index)
+            })
+            .map(|(_, source)| source)
+            .collect(),
+        dynamic_sources: project
+            .extra_sources
+            .iter()
+            .enumerate()
+            .filter(|(index, source)| {
+                source.dynamic_path.is_some() && analysis.inspected_dynamic.contains(index)
+            })
+            .map(|(_, source)| source)
+            .collect(),
+    })
+}
+
 struct Analysis<'a> {
     project: &'a Project,
     required: BTreeSet<usize>,
     inspected_dynamic: BTreeSet<usize>,
     pending: Vec<NodeId>,
     visited: BTreeSet<NodeId>,
+    #[cfg(test)]
+    private_owners: bool,
 }
 
 impl<'a> Analysis<'a> {
@@ -78,6 +126,8 @@ impl<'a> Analysis<'a> {
             inspected_dynamic: BTreeSet::new(),
             pending: Vec::new(),
             visited: BTreeSet::new(),
+            #[cfg(test)]
+            private_owners: false,
         }
     }
 
@@ -213,8 +263,24 @@ impl<'a> Analysis<'a> {
                     self.inspect_path(source.collection());
                 }
             }
-            Node::OwnedSourceField(_)
-            | Node::OwnedPosition(_)
+            Node::OwnedSourceField(field) => {
+                #[cfg(test)]
+                if self.private_owners
+                    && let mapping::SourceOwner::Named { name } = &field.source.owner
+                {
+                    self.required.extend(
+                        self.project
+                            .extra_sources
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, source)| source.name == *name)
+                            .map(|(index, _)| index),
+                    );
+                }
+                #[cfg(not(test))]
+                let _ = field;
+            }
+            Node::OwnedPosition(_)
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
