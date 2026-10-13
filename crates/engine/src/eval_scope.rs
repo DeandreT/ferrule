@@ -861,6 +861,44 @@ fn record_basic_candidate<'tree>(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn record_basic_sort_position<'tree>(
+    program: EvalProgram<'_>,
+    state: &crate::owned_context::OwnedContext<'tree>,
+    positions: &[PositionFrame],
+    trace_scope: &TraceScope,
+    extension: &mut crate::source_iteration::ObservedExtension<'tree>,
+    output_index: usize,
+    own: bool,
+) {
+    if program.trace_sink.is_none() {
+        return;
+    }
+    let mut input_positions = positions.to_vec();
+    input_positions.extend_from_slice(&extension.extension.positions);
+    // Ranking observes the original structural cursor before renumbering.
+    // Borrow its already-budgeted metadata without retaining a second cohort.
+    let original: crate::owned_context::OwnedContext<'tree> = crate::owned_context::OwnedContext {
+        roots: state.roots,
+        frames: std::mem::take(&mut extension.frames),
+        origins: std::mem::take(&mut extension.origins),
+        owned_ancestry: state.owned_ancestry || own,
+    };
+    record_owned_event(
+        program
+            .with_owned_context(&original)
+            .with_owned_trace_phase(crate::TraceOwnedPhase::Structural),
+        &input_positions,
+        || TraceEvent::SortPosition {
+            scope: trace_scope.clone(),
+            positions: trace_positions(&input_positions),
+            output_index,
+        },
+    );
+    extension.frames = original.frames;
+    extension.origins = original.origins;
+}
+
+#[allow(clippy::too_many_arguments)]
 fn eval_basic_owned_scope<'a>(
     program: EvalProgram<'a>,
     scope: &Scope,
@@ -1156,6 +1194,23 @@ fn eval_basic_owned_scope<'a>(
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            record_owned_event(
+                program.with_owned_context(&item_state),
+                &item_positions,
+                || TraceEvent::SortCandidate {
+                    scope: trace_scope.clone(),
+                    positions: trace_positions(&item_positions),
+                    keys: sort_keys
+                        .iter()
+                        .zip(&values)
+                        .map(|(key, value)| TraceSortKey {
+                            node: key.node,
+                            descending: key.descending,
+                            value: TraceValue::new(value),
+                        })
+                        .collect(),
+                },
+            );
             keyed.push((extension, values));
         }
         keyed.sort_by(|(_, left), (_, right)| {
@@ -1177,6 +1232,15 @@ fn eval_basic_owned_scope<'a>(
             .into_iter()
             .enumerate()
             .map(|(index, (mut extension, _))| {
+                record_basic_sort_position(
+                    program,
+                    state,
+                    positions,
+                    trace_scope,
+                    &mut extension,
+                    index + 1,
+                    own,
+                );
                 renumber_extension(&mut extension.extension.positions, index + 1);
                 extension
             })
