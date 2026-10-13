@@ -3434,3 +3434,771 @@ fn basic_owned_node650_boxed_boundaries_are_not_annotated_or_rewrapped() {
             .is_some()
     );
 }
+
+// Filter-only streaming adjuncts. The complete original witness is admitted
+// before either callback; no test below installs an arbitrary public frame.
+fn filter644_row(
+    context: &BasicScopeContext<'_>,
+    owner: SourceOwnerRef<'_>,
+) -> Result<Instance, RuntimeError> {
+    let value = context.owned_field(owner, &["Rows", "Value"], Some(&["Rows"]))?;
+    let position = context.owned_position(owner, Some(&["Rows"]))?;
+    Ok(group([
+        field("Value", scalar(value)),
+        field(
+            "Position",
+            scalar(integer(i64::try_from(position).unwrap())),
+        ),
+    ]))
+}
+fn filter644_int_row(value: i64, position: i64) -> Instance {
+    group([
+        field("Value", scalar(integer(value))),
+        field("Position", scalar(integer(position))),
+    ])
+}
+fn filter644_string_row(value: &str, position: i64) -> Instance {
+    group([
+        field("Value", scalar(string(value))),
+        field("Position", scalar(integer(position))),
+    ])
+}
+
+#[test]
+fn filter644_streams_original_predicates_and_compact_outputs() {
+    let input = phase();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    let events = std::cell::RefCell::new(Vec::new());
+    let mut output = Vec::new();
+    reset_phase();
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |context| {
+            let value = context.owned_field(
+                SourceOwnerRef::Primary,
+                &["Rows", "Value"],
+                Some(&["Rows"]),
+            )?;
+            let position = context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?;
+            events.borrow_mut().push(("predicate", value, position));
+            Ok(position > 1)
+        },
+        |context| {
+            let value = context.owned_field(
+                SourceOwnerRef::Primary,
+                &["Rows", "Value"],
+                Some(&["Rows"]),
+            )?;
+            let position = context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?;
+            events.borrow_mut().push(("output", value, position));
+            output.push(filter644_row(context, SourceOwnerRef::Primary)?);
+            Ok(())
+        },
+    );
+    let output = repeated(output);
+    let events = events.into_inner();
+    eprintln!("RAW FILTER644_STREAM result={result:?} output={output:?} events={events:?}");
+    assert_eq!(result, Ok(2));
+    assert_eq!(
+        output,
+        repeated([filter644_int_row(10, 1), filter644_int_row(20, 2)])
+    );
+    assert_eq!(
+        events,
+        vec![
+            ("predicate", integer(30), 1),
+            ("predicate", integer(10), 2),
+            ("output", integer(10), 1),
+            ("predicate", integer(20), 3),
+            ("output", integer(20), 2),
+        ]
+    );
+    assert_eq!(
+        positions(&original.candidates),
+        vec![(1, 1), (2, 2), (3, 3)]
+    );
+    assert_eq!(phase_observations(), (2, 3, 1));
+}
+
+#[test]
+fn filter644_named_collision_and_null_gaps_preserve_owner() {
+    let input = group([
+        field("Value", scalar(string("primary.root"))),
+        field(
+            "Ref",
+            group([field("Rows", repeated([row("literal.Ref")]))]),
+        ),
+        field(
+            "Rows",
+            repeated([
+                scalar(Value::Null),
+                row("P2"),
+                scalar(Value::json_null()),
+                row("P4"),
+            ]),
+        ),
+    ]);
+    let named = group([
+        field("Value", scalar(string("named.root"))),
+        field(
+            "Rows",
+            repeated([
+                scalar(Value::Null),
+                row("N2"),
+                scalar(Value::json_null()),
+                row("N4"),
+            ]),
+        ),
+    ]);
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let r = roots(&input, &declarations);
+    let parent = r.captured_root_context();
+    for (owner, root_value, values, legacy_path) in [
+        (
+            SourceOwnerRef::Primary,
+            "primary.root",
+            ["P2", "P4"],
+            &["Rows"][..],
+        ),
+        (
+            SourceOwnerRef::Named("Ref"),
+            "named.root",
+            ["N2", "N4"],
+            &["Ref", "Rows"][..],
+        ),
+    ] {
+        let original = parent.walk_owned_source_cohort(owner, &["Rows"]).unwrap();
+        raw_original("FILTER644_NAMED_ORIGINAL", &original);
+        let mut raw_positions = Vec::new();
+        let mut root_reads = Vec::new();
+        let mut output = Vec::new();
+        let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+            &original,
+            |context| {
+                raw_positions.push((
+                    context.legacy_position(legacy_path),
+                    context.owned_position(owner, None)?,
+                    context.owned_position(owner, Some(&["Rows"]))?,
+                ));
+                Ok(true)
+            },
+            |context| {
+                root_reads.push(context.owned_field_with_root_pin(
+                    owner,
+                    &["Value"],
+                    Some(&[]),
+                    true,
+                )?);
+                assert_eq!(context.legacy_position(legacy_path), output.len() + 1);
+                output.push(filter644_row(context, owner)?);
+                Ok(())
+            },
+        );
+        let output = repeated(output);
+        eprintln!(
+            "RAW FILTER644_NAMED owner={owner:?} result={result:?} output={output:?} raw_positions={raw_positions:?} root_reads={root_reads:?}"
+        );
+        assert_eq!(result, Ok(2));
+        assert_eq!(
+            output,
+            repeated([
+                filter644_string_row(values[0], 1),
+                filter644_string_row(values[1], 2)
+            ])
+        );
+        assert_eq!(raw_positions, vec![(2, 2, 2), (4, 4, 4)]);
+        assert_eq!(root_reads, vec![string(root_value), string(root_value)]);
+        assert_eq!(raw_ordinals(&original.candidates), vec![Some(2), Some(4)]);
+    }
+}
+
+#[test]
+fn filter644_empty_all_false_and_singleton_have_complete_admission() {
+    for (input, accept, expected, expected_observations) in [
+        (
+            group([field("Rows", repeated([]))]),
+            true,
+            repeated([]),
+            (0, 0, 1),
+        ),
+        (abc(), false, repeated([]), (0, 3, 1)),
+        (
+            group([field("Rows", row("one"))]),
+            true,
+            repeated([filter644_string_row("one", 1)]),
+            (1, 1, 1),
+        ),
+    ] {
+        let r = roots(&input, &[]);
+        let parent = r.captured_root_context();
+        let original = original(&parent, &["Rows"]);
+        let mut predicates = 0usize;
+        let mut output = Vec::new();
+        reset_phase();
+        let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+            &original,
+            |_| {
+                predicates += 1;
+                Ok(accept)
+            },
+            |context| {
+                // A plain singleton has no new repeated cursor: its legacy
+                // default remains1 while owned position is correctly inactive.
+                if original.get(0).unwrap().cursor.is_none() {
+                    assert_eq!(
+                        context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+                        Err(inactive(Some(&["Rows"])))
+                    );
+                    output.push(group([
+                        field(
+                            "Value",
+                            scalar(context.owned_field(
+                                SourceOwnerRef::Primary,
+                                &["Rows", "Value"],
+                                None,
+                            )?),
+                        ),
+                        field(
+                            "Position",
+                            scalar(integer(
+                                i64::try_from(context.legacy_position(&["Rows"])).unwrap(),
+                            )),
+                        ),
+                    ]));
+                } else {
+                    output.push(filter644_row(context, SourceOwnerRef::Primary)?);
+                }
+                Ok(())
+            },
+        );
+        let output = repeated(output);
+        eprintln!(
+            "RAW FILTER644_EMPTY_FALSE_SINGLETON input={input:?} accept={accept} result={result:?} output={output:?} predicates={predicates}"
+        );
+        assert_eq!(
+            result,
+            Ok(match &expected {
+                Instance::Repeated(items) => items.len(),
+                _ => unreachable!(),
+            })
+        );
+        assert_eq!(output, expected);
+        assert_eq!(predicates, original.len());
+        assert_eq!(phase_observations(), expected_observations);
+    }
+}
+
+#[test]
+fn filter644_accepted_target_failure_precedes_later_predicate() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    let events = std::cell::RefCell::new(Vec::new());
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |context| {
+            let position = context.owned_position(SourceOwnerRef::Primary, None)?;
+            events.borrow_mut().push(("predicate", position));
+            if position == 3 {
+                return Err(RuntimeError::MappingException {
+                    node: 99,
+                    message: Some("later predicate".into()),
+                });
+            }
+            Ok(position == 2)
+        },
+        |context| {
+            events.borrow_mut().push((
+                "output",
+                context.owned_position(SourceOwnerRef::Primary, None)?,
+            ));
+            Err(RuntimeError::MappingException {
+                node: 0,
+                message: Some("first accepted output".into()),
+            })
+        },
+    );
+    eprintln!(
+        "RAW FILTER644_FIRST_FAILURE result={result:?} events={:?}",
+        events.borrow()
+    );
+    raw_error("FILTER644_FIRST_FAILURE", result.as_ref().unwrap_err());
+    assert_eq!(
+        result,
+        Err(RuntimeError::MappingException {
+            node: 0,
+            message: Some("first accepted output".into())
+        })
+    );
+    assert_eq!(
+        events.into_inner(),
+        vec![("predicate", 1), ("predicate", 2), ("output", 1)]
+    );
+}
+
+#[derive(Debug, PartialEq)]
+enum Filter644CallbackError {
+    Runtime(RuntimeError),
+    Predicate,
+}
+impl From<RuntimeError> for Filter644CallbackError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+#[test]
+fn filter644_predicate_errors_keep_typed_causes_and_generic_error() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    for node in [0, u32::MAX] {
+        let mut outputs = 0;
+        let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+            &original,
+            |context| {
+                context
+                    .owned_position(SourceOwnerRef::Named("Ref"), None)
+                    .map(|_| true)
+                    .map_err(|error| error.with_owned_source_node(node))
+            },
+            |_| {
+                outputs += 1;
+                Ok(())
+            },
+        );
+        raw_error("FILTER644_OWNED_PREDICATE", result.as_ref().unwrap_err());
+        assert_eq!(
+            result,
+            Err(RuntimeError::OwnedSourceAtNode {
+                node,
+                source: OwnedSourceError::UnknownOwner { name: "Ref".into() }
+            })
+        );
+        assert!(
+            result
+                .as_ref()
+                .unwrap_err()
+                .source()
+                .unwrap()
+                .downcast_ref::<OwnedSourceError>()
+                .is_some()
+        );
+        assert_eq!(outputs, 0);
+    }
+    let mut outputs = 0;
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |_| {
+            Err(RuntimeError::NotABool {
+                node: u32::MAX,
+                found: "Int",
+            })
+        },
+        |_| {
+            outputs += 1;
+            Ok(())
+        },
+    );
+    eprintln!("RAW FILTER644_NONBOOL result={result:?}");
+    assert_eq!(
+        result,
+        Err(RuntimeError::NotABool {
+            node: u32::MAX,
+            found: "Int"
+        })
+    );
+    assert_eq!(outputs, 0);
+    let result: Result<usize, Filter644CallbackError> = parent.visit_filtered_source_cohort(
+        &original,
+        |_| Err(Filter644CallbackError::Predicate),
+        |_| panic!("a failed predicate must not reach output"),
+    );
+    eprintln!("RAW FILTER644_GENERIC_CALLBACK result={result:?}");
+    assert_eq!(result, Err(Filter644CallbackError::Predicate));
+}
+
+#[test]
+fn filter644_nested_outer_positions_and_plain_frames_remain_exact() {
+    let input = common();
+    let r = roots(&input, &[]);
+    let root = r.captured_root_context();
+    let outer = root
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    let parent = outer
+        .get(0)
+        .unwrap()
+        .with_phase_position(usize::MAX)
+        .unwrap()
+        .into_context();
+    let original = original(&parent, &["Rows", "Rows"]);
+    let mut predicates = Vec::new();
+    let mut output = Vec::new();
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |context| {
+            let position =
+                context.owned_position(SourceOwnerRef::Primary, Some(&["Rows", "Rows"]))?;
+            predicates.push((
+                position,
+                context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+            ));
+            Ok(position > 1)
+        },
+        |context| {
+            output.push((
+                context.owned_field(
+                    SourceOwnerRef::Primary,
+                    &["Rows", "Rows", "Value"],
+                    Some(&["Rows", "Rows"]),
+                )?,
+                context.legacy_position(&["Rows", "Rows"]),
+                context.owned_position(SourceOwnerRef::Primary, None)?,
+                context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+                context.owned_field(
+                    SourceOwnerRef::Primary,
+                    &["Rows", "Value"],
+                    Some(&["Rows"]),
+                )?,
+                context
+                    .origins
+                    .iter()
+                    .find(|o| o.path == path(&["Rows"]))
+                    .unwrap()
+                    .raw_index,
+                context
+                    .origins
+                    .iter()
+                    .find(|o| o.path == path(&["Rows", "Rows"]))
+                    .unwrap()
+                    .raw_index,
+            ));
+            Ok(())
+        },
+    );
+    eprintln!("RAW FILTER644_NESTED result={result:?} predicates={predicates:?} output={output:?}");
+    assert_eq!(result, Ok(1));
+    assert_eq!(predicates, vec![(1, usize::MAX), (2, usize::MAX)]);
+    assert_eq!(
+        output,
+        vec![(
+            string("P.inner12"),
+            1,
+            1,
+            usize::MAX,
+            string("P1"),
+            Some(1),
+            Some(2)
+        )]
+    );
+    for route in [&["Rows", "Details"][..], &["Rows"][..]] {
+        let original = parent
+            .walk_owned_source_cohort(SourceOwnerRef::Primary, route)
+            .unwrap();
+        let mut output = Vec::new();
+        let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+            &original,
+            |_| Ok(true),
+            |context| {
+                output.push((
+                    context.legacy_position(&["Rows"]),
+                    context.owned_position(SourceOwnerRef::Primary, None)?,
+                    context.owned.frames.len(),
+                    context
+                        .origins
+                        .iter()
+                        .find(|o| o.path == path(&["Rows"]))
+                        .unwrap()
+                        .raw_index,
+                ));
+                Ok(())
+            },
+        );
+        eprintln!(
+            "RAW FILTER644_PLAIN_IDENTITY route={route:?} result={result:?} output={output:?}"
+        );
+        assert_eq!(result, Ok(1));
+        assert_eq!(output, vec![(usize::MAX, usize::MAX, 1, Some(1))]);
+    }
+}
+
+fn filter644_no_callbacks(
+    parent: &BasicScopeContext<'_>,
+    original: &RetainedSourceCohort<'_>,
+) -> RuntimeError {
+    reset_phase();
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        original,
+        |_| panic!("complete-cohort admission must precede predicates"),
+        |_| panic!("complete-cohort admission must precede outputs"),
+    );
+    let error = result.unwrap_err();
+    raw_error("FILTER644_ADMISSION", &error);
+    assert_eq!(phase_observations().0, 0);
+    error
+}
+
+#[test]
+fn filter644_witness_refusals_precede_callbacks() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let mut duplicate = original(&parent, &["Rows"]);
+    duplicate.candidates[1].ordinal = 0;
+    assert_eq!(
+        filter644_no_callbacks(&parent, &duplicate),
+        BasicSourceBridgeError::DuplicatePhaseCandidate {
+            input_ordinal: 1,
+            candidate_ordinal: 0
+        }
+        .into()
+    );
+    let mut incomplete = original(&parent, &["Rows"]);
+    incomplete.candidates.pop();
+    assert_eq!(
+        filter644_no_callbacks(&parent, &incomplete),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 2 }.into()
+    );
+    let mut foreign_candidate = original(&parent, &["Rows"]);
+    let mut independent = original(&parent, &["Rows"]);
+    foreign_candidate.candidates[1] = independent.candidates.remove(1);
+    assert_eq!(
+        filter644_no_callbacks(&parent, &foreign_candidate),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 1 }.into()
+    );
+    let other_parent = r.captured_root_context();
+    let other_original = original(&other_parent, &["Rows"]);
+    assert_eq!(
+        filter644_no_callbacks(&parent, &other_original),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into()
+    );
+    let other_roots = roots(&input, &[]);
+    let other_parent = other_roots.captured_root_context();
+    let other_original = original(&other_parent, &["Rows"]);
+    assert_eq!(
+        filter644_no_callbacks(&parent, &other_original),
+        BasicSourceBridgeError::RegistryMismatch.into()
+    );
+    let empty = RetainedSourceCohort {
+        candidates: Vec::new(),
+        witness: Arc::new(WalkCohort {
+            parent: Arc::clone(&parent.identity),
+            registry: Arc::clone(&parent.owned.registry),
+            original_count: OnceLock::new(),
+        }),
+    };
+    assert_eq!(
+        filter644_no_callbacks(&parent, &empty),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into()
+    );
+}
+
+#[test]
+fn filter644_complete_count_limit_precedes_callbacks() {
+    let input = abc();
+    let r = admit_with_limits(&input, &[], phase_limits());
+    let parent = r.captured_root_context();
+    let mut original = original(&parent, &["Rows"]);
+    let fourth = original.get(0).unwrap().with_phase_position(1).unwrap();
+    original.candidates.push(fourth);
+    assert_eq!(
+        filter644_no_callbacks(&parent, &original),
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "WalkContexts",
+            used: 0,
+            requested: 4,
+            maximum: 3
+        }
+        .into()
+    );
+    assert_eq!(phase_observations(), (0, 0, 0));
+}
+
+#[test]
+fn filter644_original_metadata_limits_precede_all_false_callbacks() {
+    let input = abc();
+    let policy = phase_limits();
+    let r = admit_with_limits(&input, &[], policy);
+    let parent = r.captured_root_context();
+    let mut original = original(&parent, &["Rows"]);
+    // Private malformed metadata keeps the actual walk/count witness so the
+    // complete-original payload charge, rather than a callback, must refuse it.
+    original.candidates[0].context.origins[0]
+        .path
+        .push("x".repeat(policy.max_metadata_bytes));
+    assert_eq!(
+        filter644_no_callbacks(&parent, &original),
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "MetadataBytes",
+            used: 4,
+            requested: 1024,
+            maximum: 1024
+        }
+        .into()
+    );
+    assert_eq!(phase_observations(), (0, 0, 1));
+    let mut original = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    let bounds = retained_phase_bounds(policy).unwrap();
+    let (budget, ordinary) = parent
+        .budget(SourceOwnerRef::Primary, &[], None, false)
+        .unwrap();
+    let expected_used = budget.slots + (bounds.core - ordinary.core) + 5;
+    let requested = bounds.total + 1;
+    original.candidates[0].context.origins = vec![
+        Origin {
+            owner: OwnedOwnerKey::Primary,
+            path: Vec::new(),
+            owned_frame: None,
+            raw_index: None
+        };
+        requested
+    ];
+    assert_eq!(
+        filter644_no_callbacks(&parent, &original),
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "MetadataSlots",
+            used: expected_used,
+            requested,
+            maximum: bounds.total
+        }
+        .into()
+    );
+    assert_eq!(phase_observations(), (0, 0, 1));
+}
+
+#[test]
+fn filter644_cumulative_accepted_payload_budget_has_no_reset() {
+    let input = abc();
+    let policy = OwnedSourceLimits {
+        max_metadata_bytes: 71,
+        ..phase_limits()
+    };
+    let r = admit_with_limits(&input, &[], policy);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    let mut predicates = Vec::new();
+    let mut output = Vec::new();
+    reset_phase();
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |context| {
+            predicates.push(context.owned_position(SourceOwnerRef::Primary, None)?);
+            Ok(true)
+        },
+        |context| {
+            output.push(filter644_row(context, SourceOwnerRef::Primary)?);
+            Ok(())
+        },
+    );
+    let output = repeated(output);
+    eprintln!(
+        "RAW FILTER644_CUMULATIVE policy={policy:?} result={result:?} predicates={predicates:?} output={output:?}"
+    );
+    raw_error("FILTER644_CUMULATIVE", result.as_ref().unwrap_err());
+    assert_eq!(
+        result,
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::MetadataBytes,
+            used: 68,
+            requested: 4,
+            max: 71
+        }
+        .into())
+    );
+    assert_eq!(predicates, vec![1, 2, 3]);
+    assert_eq!(
+        output,
+        repeated([filter644_string_row("a", 1), filter644_string_row("b", 2)])
+    );
+    assert_eq!(phase_observations(), (3, 3, 1));
+}
+
+#[test]
+fn filter644_empty_budget_and_native_capacity_boundaries() {
+    let input = group([field("Rows", repeated([]))]);
+    let policy = OwnedSourceLimits {
+        max_walk_contexts: 0,
+        max_metadata_bytes: 12,
+        ..phase_limits()
+    };
+    let r = admit_with_limits(&input, &[], policy);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    reset_phase();
+    let result: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |_| panic!("empty cohort has no predicate"),
+        |_| panic!("empty cohort has no output"),
+    );
+    eprintln!("RAW FILTER644_ZERO_LIMIT result={result:?}");
+    assert_eq!(result, Ok(0));
+    assert_eq!(phase_observations(), (0, 0, 1));
+    let at_capacity = (isize::MAX as usize) / std::mem::size_of::<BasicSourceCandidate<'_>>();
+    let capacity = (
+        paired_capacity::<BasicSourceCandidate<'_>>(0),
+        paired_capacity::<BasicSourceCandidate<'_>>(at_capacity),
+        paired_capacity::<BasicSourceCandidate<'_>>(at_capacity + 1),
+    );
+    eprintln!("RAW FILTER644_CAPACITY at_capacity={at_capacity} result={capacity:?}");
+    assert_eq!(
+        capacity,
+        (
+            Ok(()),
+            Ok(()),
+            Err(BasicSourceBridgeError::PairedMetadataArithmeticOverflow {
+                component: "MetadataSlots"
+            }
+            .into())
+        )
+    );
+    let huge = OwnedSourceLimits {
+        max_roots: 1,
+        max_active_frames: 0,
+        max_path_segments: 0,
+        max_metadata_bytes: 0,
+        max_walk_contexts: usize::MAX,
+    };
+    let arithmetic = retained_phase_bounds(huge);
+    eprintln!("RAW FILTER644_NATIVE_ARITHMETIC limits={huge:?} result={arithmetic:?}");
+    assert_eq!(
+        arithmetic,
+        Err(BasicSourceBridgeError::PairedMetadataArithmeticOverflow {
+            component: "MetadataSlots"
+        }
+        .into())
+    );
+}
+
+#[test]
+fn filter644_runtime_admission_converts_into_callback_error() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let mut original = original(&parent, &["Rows"]);
+    original.candidates[1].ordinal = 0;
+    let result: Result<usize, Filter644CallbackError> = parent.visit_filtered_source_cohort(
+        &original,
+        |_| panic!("invalid original must not reach predicate"),
+        |_| panic!("invalid original must not reach output"),
+    );
+    eprintln!("RAW FILTER644_GENERIC_ADMISSION result={result:?}");
+    assert_eq!(
+        result,
+        Err(Filter644CallbackError::Runtime(
+            BasicSourceBridgeError::DuplicatePhaseCandidate {
+                input_ordinal: 1,
+                candidate_ordinal: 0
+            }
+            .into()
+        ))
+    );
+}
