@@ -580,3 +580,521 @@ fn truncate_bytes(value: &str, limit: usize) -> (String, bool) {
     }
     (value[..end].to_string(), end < value.len())
 }
+
+/// Evaluation position space supplied by the caller, never inferred from an index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceOwnedPhase {
+    Structural,
+    Selection,
+    Output,
+}
+
+/// Provenance domain supplied by the caller; only Basic is supported here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceOwnedDomain {
+    Basic,
+    Grouped,
+    Joined,
+    Documents,
+    Generated,
+    Dynamic,
+    Function,
+}
+
+/// Exact source declaration identity. A named owner is not a wrapper field path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceOwnedOwnerRef<'a> {
+    Primary,
+    Named {
+        declaration_index: usize,
+        name: &'a str,
+    },
+}
+
+/// One original input, borrowed from the current evaluator's root registry.
+#[derive(Clone, Copy)]
+pub struct TraceOwnedRootRef<'a> {
+    pub owner: TraceOwnedOwnerRef<'a>,
+    /// None means unavailable; a supplied scalar null is still Some.
+    pub input: Option<&'a Instance>,
+}
+
+/// One active occurrence, in outer-to-inner ancestry order.
+#[derive(Clone, Copy)]
+pub struct TraceOwnedFrameRef<'a> {
+    pub owner: TraceOwnedOwnerRef<'a>,
+    pub collection: &'a [String],
+    pub item: &'a Instance,
+    pub position_slot: usize,
+}
+
+/// One canonical source origin retained by the current evaluator.
+#[derive(Clone, Copy)]
+pub struct TraceOwnedOriginRef<'a> {
+    pub owner: TraceOwnedOwnerRef<'a>,
+    pub path: &'a [String],
+    pub item: &'a Instance,
+}
+
+/// Raw legacy position metadata, borrowed independently of canonical owned paths.
+#[derive(Clone, Copy)]
+pub struct TraceOwnedPositionRef<'a> {
+    pub collection: &'a [String],
+    pub index: usize,
+    pub grouped: bool,
+    pub join: Option<JoinId>,
+    pub join_position: Option<(JoinId, usize)>,
+    pub document_path: Option<&'a str>,
+}
+
+impl<'a> From<&'a PositionFrame> for TraceOwnedPositionRef<'a> {
+    fn from(position: &'a PositionFrame) -> Self {
+        Self {
+            collection: &position.collection,
+            index: position.index,
+            grouped: position.grouped,
+            join: position.join,
+            join_position: position.join_position,
+            document_path: position.document_path.as_deref(),
+        }
+    }
+}
+
+impl<'a> From<&'a TracePosition> for TraceOwnedPositionRef<'a> {
+    fn from(position: &'a TracePosition) -> Self {
+        Self {
+            collection: &position.collection,
+            index: position.index,
+            grouped: position.grouped,
+            join: position.join,
+            join_position: position.join_position,
+            document_path: position.document_path.as_deref(),
+        }
+    }
+}
+
+/// Borrowed Basic ownership metadata, suitable for a synchronous observer.
+///
+/// The evaluator supplies these bindings from its existing registry and active
+/// frames. This API performs no source lookup, iteration, or expression access.
+/// Input references cannot outlive their original storage. Snapshotting copies
+/// only bounded metadata and scalar previews, never source instance trees.
+/// Descriptor producers must supply authentic registry/occurrence references;
+/// validation checks declaration and slot metadata, not pointer ancestry by
+/// traversing inputs. No supplied descriptor is treated as an execution capability.
+/// This foundation does not enable owned tracing or debugging in execution.
+pub struct TraceOwnedWitness<'a> {
+    pub project: &'a mapping::Project,
+    pub domain: TraceOwnedDomain,
+    pub phase: TraceOwnedPhase,
+    pub roots: &'a [TraceOwnedRootRef<'a>],
+    pub frames: &'a [TraceOwnedFrameRef<'a>],
+    pub origins: &'a [TraceOwnedOriginRef<'a>],
+    pub positions: &'a [TraceOwnedPositionRef<'a>],
+    pub owned_ancestry: bool,
+}
+
+/// The location of malformed or unsupported supplied witness metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceOwnedLocation {
+    Context,
+    Root(usize),
+    Frame(usize),
+    Origin(usize),
+    Position(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TraceOwnedWitnessError {
+    #[error("owned trace witness exceeds {resource} limit {limit}")]
+    ResourceLimit {
+        resource: &'static str,
+        limit: usize,
+    },
+    #[error("unknown source declaration at {at:?}")]
+    UnknownDeclaration { at: TraceOwnedLocation },
+    #[error("source declaration name mismatch at {at:?}")]
+    DeclarationNameMismatch { at: TraceOwnedLocation },
+    #[error("ambiguous source declaration at {at:?}")]
+    AmbiguousDeclaration { at: TraceOwnedLocation },
+    #[error("duplicate root binding at {at:?}")]
+    DuplicateRoot { at: TraceOwnedLocation },
+    #[error("no root binding for owned witness at {at:?}")]
+    MissingRoot { at: TraceOwnedLocation },
+    #[error("unavailable source for owned witness at {at:?}")]
+    UnavailableRoot { at: TraceOwnedLocation },
+    #[error("invalid owned frame position slot {slot} at {at:?}")]
+    InvalidPositionSlot { at: TraceOwnedLocation, slot: usize },
+    #[error("owned trace witness does not support {domain} at {at:?}")]
+    UnsupportedDomain {
+        at: TraceOwnedLocation,
+        domain: &'static str,
+    },
+}
+
+/// A bounded path display; omitted segments remain explicit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedPath {
+    pub segments: Vec<String>,
+    pub truncated_segments: Vec<bool>,
+    pub omitted_segments: usize,
+}
+
+/// Exact endpoint identity retained even when its display name is truncated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TraceOwnedOwner {
+    Primary,
+    Named {
+        declaration_index: usize,
+        name: String,
+        name_truncated: bool,
+    },
+}
+
+/// A bounded description, without traversing structural instance children.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedValue {
+    pub kind: TraceOutputKind,
+    pub scalar: Option<TraceValue>,
+    pub child_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedRoot {
+    pub owner: TraceOwnedOwner,
+    pub input: Option<TraceOwnedValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedFrame {
+    pub owner: TraceOwnedOwner,
+    pub collection: TraceOwnedPath,
+    pub item: TraceOwnedValue,
+    /// Indexes the original witness's positions, including any omitted tail.
+    pub position_slot: usize,
+    /// The copied index remains available even when its raw position is omitted.
+    pub index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedOrigin {
+    pub owner: TraceOwnedOwner,
+    pub path: TraceOwnedPath,
+    pub item: TraceOwnedValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedPosition {
+    pub collection: TraceOwnedPath,
+    pub index: usize,
+}
+
+/// A retained witness with hard metadata and preview bounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceOwnedSnapshot {
+    pub phase: TraceOwnedPhase,
+    pub owned_ancestry: bool,
+    pub roots: Vec<TraceOwnedRoot>,
+    pub frames: Vec<TraceOwnedFrame>,
+    pub origins: Vec<TraceOwnedOrigin>,
+    pub positions: Vec<TraceOwnedPosition>,
+    pub omitted_roots: usize,
+    pub omitted_frames: usize,
+    pub omitted_origins: usize,
+    pub omitted_positions: usize,
+}
+
+const MAX_TRACE_OWNED_ENTRIES: usize = 4096;
+const MAX_TRACE_OWNED_PATH_SEGMENTS: usize = 256;
+const MAX_TRACE_OWNED_TEXT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_TRACE_OWNED_VISIBLE_ENTRIES: usize = 32;
+const MAX_TRACE_OWNED_VISIBLE_PATH_SEGMENTS: usize = 16;
+const MAX_TRACE_OWNED_NAME_CHARS: usize = 80;
+
+impl TraceOwnedWitness<'_> {
+    /// Validates every supplied entry before returning a bounded retained snapshot.
+    /// Validation never consumes the evaluator's execution/work budget.
+    pub fn snapshot(&self) -> Result<TraceOwnedSnapshot, TraceOwnedWitnessError> {
+        self.validate()?;
+        let visible = MAX_TRACE_OWNED_VISIBLE_ENTRIES;
+        Ok(TraceOwnedSnapshot {
+            phase: self.phase,
+            owned_ancestry: self.owned_ancestry,
+            roots: self
+                .roots
+                .iter()
+                .take(visible)
+                .map(|root| TraceOwnedRoot {
+                    owner: owned_owner_snapshot(root.owner),
+                    input: root.input.map(owned_value_snapshot),
+                })
+                .collect(),
+            frames: self
+                .frames
+                .iter()
+                .take(visible)
+                .map(|frame| TraceOwnedFrame {
+                    owner: owned_owner_snapshot(frame.owner),
+                    collection: owned_path_snapshot(frame.collection),
+                    item: owned_value_snapshot(frame.item),
+                    position_slot: frame.position_slot,
+                    index: self.positions[frame.position_slot].index,
+                })
+                .collect(),
+            origins: self
+                .origins
+                .iter()
+                .take(visible)
+                .map(|origin| TraceOwnedOrigin {
+                    owner: owned_owner_snapshot(origin.owner),
+                    path: owned_path_snapshot(origin.path),
+                    item: owned_value_snapshot(origin.item),
+                })
+                .collect(),
+            positions: self
+                .positions
+                .iter()
+                .take(visible)
+                .map(|position| TraceOwnedPosition {
+                    collection: owned_path_snapshot(position.collection),
+                    index: position.index,
+                })
+                .collect(),
+            omitted_roots: self.roots.len().saturating_sub(visible),
+            omitted_frames: self.frames.len().saturating_sub(visible),
+            omitted_origins: self.origins.len().saturating_sub(visible),
+            omitted_positions: self.positions.len().saturating_sub(visible),
+        })
+    }
+
+    fn validate(&self) -> Result<(), TraceOwnedWitnessError> {
+        let domain = match self.domain {
+            TraceOwnedDomain::Basic => None,
+            TraceOwnedDomain::Grouped => Some("grouped source"),
+            TraceOwnedDomain::Joined => Some("joined source"),
+            TraceOwnedDomain::Documents => Some("document source"),
+            TraceOwnedDomain::Generated => Some("generated source"),
+            TraceOwnedDomain::Dynamic => Some("dynamic source"),
+            TraceOwnedDomain::Function => Some("function source"),
+        };
+        if let Some(domain) = domain {
+            return Err(TraceOwnedWitnessError::UnsupportedDomain {
+                at: TraceOwnedLocation::Context,
+                domain,
+            });
+        }
+        let declarations = self.project.extra_sources.len().checked_add(1).ok_or(
+            TraceOwnedWitnessError::ResourceLimit {
+                resource: "declaration entries",
+                limit: MAX_TRACE_OWNED_ENTRIES,
+            },
+        )?;
+        for (resource, count) in [
+            ("root entries", self.roots.len()),
+            ("frame entries", self.frames.len()),
+            ("origin entries", self.origins.len()),
+            ("position entries", self.positions.len()),
+            ("declaration entries", declarations),
+        ] {
+            if count > MAX_TRACE_OWNED_ENTRIES {
+                return Err(TraceOwnedWitnessError::ResourceLimit {
+                    resource,
+                    limit: MAX_TRACE_OWNED_ENTRIES,
+                });
+            }
+        }
+        let mut text_bytes = 0usize;
+        for source in &self.project.extra_sources {
+            charge_owned_text(source.name.len(), &mut text_bytes)?;
+        }
+        for (index, root) in self.roots.iter().enumerate() {
+            let at = TraceOwnedLocation::Root(index);
+            self.validate_owner(root.owner, at, &mut text_bytes)?;
+            if self.roots[..index]
+                .iter()
+                .any(|other| other.owner == root.owner)
+            {
+                return Err(TraceOwnedWitnessError::DuplicateRoot { at });
+            }
+            if let Some(input) = root.input {
+                validate_owned_value(input, at)?;
+            }
+        }
+        for (index, frame) in self.frames.iter().enumerate() {
+            let at = TraceOwnedLocation::Frame(index);
+            self.validate_binding(frame.owner, at, &mut text_bytes)?;
+            validate_owned_path(frame.collection, &mut text_bytes)?;
+            validate_owned_value(frame.item, at)?;
+            if frame.position_slot >= self.positions.len() {
+                return Err(TraceOwnedWitnessError::InvalidPositionSlot {
+                    at,
+                    slot: frame.position_slot,
+                });
+            }
+        }
+        for (index, origin) in self.origins.iter().enumerate() {
+            let at = TraceOwnedLocation::Origin(index);
+            self.validate_binding(origin.owner, at, &mut text_bytes)?;
+            validate_owned_path(origin.path, &mut text_bytes)?;
+            validate_owned_value(origin.item, at)?;
+        }
+        for (index, position) in self.positions.iter().enumerate() {
+            let at = TraceOwnedLocation::Position(index);
+            validate_owned_path(position.collection, &mut text_bytes)?;
+            let domain = if position.grouped {
+                Some("grouped source")
+            } else if position.join.is_some() || position.join_position.is_some() {
+                Some("joined source")
+            } else if position.document_path.is_some() {
+                Some("document source")
+            } else {
+                None
+            };
+            if let Some(domain) = domain {
+                return Err(TraceOwnedWitnessError::UnsupportedDomain { at, domain });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_owner(
+        &self,
+        owner: TraceOwnedOwnerRef<'_>,
+        at: TraceOwnedLocation,
+        text_bytes: &mut usize,
+    ) -> Result<(), TraceOwnedWitnessError> {
+        if let TraceOwnedOwnerRef::Named {
+            declaration_index,
+            name,
+        } = owner
+        {
+            charge_owned_text(name.len(), text_bytes)?;
+            let source = self
+                .project
+                .extra_sources
+                .get(declaration_index)
+                .ok_or(TraceOwnedWitnessError::UnknownDeclaration { at })?;
+            if source.name != name || name.is_empty() {
+                return Err(TraceOwnedWitnessError::DeclarationNameMismatch { at });
+            }
+            if self
+                .project
+                .extra_sources
+                .iter()
+                .filter(|source| source.name == name)
+                .count()
+                != 1
+            {
+                return Err(TraceOwnedWitnessError::AmbiguousDeclaration { at });
+            }
+            if source.dynamic_path.is_some() {
+                return Err(TraceOwnedWitnessError::UnsupportedDomain {
+                    at,
+                    domain: "dynamic source",
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_binding(
+        &self,
+        owner: TraceOwnedOwnerRef<'_>,
+        at: TraceOwnedLocation,
+        text_bytes: &mut usize,
+    ) -> Result<(), TraceOwnedWitnessError> {
+        self.validate_owner(owner, at, text_bytes)?;
+        match self.roots.iter().find(|root| root.owner == owner) {
+            None => Err(TraceOwnedWitnessError::MissingRoot { at }),
+            Some(root) if root.input.is_none() => {
+                Err(TraceOwnedWitnessError::UnavailableRoot { at })
+            }
+            Some(_) => Ok(()),
+        }
+    }
+}
+
+fn charge_owned_text(bytes: usize, total: &mut usize) -> Result<(), TraceOwnedWitnessError> {
+    *total = total
+        .checked_add(bytes)
+        .filter(|total| *total <= MAX_TRACE_OWNED_TEXT_BYTES)
+        .ok_or(TraceOwnedWitnessError::ResourceLimit {
+            resource: "metadata bytes",
+            limit: MAX_TRACE_OWNED_TEXT_BYTES,
+        })?;
+    Ok(())
+}
+
+fn validate_owned_path(path: &[String], total: &mut usize) -> Result<(), TraceOwnedWitnessError> {
+    if path.len() > MAX_TRACE_OWNED_PATH_SEGMENTS {
+        return Err(TraceOwnedWitnessError::ResourceLimit {
+            resource: "path segments",
+            limit: MAX_TRACE_OWNED_PATH_SEGMENTS,
+        });
+    }
+    for segment in path {
+        charge_owned_text(segment.len(), total)?;
+    }
+    Ok(())
+}
+
+fn validate_owned_value(
+    input: &Instance,
+    at: TraceOwnedLocation,
+) -> Result<(), TraceOwnedWitnessError> {
+    let domain = match input {
+        Instance::MappedSequence(_) => Some("generated source"),
+        Instance::DocumentSet(_) => Some("document source"),
+        _ => None,
+    };
+    match domain {
+        Some(domain) => Err(TraceOwnedWitnessError::UnsupportedDomain { at, domain }),
+        None => Ok(()),
+    }
+}
+
+fn owned_owner_snapshot(owner: TraceOwnedOwnerRef<'_>) -> TraceOwnedOwner {
+    match owner {
+        TraceOwnedOwnerRef::Primary => TraceOwnedOwner::Primary,
+        TraceOwnedOwnerRef::Named {
+            declaration_index,
+            name,
+        } => {
+            let (name, name_truncated) = truncate_chars(name, MAX_TRACE_OWNED_NAME_CHARS);
+            TraceOwnedOwner::Named {
+                declaration_index,
+                name,
+                name_truncated,
+            }
+        }
+    }
+}
+
+fn owned_path_snapshot(path: &[String]) -> TraceOwnedPath {
+    let visible = path.len().min(MAX_TRACE_OWNED_VISIBLE_PATH_SEGMENTS);
+    let (segments, truncated_segments) = path
+        .iter()
+        .take(visible)
+        .map(|segment| truncate_chars(segment, MAX_TRACE_OWNED_NAME_CHARS))
+        .unzip();
+    TraceOwnedPath {
+        segments,
+        truncated_segments,
+        omitted_segments: path.len() - visible,
+    }
+}
+
+fn owned_value_snapshot(input: &Instance) -> TraceOwnedValue {
+    TraceOwnedValue {
+        kind: TraceOutputKind::of(input),
+        scalar: match input {
+            Instance::Scalar(value) => Some(TraceValue::new(value)),
+            _ => None,
+        },
+        child_count: match input {
+            Instance::Group(fields) => Some(fields.len()),
+            Instance::Repeated(items) => Some(items.len()),
+            _ => None,
+        },
+    }
+}

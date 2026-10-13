@@ -64,9 +64,13 @@ pub use pipeline::{
     run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
 };
 pub use trace::{
-    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSortKey, TraceSourceField, TraceSourceRow, TraceSourceTree,
-    TraceTarget, TraceTargetFieldBinding, TraceValue, TraceWindow,
+    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TraceOwnedDomain,
+    TraceOwnedFrame, TraceOwnedFrameRef, TraceOwnedLocation, TraceOwnedOrigin, TraceOwnedOriginRef,
+    TraceOwnedOwner, TraceOwnedOwnerRef, TraceOwnedPath, TraceOwnedPhase, TraceOwnedPosition,
+    TraceOwnedPositionRef, TraceOwnedRoot, TraceOwnedRootRef, TraceOwnedSnapshot, TraceOwnedValue,
+    TraceOwnedWitness, TraceOwnedWitnessError, TracePosition, TraceScope, TraceSink, TraceSortKey,
+    TraceSourceField, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
+    TraceValue, TraceWindow,
 };
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
