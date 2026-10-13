@@ -61,6 +61,15 @@ pub fn validate_program_with_basic_owned_filters(
     owned_sources::validate_basic_owned_filter_emission(program)
 }
 
+/// Validates the complete static Basic sort profile, explicitly.
+///
+/// This preserves the full structural pipeline and all other Basic refusals.
+pub fn validate_program_with_basic_owned_sort(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_sort_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -1305,7 +1314,10 @@ fn validate_scope(
     Ok(())
 }
 
-pub use owned_sources::{validate_basic_owned_emission, validate_basic_owned_filter_emission};
+pub use owned_sources::{
+    validate_basic_owned_emission, validate_basic_owned_filter_emission,
+    validate_basic_owned_sort_emission,
+};
 
 #[cfg(test)]
 mod tests;

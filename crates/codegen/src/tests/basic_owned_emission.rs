@@ -1866,3 +1866,743 @@ fn basic_filter_profile_retains_dynamic_owner_requests_on_every_potential_edge()
         }
     }
 }
+
+fn sort_program(
+    owner: Option<SourceOwner>,
+    filtered: bool,
+    order: crate::SortFilterOrder,
+) -> Program {
+    let mut p = filter_program(owner);
+    let input = p.root.iteration.as_ref().unwrap().input().clone();
+    p.root.iteration = Some(IterationPlan::new(
+        input,
+        filtered.then_some(2),
+        Some(crate::SortPlan::new(
+            crate::SortKey {
+                expression: 1,
+                descending: false,
+            },
+            Vec::new(),
+            order,
+        )),
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    p
+}
+
+fn sort_observed(label: &str, p: &Program) -> Result<(), ProgramValidationError> {
+    eprintln!("INPUT {label} complete Program={p:#?}");
+    let result = crate::validate_basic_owned_sort_emission(p);
+    let full = crate::validate_program_with_basic_owned_sort(p);
+    eprintln!("RAW {label} complete Basic Result={result:#?} Program Result={full:#?}");
+    assert_eq!(full, result);
+    result
+}
+
+#[test]
+fn basic_sort_profile_requires_explicit_static_repeated_capability() {
+    for order in [
+        crate::SortFilterOrder::SortThenFilter,
+        crate::SortFilterOrder::FilterThenSort,
+    ] {
+        for filtered in [false, true] {
+            for owner in [
+                Some(SourceOwner::Primary),
+                Some(SourceOwner::Named { name: "Ref".into() }),
+                None,
+            ] {
+                let p = sort_program(owner.clone(), filtered, order);
+                let before = p.clone();
+                let expected = filter_scope_error(
+                    owner.as_ref().map(Owner::from),
+                    primary(),
+                    Reason::ScopeControl,
+                );
+                assert_eq!(crate::validate_basic_owned_filter_emission(&p), expected);
+                assert_eq!(validate_basic_owned_emission(&p), expected);
+                if owner.is_some() {
+                    assert_eq!(validate_program(&p), expected);
+                }
+                assert_eq!(
+                    sort_observed("S667-01 explicit sort/no-filter/both orders/owners", &p),
+                    Ok(())
+                );
+                assert_eq!(p, before);
+            }
+        }
+    }
+}
+
+#[test]
+fn basic_sort_profile_lowering_retains_ordered_keys_filters_and_directions() {
+    for order in [
+        mapping::SortFilterOrder::SortThenFilter,
+        mapping::SortFilterOrder::FilterThenSort,
+    ] {
+        let mut project = super::supported_project();
+        project.source = input_schema();
+        project.target = SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        )
+        .repeating();
+        let owned_field = OwnedSourceField {
+            source: OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: path(&["Rows", "Value"]),
+            },
+            frame: Some(path(&["Rows"])),
+        };
+        let position = OwnedPosition {
+            owner: SourceOwner::Primary,
+            collection: Some(path(&["Rows"])),
+        };
+        project.graph.nodes = std::collections::BTreeMap::from([
+            (1, mapping::Node::OwnedSourceField(owned_field.clone())),
+            (
+                2,
+                mapping::Node::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            (3, mapping::Node::OwnedPosition(position.clone())),
+            (
+                99,
+                mapping::Node::Const {
+                    value: Value::String("unused".into()),
+                },
+            ),
+        ]);
+        project.root = mapping::Scope {
+            iteration: mapping::ScopeIteration::OwnedSource {
+                source: OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Rows"]),
+                },
+                output_path: None,
+            },
+            filter: Some(2),
+            sort_by: Some(1),
+            sort_descending: true,
+            sort_then_by: vec![mapping::SortKey {
+                node: 3,
+                descending: false,
+            }],
+            sort_filter_order: order,
+            bindings: vec![mapping::Binding {
+                target_field: "Value".into(),
+                node: 1,
+            }],
+            ..Default::default()
+        };
+        let before = format!("{project:#?}");
+        let ordinary = crate::lower(&project);
+        let filter_only = crate::lower_with_basic_owned_filters(&project);
+        let actual = crate::lower_with_basic_owned_sort(&project);
+        eprintln!(
+            "INPUT S667-02 full Project={project:#?} RAW default={ordinary:#?} filter={filter_only:#?} sort={actual:#?}"
+        );
+        let Err(ProgramValidationError::OwnedSource { diagnostic }) =
+            filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl)
+        else {
+            unreachable!()
+        };
+        let closed = Err(crate::LowerError::new(vec![
+            crate::Diagnostic::OwnedSource { diagnostic },
+        ]));
+        assert_eq!(ordinary, closed);
+        assert_eq!(filter_only, closed);
+        let mut expected = sort_program(Some(SourceOwner::Primary), true, order.into());
+        expected.extra_sources.clear();
+        expected.expressions = vec![
+            node(1, Expression::OwnedSourceField(owned_field)),
+            node(
+                2,
+                Expression::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            node(3, Expression::OwnedPosition(position)),
+        ];
+        expected.root.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: path(&["Rows"]),
+            }),
+            Some(2),
+            Some(crate::SortPlan::new(
+                crate::SortKey {
+                    expression: 1,
+                    descending: true,
+                },
+                vec![crate::SortKey {
+                    expression: 3,
+                    descending: false,
+                }],
+                order.into(),
+            )),
+            Vec::new(),
+            IterationOutput::Repeated,
+        ));
+        assert_eq!(actual, Ok(expected.clone()));
+        assert_eq!(
+            sort_observed("S667-02 exact lowered Program", &expected),
+            Ok(())
+        );
+        assert_eq!(format!("{project:#?}"), before);
+    }
+}
+
+#[test]
+fn basic_sort_profile_preserves_control_free_filter_only_and_default_results() {
+    for owned in [false, true] {
+        let p = program(owned);
+        assert_eq!(
+            sort_observed("S667-03 control-free", &p),
+            validate_basic_owned_emission(&p)
+        );
+        assert_eq!(
+            sort_observed("S667-03 control-free", &p),
+            crate::validate_basic_owned_filter_emission(&p)
+        );
+    }
+    for owner in [
+        Some(SourceOwner::Primary),
+        Some(SourceOwner::Named {
+            name: " Ref 雪 ".into(),
+        }),
+        None,
+    ] {
+        let p = filter_program(owner);
+        let before = p.clone();
+        assert_eq!(
+            sort_observed("S667-03 filter-only slice", &p),
+            crate::validate_basic_owned_filter_emission(&p)
+        );
+        assert_eq!(p, before);
+    }
+    let project = super::supported_project();
+    let before = format!("{project:#?}");
+    assert_eq!(
+        crate::lower_with_basic_owned_sort(&project),
+        crate::lower(&project)
+    );
+    assert_eq!(
+        crate::lower_with_basic_owned_sort(&project),
+        crate::lower_with_basic_owned_filters(&project)
+    );
+    assert_eq!(format!("{project:#?}"), before);
+}
+
+#[test]
+fn basic_sort_profile_keeps_structure_before_capability() {
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        true,
+        crate::SortFilterOrder::FilterThenSort,
+    );
+    p.expressions
+        .push(node(1, Expression::Raise { message: None }));
+    assert_eq!(
+        sort_observed("S667-04 duplicate before sorted capability", &p),
+        Err(ProgramValidationError::DuplicateExpression { node: 1 })
+    );
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        true,
+        crate::SortFilterOrder::SortThenFilter,
+    );
+    let input = p.root.iteration.as_ref().unwrap().input().clone();
+    p.root.iteration = Some(IterationPlan::new(
+        input,
+        Some(2),
+        Some(crate::SortPlan::new(
+            crate::SortKey {
+                expression: 1,
+                descending: false,
+            },
+            vec![crate::SortKey {
+                expression: 99,
+                descending: true,
+            }],
+            crate::SortFilterOrder::SortThenFilter,
+        )),
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    assert_eq!(
+        sort_observed("S667-04 missing secondary key", &p),
+        Err(ProgramValidationError::MissingSortExpression {
+            target_path: Vec::new(),
+            key: 1,
+            expression: 99
+        })
+    );
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        true,
+        crate::SortFilterOrder::SortThenFilter,
+    );
+    p.expressions[0].expression = field(
+        SourceOwner::Named {
+            name: "Absent".into(),
+        },
+        &["Rows", "Value"],
+        Some(path(&["Rows"])),
+    );
+    let expected = Err(ProgramValidationError::OwnedSource {
+        diagnostic: Box::new(Diagnostic::Structure {
+            location: Location::Expression {
+                namespace: Namespace::Main,
+                node: 1,
+                scope: None,
+            },
+            request: Request::Field {
+                owner: Owner::Named {
+                    name: "Absent".into(),
+                },
+                path: path(&["Rows", "Value"]),
+                frame: Some(path(&["Rows"])),
+            },
+            reason: Structure::UnknownOwner,
+        }),
+    });
+    assert_eq!(
+        sort_observed("S667-04 unknown stored key owner", &p),
+        expected
+    );
+    assert_eq!(validate_basic_owned_emission(&p), expected);
+}
+
+#[test]
+fn basic_sort_profile_closes_explicit_implicit_windows_and_grouping() {
+    for order in [
+        crate::SortFilterOrder::SortThenFilter,
+        crate::SortFilterOrder::FilterThenSort,
+    ] {
+        for control in 0..8 {
+            let mut p = sort_program(Some(SourceOwner::Primary), true, order);
+            p.expressions.push(node(
+                3,
+                Expression::Const {
+                    value: Value::Int(1),
+                },
+            ));
+            let current = p.root.iteration.as_ref().unwrap();
+            let windows = match control {
+                0 => vec![crate::SequenceWindow::SkipFirst { count: 3 }],
+                1 => vec![crate::SequenceWindow::First { count: 3 }],
+                2 => vec![crate::SequenceWindow::From { position: 3 }],
+                3 => vec![crate::SequenceWindow::FromTo { first: 3, last: 3 }],
+                4 => vec![crate::SequenceWindow::Last { count: 3 }],
+                _ => Vec::new(),
+            };
+            let output = if control == 5 {
+                p.root.repeating = false;
+                p.target.repeating = false;
+                IterationOutput::First
+            } else {
+                IterationOutput::Repeated
+            };
+            let mut iteration = IterationPlan::new(
+                current.input().clone(),
+                current.filter(),
+                current.sort().cloned(),
+                windows,
+                output,
+            );
+            if control == 6 {
+                iteration = iteration.with_grouping(crate::GroupingPlan::By { key: 1 });
+            }
+            if control == 7 {
+                iteration = iteration.with_filtered_grouping(crate::GroupingPlan::By { key: 1 }, 2);
+            }
+            p.root.iteration = Some(iteration);
+            let expected = filter_scope_error(
+                Some(Owner::Primary),
+                primary(),
+                if control >= 6 {
+                    Reason::Grouping
+                } else {
+                    Reason::ScopeControl
+                },
+            );
+            assert_eq!(
+                sort_observed(
+                    "S667-05 explicit/implicit windows and grouping stay closed",
+                    &p
+                ),
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn basic_sort_profile_scopes_scalar_permission_and_preserves_inherited_closure() {
+    for order in [
+        crate::SortFilterOrder::SortThenFilter,
+        crate::SortFilterOrder::FilterThenSort,
+    ] {
+        let mut p = sort_program(Some(SourceOwner::Primary), true, order);
+        p.target = SchemaNode::scalar("Output", ScalarType::String).repeating();
+        p.root.bindings.clear();
+        p.root.construction = TargetConstruction::Scalar {
+            expression: 1,
+            target_domain: ScalarTargetDomain::Single(ScalarType::String),
+        };
+        assert_eq!(
+            sort_observed("S667-06 sorted Scalar own marker is Basic", &p),
+            Ok(())
+        );
+        let old = filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl);
+        assert_eq!(validate_basic_owned_emission(&p), old);
+        assert_eq!(crate::validate_basic_owned_filter_emission(&p), old);
+        let input = p.root.iteration.as_ref().unwrap().input().clone();
+        p.root.iteration = Some(IterationPlan::new(
+            input,
+            Some(2),
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        ));
+        let expected =
+            filter_scope_error(Some(Owner::Primary), primary(), Reason::SpecialConstruction);
+        assert_eq!(
+            sort_observed("S667-06 unsorted Scalar marker unchanged", &p),
+            expected
+        );
+        assert_eq!(crate::validate_basic_owned_filter_emission(&p), expected);
+    }
+    for generated in [false, true] {
+        let mut p = sort_program(
+            Some(SourceOwner::Primary),
+            true,
+            crate::SortFilterOrder::FilterThenSort,
+        );
+        let mut child = p.root.clone();
+        child.target_field = "Child".into();
+        child.bindings.clear();
+        child.construction = TargetConstruction::Scalar {
+            expression: 1,
+            target_domain: ScalarTargetDomain::Single(ScalarType::String),
+        };
+        p.target = SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Child", ScalarType::String).repeating()],
+        )
+        .repeating();
+        p.root.bindings.clear();
+        p.root.children = vec![child];
+        p.expressions.push(node(
+            3,
+            Expression::Const {
+                value: Value::Int(2),
+            },
+        ));
+        let input: crate::IterationSource = if generated {
+            p.expressions.push(node(
+                4,
+                Expression::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ));
+            GeneratedSequence::Range {
+                from: None,
+                to: 3,
+                item: 4,
+            }
+            .into()
+        } else {
+            SourceIteration::new(path(&["Rows"])).into()
+        };
+        p.root.iteration = Some(IterationPlan::new(
+            input,
+            None,
+            None,
+            if generated {
+                Vec::new()
+            } else {
+                vec![crate::SequenceWindow::First { count: 3 }]
+            },
+            IterationOutput::Repeated,
+        ));
+        let route = primary().descendant(mapping::SourceScopeStep::Child(0));
+        let expected = capability(
+            Location::Iteration { scope: route },
+            Some(Request::Iteration {
+                owner: Owner::Primary,
+                path: path(&["Rows"]),
+            }),
+            if generated {
+                Reason::GeneratedItem
+            } else {
+                Reason::ScopeControl
+            },
+            Origin::Scope { scope: primary() },
+        );
+        assert_eq!(
+            sort_observed(
+                "S667-06 sorted Scalar does not clear inherited parent marker",
+                &p
+            ),
+            expected
+        );
+    }
+}
+
+#[test]
+fn basic_sort_profile_retains_potential_secondary_key_edges_and_frame_pins() {
+    for order in [
+        crate::SortFilterOrder::SortThenFilter,
+        crate::SortFilterOrder::FilterThenSort,
+    ] {
+        for kind in 0..4 {
+            for frame in [None, Some(path(&["D"])), Some(Vec::new())] {
+                for reached in [false, true] {
+                    let mut p = sort_program(None, false, order);
+                    dynamic(&mut p);
+                    p.expressions[1].expression = Expression::Const {
+                        value: Value::Bool(false),
+                    };
+                    p.expressions.push(node(
+                        99,
+                        Expression::SourceField {
+                            path: path(&["D", "Flag"]),
+                            frame: frame.clone(),
+                        },
+                    ));
+                    let dependency = match kind {
+                        0 => Expression::If {
+                            condition: 2,
+                            then: 99,
+                            else_: 2,
+                        },
+                        1 => Expression::RuntimeParameterDefault {
+                            name: "key".into(),
+                            ty: ScalarType::Bool,
+                            default: 99,
+                        },
+                        2 => Expression::Raise { message: Some(99) },
+                        _ => Expression::ValueMap {
+                            input: 99,
+                            input_type: Some(ScalarType::Bool),
+                            table: vec![(Value::Bool(false), Value::Bool(true))],
+                            default: Some(Value::Bool(true)),
+                        },
+                    };
+                    p.expressions.push(node(3, dependency));
+                    if reached {
+                        let input = p.root.iteration.as_ref().unwrap().input().clone();
+                        p.root.iteration = Some(IterationPlan::new(
+                            input,
+                            None,
+                            Some(crate::SortPlan::new(
+                                crate::SortKey {
+                                    expression: 1,
+                                    descending: false,
+                                },
+                                vec![crate::SortKey {
+                                    expression: 3,
+                                    descending: true,
+                                }],
+                                order,
+                            )),
+                            Vec::new(),
+                            IterationOutput::Repeated,
+                        ));
+                    }
+                    let before = p.clone();
+                    assert_eq!(
+                        sort_observed("S667-07 all potential secondary key edges/frame pins", &p),
+                        if reached && frame.as_ref().is_none_or(|frame| !frame.is_empty()) {
+                            retained(99, Reason::UnsupportedBasicContext)
+                        } else {
+                            Ok(())
+                        }
+                    );
+                    assert_eq!(p, before);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn basic_sort_profile_keeps_failure_function_dynamic_and_stored_domains_closed() {
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        true,
+        crate::SortFilterOrder::SortThenFilter,
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+        selection: FailureSelection::All,
+        message: Some(1),
+    });
+    let failure = capability(
+        Location::Expression {
+            namespace: Namespace::Main,
+            node: 1,
+            scope: None,
+        },
+        Some(Request::Field {
+            owner: Owner::Primary,
+            path: path(&["Rows", "Value"]),
+            frame: Some(path(&["Rows"])),
+        }),
+        Reason::FailureRule,
+        Origin::Failure { index: 0 },
+    );
+    assert_eq!(
+        sort_observed("S667-08 failure ownership closed", &p),
+        failure
+    );
+    let mut p = sort_program(None, false, crate::SortFilterOrder::FilterThenSort);
+    unused_function(&mut p);
+    let function = capability(
+        Location::Expression {
+            namespace: Namespace::Function(FunctionId::new(7)),
+            node: 0,
+            scope: None,
+        },
+        None,
+        Reason::IsolatedFunction,
+        Origin::FunctionBody {
+            function: FunctionId::new(7),
+        },
+    );
+    assert_eq!(
+        sort_observed("S667-08 stored function closed", &p),
+        function
+    );
+    let mut p = sort_program(None, false, crate::SortFilterOrder::FilterThenSort);
+    p.expressions.push(node(99, Expression::SourceDocumentPath));
+    assert_eq!(
+        sort_observed("S667-08 stored document closed", &p),
+        retained(99, Reason::Document)
+    );
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        false,
+        crate::SortFilterOrder::SortThenFilter,
+    );
+    dynamic(&mut p);
+    p.extra_sources[4].dynamic.as_mut().unwrap().path = 1;
+    let loader = capability(
+        Location::Expression {
+            namespace: Namespace::Main,
+            node: 1,
+            scope: None,
+        },
+        Some(Request::Field {
+            owner: Owner::Primary,
+            path: path(&["Rows", "Value"]),
+            frame: Some(path(&["Rows"])),
+        }),
+        Reason::DynamicLoader,
+        Origin::DynamicSource {
+            index: 4,
+            name: "D".into(),
+        },
+    );
+    assert_eq!(
+        sort_observed("S667-08 stored dynamic path ownership closed", &p),
+        loader
+    );
+}
+
+#[test]
+fn basic_sort_profile_preserves_named_scope_routes_and_dynamic_owner_requests() {
+    let mut p = sort_program(
+        Some(SourceOwner::Primary),
+        true,
+        crate::SortFilterOrder::SortThenFilter,
+    );
+    let mut named = sort_program(
+        Some(SourceOwner::Named { name: "Ref".into() }),
+        true,
+        crate::SortFilterOrder::FilterThenSort,
+    );
+    named.root.repeating = false;
+    named.target.repeating = false;
+    let iteration = named.root.iteration.as_ref().unwrap();
+    named.root.iteration = Some(IterationPlan::new(
+        iteration.input().clone(),
+        iteration.filter(),
+        iteration.sort().cloned(),
+        Vec::new(),
+        IterationOutput::First,
+    ));
+    p.extra_targets.push(NamedTargetProgram {
+        name: " Target 雪 ".into(),
+        target: named.target,
+        root: named.root,
+    });
+    let route = SourceScopeLocation::root(SourceScopeTarget::Named {
+        index: 0,
+        name: " Target 雪 ".into(),
+    });
+    assert_eq!(
+        sort_observed("S667-09 exact named unsupported window route", &p),
+        filter_scope_error(
+            Some(Owner::Named { name: "Ref".into() }),
+            route,
+            Reason::ScopeControl
+        )
+    );
+    let mut p = sort_program(None, false, crate::SortFilterOrder::SortThenFilter);
+    dynamic(&mut p);
+    p.expressions.push(node(
+        99,
+        field(
+            SourceOwner::Named { name: "D".into() },
+            &["Rows", "Flag"],
+            Some(path(&["Rows"])),
+        ),
+    ));
+    let input = p.root.iteration.as_ref().unwrap().input().clone();
+    p.root.iteration = Some(IterationPlan::new(
+        input,
+        None,
+        Some(crate::SortPlan::new(
+            crate::SortKey {
+                expression: 1,
+                descending: false,
+            },
+            vec![crate::SortKey {
+                expression: 99,
+                descending: false,
+            }],
+            crate::SortFilterOrder::SortThenFilter,
+        )),
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    let expected = capability(
+        Location::Expression {
+            namespace: Namespace::Main,
+            node: 99,
+            scope: Some(primary()),
+        },
+        Some(Request::Field {
+            owner: Owner::Named { name: "D".into() },
+            path: path(&["Rows", "Flag"]),
+            frame: Some(path(&["Rows"])),
+        }),
+        Reason::DynamicOwner,
+        Origin::DynamicSource {
+            index: 4,
+            name: "D".into(),
+        },
+    );
+    assert_eq!(
+        sort_observed(
+            "S667-09 exact potential secondary owned dynamic request",
+            &p
+        ),
+        expected
+    );
+}

@@ -1,6 +1,7 @@
 //! Generation-time legacy eager-input metadata, never a runtime input table.
 //! Owned requests are demand-driven and do not make a declaration eager.
 //! Existing public emission capability checks remain separate and unchanged.
+use crate::validate_program_with_basic_owned_sort;
 use crate::{
     Expression, FailureIteration, GeneratedSequence, InnerJoin, IterationPlan, IterationSource,
     Program, ProgramValidationError, TargetConstruction, TargetScope, UserFunctionProgram,
@@ -59,6 +60,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_filters(
     program: &Program,
 ) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
     validate_program_with_basic_owned_filters(program)?;
+    Ok(admission_plan(program))
+}
+
+/// Validate the explicit Basic sort capability, then describe potential legacy
+/// eager requirements through the unchanged complete declaration analyzer.
+/// Names and original ordinals borrow the unmodified Program; this API does not
+/// select targets, acquire inputs, evaluate keys, or activate an emitter.
+pub fn legacy_named_input_admission_plan_with_basic_owned_sort(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    validate_program_with_basic_owned_sort(program)?;
     Ok(admission_plan(program))
 }
 

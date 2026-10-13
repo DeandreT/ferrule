@@ -25,6 +25,13 @@ pub fn lower_with_basic_owned_filters(project: &Project) -> Result<Program, Lowe
     lower_with_validator(project, crate::validate_program_with_basic_owned_filters)
 }
 
+/// Lowers the explicit static Basic sort profile through unchanged graph lowering.
+///
+/// Default and filter-only lowering retain their original capability policies.
+pub fn lower_with_basic_owned_sort(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, crate::validate_program_with_basic_owned_sort)
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
