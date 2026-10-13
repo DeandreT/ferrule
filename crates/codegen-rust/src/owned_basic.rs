@@ -514,3 +514,67 @@ fn execute_private_checked_basic_context(
     );
     source
 }
+
+// The public family uses the same checked factory and ordered ordinary-failure
+// implementation. Prepared entry points, catalogues and observation hooks stay
+// nonpublic; the original private renderer remains byte-for-byte unchanged.
+pub(crate) fn render_public_basic_owned_source(program: &Program) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_source(program)?;
+    source = source.replacen(
+        r#"// Private Basic prototype. Public emission remains closed.
+#[allow(unused_imports)]
+use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot,
+ExecutionContext, Instance, OwnedSourceLimits, RuntimeError, RuntimeValue,
+ScalarType, SourceOwnerRef, TargetSelection, Value, adapt_target_value,
+adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};
+
+"#,
+        r#"// Basic owned-source entry points require an explicit native policy per call.
+pub use codegen_runtime::{BasicNamedSourceInput, ExecutionContext, Instance,
+    OwnedSourceLimits, RuntimeError, TargetSelection};
+#[allow(unused_imports)]
+use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot,
+    RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,
+    adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};
+
+"#,
+        1,
+    );
+    source = source.replacen(
+        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n",
+        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
+        1,
+    );
+    source = source.replacen("pub(crate) struct NamedOutput", "pub struct NamedOutput", 1);
+    source = source.replacen(
+        "pub(crate) struct ExecutionOutputs",
+        "pub struct ExecutionOutputs",
+        1,
+    );
+    source = source.replacen(
+        "pub(crate) enum SelectedTargetOutput",
+        "pub enum SelectedTargetOutput",
+        1,
+    );
+    source.push_str(
+        r#"
+/// Execute all outputs using borrowed named inputs and the caller's five limits.
+pub fn execute_with_basic_owned_sources<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
+) -> Result<ExecutionOutputs, RuntimeError> {
+    execute_checked_private_owned_basic(source, supplied, execution, limits)
+}
+
+/// Validate the selected target before inspecting supplied inputs or policy.
+pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
+    selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, RuntimeError> {
+    execute_selected_checked_private_owned_basic(source, supplied, execution, limits, selection)
+}
+"#,
+    );
+    Ok(source)
+}

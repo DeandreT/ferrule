@@ -74,7 +74,6 @@ fn render_selection(selection: FailureSelection, output: &mut String) {
 
 // The ordinary renderer above stays byte-exact. This private test-only bridge
 // retains complete paired legacy cohorts until every reached rule returns.
-#[cfg(test)]
 pub(super) fn render_basic(program: &Program) -> Result<String, EmitError> {
     let mut output = String::new();
     for (index, rule) in program.failure_rules.iter().enumerate() {
@@ -94,7 +93,6 @@ pub(super) fn render_basic(program: &Program) -> Result<String, EmitError> {
     Ok(output)
 }
 
-#[cfg(test)]
 fn render_basic_rule(index: usize, rule: &FailureRule) -> Result<String, EmitError> {
     let FailureIteration::Source(source) = &rule.iteration else {
         return Err(super::owned_basic::failure_refusal(

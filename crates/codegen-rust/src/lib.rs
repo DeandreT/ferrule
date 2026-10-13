@@ -20,7 +20,6 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 mod csv_api;
 mod failure;
 mod json5_api;
-#[cfg(test)]
 mod owned_basic;
 mod selected_json_api;
 
@@ -134,6 +133,26 @@ pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitErr
     codegen::validate_owned_emission(program)?;
     let manifest = render_manifest(options);
     let source = render_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit the Basic owned-source family with a mandatory per-run native policy.
+/// The ordinary emitter and its closed ownership gate remain unchanged.
+pub fn emit_with_basic_owned_sources(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    validate_program(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_source(program)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -1303,19 +1322,11 @@ fn render_user_function(
 struct ExpressionEmission {
     filter_map: bool,
     owner_function: Option<u64>,
-    #[cfg(test)]
     basic: bool,
 }
 impl ExpressionEmission {
     fn is_basic(self) -> bool {
-        #[cfg(test)]
-        {
-            self.basic
-        }
-        #[cfg(not(test))]
-        {
-            false
-        }
+        self.basic
     }
 }
 
@@ -1337,7 +1348,6 @@ fn render_expression(
         ExpressionEmission {
             filter_map,
             owner_function,
-            #[cfg(test)]
             basic: false,
         },
     )
@@ -1364,19 +1374,10 @@ fn render_expression_in_context(
     } else {
         "context"
     };
-    let owned_body = {
-        #[cfg(test)]
-        {
-            if basic {
-                owned_basic::render_owned_access(expression)
-            } else {
-                None
-            }
-        }
-        #[cfg(not(test))]
-        {
-            None::<String>
-        }
+    let owned_body = if basic {
+        owned_basic::render_owned_access(expression)
+    } else {
+        None
     };
     let parameter_argument = parameters.map(|_| ", parameters").unwrap_or_default();
     let call_expression =
