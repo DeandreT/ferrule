@@ -654,6 +654,21 @@ impl<'ctx> BasicScopeContext<'ctx> {
             .owned_field(owner, path, frame)
             .map_err(Into::into)
     }
+    /// Basic emitters supply the exact declared root's repetition metadata.
+    /// An eligible empty pin reads that registry root, even in an active row.
+    /// Actual repeated roots require their real same-owner root frame.
+    pub fn owned_field_with_root_pin(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+        declared_nonrepeating: bool,
+    ) -> Result<Value, RuntimeError> {
+        self.budget(owner, path, frame, false)?;
+        self.owned
+            .owned_field_with_root_pin(owner, path, frame, declared_nonrepeating)
+            .map_err(Into::into)
+    }
     pub fn owned_position(
         &self,
         owner: SourceOwnerRef<'_>,

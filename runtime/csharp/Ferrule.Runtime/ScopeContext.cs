@@ -1741,14 +1741,23 @@ public sealed class FerruleOwnedScopeContext
     internal FerruleValue ResolveBasicField(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
         IReadOnlyList<string>? frame, OwnedQuery admittedQuery) =>
         ResolveFieldCore(owner, path, frame, admittedQuery);
+    internal FerruleValue ResolveBasicFieldWithRootPin(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path, IReadOnlyList<string>? frame, OwnedQuery admittedQuery,
+        bool declaredNonrepeating) =>
+        ResolveFieldCore(owner, path, frame, admittedQuery, declaredNonrepeating);
     private FerruleValue ResolveFieldCore(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
-        IReadOnlyList<string>? frame, OwnedQuery? admittedQuery)
+        IReadOnlyList<string>? frame, OwnedQuery? admittedQuery, bool declaredNonrepeating = false)
     {
         var q = admittedQuery ?? new OwnedQuery(this, owner, path, frame); var key = Roots.Resolve(owner, q);
         if (frame is not null && !Prefix(path, frame))
             throw q.Error(FerruleOwnedSourceErrorKind.IncompatibleFramePath, path, frame);
-        var selected = Match(key, frame ?? path, frame is not null);
-        if (frame is not null && selected < 0)
+        // The Basic path supplies the static exact-owner declaration proof.
+        // An explicit empty pin selects the registered nonrepeating root, even
+        // when a descendant or another owner has an active occurrence.
+        var registeredRoot = declaredNonrepeating && frame is { Count: 0 }
+            && Roots.Instance(key) is not FerruleRepeated;
+        var selected = registeredRoot ? -1 : Match(key, frame ?? path, frame is not null);
+        if (frame is not null && selected < 0 && !registeredRoot)
             throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: frame);
         var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
         var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
@@ -2518,6 +2527,19 @@ public sealed class FerruleBasicScopeContext
         IReadOnlyList<string>? frame = null)
     {
         try { var b = Begin(); return _owned.ResolveBasicField(owner, path, frame, Query(b, owner, path, frame)); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    /// <summary>Reads an explicit root pin using the generated exact-owner schema proof.</summary>
+    public FerruleValue ResolveOwnedFieldWithRootPin(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path, IReadOnlyList<string>? frame, bool declaredNonrepeating)
+    {
+        try
+        {
+            var budget = Begin();
+            return _owned.ResolveBasicFieldWithRootPin(owner, path, frame,
+                Query(budget, owner, path, frame), declaredNonrepeating);
+        }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }

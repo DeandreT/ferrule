@@ -68,6 +68,13 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
     }
     output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
     render_basic_failures(program, &mut output)?;
+    if program.expressions.iter().any(|node| {
+        retained.contains(&node.id)
+            && matches!(&node.expression, Expression::OwnedSourceField(field)
+                if field.frame.as_ref().is_some_and(Vec::is_empty))
+    }) {
+        render_empty_root_pin_declarations(program, &mut output);
+    }
     let mut nodes = program.expressions.iter().collect::<Vec<_>>();
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
@@ -456,6 +463,24 @@ pub(super) fn render_owner(owner: &SourceOwner, output: &mut String) {
     }
 }
 
+// This is immutable program metadata, not an occurrence or a run-wide policy.
+// It is emitted only when a retained owned field has an explicit empty pin.
+fn render_empty_root_pin_declarations(program: &Program, output: &mut String) {
+    output.push_str("\n    private static bool OwnedRootIsDeclaredNonrepeating(global::Ferrule.Runtime.FerruleOwnedSourceOwner owner)\n    {\n");
+    output.push_str(&format!(
+        "        if (owner.IsPrimary) return {};\n",
+        !program.source.repeating
+    ));
+    for source in &program.extra_sources {
+        output.push_str(&format!(
+            "        if (global::System.String.Equals(owner.Name, {}, global::System.StringComparison.Ordinal)) return {};\n",
+            literal::string(&source.name),
+            !source.source.repeating
+        ));
+    }
+    output.push_str("        return false;\n    }\n");
+}
+
 pub(super) fn render_owned_leaf(
     _node: NodeId,
     expression: &Expression,
@@ -463,12 +488,22 @@ pub(super) fn render_owned_leaf(
 ) -> Result<(), EmitError> {
     match expression {
         Expression::OwnedSourceField(field) => {
-            output.push_str(" =>\n        context.ResolveOwnedField(");
+            let empty_root_pin = field.frame.as_ref().is_some_and(Vec::is_empty);
+            output.push_str(if empty_root_pin {
+                " =>\n        context.ResolveOwnedFieldWithRootPin("
+            } else {
+                " =>\n        context.ResolveOwnedField("
+            });
             render_owner(&field.source.owner, output);
             output.push_str(", ");
             mapping::basic_path(&field.source.path, output);
             output.push_str(", ");
             mapping::render_optional_path(field.frame.as_deref(), output);
+            if empty_root_pin {
+                output.push_str(", OwnedRootIsDeclaredNonrepeating(");
+                render_owner(&field.source.owner, output);
+                output.push(')');
+            }
             output.push_str(");\n");
         }
         Expression::OwnedPosition(position) => {

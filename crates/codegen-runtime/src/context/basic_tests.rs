@@ -2547,3 +2547,491 @@ fn retained_borrowed_selection_has_no_snapshot_or_candidate_clones() {
     let a = complete("RUST_BORROWED_SELECTION", &c, &o, &selection);
     assert_eq!(values(&a.candidates), [string("c"), string("a")]);
 }
+
+fn root_pin632(
+    context: &BasicScopeContext<'_>,
+    owner: SourceOwnerRef<'_>,
+    field_path: &[&str],
+    frame: Option<&[&str]>,
+    declared_nonrepeating: bool,
+) -> Result<Value, RuntimeError> {
+    eprintln!(
+        "INPUT R632 owner={owner:?} path={field_path:?} frame={frame:?} declared_nonrepeating={declared_nonrepeating} primary={:?} declarations={:?} frames={:?}",
+        context.owned.registry.primary,
+        context.owned.registry.named,
+        context
+            .owned
+            .frames
+            .iter()
+            .map(|f| (f.owner, &f.collection, f.instance, f.index))
+            .collect::<Vec<_>>()
+    );
+    let actual = context.owned_field_with_root_pin(owner, field_path, frame, declared_nonrepeating);
+    eprintln!("RAW R632 full_return={actual:?}");
+    if let Err(error) = &actual {
+        raw_error("R632", error);
+    }
+    actual
+}
+
+#[test]
+fn basic_root_pin632_exact_owners_and_active_rows_do_not_shadow_roots() {
+    let primary = common();
+    let supplied = shared_named();
+    let declarations = shared_declarations(&supplied);
+    let r = roots(&primary, &declarations);
+    let context = r.captured_root_context();
+    for (owner, expected) in [
+        (SourceOwnerRef::Primary, "P.root"),
+        (SourceOwnerRef::Named("Ref"), "N.root"),
+        (SourceOwnerRef::Named("primary"), "named.literal.primary"),
+        (
+            SourceOwnerRef::Named(" Ref 雪 "),
+            "named.literal.whitespace.unicode",
+        ),
+        (SourceOwnerRef::Named("ref"), "named.literal.lowercase"),
+    ] {
+        assert_eq!(
+            root_pin632(&context, owner, &["Value"], Some(&[]), true),
+            Ok(string(expected))
+        );
+    }
+    assert_eq!(
+        root_pin632(
+            &context,
+            SourceOwnerRef::Primary,
+            &["Ref", "Value"],
+            Some(&[]),
+            true
+        ),
+        Ok(string("P.Ref"))
+    );
+    let rows = context.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    let named_rows = rows[1]
+        .context()
+        .captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Rows"]);
+    let current = named_rows[2].context();
+    for (owner, identity, root_value, row_value, position) in [
+        (
+            SourceOwnerRef::Primary,
+            OwnedSourceIdentity::Primary,
+            "P.root",
+            "P2",
+            2,
+        ),
+        (
+            SourceOwnerRef::Named("Ref"),
+            OwnedSourceIdentity::Named("Ref".into()),
+            "N.root",
+            "N3",
+            3,
+        ),
+    ] {
+        assert_eq!(
+            root_pin632(current, owner, &["Value"], Some(&[]), true),
+            Ok(string(root_value))
+        );
+        assert_eq!(
+            root_pin632(current, owner, &["Rows", "Value"], None, true),
+            Ok(string(row_value))
+        );
+        assert_eq!(
+            root_pin632(current, owner, &["Rows", "Value"], Some(&[]), true),
+            Err(OwnedSourceError::UniteratedRepetition {
+                owner: identity,
+                path: path(&["Rows", "Value"]),
+                segment: 1
+            }
+            .into())
+        );
+        assert_eq!(current.captured_owned_position(owner, None), Ok(position));
+    }
+    assert_eq!(
+        current.captured_owned_position(SourceOwnerRef::Primary, Some(&[])),
+        Err(inactive(Some(&[])))
+    );
+}
+
+#[test]
+fn basic_root_pin632_declared_or_actual_repetition_requires_same_owner_root_frame() {
+    let primary = repeated([row("P1"), row("P2")]);
+    let named = repeated([row("N1"), row("N2"), row("N3")]);
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let r = roots(&primary, &declarations);
+    let context = r.captured_root_context();
+    for eligible in [false, true] {
+        for (owner, identity) in [
+            (SourceOwnerRef::Primary, OwnedSourceIdentity::Primary),
+            (
+                SourceOwnerRef::Named("Ref"),
+                OwnedSourceIdentity::Named("Ref".into()),
+            ),
+        ] {
+            assert_eq!(
+                root_pin632(&context, owner, &["Value"], Some(&[]), eligible),
+                Err(OwnedSourceError::InactiveSourceFrame {
+                    owner: identity,
+                    collection: Some(Vec::new())
+                }
+                .into())
+            );
+        }
+        let rows = context.captured_walk_owned_source(SourceOwnerRef::Primary, &[]);
+        let current = rows[1].context();
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&[]),
+                eligible
+            ),
+            Ok(string("P2"))
+        );
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Named("Ref"),
+                &["Value"],
+                Some(&[]),
+                eligible
+            ),
+            Err(OwnedSourceError::InactiveSourceFrame {
+                owner: OwnedSourceIdentity::Named("Ref".into()),
+                collection: Some(Vec::new())
+            }
+            .into())
+        );
+        assert_eq!(
+            current.captured_owned_position(SourceOwnerRef::Primary, Some(&[])),
+            Ok(2)
+        );
+        let named_rows = current.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &[]);
+        let current = named_rows[2].context();
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Named("Ref"),
+                &["Value"],
+                Some(&[]),
+                eligible
+            ),
+            Ok(string("N3"))
+        );
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&[]),
+                eligible
+            ),
+            Ok(string("P2"))
+        );
+        assert_eq!(
+            current.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&[])),
+            Ok(3)
+        );
+    }
+    let plain = row("plain");
+    let r = roots(&plain, &[]);
+    let context = r.captured_root_context();
+    assert_eq!(
+        root_pin632(
+            &context,
+            SourceOwnerRef::Primary,
+            &["Value"],
+            Some(&[]),
+            false
+        ),
+        Err(inactive(Some(&[])))
+    );
+    assert_eq!(
+        root_pin632(
+            &context,
+            SourceOwnerRef::Primary,
+            &["Value"],
+            Some(&[]),
+            true
+        ),
+        Ok(string("plain"))
+    );
+}
+
+#[test]
+fn basic_root_pin632_direct_scalar_null_absence_and_shape_priorities() {
+    for value in [Value::Null, Value::json_null(), string("root scalar")] {
+        let primary = scalar(value.clone());
+        let r = roots(&primary, &[]);
+        let context = r.captured_root_context();
+        assert_eq!(
+            root_pin632(&context, SourceOwnerRef::Primary, &[], Some(&[]), true),
+            Ok(value.clone())
+        );
+        let expected = if matches!(value, Value::Null | Value::JsonNull(_)) {
+            Ok(Value::Null)
+        } else {
+            Err(OwnedSourceError::Traversal {
+                owner: OwnedSourceIdentity::Primary,
+                source: SourcePathError::CannotTraverse {
+                    path: path(&["Value"]),
+                    segment: 0,
+                    found: InstanceKind::Scalar,
+                },
+            }
+            .into())
+        };
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&[]),
+                true
+            ),
+            expected
+        );
+    }
+    let primary = group([field("Details", scalar(Value::Null))]);
+    let r = roots(&primary, &[]);
+    let context = r.captured_root_context();
+    for query in [&["Missing"][..], &["Details", "Value"][..]] {
+        assert_eq!(
+            root_pin632(&context, SourceOwnerRef::Primary, query, Some(&[]), true),
+            Ok(Value::Null)
+        );
+    }
+    assert_eq!(
+        root_pin632(&context, SourceOwnerRef::Primary, &[], Some(&[]), true),
+        Err(OwnedSourceError::Traversal {
+            owner: OwnedSourceIdentity::Primary,
+            source: SourcePathError::ExpectedScalar {
+                path: Vec::new(),
+                found: InstanceKind::Group
+            }
+        }
+        .into())
+    );
+    for (primary, found) in [
+        (Instance::DocumentSet(Vec::new()), InstanceKind::DocumentSet),
+        (
+            Instance::MappedSequence(Vec::new()),
+            InstanceKind::MappedSequence,
+        ),
+    ] {
+        let r = roots(&primary, &[]);
+        let context = r.captured_root_context();
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&[]),
+                true
+            ),
+            Err(OwnedSourceError::UnsupportedSourceKind {
+                owner: OwnedSourceIdentity::Primary,
+                path: path(&["Value"]),
+                found
+            }
+            .into())
+        );
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&[]),
+                false
+            ),
+            Err(inactive(Some(&[])))
+        );
+    }
+}
+
+#[test]
+fn basic_root_pin632_namespace_and_unavailable_errors_precede_frame_selection() {
+    let primary = row("P.root");
+    let named = scalar(Value::Null);
+    let declarations = [
+        DeclaredNamedSourceRoot {
+            name: "Missing",
+            instance: None,
+        },
+        DeclaredNamedSourceRoot {
+            name: "Null",
+            instance: Some(&named),
+        },
+        DeclaredNamedSourceRoot {
+            name: "Dup",
+            instance: Some(&named),
+        },
+        DeclaredNamedSourceRoot {
+            name: "Dup",
+            instance: None,
+        },
+    ];
+    let r = roots(&primary, &declarations);
+    let context = r.captured_root_context();
+    for eligible in [false, true] {
+        for (name, expected) in [
+            ("", OwnedSourceError::InvalidNamedOwner),
+            (
+                "missing",
+                OwnedSourceError::UnknownOwner {
+                    name: "missing".into(),
+                },
+            ),
+            (
+                "Missing",
+                OwnedSourceError::SourceUnavailable {
+                    name: "Missing".into(),
+                },
+            ),
+            (
+                "Dup",
+                OwnedSourceError::AmbiguousOwner {
+                    name: "Dup".into(),
+                    declarations: vec![2, 3],
+                },
+            ),
+        ] {
+            assert_eq!(
+                root_pin632(
+                    &context,
+                    SourceOwnerRef::Named(name),
+                    &["Value"],
+                    Some(&[]),
+                    eligible
+                ),
+                Err(expected.into())
+            );
+        }
+    }
+    assert_eq!(
+        root_pin632(
+            &context,
+            SourceOwnerRef::Named("Null"),
+            &[],
+            Some(&[]),
+            true
+        ),
+        Ok(Value::Null)
+    );
+}
+
+#[test]
+fn basic_root_pin632_nonempty_pins_none_and_generic_basic_api_stay_exact() {
+    let primary = common();
+    let r = roots(&primary, &[]);
+    let context = r.captured_root_context();
+    for eligible in [false, true] {
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Rows", "Value"],
+                Some(&["Rows"]),
+                eligible
+            ),
+            Err(inactive(Some(&["Rows"])))
+        );
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                Some(&["Rows"]),
+                eligible
+            ),
+            Err(OwnedSourceError::IncompatibleFramePath {
+                owner: OwnedSourceIdentity::Primary,
+                frame: path(&["Rows"]),
+                path: path(&["Value"])
+            }
+            .into())
+        );
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Primary,
+                &["Value"],
+                None,
+                eligible
+            ),
+            Ok(string("P.root"))
+        );
+    }
+    assert_eq!(
+        context.captured_owned_field(SourceOwnerRef::Primary, &["Value"], Some(&[])),
+        Err(inactive(Some(&[])))
+    );
+    let rows = context.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    for eligible in [false, true] {
+        let current = rows[1].context();
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Primary,
+                &["Rows", "Value"],
+                Some(&["Rows"]),
+                eligible
+            ),
+            Ok(string("P2"))
+        );
+        assert_eq!(
+            root_pin632(
+                current,
+                SourceOwnerRef::Primary,
+                &["Rows", "Value"],
+                None,
+                eligible
+            ),
+            Ok(string("P2"))
+        );
+        assert_eq!(
+            current.captured_owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+            Ok(2)
+        );
+    }
+}
+
+#[test]
+fn basic_root_pin632_existing_budget_refusals_precede_owner_and_root_policy() {
+    let primary = row("P.root");
+    let mut policy = limits();
+    policy.max_path_segments = 0;
+    let r = admit_with_limits(&primary, &[], policy);
+    let context = r.captured_root_context();
+    for eligible in [false, true] {
+        assert_eq!(
+            root_pin632(
+                &context,
+                SourceOwnerRef::Named("Unknown"),
+                &["Value"],
+                Some(&[]),
+                eligible
+            ),
+            Err(OwnedSourceError::MetadataLimit {
+                kind: OwnedSourceLimitKind::PathSegments,
+                used: 0,
+                requested: 1,
+                max: 0,
+            }
+            .into())
+        );
+    }
+    assert_eq!(
+        context.captured_owned_field(SourceOwnerRef::Named("Unknown"), &["Value"], Some(&[])),
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::PathSegments,
+            used: 0,
+            requested: 1,
+            max: 0,
+        }
+        .into())
+    );
+}

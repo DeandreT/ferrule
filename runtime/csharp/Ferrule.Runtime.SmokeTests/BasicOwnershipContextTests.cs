@@ -420,6 +420,7 @@ internal static partial class Program
 
     private static void BasicPairedFlatRootAndLazyAccess()
     {
+        BasicDeclaredEmptyRootPins();
         var flat = BasicRoot(Repeated(BasicValue("flat1"), BasicValue("flat2"), BasicValue("flat3")));
         var rows = BasicReached("F03.subject.96", () => flat.IterateOwnedSource(OwnedPrimaryOwner, Array.Empty<string>())); Equal(3, BasicReached("F03.assert.72", () => rows.Count));
         OwnedValue("B489-C26", Text("flat2"), BasicReached("F03.subject.97", () => rows[1].Context.ResolveOwnedField(
@@ -768,5 +769,108 @@ internal static partial class Program
             originalStateType = state.GetType().FullName, cloneStateType = clone.LegacyView.BasicRunStateIdentity.GetType().FullName },
             expectedSourceFacts = new { ordinary = 138, full = 143, rootStates = 1, newCloneState = false } });
         Equal(true, BasicReached("F03.assert.179", () => ReferenceEquals(state, clone.LegacyView.BasicRunStateIdentity)));
+    }
+
+    // These calls model the exact-owner schema proof emitted by the Basic family.
+    // Generic owned reads and unproved Basic reads retain their existing policy.
+    private static void BasicDeclaredEmptyRootPins()
+    {
+        var empty = Array.Empty<string>();
+        var primary = OwnedPrimaryOwner;
+        var named = OwnedNamedOwner("Ref");
+        var root = BasicCommon();
+        var rows = BasicReached("G632-C01.primary-rows", () => root.IterateOwnedSource(primary, new[] { "Rows" }));
+        var paired = BasicReached("G632-C01.named-rows", () => rows[0].Context.IterateOwnedSource(named, new[] { "Rows" }))[1].Context;
+        var originalFrames = paired.OwnedView.FrameCount;
+        var originalPrimaryItem = paired.OwnedView.FrameAt(0).Item;
+        var originalNamedItem = paired.OwnedView.FrameAt(1).Item;
+        var primaryRoot = BasicReached("G632-C01.primary-root", () => paired.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, true));
+        var namedRoot = BasicReached("G632-C01.named-root", () => paired.ResolveOwnedFieldWithRootPin(named, new[] { "Value" }, empty, true));
+        var primaryRow = BasicReached("G632-C01.primary-nearest", () => paired.ResolveOwnedFieldWithRootPin(primary, new[] { "Rows", "Value" }, null, true));
+        var namedRow = BasicReached("G632-C01.named-nearest", () => paired.ResolveOwnedFieldWithRootPin(named, new[] { "Rows", "Value" }, null, true));
+        OwnedValue("G632-C01.primary-root-check", Text("P.root"), primaryRoot);
+        OwnedValue("G632-C01.named-root-check", Text("N.root"), namedRoot);
+        OwnedValue("G632-C01.primary-nearest-check", Text("P1"), primaryRow);
+        OwnedValue("G632-C01.named-nearest-check", Text("N2"), namedRow);
+        Equal(originalFrames, paired.OwnedView.FrameCount);
+        Equal(true, ReferenceEquals(originalPrimaryItem, paired.OwnedView.FrameAt(0).Item));
+        Equal(true, ReferenceEquals(originalNamedItem, paired.OwnedView.FrameAt(1).Item));
+        OwnedIndex("G632-C01.primary-position", 1, BasicReached("G632-C01.primary-position-raw", () => paired.OwnedPosition(primary, new[] { "Rows" })));
+        OwnedIndex("G632-C01.named-position", 2, BasicReached("G632-C01.named-position-raw", () => paired.OwnedPosition(named, new[] { "Rows" })));
+        var rootPath = BasicOwnedError("G632-C01.absolute-root-path", FerruleOwnedSourceErrorKind.UniteratedRepetition,
+            () => paired.ResolveOwnedFieldWithRootPin(primary, new[] { "Rows", "Value" }, empty, true));
+        OwnedPath(new[] { "Rows", "Value" }, rootPath.Path); Equal<nuint?>(1, rootPath.Segment);
+        BasicOwnedError("G632-C01.root-position-stays-inactive", FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            () => root.OwnedPosition(primary, empty));
+
+        var unproved = BasicOwnedError("G632-C02.unproved-Basic-root", FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            () => root.ResolveOwnedField(primary, new[] { "Value" }, empty));
+        OwnedPath(empty, unproved.Collection); Equal<string?>(null, unproved.RequestedName);
+        var declaredRepeated = BasicOwnedError("G632-C02.declared-repeating-root", FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            () => root.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, false));
+        OwnedPath(empty, declaredRepeated.Collection); Equal<string?>(null, declaredRepeated.RequestedName);
+        var generic = FerruleOwnedSourceRoots.Create(BasicValue("generic"), Array.Empty<FerruleDeclaredNamedSourceRoot>(), BasicLimits).RootContext();
+        try { _ = generic.ResolveField(primary, new[] { "Value" }, empty); throw new InvalidOperationException("Expected unchanged generic empty-pin refusal."); }
+        catch (FerruleOwnedSourceException error)
+        {
+            BasicErrorRaw("G632-C02.generic-root", error);
+            Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, error.Error); OwnedPath(empty, error.Collection);
+            Equal(true, error.Owner?.IsPrimary); Equal<string?>(null, error.RequestedName);
+        }
+        var nonempty = BasicOwnedError("G632-C02.nonempty-stays-inactive", FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            () => root.ResolveOwnedFieldWithRootPin(primary, new[] { "Rows", "Value" }, new[] { "Rows" }, true));
+        OwnedPath(new[] { "Rows" }, nonempty.Collection);
+        var incompatible = BasicOwnedError("G632-C02.nonempty-prefix-priority", FerruleOwnedSourceErrorKind.IncompatibleFramePath,
+            () => root.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, new[] { "Rows" }, true));
+        OwnedPath(new[] { "Value" }, incompatible.Path); OwnedPath(new[] { "Rows" }, incompatible.Frame);
+
+        foreach (var declaredNonrepeating in new[] { false, true })
+        {
+            var actualRepeated = BasicRoot(Repeated(BasicValue("flat1"), BasicValue("flat2")));
+            var inactive = BasicOwnedError("G632-C03.actual-repeated-unwalked-" + declaredNonrepeating,
+                FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+                () => actualRepeated.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, declaredNonrepeating));
+            OwnedPath(empty, inactive.Collection);
+            var actualRows = BasicReached("G632-C03.actual-root-walk-" + declaredNonrepeating,
+                () => actualRepeated.IterateOwnedSource(primary, empty));
+            OwnedValue("G632-C03.actual-root-value-" + declaredNonrepeating, Text("flat2"),
+                BasicReached("G632-C03.actual-root-return-" + declaredNonrepeating,
+                    () => actualRows[1].Context.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, declaredNonrepeating)));
+            OwnedIndex("G632-C03.actual-root-position-" + declaredNonrepeating, 2,
+                BasicReached("G632-C03.actual-root-index-" + declaredNonrepeating, () => actualRows[1].Context.OwnedPosition(primary, empty)));
+        }
+        var foreign = BasicRoot(Repeated(BasicValue("primary-row")), new FerruleDeclaredNamedSourceRoot("Ref", Repeated(BasicValue("named-row"))));
+        var foreignRows = BasicReached("G632-C03.foreign-walk", () => foreign.IterateOwnedSource(named, empty));
+        var foreignInactive = BasicOwnedError("G632-C03.foreign-root-is-not-primary", FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            () => foreignRows[0].Context.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, true));
+        OwnedPath(empty, foreignInactive.Collection); Equal(true, foreignInactive.Owner?.IsPrimary);
+
+        var scalarRoot = BasicRoot(Scalar(Text("scalar-root")), new FerruleDeclaredNamedSourceRoot("Ref", Scalar(FerruleValue.Null)));
+        var scalar = BasicReached("G632-C04.scalar", () => scalarRoot.ResolveOwnedFieldWithRootPin(primary, empty, empty, true));
+        var presentNull = BasicReached("G632-C04.present-null", () => scalarRoot.ResolveOwnedFieldWithRootPin(named, empty, empty, true));
+        OwnedValue("G632-C04.scalar-check", Text("scalar-root"), scalar);
+        OwnedValue("G632-C04.present-null-check", FerruleValue.Null, presentNull);
+        var absent = BasicRoot(Group(), new FerruleDeclaredNamedSourceRoot("Ref", Group()));
+        var missing = BasicReached("G632-C04.missing-field", () => absent.ResolveOwnedFieldWithRootPin(named, new[] { "Value" }, empty, true));
+        OwnedValue("G632-C04.missing-field-check", FerruleValue.Null, missing);
+        var unavailable = BasicOwnedError("G632-C04.unavailable-before-pin", FerruleOwnedSourceErrorKind.SourceUnavailable,
+            () => BasicGaps().ResolveOwnedFieldWithRootPin(OwnedNamedOwner("Missing"), new[] { "Value" }, empty, true));
+        Equal("Missing", unavailable.RequestedName);
+        var malformed = BasicOwnedError("G632-C04.malformed-root", FerruleOwnedSourceErrorKind.Traversal,
+            () => scalarRoot.ResolveOwnedFieldWithRootPin(primary, new[] { "Value" }, empty, true));
+        Equal<nuint?>(0, malformed.Segment); Equal<FerruleOwnedSourceInstanceKind?>(FerruleOwnedSourceInstanceKind.Scalar, malformed.FoundInstance);
+        OwnedPath(new[] { "Value" }, malformed.Path);
+        Equal(FerruleOwnedSourceTraversalKind.CannotTraverse, ((FerruleOwnedSourceTraversalException)malformed.InnerException!).Error);
+        foreach (var unsupported in new FerruleInstance[] {
+            new FerruleDocumentSet(new[] { new FerruleDocument("doc", Group()) }),
+            new FerruleMappedSequence(new FerruleInstance[] { BasicValue("mapped") }),
+        })
+        {
+            var actual = BasicOwnedError("G632-C04.unsupported-root-" + unsupported.GetType().Name,
+                FerruleOwnedSourceErrorKind.UnsupportedSourceKind,
+                () => BasicRoot(unsupported).ResolveOwnedFieldWithRootPin(primary, empty, empty, true));
+            OwnedPath(empty, actual.Path);
+            Equal<FerruleOwnedSourceInstanceKind?>(unsupported is FerruleDocumentSet ? FerruleOwnedSourceInstanceKind.DocumentSet : FerruleOwnedSourceInstanceKind.MappedSequence, actual.FoundInstance);
+        }
     }
 }
