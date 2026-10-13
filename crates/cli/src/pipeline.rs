@@ -88,6 +88,17 @@ pub struct PipelineRunOptions<'a> {
 }
 
 impl<'a> PipelineRunOptions<'a> {
+    pub(crate) fn requests_debug_hook(&self) -> bool {
+        self.stage_debug_hook.is_some()
+            || self.stage_node_debug_hook.is_some()
+            || self.stage_function_node_debug_hook.is_some()
+            || self.stage_input_debug_hook.is_some()
+            || self.stage_function_input_debug_hook.is_some()
+            || self.stage_node_failure_debug_hook.is_some()
+            || self.stage_function_failure_debug_hook.is_some()
+            || self.stage_source_field_probe.is_some()
+    }
+
     pub fn with_stage_debug_hook(mut self, hook: &'a PipelineStageDebugCallback<'a>) -> Self {
         self.stage_debug_hook = Some(hook);
         self
@@ -385,7 +396,13 @@ fn run_pipeline_value_with_pdf_reader(
 
     // Admission follows execution's dependency order and includes every target;
     // selected outputs only choose the files to publish.
-    engine::check_pipeline_source_ownership_capability(pipeline)?;
+    engine::check_pipeline_source_ownership_capability_with_observers(
+        pipeline,
+        engine::SourceOwnershipObservers {
+            tracing: options.stage_trace_sink.is_some(),
+            debugging: options.requests_debug_hook(),
+        },
+    )?;
 
     let mut protected = vec![pipeline_path.to_path_buf()];
     let mut hosts = BTreeMap::new();
@@ -457,14 +474,7 @@ fn run_pipeline_value_with_pdf_reader(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let stage_debug_hook = (options.stage_debug_hook.is_some()
-        || options.stage_node_debug_hook.is_some()
-        || options.stage_function_node_debug_hook.is_some()
-        || options.stage_input_debug_hook.is_some()
-        || options.stage_function_input_debug_hook.is_some()
-        || options.stage_node_failure_debug_hook.is_some()
-        || options.stage_function_failure_debug_hook.is_some())
-    .then(|| StageDebugHook {
+    let stage_debug_hook = options.requests_debug_hook().then(|| StageDebugHook {
         stage: RefCell::new(String::new()),
         hook: options.stage_debug_hook,
         node_hook: options.stage_node_debug_hook,

@@ -84,8 +84,15 @@ fn preflight(
         ));
     }
     crate::require_valid(project).map_err(RestJsonError::Mapping)?;
-    engine::check_source_ownership_capability(project, Some(engine::TargetSelection::Primary))
-        .map_err(|error| RestJsonError::Mapping(error.into()))
+    engine::check_source_ownership_capability_with_observers(
+        project,
+        Some(engine::TargetSelection::Primary),
+        engine::SourceOwnershipObservers {
+            tracing: options.trace_sink.is_some(),
+            debugging: options.debug_hook.is_some(),
+        },
+    )
+    .map_err(|error| RestJsonError::Mapping(error.into()))
 }
 
 /// Preflights one immutable project before any connection, fetches once, and
@@ -277,7 +284,7 @@ mod owned_source_rest_admission_tests {
 
     #[test]
     fn owned_refusal_is_inside_preflight_and_retains_earlier_policy_errors() {
-        let project = crate::owned_source_test_project();
+        let project = crate::closed_owned_source_test_project();
         let options =
             RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
         let RestJsonError::Mapping(error) = preflight(&project, &options).unwrap_err() else {
@@ -285,7 +292,7 @@ mod owned_source_rest_admission_tests {
         };
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, .. })
+            Some(engine::EngineError::UnsupportedSourceOwnership { node: 9, function: Some(function), .. }) if *function == ::mapping::FunctionId::new(7)
         ));
         let options =
             RestJsonMappingOptions::new(Path::new("response.xml"), Path::new("output.json"));
@@ -302,7 +309,7 @@ mod owned_collection_rest_admission_tests {
 
     #[test]
     fn owned_collection_refusal_is_inside_preflight_and_retains_earlier_policy_errors() {
-        let project = crate::owned_collection_test_project();
+        let project = crate::closed_owned_collection_test_project();
         let options =
             RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
         let RestJsonError::Mapping(error) = preflight(&project, &options).unwrap_err() else {
@@ -310,7 +317,12 @@ mod owned_collection_rest_admission_tests {
         };
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedSourceIteration { .. })
+            Some(engine::EngineError::UnsupportedOwnedContext {
+                node: Some(9),
+                function: None,
+                scope: None,
+                context: engine::OwnedCapabilityContext::IsolatedFunction
+            })
         ));
         let options =
             RestJsonMappingOptions::new(Path::new("response.xml"), Path::new("output.json"));
@@ -318,5 +330,81 @@ mod owned_collection_rest_admission_tests {
             preflight(&project, &options),
             Err(RestJsonError::RequestPolicy(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod owned_basic_rest_admission_transition_tests {
+    use super::*;
+    #[test]
+    fn basic_field_and_collection_pass_preflight_and_unchanged_payload_delegate()
+    -> anyhow::Result<()> {
+        // This covers admission/delegation; it does not claim transport/fetch proof.
+        for collection in [false, true] {
+            let project = if collection {
+                crate::owned_collection_host_positive_project()
+            } else {
+                crate::owned_source_test_project()
+            };
+            let options =
+                RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
+            assert!(preflight(&project, &options).is_ok());
+            let bytes: &[u8] = if collection {
+                br#"[{"Value":"one"},{"Value":"two"}]"#
+            } else {
+                br#"{"Value":"supported"}"#
+            };
+            let document = PayloadDocument::new(options.response_path, bytes)?;
+            let outcome = run_project_value_payloads(
+                &project,
+                Path::new("project.json"),
+                &PayloadRunOptions::new(document).with_output_path(options.output_path),
+            )?;
+            assert_eq!(outcome.artifacts.len(), 1);
+            assert_eq!(outcome.records_written, if collection { 2 } else { 1 });
+            let actual: serde_json::Value = serde_json::from_slice(&outcome.artifacts[0].bytes)?;
+            let expected = if collection {
+                serde_json::json!([{"Value":"legacy"},{"Value":"legacy"}])
+            } else {
+                serde_json::json!({"Value":"supported"})
+            };
+            assert_eq!(actual, expected);
+            let document = PayloadDocument::new(options.response_path, b"not JSON")?;
+            let error = run_project_value_payloads(
+                &project,
+                Path::new("project.json"),
+                &PayloadRunOptions::new(document).with_output_path(options.output_path),
+            )
+            .unwrap_err();
+            assert_eq!(error.to_string(), "reading primary input payload");
+            assert!(error.downcast_ref::<engine::EngineError>().is_none());
+            assert!(matches!(
+                preflight(
+                    &project,
+                    &RestJsonMappingOptions::new(Path::new("response.xml"), options.output_path)
+                ),
+                Err(RestJsonError::RequestPolicy(_))
+            ));
+            let cancel = || false;
+            let mut cancelled =
+                RestJsonMappingOptions::new(options.response_path, options.output_path);
+            cancelled.should_continue = Some(&cancel);
+            assert!(matches!(
+                continue_run(&cancelled),
+                Err(RestJsonError::Cancelled)
+            ));
+            assert!(matches!(
+                run_project_value_rest_json_request_file_payloads(
+                    &project,
+                    Path::new("project.json"),
+                    Path::new("absent-request.json"),
+                    None,
+                    RestExecutionPolicy::Deny,
+                    &options
+                ),
+                Err(RestJsonError::Disabled)
+            ));
+        }
+        Ok(())
     }
 }

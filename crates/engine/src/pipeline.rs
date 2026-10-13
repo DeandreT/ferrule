@@ -88,6 +88,15 @@ pub fn run_pipeline_with_context(
     hosts: &BTreeMap<String, Instance>,
     execution: &ExecutionContext<'_>,
 ) -> Result<PipelineOutputs, PipelineError> {
+    let observers = crate::SourceOwnershipObservers {
+        tracing: execution.trace_sink.is_some(),
+        debugging: execution.debug_hook.is_some(),
+    };
+    if observers.tracing || observers.debugging {
+        let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
+        validate_hosts(&plan, hosts)?;
+        check_plan_source_ownership_capability(pipeline, &plan, observers)?;
+    }
     run_pipeline_with_stage_contexts(pipeline, hosts, |_| *execution)
 }
 
@@ -97,15 +106,34 @@ pub fn run_pipeline_with_context(
 pub fn check_pipeline_source_ownership_capability(
     pipeline: &Pipeline,
 ) -> Result<(), PipelineError> {
+    check_pipeline_source_ownership_capability_with_observers(
+        pipeline,
+        crate::SourceOwnershipObservers::default(),
+    )
+}
+
+/// Admits every stage and target closure with the host's observer requests
+/// before any stage can acquire inputs or invoke callbacks.
+pub fn check_pipeline_source_ownership_capability_with_observers(
+    pipeline: &Pipeline,
+    observers: crate::SourceOwnershipObservers,
+) -> Result<(), PipelineError> {
     let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
-    for index in plan.order {
+    check_plan_source_ownership_capability(pipeline, &plan, observers)
+}
+
+fn check_plan_source_ownership_capability(
+    pipeline: &Pipeline,
+    plan: &Plan,
+    observers: crate::SourceOwnershipObservers,
+) -> Result<(), PipelineError> {
+    for &index in &plan.order {
         let stage = &pipeline.stages[index];
-        crate::check_source_ownership_capability(&stage.project, None).map_err(|source| {
-            PipelineError::StageExecution {
+        crate::check_source_ownership_capability_with_observers(&stage.project, None, observers)
+            .map_err(|source| PipelineError::StageExecution {
                 stage: stage.id.clone(),
                 source,
-            }
-        })?;
+            })?;
     }
     Ok(())
 }
@@ -120,16 +148,7 @@ pub fn run_pipeline_with_stage_contexts<'a>(
     mut context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
 ) -> Result<PipelineOutputs, PipelineError> {
     let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
-    for name in &plan.hosts {
-        if !hosts.contains_key(name) {
-            return Err(PipelineError::MissingHostInput { name: name.clone() });
-        }
-    }
-    for name in hosts.keys() {
-        if !plan.hosts.contains(name) {
-            return Err(PipelineError::UnexpectedHostInput { name: name.clone() });
-        }
-    }
+    validate_hosts(&plan, hosts)?;
 
     let mut completed = BTreeMap::new();
     for &index in &plan.order {
@@ -168,6 +187,20 @@ pub fn run_pipeline_with_stage_contexts<'a>(
         })
         .collect();
     Ok(PipelineOutputs { stages })
+}
+
+fn validate_hosts(plan: &Plan, hosts: &BTreeMap<String, Instance>) -> Result<(), PipelineError> {
+    for name in &plan.hosts {
+        if !hosts.contains_key(name) {
+            return Err(PipelineError::MissingHostInput { name: name.clone() });
+        }
+    }
+    for name in hosts.keys() {
+        if !plan.hosts.contains(name) {
+            return Err(PipelineError::UnexpectedHostInput { name: name.clone() });
+        }
+    }
+    Ok(())
 }
 
 /// The usual hostless run contract, for mappings that do not read clock,
