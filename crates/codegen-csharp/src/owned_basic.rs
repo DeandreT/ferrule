@@ -16,6 +16,13 @@ use codegen::{
 use std::collections::BTreeSet;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
+    render_basic_owned_mapping_profile(program, false)
+}
+
+fn render_basic_owned_mapping_profile(
+    program: &Program,
+    public_owned_nodes: bool,
+) -> Result<String, EmitError> {
     codegen::validate_program(program)?;
     let retained = retained_expressions(program);
     validate_private_inventory(program, &retained)?;
@@ -79,7 +86,11 @@ pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, Em
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
         if retained.contains(&node.id) {
-            mapping::render_basic_expression(node.id, &node.expression, &mut output)?;
+            if public_owned_nodes {
+                mapping::render_public_basic_expression(node.id, &node.expression, &mut output)?;
+            } else {
+                mapping::render_basic_expression(node.id, &node.expression, &mut output)?;
+            }
         }
     }
     output.push_str(&body);
@@ -664,8 +675,20 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
 }
 
 // Separate checked prototype; the prepared mapping above remains byte-exact.
+#[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_basic_owned_mapping(program)?;
+    render_checked_basic_owned_mapping_profile(program, false)
+}
+
+fn render_checked_basic_owned_mapping_profile(
+    program: &Program,
+    public_owned_nodes: bool,
+) -> Result<String, EmitError> {
+    let mut source = if public_owned_nodes {
+        render_basic_owned_mapping_profile(program, true)?
+    } else {
+        render_basic_owned_mapping(program)?
+    };
     let plan = codegen::legacy_named_input_admission_plan(program)?;
     let (primary, extras) = mapping::render_basic_scopes(program, &mut String::new())?;
     // Reuse the ordinary NamedInput spelling and exact record declaration.
@@ -807,7 +830,7 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping(program)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }

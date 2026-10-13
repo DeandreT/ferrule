@@ -421,6 +421,7 @@ internal static partial class Program
     private static void BasicPairedFlatRootAndLazyAccess()
     {
         BasicDeclaredEmptyRootPins();
+        BasicOwnedLeafNodeProvenance();
         var flat = BasicRoot(Repeated(BasicValue("flat1"), BasicValue("flat2"), BasicValue("flat3")));
         var rows = BasicReached("F03.subject.96", () => flat.IterateOwnedSource(OwnedPrimaryOwner, Array.Empty<string>())); Equal(3, BasicReached("F03.assert.72", () => rows.Count));
         OwnedValue("B489-C26", Text("flat2"), BasicReached("F03.subject.97", () => rows[1].Context.ResolveOwnedField(
@@ -872,5 +873,122 @@ internal static partial class Program
             OwnedPath(empty, actual.Path);
             Equal<FerruleOwnedSourceInstanceKind?>(unsupported is FerruleDocumentSet ? FerruleOwnedSourceInstanceKind.DocumentSet : FerruleOwnedSourceInstanceKind.MappedSequence, actual.FoundInstance);
         }
+    }
+
+    private static void BasicOwnedLeafNodeProvenance()
+    {
+        FerruleRuntimeException Capture(string label, Action action)
+        {
+            try { action(); }
+            catch (FerruleRuntimeException error)
+            {
+                BasicErrorRaw(label, error);
+                return error;
+            }
+            throw new InvalidOperationException("Expected a complete typed leaf refusal.");
+        }
+
+        void Annotate(string label, FerruleRuntimeException error, uint node)
+        {
+            var cause = error.InnerException;
+            var causeInner = cause?.InnerException;
+            var originalStack = error.StackTrace;
+            var originalCauseStack = cause?.StackTrace;
+            var originalSource = error.Source;
+            var originalHResult = error.HResult;
+            var originalTarget = error.TargetSite;
+            var originalMessage = error.Message;
+            var originalCategory = error.Error;
+            var marker = new object();
+            error.HelpLink = "https://example.invalid/owned-leaf";
+            error.Data["sentinel"] = marker;
+            var properties = typeof(FerruleRuntimeException)
+                .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+                .Where(property => property.Name != "Node")
+                .Select(property => (Property: property, Value: property.GetValue(error))).ToArray();
+            var returned = BasicReached(label + ".annotation", () => error.WithOwnedSourceNode(node));
+            BasicErrorRaw(label + ".complete", returned, new
+            {
+                sameOuter = ReferenceEquals(error, returned), sameCause = ReferenceEquals(cause, returned.InnerException),
+                sameNestedCause = ReferenceEquals(causeInner, returned.InnerException?.InnerException),
+                originalStack, originalCauseStack, originalSource, originalHResult,
+                helpLink = returned.HelpLink, sameData = ReferenceEquals(marker, returned.Data["sentinel"]),
+            });
+            Equal(true, ReferenceEquals(error, returned));
+            Equal<uint?>(node, returned.Node);
+            Equal(true, ReferenceEquals(cause, returned.InnerException));
+            Equal(true, ReferenceEquals(causeInner, returned.InnerException?.InnerException));
+            Equal(originalStack, returned.StackTrace);
+            Equal(originalCauseStack, returned.InnerException?.StackTrace);
+            Equal(originalSource, returned.Source);
+            Equal(originalHResult, returned.HResult);
+            Equal(originalTarget, returned.TargetSite);
+            Equal(originalMessage, returned.Message);
+            Equal(originalCategory, returned.Error);
+            Equal("https://example.invalid/owned-leaf", returned.HelpLink);
+            Equal(true, ReferenceEquals(marker, returned.Data["sentinel"]));
+            foreach (var property in properties)
+                Equal(property.Value, property.Property.GetValue(returned));
+            var enclosing = BasicReached(label + ".enclosing", () => returned.WithOwnedSourceNode(node == 0 ? uint.MaxValue : 0));
+            Equal(true, ReferenceEquals(returned, enclosing));
+            Equal<uint?>(node, enclosing.Node);
+            Equal(originalStack, enclosing.StackTrace);
+        }
+
+        foreach (var owner in new[] { OwnedPrimaryOwner, OwnedNamedOwner("Ref") })
+        {
+            var label = owner.IsPrimary ? "N651.primary" : "N651.named";
+            var position = Capture(label + ".position", () => BasicCommon().OwnedPosition(owner, Array.Empty<string>()));
+            Equal<uint?>(null, position.Node);
+            Equal(FerruleRuntimeError.OwnedSource, position.Error);
+            var positionCause = position.OwnedSourceFailure!;
+            Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, positionCause.Error);
+            Equal(owner.IsPrimary, positionCause.Owner!.IsPrimary);
+            Equal(owner.Name, positionCause.Owner!.Name);
+            Equal(owner.Name, positionCause.RequestedName);
+            OwnedPath(Array.Empty<string>(), positionCause.Collection);
+            Annotate(label + ".position", position, 2);
+        }
+
+        var malformed = Capture("N651.field", () => BasicCommon().ResolveOwnedField(OwnedPrimaryOwner, new[] { "Details" }));
+        Equal<uint?>(null, malformed.Node);
+        Equal(FerruleOwnedSourceErrorKind.Traversal, malformed.OwnedSourceFailure!.Error);
+        var traversal = (FerruleOwnedSourceTraversalException)malformed.InnerException!.InnerException!;
+        Equal(FerruleOwnedSourceTraversalKind.ExpectedScalar, traversal.Error);
+        Equal(FerruleOwnedSourceInstanceKind.Group, traversal.Found);
+        OwnedPath(new[] { "Details" }, traversal.Path);
+        Annotate("N651.field", malformed, 0);
+
+        var missing = Capture("N651.missing", () => BasicGaps().ResolveOwnedField(OwnedNamedOwner("Missing"), new[] { "Value" }));
+        Equal<uint?>(null, missing.Node);
+        Equal(FerruleOwnedSourceErrorKind.SourceUnavailable, missing.OwnedSourceFailure!.Error);
+        Equal("Missing", missing.OwnedSourceFailure.RequestedName);
+        Annotate("N651.missing", missing, uint.MaxValue);
+
+        var bridgeCause = new FerruleBasicSourceBridgeException(
+            FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit,
+            component: FerruleBasicSourceBridgeComponent.WalkContexts, used: 1, requested: 2, maximum: 2,
+            inputOrdinal: 3, candidateOrdinal: 4, declarationIndex: 5, declaredCount: 6,
+            found: FerruleOwnedSourceInstanceKind.Group);
+        var bridge = FerruleRuntimeException.FromBasicSourceBridge(bridgeCause);
+        Equal<uint?>(null, bridge.Node);
+        Equal(true, ReferenceEquals(bridgeCause, bridge.BasicSourceBridgeFailure));
+        Annotate("N651.bridge", bridge, uint.MaxValue);
+
+        var ordinary = new FerruleRuntimeException(FerruleRuntimeError.MappingException, "ordinary", node: 7, mappingExceptionMessage: "ordinary");
+        var returnedOrdinary = BasicReached("N651.ordinary", () => ordinary.WithOwnedSourceNode(2));
+        Equal(true, ReferenceEquals(ordinary, returnedOrdinary));
+        Equal<uint?>(7, returnedOrdinary.Node);
+        Equal("ordinary", returnedOrdinary.MappingExceptionMessage);
+        var untyped = new FerruleRuntimeException(FerruleRuntimeError.OwnedSource, "no typed cause");
+        Equal(true, ReferenceEquals(untyped, BasicReached("N651.untyped", () => untyped.WithOwnedSourceNode(2))));
+        Equal<uint?>(null, untyped.Node);
+        var unrelated = new FerruleRuntimeException(FerruleRuntimeError.DivideByZero, "unrelated", new InvalidOperationException("unrelated inner"));
+        Equal(true, ReferenceEquals(unrelated, BasicReached("N651.unrelated", () => unrelated.WithOwnedSourceNode(2))));
+        Equal<uint?>(null, unrelated.Node);
+
+        var untouched = Capture("N651.untouched-default", () => BasicCommon().OwnedPosition(OwnedPrimaryOwner, Array.Empty<string>()));
+        Equal<uint?>(null, untouched.Node);
+        Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, untouched.OwnedSourceFailure!.Error);
     }
 }
