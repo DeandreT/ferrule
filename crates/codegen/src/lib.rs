@@ -47,7 +47,7 @@ pub use json5_boundary::{
     Json5BoundaryPolicyError, Json5BoundaryProfile, Json5BoundarySide, prepare_json5_boundary,
     validate_json5_boundary, validate_json5_format_options,
 };
-pub use lower::lower;
+pub use lower::{lower, lower_with_basic_owned_filters};
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
     DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding, DynamicTargetChild,
@@ -77,7 +77,7 @@ pub use validate::{
     OwnedSourceDiagnosticRequest, OwnedSourceNamespace, OwnedSourceSchemaShape,
     OwnedSourceStructureReason, ProgramValidationError, RecursiveSequencePathRole,
     SequenceExpressionRole, SequenceOwner, owned_expression_emission_error,
-    validate_owned_emission, validate_program,
+    validate_owned_emission, validate_program, validate_program_with_basic_owned_filters,
 };
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,
@@ -86,7 +86,7 @@ pub use x12_boundary::{
     validate_x12_json_format_options,
 };
 
-pub use validate::validate_basic_owned_emission;
+pub use validate::{validate_basic_owned_emission, validate_basic_owned_filter_emission};
 
 #[cfg(test)]
 mod tests;

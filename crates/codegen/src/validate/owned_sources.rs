@@ -349,8 +349,36 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
             },
         })
 }
+/// Internal policy; public callers must explicitly select the filter profile.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BasicOwnedProfile {
+    ControlFree,
+    FilterOnly,
+}
+impl BasicOwnedProfile {
+    fn permits_filter(self, scope: &TargetScope) -> bool {
+        self == Self::FilterOnly
+            && matches!(
+                scope.construction,
+                TargetConstruction::Group | TargetConstruction::Scalar { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.filter().is_some()
+                    && matches!(
+                        iteration.input(),
+                        IterationSource::Source(_) | IterationSource::OwnedSource(_)
+                    )
+                    && iteration.sort().is_none()
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+                    && iteration.windows().is_empty()
+                    && iteration.output() == IterationOutput::Repeated
+            })
+    }
+}
 struct Admission<'a> {
     program: &'a Program,
+    profile: BasicOwnedProfile,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -482,7 +510,7 @@ impl<'a> Admission<'a> {
             let reason =
                 if iteration.grouping().is_some() || iteration.post_group_filter().is_some() {
                     Some(Capability::Grouping)
-                } else if iteration.filter().is_some()
+                } else if iteration.filter().is_some() && !self.profile.permits_filter(scope)
                     || iteration.sort().is_some()
                     || !iteration.windows().is_empty()
                 {
@@ -640,11 +668,18 @@ impl<'a> Admission<'a> {
     }
 }
 pub(super) fn validate_closed_contexts(program: &Program) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_profile(program, BasicOwnedProfile::ControlFree)
+}
+pub(super) fn validate_closed_contexts_with_profile(
+    program: &Program,
+    profile: BasicOwnedProfile,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
     let mut admission = Admission {
         program,
+        profile,
         visited: Vec::new(),
     };
     admission.scope(
@@ -803,11 +838,29 @@ pub fn validate_owned_emission(program: &Program) -> Result<(), ProgramValidatio
 /// General Program structure and stored ownership contexts are checked first.
 /// This additive gate does not replace the ordinary closed emission gate.
 pub fn validate_basic_owned_emission(program: &Program) -> Result<(), ProgramValidationError> {
-    super::validate_program(program)?;
+    validate_basic_owned_with_profile(program, BasicOwnedProfile::ControlFree)
+}
+
+/// Explicitly admits only static Basic repeated scopes with a filter.
+///
+/// This validates capability only; no default renderer or execution path opts in.
+/// Sort, windows, grouping, specialized contexts and failure ownership stay closed.
+pub fn validate_basic_owned_filter_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_profile(program, BasicOwnedProfile::FilterOnly)
+}
+
+fn validate_basic_owned_with_profile(
+    program: &Program,
+    profile: BasicOwnedProfile,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_profile(program, profile)?;
     basic_scope(
         program,
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
+        profile,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         basic_scope(
@@ -817,6 +870,7 @@ pub fn validate_basic_owned_emission(program: &Program) -> Result<(), ProgramVal
                 index,
                 name: target.name.clone(),
             }),
+            profile,
         )?;
     }
     if let Some(function) = program.user_functions.first() {
@@ -836,7 +890,7 @@ pub fn validate_basic_owned_emission(program: &Program) -> Result<(), ProgramVal
         ));
     }
     basic_failures(program)?;
-    let retained = basic_target_expressions(program);
+    let retained = basic_target_expressions(program, profile);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
             && retained.contains(&node.id)
@@ -924,6 +978,7 @@ fn basic_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
+    profile: BasicOwnedProfile,
 ) -> Result<(), ProgramValidationError> {
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
@@ -936,7 +991,7 @@ fn basic_scope(
         if let Some(reason) = reason {
             return Err(basic_scope_refusal(scope, route, reason));
         }
-        if iteration.filter().is_some()
+        if iteration.filter().is_some() && !profile.permits_filter(scope)
             || iteration.sort().is_some()
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
@@ -971,6 +1026,7 @@ fn basic_scope(
             program,
             child,
             route.descendant(SourceScopeStep::Child(index)),
+            profile,
         )?;
     }
     Ok(())
@@ -1013,20 +1069,33 @@ fn basic_expression_nodes(
     found
 }
 
-fn basic_target_expressions(program: &Program) -> std::collections::BTreeSet<NodeId> {
-    fn roots(scope: &TargetScope, output: &mut Vec<NodeId>) {
+fn basic_target_expressions(
+    program: &Program,
+    profile: BasicOwnedProfile,
+) -> std::collections::BTreeSet<NodeId> {
+    fn roots(scope: &TargetScope, profile: BasicOwnedProfile, output: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
             output.push(*expression);
         }
         output.extend(scope.bindings.iter().map(|binding| binding.expression));
+        if profile.permits_filter(scope) {
+            // A predicate retains every potential scalar dependency, including
+            // unchosen branches/defaults and the existing target ValueMap edge.
+            output.extend(
+                scope
+                    .iteration
+                    .as_ref()
+                    .and_then(|iteration| iteration.filter()),
+            );
+        }
         for child in &scope.children {
-            roots(child, output);
+            roots(child, profile, output);
         }
     }
     let mut pending = Vec::new();
-    roots(&program.root, &mut pending);
+    roots(&program.root, profile, &mut pending);
     for target in &program.extra_targets {
-        roots(&target.root, &mut pending);
+        roots(&target.root, profile, &mut pending);
     }
     let mut retained = basic_expression_nodes(program, pending);
     let mut pending = retained.iter().copied().collect::<Vec<_>>();
