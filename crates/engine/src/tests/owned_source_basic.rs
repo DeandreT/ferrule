@@ -1338,8 +1338,8 @@ fn owned_access_error_source_keeps_concrete_cause_and_exact_scope_metadata() {
         target_field: "Value".into(),
         node: 1,
     }];
-    let input = group(vec![("Value", text("root"))]);
-    let error = crate::run(&p, &input).expect_err("a root pin requires a real repeated occurrence");
+    let input = Instance::Repeated(vec![row("first"), row("second")]);
+    let error = crate::run(&p, &input).expect_err("a repeated root pin requires a real occurrence");
     let expected = Access::InactiveSourceFrame {
         owner: SourceOwner::Primary,
         collection: Some(vec![]),
@@ -1402,4 +1402,412 @@ fn owned_access_error_source_keeps_concrete_cause_and_exact_scope_metadata() {
         .downcast_ref::<Access>()
         .expect("scope boxing must not change the direct source type");
     assert_eq!(cause, &expected);
+}
+
+fn empty_root_pin_project(owner: SourceOwner, parts: &[&str]) -> Project {
+    let mut p = project();
+    p.graph
+        .nodes
+        .insert(1, Node::OwnedSourceField(field(owner, parts, Some(&[]))));
+    p.root.bindings = vec![Binding {
+        target_field: "Value".into(),
+        node: 1,
+    }];
+    p
+}
+
+#[test]
+fn empty_root_pins_read_exact_public_primary_named_and_literal_roots() {
+    let (primary, supplied) = fixture();
+    for (owner, parts, expected) in [
+        (SourceOwner::Primary, vec!["Value"], "P.root"),
+        (SourceOwner::Primary, vec!["Ref", "Value"], "P.Ref"),
+        (named("Ref"), vec!["Value"], "N.root"),
+        (named("primary"), vec!["Value"], "named.literal.primary"),
+        (
+            named(" Ref 雪 "),
+            vec!["Value"],
+            "named.literal.whitespace.unicode",
+        ),
+        (named("ref"), vec!["Value"], "named.literal.lowercase"),
+    ] {
+        let mut p = empty_root_pin_project(owner.clone(), &parts);
+        let expected = group(vec![("Value", text(expected))]);
+        assert_eq!(
+            crate::run_with_sources(&p, &primary, extras(supplied.clone())),
+            Ok(expected.clone()),
+        );
+        p.graph
+            .nodes
+            .insert(1, Node::OwnedSourceField(field(owner, &parts, None)));
+        assert_eq!(
+            crate::run_with_sources(&p, &primary, extras(supplied.clone())),
+            Ok(expected),
+        );
+    }
+}
+
+#[test]
+fn empty_root_pins_read_public_scalar_roots_and_preserve_null() {
+    for owner in [SourceOwner::Primary, named("Ref")] {
+        for value in [
+            Value::String("scalar root".into()),
+            Value::Null,
+            Value::JsonNull(ir::JsonNull),
+        ] {
+            let mut p = empty_root_pin_project(owner.clone(), &[]);
+            p.source = scalar("Input");
+            p.extra_sources.truncate(1);
+            p.extra_sources[0].schema = scalar("Input");
+            let input = Instance::Scalar(value.clone());
+            let expected = group(vec![("Value", Instance::Scalar(value.clone()))]);
+            assert_eq!(
+                crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+                Ok(expected.clone()),
+            );
+            p.graph
+                .nodes
+                .insert(1, Node::OwnedSourceField(field(owner.clone(), &[], None)));
+            assert_eq!(
+                crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+                Ok(expected),
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_root_pins_ignore_unrelated_row_frames_and_preserve_positions() {
+    let (input, supplied) = fixture();
+    for (iteration_owner, count) in [(SourceOwner::Primary, 3usize), (named("Ref"), 4)] {
+        for (read_owner, value) in [
+            (SourceOwner::Primary, "P.root"),
+            (named("Ref"), "N.root"),
+            (named("primary"), "named.literal.primary"),
+        ] {
+            let mut p = value_position_project(iteration_owner.clone(), &["Rows"]);
+            p.graph.nodes.insert(
+                1,
+                Node::OwnedSourceField(field(read_owner, &["Value"], Some(&[]))),
+            );
+            let expected = Instance::Repeated(
+                (1..=count)
+                    .map(|position| {
+                        group(vec![
+                            ("Value", text(value)),
+                            ("Position", Instance::Scalar(Value::Int(position as i64))),
+                        ])
+                    })
+                    .collect(),
+            );
+            assert_eq!(
+                crate::run_with_sources(&p, &input, extras(supplied.clone())),
+                Ok(expected),
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_root_pins_do_not_create_positions_or_unwrap_active_collections() {
+    let (input, supplied) = fixture();
+    for owner in [SourceOwner::Primary, named("Ref")] {
+        let mut p = empty_root_pin_project(owner.clone(), &["Value"]);
+        p.graph.nodes.insert(
+            2,
+            Node::OwnedPosition(OwnedPosition {
+                owner: owner.clone(),
+                collection: Some(vec![]),
+            }),
+        );
+        p.root.bindings.push(Binding {
+            target_field: "Position".into(),
+            node: 2,
+        });
+        assert_eq!(
+            crate::run_with_sources(&p, &input, extras(supplied.clone())),
+            Err(EngineError::OwnedSourceAccess {
+                node: Some(2),
+                scope: None,
+                source: Access::InactiveSourceFrame {
+                    owner: owner.clone(),
+                    collection: Some(vec![])
+                },
+            }),
+        );
+        let mut p = value_position_project(owner.clone(), &["Rows"]);
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedSourceField(field(owner.clone(), &["Rows", "Value"], Some(&[]))),
+        );
+        assert_eq!(
+            crate::run_with_sources(&p, &input, extras(supplied.clone())),
+            Err(EngineError::OwnedSourceAccess {
+                node: Some(1),
+                scope: None,
+                source: Access::UniteratedOwnedRepetition {
+                    path: path(&["Rows", "Value"])
+                },
+            }),
+        );
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedSourceField(field(owner.clone(), &["Rows", "Value"], None)),
+        );
+        let values = if owner == SourceOwner::Primary {
+            vec!["P1", "P2", "P3"]
+        } else {
+            vec!["N1", "N2", "N3", "N4"]
+        };
+        let expected = Instance::Repeated(
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    group(vec![
+                        ("Value", text(value)),
+                        ("Position", Instance::Scalar(Value::Int((index + 1) as i64))),
+                    ])
+                })
+                .collect(),
+        );
+        assert_eq!(
+            crate::run_with_sources(&p, &input, extras(supplied.clone())),
+            Ok(expected)
+        );
+    }
+}
+
+#[test]
+fn empty_root_pins_require_declared_or_actual_repeated_root_occurrences() {
+    for owner in [SourceOwner::Primary, named("Ref")] {
+        for (declared_repeating, input) in [
+            (false, Instance::Repeated(vec![])),
+            (false, Instance::Repeated(vec![row("first"), row("second")])),
+            (true, row("singleton is not an occurrence")),
+            (true, Instance::Repeated(vec![row("first"), row("second")])),
+        ] {
+            let mut p = empty_root_pin_project(owner.clone(), &["Value"]);
+            p.source = SchemaNode::group("Input", vec![scalar("Value")]);
+            p.extra_sources.truncate(1);
+            p.extra_sources[0].schema = p.source.clone();
+            p.source.repeating = if owner == SourceOwner::Primary {
+                declared_repeating
+            } else {
+                !declared_repeating
+            };
+            p.extra_sources[0].schema.repeating = if owner == SourceOwner::Primary {
+                !declared_repeating
+            } else {
+                declared_repeating
+            };
+            assert_eq!(
+                crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+                Err(EngineError::OwnedSourceAccess {
+                    node: Some(1),
+                    scope: None,
+                    source: Access::InactiveSourceFrame {
+                        owner: owner.clone(),
+                        collection: Some(vec![])
+                    },
+                }),
+            );
+        }
+        // The other endpoint's schema must never decide this endpoint's root pin.
+        let mut p = empty_root_pin_project(owner.clone(), &["Value"]);
+        p.source = SchemaNode::group("Input", vec![scalar("Value")]);
+        p.extra_sources.truncate(1);
+        p.extra_sources[0].schema = p.source.clone();
+        p.source.repeating = owner != SourceOwner::Primary;
+        p.extra_sources[0].schema.repeating = owner == SourceOwner::Primary;
+        let input = row("selected nonrepeating root");
+        assert_eq!(
+            crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+            Ok(group(vec![("Value", text("selected nonrepeating root"))])),
+        );
+        for declared_repeating in [false, true] {
+            let mut p = value_position_project(owner.clone(), &[]);
+            p.source = SchemaNode::group("Input", vec![scalar("Value")]);
+            p.extra_sources.truncate(1);
+            p.extra_sources[0].schema = p.source.clone();
+            p.source.repeating = if owner == SourceOwner::Primary {
+                declared_repeating
+            } else {
+                !declared_repeating
+            };
+            p.extra_sources[0].schema.repeating = if owner == SourceOwner::Primary {
+                !declared_repeating
+            } else {
+                declared_repeating
+            };
+            p.graph.nodes.insert(
+                1,
+                Node::OwnedSourceField(field(owner.clone(), &["Value"], Some(&[]))),
+            );
+            let input = Instance::Repeated(vec![row("first"), row("second")]);
+            let expected = Instance::Repeated(vec![
+                group(vec![
+                    ("Value", text("first")),
+                    ("Position", Instance::Scalar(Value::Int(1))),
+                ]),
+                group(vec![
+                    ("Value", text("second")),
+                    ("Position", Instance::Scalar(Value::Int(2))),
+                ]),
+            ]);
+            assert_eq!(
+                crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+                Ok(expected)
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_root_pins_cannot_borrow_another_owners_root_occurrence() {
+    for (iteration_owner, read_owner) in [
+        (SourceOwner::Primary, named("Ref")),
+        (named("Ref"), SourceOwner::Primary),
+    ] {
+        let mut p = value_position_project(iteration_owner, &[]);
+        p.source = SchemaNode::group("Input", vec![scalar("Value")]);
+        p.extra_sources.truncate(1);
+        p.extra_sources[0].schema = p.source.clone();
+        p.graph.nodes.insert(
+            1,
+            Node::OwnedSourceField(field(read_owner.clone(), &["Value"], Some(&[]))),
+        );
+        let input = Instance::Repeated(vec![row("same value"), row("same value")]);
+        assert_eq!(
+            crate::run_with_sources(&p, &input, vec![("Ref".into(), input.clone())]),
+            Err(EngineError::OwnedSourceAccess {
+                node: Some(1),
+                scope: None,
+                source: Access::InactiveSourceFrame {
+                    owner: read_owner,
+                    collection: Some(vec![])
+                },
+            }),
+        );
+    }
+}
+
+#[test]
+fn empty_root_pins_preserve_public_missing_malformed_and_unsupported_outcomes() {
+    let input = row("primary cannot supply named absence");
+    let p = empty_root_pin_project(named("Ref"), &["Value"]);
+    assert_eq!(
+        crate::run(&p, &input),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: Access::SourceUnavailable {
+                owner: named("Ref")
+            },
+        })
+    );
+    for supplied in [
+        group(vec![]),
+        Instance::Scalar(Value::Null),
+        Instance::Scalar(Value::JsonNull(ir::JsonNull)),
+    ] {
+        assert_eq!(
+            crate::run_with_sources(&p, &input, vec![("Ref".into(), supplied)]),
+            Ok(group(vec![("Value", Instance::Scalar(Value::Null))])),
+        );
+    }
+    let p = empty_root_pin_project(SourceOwner::Primary, &["Value"]);
+    assert_eq!(
+        crate::run(&p, &Instance::Scalar(Value::Int(7))),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: Access::MalformedOwnedTraversal {
+                path: path(&["Value"]),
+                found: "a non-null scalar"
+            },
+        })
+    );
+    let p = empty_root_pin_project(SourceOwner::Primary, &[]);
+    assert_eq!(
+        crate::run(&p, &group(vec![])),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            scope: None,
+            source: Access::MalformedOwnedTraversal {
+                path: vec![],
+                found: "a group"
+            },
+        })
+    );
+    for (input, domain) in [
+        (Instance::DocumentSet(vec![]), Domain::Document),
+        (Instance::MappedSequence(vec![]), Domain::GeneratedItem),
+    ] {
+        assert_eq!(
+            crate::run(&p, &input),
+            Err(EngineError::UnsupportedOwnedContext {
+                node: Some(1),
+                function: None,
+                scope: None,
+                context: domain,
+            })
+        );
+    }
+    let p = empty_root_pin_project(SourceOwner::Primary, &["Rows", "Value"]);
+    assert_eq!(
+        crate::run(&p, &row("root")),
+        Ok(group(vec![("Value", Instance::Scalar(Value::Null))]))
+    );
+}
+
+#[test]
+fn empty_root_pins_keep_metadata_path_and_inactive_pin_bounds() {
+    let mut p = project();
+    p.extra_sources.clear();
+    let (input, _) = fixture();
+    let empty = group(vec![]);
+    for (limits, request, expected) in [
+        (
+            OwnedLimits {
+                metadata_bytes: 0,
+                ..OwnedLimits::default()
+            },
+            field(SourceOwner::Primary, &["Value"], Some(&[])),
+            Access::ResourceLimit {
+                resource: "metadata bytes",
+                limit: 0,
+            },
+        ),
+        (
+            OwnedLimits {
+                path_segments: 1,
+                ..OwnedLimits::default()
+            },
+            field(SourceOwner::Primary, &["Ref", "Value"], Some(&[])),
+            Access::ResourceLimit {
+                resource: "path segments",
+                limit: 1,
+            },
+        ),
+        (
+            OwnedLimits::default(),
+            field(SourceOwner::Primary, &["Rows", "Value"], Some(&["Rows"])),
+            Access::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(path(&["Rows"])),
+            },
+        ),
+        (
+            OwnedLimits::default(),
+            field(SourceOwner::Primary, &["Value"], Some(&["Rows"])),
+            Access::UnsupportedFramePathCombination {
+                path: path(&["Value"]),
+                frame: path(&["Rows"]),
+            },
+        ),
+    ] {
+        let roots = SourceRoots::new(&p, &input, &empty, limits).unwrap();
+        assert_eq!(OwnedContext::new(&roots).field(&request), Err(expected));
+    }
 }
