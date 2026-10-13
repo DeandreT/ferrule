@@ -237,6 +237,21 @@ impl OwnedBudget {
 }
 
 impl WorkBudget {
+    /// Independent traversal ledger for replaying already validated candidates.
+    /// Replay must never charge the original walk a second time.
+    pub fn fork(&self) -> Self {
+        Self {
+            limits: self.limits,
+            bytes: Cell::new(self.bytes.get()),
+            contexts: Cell::new(self.contexts.get()),
+            slots: Cell::new(self.slots.get()),
+            slot_limit: self.slot_limit,
+        }
+    }
+    #[cfg(test)]
+    pub fn usage(&self) -> (usize, usize, usize) {
+        (self.bytes.get(), self.slots.get(), self.contexts.get())
+    }
     pub fn overflow(&self) -> OwnedSourceError {
         OwnedSourceError::ResourceLimit {
             resource: "metadata bytes",

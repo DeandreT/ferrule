@@ -792,6 +792,26 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
         .any(|child| scope_needs_owned(program, child))
 }
 
+/// Only the implicit First window may use bounded candidate retention.
+/// Explicit sequence controls keep their complete original evaluator.
+pub(crate) fn retain_first_source_candidate(scope: &Scope) -> bool {
+    scope.iteration_output == IterationOutput::First
+        && matches!(
+            &scope.iteration,
+            mapping::ScopeIteration::Source(_) | mapping::ScopeIteration::OwnedSource { .. }
+        )
+        && matches!(&scope.construction, ScopeConstruction::Constructed)
+        && scope.filter.is_none()
+        && !scope.has_sort()
+        && scope.windows.is_empty()
+        && !scope.has_grouping()
+        && scope.post_group_filter.is_none()
+        && scope.output_path().is_none()
+        && !scope.merge_dynamic_fields
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn eval_basic_owned_scope<'a>(
     program: EvalProgram<'a>,
@@ -804,7 +824,9 @@ fn eval_basic_owned_scope<'a>(
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
     use crate::owned_context::OwnedContext;
-    use crate::source_iteration::{ObservedExtension, reserve_observed_copy, walk_observed};
+    use crate::source_iteration::{
+        ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
+    };
     let state = program
         .owned_context
         .expect("basic owned route has a context");
@@ -836,22 +858,32 @@ fn eval_basic_owned_scope<'a>(
             context: domain,
         });
     }
-    let (mut extensions, budget, own) = match scope.source_selector() {
+    let retain_first = retain_first_source_candidate(scope);
+    let (mut extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
-            let extensions = walk_observed(
-                base,
-                tail,
-                prefix,
-                prefix,
-                Some(owner),
-                state,
-                positions.len(),
-                true,
+            let selected = select_observed(
+                ObservedWalkRequest {
+                    base,
+                    path: tail,
+                    raw_prefix: prefix,
+                    canonical_prefix: prefix,
+                    owner: Some(owner),
+                    context: state,
+                    position_offset: positions.len(),
+                    strict_collection: true,
+                },
                 &budget,
+                retain_first,
             )
             .map_err(access)?;
-            (extensions, budget, true)
+            (
+                selected.extensions,
+                budget,
+                true,
+                selected.candidates,
+                selected.replay,
+            )
         }
         Some(mapping::SourceSelectorRef::Legacy(path)) => {
             let budget = state
@@ -868,41 +900,48 @@ fn eval_basic_owned_scope<'a>(
                 })
                 .copied()
                 .or_else(|| context.last().copied());
-            let extensions = if let Some(base) = base {
-                if let Some((owner, actual, canonical, tail)) = state.legacy_origin(base, path) {
+            let selected = if let Some(base) = base {
+                let request = if let Some((owner, actual, canonical, tail)) =
+                    state.legacy_origin(base, path)
+                {
                     let consumed = path.len() - tail.len();
                     // Only the actually consumed extra-source wrapper segment enters the raw legacy path.
-                    let raw = &path[..consumed];
-                    walk_observed(
-                        actual,
-                        tail,
-                        raw,
-                        canonical,
-                        Some(owner),
-                        state,
-                        positions.len(),
-                        false,
-                        &budget,
-                    )
-                    .map_err(access)?
+                    ObservedWalkRequest {
+                        base: actual,
+                        path: tail,
+                        raw_prefix: &path[..consumed],
+                        canonical_prefix: canonical,
+                        owner: Some(owner),
+                        context: state,
+                        position_offset: positions.len(),
+                        strict_collection: false,
+                    }
                 } else {
-                    walk_observed(
+                    ObservedWalkRequest {
                         base,
                         path,
-                        &[],
-                        &[],
-                        None,
-                        state,
-                        positions.len(),
-                        false,
-                        &budget,
-                    )
-                    .map_err(access)?
-                }
+                        raw_prefix: &[],
+                        canonical_prefix: &[],
+                        owner: None,
+                        context: state,
+                        position_offset: positions.len(),
+                        strict_collection: false,
+                    }
+                };
+                Some(select_observed(request, &budget, retain_first).map_err(access)?)
             } else {
-                Vec::new()
+                None
             };
-            (extensions, budget, false)
+            match selected {
+                Some(selected) => (
+                    selected.extensions,
+                    budget,
+                    false,
+                    selected.candidates,
+                    selected.replay,
+                ),
+                None => (Vec::new(), budget, false, 0, None),
+            }
         }
         None => {
             let budget = state
@@ -925,6 +964,8 @@ fn eval_basic_owned_scope<'a>(
                 }],
                 budget,
                 false,
+                1,
+                None,
             )
         }
     };
@@ -1069,51 +1110,78 @@ fn eval_basic_owned_scope<'a>(
     if scope.iteration_output == IterationOutput::First {
         windows.push(EvaluatedWindow::First(1));
     }
-    if !windows.is_empty() && !filter_before_sort {
-        budget.reserve(extensions.len()).map_err(access)?;
-        let mut filtered = Vec::new();
-        for extension in extensions {
-            reserve_observed_copy(
-                &budget,
-                &extension.frames,
-                &extension.origins,
-                positions,
-                context.len(),
-            )
-            .map_err(access)?;
-            reserve_observed_copy(
-                &budget,
-                &[],
-                &[],
-                &extension.extension.positions,
-                extension.extension.instances.len(),
-            )
-            .map_err(access)?;
-            let item_state = OwnedContext {
-                roots: state.roots,
-                frames: extension.frames.clone(),
-                origins: extension.origins.clone(),
-                owned_ancestry: ancestry,
-            };
-            let mut item_context = context.to_vec();
-            item_context.extend(extension.extension.instances.iter().copied());
-            let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.extension.positions.iter().cloned());
-            if passes_scope_filter(
-                program.with_owned_context(&item_state),
-                scope.filter,
-                selection_phase,
-                trace_scope,
-                &item_context,
-                &item_positions,
-            )? {
-                filtered.push(extension);
-            }
+    if retain_first {
+        budget.reserve(candidates).map_err(access)?;
+        if let Some(replay) = replay {
+            replay
+                .request
+                .visit(&replay.budget, &mut |extension| {
+                    reserve_observed_copy(
+                        &budget,
+                        &extension.frames,
+                        &extension.origins,
+                        positions,
+                        context.len(),
+                    )?;
+                    reserve_observed_copy(
+                        &budget,
+                        &[],
+                        &[],
+                        &extension.extension.positions,
+                        extension.extension.instances.len(),
+                    )
+                })
+                .map_err(access)?;
         }
-        extensions = filtered;
-    }
-    for _ in &windows {
-        budget.reserve(extensions.len()).map_err(access)?;
+        // One implicit First(1) window; it originally reserved every candidate.
+        budget.reserve(candidates).map_err(access)?;
+    } else {
+        if !windows.is_empty() && !filter_before_sort {
+            budget.reserve(extensions.len()).map_err(access)?;
+            let mut filtered = Vec::new();
+            for extension in extensions {
+                reserve_observed_copy(
+                    &budget,
+                    &extension.frames,
+                    &extension.origins,
+                    positions,
+                    context.len(),
+                )
+                .map_err(access)?;
+                reserve_observed_copy(
+                    &budget,
+                    &[],
+                    &[],
+                    &extension.extension.positions,
+                    extension.extension.instances.len(),
+                )
+                .map_err(access)?;
+                let item_state = OwnedContext {
+                    roots: state.roots,
+                    frames: extension.frames.clone(),
+                    origins: extension.origins.clone(),
+                    owned_ancestry: ancestry,
+                };
+                let mut item_context = context.to_vec();
+                item_context.extend(extension.extension.instances.iter().copied());
+                let mut item_positions = positions.to_vec();
+                item_positions.extend(extension.extension.positions.iter().cloned());
+                if passes_scope_filter(
+                    program.with_owned_context(&item_state),
+                    scope.filter,
+                    selection_phase,
+                    trace_scope,
+                    &item_context,
+                    &item_positions,
+                )? {
+                    filtered.push(extension);
+                }
+            }
+            extensions = filtered;
+        }
+        for _ in &windows {
+            budget.reserve(extensions.len()).map_err(access)?;
+        }
     }
     extensions = apply_sequence_windows(extensions, &windows, None, trace_scope);
     budget.reserve(extensions.len()).map_err(access)?;

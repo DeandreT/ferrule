@@ -230,6 +230,109 @@ pub(crate) fn reserve_observed_copy(
     budget.charge(bytes)
 }
 
+/// Borrowed selection request; retaining one candidate never narrows traversal.
+#[derive(Clone, Copy)]
+pub(crate) struct ObservedWalkRequest<'a, 'query> {
+    pub base: &'a Instance,
+    pub path: &'query [String],
+    pub raw_prefix: &'query [String],
+    pub canonical_prefix: &'query [String],
+    pub owner: Option<crate::owned_context::OwnerKey>,
+    pub context: &'query crate::owned_context::OwnedContext<'a>,
+    pub position_offset: usize,
+    pub strict_collection: bool,
+}
+
+pub(crate) struct ObservedReplay<'a, 'query> {
+    pub request: ObservedWalkRequest<'a, 'query>,
+    pub budget: crate::owned_context::WorkBudget,
+}
+
+pub(crate) struct ObservedSelection<'a, 'query> {
+    pub extensions: Vec<ObservedExtension<'a>>,
+    /// Complete candidate count, independent of the retained vector's length.
+    pub candidates: usize,
+    pub replay: Option<ObservedReplay<'a, 'query>>,
+}
+
+impl<'a> ObservedWalkRequest<'a, '_> {
+    pub fn visit(
+        self,
+        budget: &crate::owned_context::WorkBudget,
+        output: &mut impl FnMut(ObservedExtension<'a>) -> Result<(), crate::OwnedSourceError>,
+    ) -> Result<(), crate::OwnedSourceError> {
+        let identity = self.strict_collection
+            && self.path.is_empty()
+            && self.owner.is_some_and(|owner| {
+                self.context
+                    .active_identity(owner, self.canonical_prefix, self.base)
+            });
+        observe_walk(
+            self.base,
+            self.path,
+            self.raw_prefix,
+            self.canonical_prefix,
+            self.owner,
+            self.position_offset,
+            &[],
+            &[],
+            &self.context.frames,
+            &self.context.origins,
+            self.strict_collection,
+            identity,
+            budget,
+            output,
+        )
+    }
+}
+
+pub(crate) fn select_observed<'a, 'query>(
+    request: ObservedWalkRequest<'a, 'query>,
+    budget: &crate::owned_context::WorkBudget,
+    retain_first: bool,
+) -> Result<ObservedSelection<'a, 'query>, crate::OwnedSourceError> {
+    if !retain_first {
+        let extensions = walk_observed(
+            request.base,
+            request.path,
+            request.raw_prefix,
+            request.canonical_prefix,
+            request.owner,
+            request.context,
+            request.position_offset,
+            request.strict_collection,
+            budget,
+        )?;
+        return Ok(ObservedSelection {
+            candidates: extensions.len(),
+            extensions,
+            replay: None,
+        });
+    }
+    // Save the initial ledger, before traversal charges. Only a successful full
+    // traversal permits replay of the later no-op filter accounting.
+    let replay = retain_first.then(|| ObservedReplay {
+        request,
+        budget: budget.fork(),
+    });
+    let mut extensions = Vec::new();
+    let mut candidates = 0usize;
+    request.visit(budget, &mut |extension| {
+        candidates = candidates
+            .checked_add(1)
+            .ok_or_else(|| budget.slot_overflow())?;
+        if !retain_first || extensions.is_empty() {
+            extensions.push(extension);
+        }
+        Ok(())
+    })?;
+    Ok(ObservedSelection {
+        extensions,
+        candidates,
+        replay,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_observed<'a>(
     base: &'a Instance,
@@ -242,26 +345,21 @@ pub(crate) fn walk_observed<'a>(
     strict_collection: bool,
     budget: &crate::owned_context::WorkBudget,
 ) -> Result<Vec<ObservedExtension<'a>>, crate::OwnedSourceError> {
-    let identity = strict_collection
-        && path.is_empty()
-        && owner.is_some_and(|owner| context.active_identity(owner, canonical_prefix, base));
-    let mut output = Vec::new();
-    observe_walk(
+    let request = ObservedWalkRequest {
         base,
         path,
         raw_prefix,
         canonical_prefix,
         owner,
+        context,
         position_offset,
-        &[],
-        &[],
-        &context.frames,
-        &context.origins,
         strict_collection,
-        identity,
-        budget,
-        &mut output,
-    )?;
+    };
+    let mut output = Vec::new();
+    request.visit(budget, &mut |extension| {
+        output.push(extension);
+        Ok(())
+    })?;
     Ok(output)
 }
 
@@ -280,7 +378,7 @@ fn observe_walk<'a>(
     strict: bool,
     identity: bool,
     budget: &crate::owned_context::WorkBudget,
-    output: &mut Vec<ObservedExtension<'a>>,
+    output: &mut impl FnMut(ObservedExtension<'a>) -> Result<(), crate::OwnedSourceError>,
 ) -> Result<(), crate::OwnedSourceError> {
     use crate::OwnedSourceError;
     use crate::owned_context::{SourceFrame, SourceOrigin};
@@ -300,14 +398,14 @@ fn observe_walk<'a>(
         budget.emit()?;
         reserve_observed_copy(budget, frames, origins, positions, instances.len())?;
         budget.reserve(1)?;
-        output.push(ObservedExtension {
+        output(ObservedExtension {
             extension: WalkExtension {
                 instances: instances.to_vec(),
                 positions: positions.to_vec(),
             },
             frames: frames.to_vec(),
             origins: origins.to_vec(),
-        });
+        })?;
         return Ok(());
     }
     if let Instance::Repeated(items) = base {
@@ -383,14 +481,14 @@ fn observe_walk<'a>(
                 });
             }
             if path.is_empty() {
-                output.push(ObservedExtension {
+                output(ObservedExtension {
                     extension: WalkExtension {
                         instances: next_instances,
                         positions: next_positions,
                     },
                     frames: next_frames,
                     origins: next_origins,
-                });
+                })?;
             } else {
                 observe_walk(
                     item,
@@ -526,14 +624,14 @@ fn observe_walk<'a>(
                     item: base,
                 });
             }
-            output.push(ObservedExtension {
+            output(ObservedExtension {
                 extension: WalkExtension {
                     instances,
                     positions: positions.to_vec(),
                 },
                 frames: frames.to_vec(),
                 origins,
-            });
+            })?;
         }
     }
     Ok(())
