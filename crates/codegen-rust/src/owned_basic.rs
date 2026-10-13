@@ -195,9 +195,9 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
             }),
         )?;
     }
-    // Inspect ordered ordinary rules as iteration, predicate, then message.
-    // Only dynamic failure leaves receive a rule origin here; the original
-    // retained-expression inventory keeps every other operator's envelope.
+    // Inspect ordered rules as iteration, predicate, then message. Dynamic
+    // leaves keep their exact node/rule envelope; other rejected failure
+    // domains use the complete per-rule refusal. ValueMap stays admitted.
     for (index, rule) in program.failure_rules.iter().enumerate() {
         match &rule.iteration {
             codegen::FailureIteration::Generated(_) => {
@@ -238,6 +238,24 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
                         }),
                     }
                     .into());
+                }
+                if !matches!(
+                    &node.expression,
+                    Expression::SourceField { .. }
+                        | Expression::Position { .. }
+                        | Expression::Const { .. }
+                        | Expression::Call { .. }
+                        | Expression::If { .. }
+                        | Expression::RuntimeValue { .. }
+                        | Expression::RuntimeParameter { .. }
+                        | Expression::RuntimeParameterDefault { .. }
+                        | Expression::Raise { .. }
+                        | Expression::ValueMap { .. }
+                ) {
+                    // Owned requests already receive upstream context checks.
+                    // Keep the bounded walker: ValueMap inputs and called-body
+                    // dependencies retain their existing general envelopes.
+                    return Err(failure_refusal(index, Capability::FailureRule));
                 }
             }
         }
