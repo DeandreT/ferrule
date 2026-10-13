@@ -2608,6 +2608,12 @@ public sealed class FerruleBasicScopeContext
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
+    public FerruleBasicFilterPhase BeginRetainedFilterPhase(FerruleRetainedSourceCohort original)
+    {
+        try { return FerruleBasicFilterPhase.Begin(this, original); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
 }
 
 
@@ -3092,6 +3098,67 @@ public sealed class FerruleCompletePhaseCohort : IReadOnlyList<FerruleBasicSourc
         var output = new FerruleBasicSourceCandidate[selection.Count];
         for (var i = 0; i < output.Length; i++) output[i] = current.At((int)selection.Index(i)).Copy(budget, (nuint)i + 1);
         return new FerruleCompletePhaseCohort(output, witness);
+    }
+}
+
+/// <summary>
+/// One streaming filter operation retaining its complete original source cohort.
+/// Predicate contexts remain original; Produce returns the next compact output
+/// context without retaining accepted candidates or resetting the copy budget.
+/// </summary>
+public sealed class FerruleBasicFilterPhase
+{
+    private readonly FerruleRetainedSourceCohort _original;
+    private readonly BasicSourceBudget _budget;
+    private nuint _accepted;
+    private nuint? _last;
+    private FerruleBasicFilterPhase(FerruleRetainedSourceCohort original, BasicSourceBudget budget)
+    { _original = original; _budget = budget; }
+    internal static FerruleBasicFilterPhase Begin(FerruleBasicScopeContext parent, FerruleRetainedSourceCohort original)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        var witness = original.SourceWitness;
+        if (!ReferenceEquals(parent.Roots, witness.Parent.Roots))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch);
+        if (!ReferenceEquals(parent, witness.Parent) || !witness.IsComplete)
+            throw BasicPhaseAdmission.Invalid(0);
+        var count = original.Count;
+        if (count != witness.OriginalCount) throw BasicPhaseAdmission.Invalid((nuint)count);
+        BasicSourceAccounting.Limit(0, (nuint)count, parent.Roots.Limits.MaxWalkContexts,
+            FerruleBasicSourceBridgeComponent.WalkContexts);
+        for (var i = 0; i < count; i++)
+        {
+            var candidate = original[i];
+            if (!ReferenceEquals(candidate.SourceWitness, witness) ||
+                !ReferenceEquals(candidate.Context.Roots, parent.Roots) || candidate.SourceId != (nuint)i)
+                throw BasicPhaseAdmission.Invalid((nuint)i);
+        }
+        var budget = new BasicSourceBudget(parent.Roots.Limits, true);
+        parent.Roots.Seed(budget); parent.Seed(budget);
+        budget.Charge(3); // original holder, its witness, and this streaming phase
+        budget.Charge((nuint)count); // one complete original backing, no current/selection holder
+        for (var i = 0; i < count; i++) { original[i].Context.Seed(budget); budget.Charge(1); }
+        return new FerruleBasicFilterPhase(original, budget);
+    }
+    public FerruleBasicSourceCandidate Produce(nuint originalIndex)
+    {
+        try
+        {
+            if (originalIndex >= (nuint)_original.Count) throw BasicPhaseAdmission.Invalid(originalIndex);
+            if (_last.HasValue && originalIndex == _last.Value)
+                throw BasicPhaseAdmission.Duplicate(originalIndex, _original[(int)originalIndex].SourceId);
+            if (_last.HasValue && originalIndex < _last.Value) throw BasicPhaseAdmission.Invalid(originalIndex);
+            BasicSourceAccounting.Limit(_accepted, 1, _original.SourceWitness.Parent.Roots.Limits.MaxWalkContexts,
+                FerruleBasicSourceBridgeComponent.WalkContexts);
+            var position = BasicSourceAccounting.Add(_accepted, 1);
+            // Copy changes only this source walk's introduced cursor. Its original
+            // owner/raw ordinal and every enclosing phase remain authenticated.
+            var result = _original[(int)originalIndex].Copy(_budget, position);
+            _accepted = position; _last = originalIndex;
+            return result;
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
 }
 

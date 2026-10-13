@@ -422,6 +422,7 @@ internal static partial class Program
     {
         BasicDeclaredEmptyRootPins();
         BasicOwnedLeafNodeProvenance();
+        BasicStreamingFilterPhase();
         var flat = BasicRoot(Repeated(BasicValue("flat1"), BasicValue("flat2"), BasicValue("flat3")));
         var rows = BasicReached("F03.subject.96", () => flat.IterateOwnedSource(OwnedPrimaryOwner, Array.Empty<string>())); Equal(3, BasicReached("F03.assert.72", () => rows.Count));
         OwnedValue("B489-C26", Text("flat2"), BasicReached("F03.subject.97", () => rows[1].Context.ResolveOwnedField(
@@ -990,5 +991,107 @@ internal static partial class Program
         var untouched = Capture("N651.untouched-default", () => BasicCommon().OwnedPosition(OwnedPrimaryOwner, Array.Empty<string>()));
         Equal<uint?>(null, untouched.Node);
         Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, untouched.OwnedSourceFailure!.Error);
+    }
+
+    private static void BasicStreamingFilterPhase()
+    {
+        var data = Group(Field("Rows", Repeated(BasicValue("a"), BasicValue("b"), BasicValue("c"))));
+        var policy = new FerruleOwnedSourceLimits(4, 4, 8, 1024, 3);
+        OwnedRaw("N645.input", new { classification = "complete_constructed_input_before_subject",
+            primary = BasicInstanceSnapshot(data), declarations = Array.Empty<string>(),
+            path = new[] { "Rows" }, acceptedOriginalIndices = new[] { 1, 2 },
+            limits = new { roots = (ulong)policy.MaxRoots, frames = (ulong)policy.MaxActiveFrames,
+                segments = (ulong)policy.MaxPathSegments, bytes = (ulong)policy.MaxMetadataBytes,
+                contexts = (ulong)policy.MaxWalkContexts } });
+        var root = BasicReached("N645.root", () => FerruleBasicSourceRoots.Create(data,
+            Array.Empty<FerruleDeclaredNamedSourceRoot>(), policy).RootContext());
+        var original = BasicReached("N645.walk", () => root.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" }));
+        BasicPhaseRaw("N645.original", original);
+        var phase = BasicReached("N645.begin", () => root.BeginRetainedFilterPhase(original));
+        var b = BasicReached("N645.produce-b", () => phase.Produce(1));
+        var c = BasicReached("N645.produce-c", () => phase.Produce(2));
+        BasicPhaseRaw("N645.compact", new[] { b, c });
+        Equal<nuint?>(2, b.RawSourceOrdinal); Equal<nuint?>(3, c.RawSourceOrdinal);
+        Equal<nuint>(1, b.SourceId); Equal<nuint>(2, c.SourceId);
+        Equal<nuint>(2, original[1].Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal<nuint>(1, b.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal<nuint>(2, c.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal(1L, b.Context.LegacyPosition(new[] { "Rows" }));
+        Equal(2L, c.Context.LegacyPosition(new[] { "Rows" }));
+        OwnedValue("N645.value", Text("b"), b.Context.ResolveOwnedField(OwnedPrimaryOwner, new[] { "Rows", "Value" }));
+
+        var duplicate = BasicBridgeFailure("N645.duplicate", FerruleBasicSourceBridgeErrorKind.DuplicatePhaseCandidate, () => phase.Produce(2));
+        Equal<nuint?>(2, duplicate.InputOrdinal); Equal<nuint?>(2, duplicate.CandidateOrdinal);
+        var decreasing = BasicBridgeFailure("N645.decreasing", FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness, () => phase.Produce(0));
+        Equal<nuint?>(0, decreasing.InputOrdinal);
+        var range = BasicBridgeFailure("N645.range", FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness, () => phase.Produce(nuint.MaxValue));
+        Equal<nuint?>(nuint.MaxValue, range.InputOrdinal);
+        var other = BasicABC();
+        BasicBridgeFailure("N645.registry", FerruleBasicSourceBridgeErrorKind.RegistryMismatch, () => other.BeginRetainedFilterPhase(original));
+        var cloned = root.CloneView();
+        BasicBridgeFailure("N645.parent", FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness, () => cloned.BeginRetainedFilterPhase(original));
+
+        // Independent byte boundary: three "Rows" paths per original/copy;
+        // 3 originals plus 3 copies require 6 * 3 * 4 = 72 UTF-8 bytes.
+        var boundedRoot = BasicABC(71);
+        var boundedOriginal = boundedRoot.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" });
+        var bounded = BasicReached("N645.bytes.begin", () => boundedRoot.BeginRetainedFilterPhase(boundedOriginal));
+        BasicReached("N645.bytes.first", () => bounded.Produce(0));
+        BasicReached("N645.bytes.second", () => bounded.Produce(1));
+        var failure = BasicBridgeFailure("N645.bytes.third", FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit, () => bounded.Produce(2));
+        Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataBytes, failure.Component);
+        Equal<nuint?>(68, failure.Used); Equal<nuint?>(4, failure.Requested); Equal<nuint?>(71, failure.Maximum);
+        BasicReached("N645.bytes.detached-convenience", () => boundedOriginal[2].WithPhasePosition(1));
+        var exactRoot = BasicABC(72);
+        var exactOriginal = exactRoot.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" });
+        var exact = exactRoot.BeginRetainedFilterPhase(exactOriginal);
+        BasicPhaseRaw("N645.bytes.exact", new[] { exact.Produce(0), exact.Produce(1), exact.Produce(2) });
+
+        var noRows = BasicRoot(Group(Field("Rows", Repeated())));
+        var empty = noRows.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" });
+        var emptyPhase = BasicReached("N645.empty.begin", () => noRows.BeginRetainedFilterPhase(empty));
+        BasicBridgeFailure("N645.empty.range", FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness, () => emptyPhase.Produce(0));
+        var nestedRoot = BasicRoot(Group(Field("Rows", Repeated(
+            Group(Field("Value", Scalar(Text("r1"))), Field("Kids", Repeated(BasicValue("k1")))),
+            Group(Field("Value", Scalar(Text("r2"))), Field("Kids", Repeated(BasicValue("k1"), BasicValue("k2"))))))));
+        var parents = nestedRoot.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" });
+        var parentPhase = nestedRoot.BeginRetainedFilterPhase(parents);
+        var parent = parentPhase.Produce(1).Context;
+        var children = parent.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows", "Kids" });
+        var child = parent.BeginRetainedFilterPhase(children).Produce(1);
+        BasicPhaseRaw("N645.nested", new[] { child });
+        Equal<nuint?>(2, child.RawSourceOrdinal);
+        Equal<nuint>(1, child.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal<nuint>(1, child.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows", "Kids" }));
+        Equal(1L, child.Context.LegacyPosition(new[] { "Rows", "Kids" }));
+        var identity = parent.WalkOwnedSourceCohort(OwnedPrimaryOwner, new[] { "Rows" });
+        var unchanged = parent.BeginRetainedFilterPhase(identity).Produce(0);
+        BasicPhaseRaw("N645.identity", new[] { unchanged });
+        Equal(false, unchanged.HasNewCursor);
+        Equal<nuint>(1, unchanged.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal<nuint?>(null, unchanged.RawSourceOrdinal);
+
+        var plain = BasicReached("N645.plain.walk", () => root.WalkSourceCohort(new[] { "Rows" }));
+        BasicPhaseRaw("N645.plain.original", plain);
+        var plainPhase = root.BeginRetainedFilterPhase(plain);
+        var plainB = BasicReached("N645.plain.produce", () => plainPhase.Produce(1));
+        BasicPhaseRaw("N645.plain.compact", new[] { plainB });
+        Equal<nuint>(1, plainB.SourceId); Equal<nuint?>(2, plainB.RawSourceOrdinal);
+        Equal<nuint>(2, plain[1].Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal<nuint>(1, plainB.Context.OwnedPosition(OwnedPrimaryOwner, new[] { "Rows" }));
+        Equal(1L, plainB.Context.LegacyPosition(new[] { "Rows" }));
+        var plainBoundedOriginal = boundedRoot.WalkSourceCohort(new[] { "Rows" });
+        var plainBounded = boundedRoot.BeginRetainedFilterPhase(plainBoundedOriginal);
+        BasicReached("N645.plain.bytes.first", () => plainBounded.Produce(0));
+        BasicReached("N645.plain.bytes.second", () => plainBounded.Produce(1));
+        var plainFailure = BasicBridgeFailure("N645.plain.bytes.third", FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit, () => plainBounded.Produce(2));
+        Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataBytes, plainFailure.Component);
+        Equal<nuint?>(68, plainFailure.Used); Equal<nuint?>(4, plainFailure.Requested); Equal<nuint?>(71, plainFailure.Maximum);
+        var plainExactOriginal = exactRoot.WalkSourceCohort(new[] { "Rows" });
+        var plainExact = exactRoot.BeginRetainedFilterPhase(plainExactOriginal);
+        BasicPhaseRaw("N645.plain.bytes.exact", new[] { plainExact.Produce(0), plainExact.Produce(1), plainExact.Produce(2) });
+        GC.KeepAlive(plain); GC.KeepAlive(plainBoundedOriginal); GC.KeepAlive(plainExactOriginal);
+        GC.KeepAlive(original); GC.KeepAlive(boundedOriginal); GC.KeepAlive(exactOriginal);
+        GC.KeepAlive(parents); GC.KeepAlive(children); GC.KeepAlive(identity);
     }
 }
