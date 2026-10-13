@@ -257,6 +257,64 @@ pub(crate) fn context_for_position<'a>(
         .copied()
 }
 
+/// Exact owned traversal: a selected item is authoritative and never rescues from another frame.
+pub(crate) fn owned_scalar(
+    item: &Instance,
+    path: &[String],
+) -> Result<Value, crate::OwnedSourceError> {
+    let mut current = item;
+    for segment in path {
+        match current {
+            Instance::DocumentSet(_) | Instance::MappedSequence(_) => {
+                return Err(crate::OwnedSourceError::UnsupportedSourceDomain {
+                    found: owned_shape(current),
+                });
+            }
+            Instance::Repeated(_) => {
+                return Err(crate::OwnedSourceError::UniteratedOwnedRepetition {
+                    path: path.to_vec(),
+                });
+            }
+            Instance::Scalar(Value::Null | Value::JsonNull(_)) => return Ok(Value::Null),
+            Instance::Group(fields) => match fields.iter().find(|(name, _)| name == segment) {
+                Some((_, next)) => current = next,
+                None => return Ok(Value::Null),
+            },
+            _ => {
+                return Err(crate::OwnedSourceError::MalformedOwnedTraversal {
+                    path: path.to_vec(),
+                    found: owned_shape(current),
+                });
+            }
+        }
+    }
+    match current {
+        Instance::DocumentSet(_) | Instance::MappedSequence(_) => {
+            Err(crate::OwnedSourceError::UnsupportedSourceDomain {
+                found: owned_shape(current),
+            })
+        }
+        Instance::Scalar(value) => Ok(value.clone()),
+        Instance::Repeated(_) => Err(crate::OwnedSourceError::UniteratedOwnedRepetition {
+            path: path.to_vec(),
+        }),
+        _ => Err(crate::OwnedSourceError::MalformedOwnedTraversal {
+            path: path.to_vec(),
+            found: owned_shape(current),
+        }),
+    }
+}
+
+pub(crate) fn owned_shape(instance: &Instance) -> &'static str {
+    match instance {
+        Instance::Scalar(_) => "a non-null scalar",
+        Instance::Group(_) => "a group",
+        Instance::Repeated(_) => "a repeated value",
+        Instance::DocumentSet(_) => "a document set",
+        Instance::MappedSequence(_) => "a mapped sequence",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
