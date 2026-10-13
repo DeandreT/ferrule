@@ -452,6 +452,24 @@ pub enum TraceEvent {
 pub trait TraceSink {
     fn record(&self, event: TraceEvent);
 
+    /// Opts into borrowed ownership context for main-graph value/input events.
+    /// Returning false avoids per-event projection; it may change during a run.
+    fn wants_owned_context(&self) -> bool {
+        false
+    }
+
+    /// Receives the original event exactly once with synchronous borrowed context.
+    /// Projection and snapshot failures are observer metadata, not execution errors.
+    /// A sink that retains context must use its bounded snapshot API.
+    fn record_with_owned_context(
+        &self,
+        event: TraceEvent,
+        context: Result<TraceOwnedWitness<'_>, &TraceOwnedContextError>,
+    ) {
+        let _ = context;
+        self.record(event);
+    }
+
     /// Observes one filesystem named-source loader entry, before cache lookup
     /// or acquisition. Names and paths are borrowed, exact request identities.
     /// Cache hits and failed attempts are included; this is not an outcome.
@@ -483,39 +501,47 @@ pub(crate) fn bounded_text(value: &str) -> String {
 }
 
 pub(crate) fn record_node_value(
-    sink: Option<&dyn TraceSink>,
+    program: crate::eval_expr::EvalProgram<'_>,
     node: NodeId,
     positions: &[PositionFrame],
     value: &Value,
 ) {
-    let Some(sink) = sink else {
+    if program.trace_sink.is_none() {
         return;
-    };
-    sink.record(TraceEvent::NodeValue {
-        node,
-        positions: positions.iter().map(TracePosition::from).collect(),
-        value: TraceValue::new(value),
-    });
+    }
+    record_owned_expression(
+        program,
+        positions,
+        TraceEvent::NodeValue {
+            node,
+            positions: positions.iter().map(TracePosition::from).collect(),
+            value: TraceValue::new(value),
+        },
+    );
 }
 
 pub(crate) fn record_node_input_value(
-    sink: Option<&dyn TraceSink>,
+    program: crate::eval_expr::EvalProgram<'_>,
     consumer: NodeId,
     input: NodeId,
     input_index: usize,
     positions: &[PositionFrame],
     value: &Value,
 ) {
-    let Some(sink) = sink else {
+    if program.trace_sink.is_none() {
         return;
-    };
-    sink.record(TraceEvent::NodeInputValue {
-        consumer,
-        input,
-        input_index,
-        positions: positions.iter().map(TracePosition::from).collect(),
-        value: TraceValue::new(value),
-    });
+    }
+    record_owned_expression(
+        program,
+        positions,
+        TraceEvent::NodeInputValue {
+            consumer,
+            input,
+            input_index,
+            positions: positions.iter().map(TracePosition::from).collect(),
+            value: TraceValue::new(value),
+        },
+    );
 }
 
 pub(crate) fn record_function_node_value(
@@ -1097,4 +1123,205 @@ fn owned_value_snapshot(input: &Instance) -> TraceOwnedValue {
             _ => None,
         },
     }
+}
+
+/// Failure to project the evaluator's registry for observation only.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TraceOwnedContextError {
+    #[error("owned trace project does not match the current registry")]
+    MismatchedRegistry,
+    #[error("owned trace registry declaration {declaration_index}: {source}")]
+    Registry {
+        declaration_index: usize,
+        source: crate::OwnedSourceError,
+    },
+    #[error(transparent)]
+    Witness(#[from] TraceOwnedWitnessError),
+}
+
+/// Borrowing this interface lets a narrowed item program reuse a run-level cache.
+/// The cache itself contains immutable input references and never escapes the run.
+pub(crate) trait TraceOwnedRegistryView {
+    fn project(&self) -> &mapping::Project;
+    fn roots(&self) -> Result<&[TraceOwnedRootRef<'_>], &TraceOwnedContextError>;
+    fn owner(
+        &self,
+        key: crate::owned_context::OwnerKey,
+        at: TraceOwnedLocation,
+    ) -> Result<TraceOwnedOwnerRef<'_>, TraceOwnedContextError>;
+}
+
+pub(crate) struct TraceOwnedRegistry<'a> {
+    project: &'a mapping::Project,
+    registry: &'a crate::owned_context::SourceRoots<'a>,
+    pub(crate) cache:
+        std::cell::OnceCell<Result<Vec<TraceOwnedRootRef<'a>>, TraceOwnedContextError>>,
+}
+
+impl<'a> TraceOwnedRegistry<'a> {
+    pub(crate) fn new(
+        project: &'a mapping::Project,
+        registry: &'a crate::owned_context::SourceRoots<'a>,
+    ) -> Self {
+        Self {
+            project,
+            registry,
+            cache: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn project_roots(&self) -> Result<Vec<TraceOwnedRootRef<'a>>, TraceOwnedContextError> {
+        use crate::owned_context::OwnerKey;
+        if !std::ptr::eq(
+            self.project.extra_sources.as_slice(),
+            self.registry.declarations(),
+        ) {
+            return Err(TraceOwnedContextError::MismatchedRegistry);
+        }
+        let mut roots = Vec::with_capacity(self.registry.declarations().len() + 1);
+        roots.push(TraceOwnedRootRef {
+            owner: TraceOwnedOwnerRef::Primary,
+            input: Some(self.registry.primary),
+        });
+        for (declaration_index, source) in self.registry.declarations().iter().enumerate() {
+            // Only the already-supplied static registry is inspected. No loader runs.
+            if source.dynamic_path.is_some() {
+                continue;
+            }
+            let input = match self.registry.root(OwnerKey::Named(declaration_index)) {
+                Ok(input) => Some(input),
+                Err(crate::OwnedSourceError::SourceUnavailable { .. }) => None,
+                Err(source) => {
+                    return Err(TraceOwnedContextError::Registry {
+                        declaration_index,
+                        source,
+                    });
+                }
+            };
+            roots.push(TraceOwnedRootRef {
+                owner: TraceOwnedOwnerRef::Named {
+                    declaration_index,
+                    name: &source.name,
+                },
+                input,
+            });
+        }
+        Ok(roots)
+    }
+}
+
+impl TraceOwnedRegistryView for TraceOwnedRegistry<'_> {
+    fn project(&self) -> &mapping::Project {
+        self.project
+    }
+
+    fn roots(&self) -> Result<&[TraceOwnedRootRef<'_>], &TraceOwnedContextError> {
+        match self.cache.get_or_init(|| self.project_roots()) {
+            Ok(roots) => Ok(roots),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn owner(
+        &self,
+        key: crate::owned_context::OwnerKey,
+        at: TraceOwnedLocation,
+    ) -> Result<TraceOwnedOwnerRef<'_>, TraceOwnedContextError> {
+        match key {
+            crate::owned_context::OwnerKey::Primary => Ok(TraceOwnedOwnerRef::Primary),
+            crate::owned_context::OwnerKey::Named(declaration_index) => {
+                let source = self
+                    .registry
+                    .declarations()
+                    .get(declaration_index)
+                    .ok_or(TraceOwnedWitnessError::UnknownDeclaration { at })?;
+                Ok(TraceOwnedOwnerRef::Named {
+                    declaration_index,
+                    name: &source.name,
+                })
+            }
+        }
+    }
+}
+
+fn record_owned_expression(
+    program: crate::eval_expr::EvalProgram<'_>,
+    positions: &[PositionFrame],
+    event: TraceEvent,
+) {
+    let Some(sink) = program.trace_sink else {
+        return;
+    };
+    let (Some(owned), Some(registry)) = (program.owned_context, program.owned_trace_registry)
+    else {
+        sink.record(event);
+        return;
+    };
+    if !sink.wants_owned_context() {
+        sink.record(event);
+        return;
+    }
+    let roots = match registry.roots() {
+        Ok(roots) => roots,
+        Err(error) => {
+            sink.record_with_owned_context(event, Err(error));
+            return;
+        }
+    };
+    let frames = owned
+        .frames
+        .iter()
+        .enumerate()
+        .map(|(index, frame)| {
+            Ok(TraceOwnedFrameRef {
+                owner: registry.owner(frame.owner, TraceOwnedLocation::Frame(index))?,
+                collection: &frame.collection,
+                item: frame.item,
+                position_slot: frame.position_slot,
+            })
+        })
+        .collect::<Result<Vec<_>, TraceOwnedContextError>>();
+    let frames = match frames {
+        Ok(frames) => frames,
+        Err(error) => {
+            sink.record_with_owned_context(event, Err(&error));
+            return;
+        }
+    };
+    let origins = owned
+        .origins
+        .iter()
+        .enumerate()
+        .map(|(index, origin)| {
+            Ok(TraceOwnedOriginRef {
+                owner: registry.owner(origin.owner, TraceOwnedLocation::Origin(index))?,
+                path: &origin.path,
+                item: origin.item,
+            })
+        })
+        .collect::<Result<Vec<_>, TraceOwnedContextError>>();
+    let origins = match origins {
+        Ok(origins) => origins,
+        Err(error) => {
+            sink.record_with_owned_context(event, Err(&error));
+            return;
+        }
+    };
+    let positions = positions
+        .iter()
+        .map(TraceOwnedPositionRef::from)
+        .collect::<Vec<_>>();
+    sink.record_with_owned_context(
+        event,
+        Ok(TraceOwnedWitness {
+            project: registry.project(),
+            domain: TraceOwnedDomain::Basic,
+            phase: program.owned_trace_phase,
+            roots,
+            frames: &frames,
+            origins: &origins,
+            positions: &positions,
+            owned_ancestry: owned.owned_ancestry,
+        }),
+    );
 }

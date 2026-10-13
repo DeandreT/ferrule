@@ -326,6 +326,11 @@ pub(crate) struct SourceRoots<'a> {
 }
 
 impl<'a> SourceRoots<'a> {
+    /// The original declarations borrowed when this run's registry was created.
+    pub(crate) fn declarations(&self) -> &'a [NamedSource] {
+        self.declared
+    }
+
     pub fn new(
         project: &'a Project,
         primary: &'a Instance,

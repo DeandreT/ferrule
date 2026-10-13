@@ -827,6 +827,7 @@ fn eval_basic_owned_scope<'a>(
     use crate::source_iteration::{
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
     };
+    let program = program.with_owned_trace_phase(crate::TraceOwnedPhase::Structural);
     let state = program
         .owned_context
         .expect("basic owned route has a context");
@@ -1225,7 +1226,9 @@ fn eval_basic_owned_scope<'a>(
             renumber_extension(&mut output_positions, next);
         }
         let evaluator = ItemEvaluator {
-            program: program.with_owned_context(&item_state),
+            program: program
+                .with_owned_context(&item_state)
+                .with_owned_trace_phase(crate::TraceOwnedPhase::Output),
             scope,
             trace_scope,
             target,
@@ -1893,6 +1896,10 @@ fn passes_scope_filter(
     let Some(node) = filter else {
         return Ok(true);
     };
+    let program = program.with_owned_trace_phase(match phase {
+        TraceFilterPhase::BeforeSort => crate::TraceOwnedPhase::Structural,
+        _ => crate::TraceOwnedPhase::Selection,
+    });
     let passed = passes_filter(program, Some(node), context, positions)?;
     record(program.trace_sink, || TraceEvent::FilterDecision {
         scope: trace_scope.clone(),
