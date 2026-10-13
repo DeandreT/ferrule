@@ -23,6 +23,8 @@ mod filter_map;
 mod grouping;
 mod iteration_output;
 mod join;
+#[cfg(test)]
+mod owned_source_context;
 mod path_hierarchy;
 mod pipeline;
 mod recursive_filter;
@@ -952,3 +954,7 @@ mod user_function_tests;
 #[cfg(test)]
 #[path = "tests/owned_collection.rs"]
 mod owned_collection_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_source_context.rs"]
+mod owned_source_context_tests;
