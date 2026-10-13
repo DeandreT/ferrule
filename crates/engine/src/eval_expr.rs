@@ -147,8 +147,7 @@ pub(crate) fn eval_expr(
         });
     if let Err(error) = &result {
         crate::debug::after_node_failure(
-            program.debug_hook,
-            program.first_failure_reported,
+            program,
             node_id,
             error,
             positions,

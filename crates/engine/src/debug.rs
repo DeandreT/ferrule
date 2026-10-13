@@ -425,6 +425,13 @@ pub trait DebugHook {
         false
     }
 
+    /// Opts into borrowed Basic ownership context for an already selected
+    /// deepest main-graph failure. False keeps the existing callback and avoids
+    /// root projection; it may change during a run.
+    fn wants_owned_context_for_node_failure(&self, _failure: &PendingNodeFailure) -> bool {
+        false
+    }
+
     /// Called after a successful graph evaluation, including filters and
     /// pre-target rules. The host may block here or cancel the run.
     fn after_node_value(&self, _node: &PendingNodeValue) -> DebugDecision {
@@ -453,6 +460,21 @@ pub trait DebugHook {
     /// `EngineError::DebugCancelled`. The failed evaluation is not retried.
     fn after_node_failure(&self, _failure: &PendingNodeFailure) -> DebugDecision {
         DebugDecision::Resume
+    }
+
+    /// Observes the same pending UI preview with the complete borrowed typed
+    /// error and synchronous Basic ownership context. Projection/snapshot errors
+    /// are observer metadata. Resume preserves the original execution error;
+    /// Cancel has the same meaning as in `after_node_failure`.
+    /// Retained ownership context must use the bounded snapshot API.
+    fn after_node_failure_with_owned_context(
+        &self,
+        failure: &PendingNodeFailure,
+        error: &EngineError,
+        context: Result<crate::TraceOwnedWitness<'_>, &crate::TraceOwnedContextError>,
+    ) -> DebugDecision {
+        let _ = (error, context);
+        self.after_node_failure(failure)
     }
 
     /// As `after_node_failure`, for a function-local body node.
@@ -569,21 +591,20 @@ pub(crate) fn after_function_node_input(
 }
 
 pub(crate) fn after_node_failure(
-    hook: Option<&dyn DebugHook>,
-    first_failure_reported: &Cell<bool>,
+    program: crate::eval_expr::EvalProgram<'_>,
     node: NodeId,
     error: &EngineError,
     positions: &[PositionFrame],
     context: &[&Instance],
     primary_source: Option<&Instance>,
 ) -> Result<(), EngineError> {
-    if first_failure_reported.get() || matches!(error, EngineError::DebugCancelled) {
+    if program.first_failure_reported.get() || matches!(error, EngineError::DebugCancelled) {
         return Ok(());
     }
-    let Some(hook) = hook.filter(|hook| hook.wants_node_failures()) else {
+    let Some(hook) = program.debug_hook.filter(|hook| hook.wants_node_failures()) else {
         return Ok(());
     };
-    first_failure_reported.set(true);
+    program.first_failure_reported.set(true);
     let mut evaluated = node_value_snapshot(node, &Value::Null, positions, context);
     evaluated.source = evaluated.source.with_primary_root(primary_source);
     let failure = PendingNodeFailure {
@@ -594,7 +615,17 @@ pub(crate) fn after_node_failure(
         position_paths_truncated: evaluated.position_paths_truncated,
         source: evaluated.source,
     };
-    match hook.after_node_failure(&failure) {
+    let decision = if program.owned_context.is_some()
+        && program.owned_trace_registry.is_some()
+        && hook.wants_owned_context_for_node_failure(&failure)
+    {
+        crate::trace::with_owned_witness(program, positions, |context| {
+            hook.after_node_failure_with_owned_context(&failure, error, context)
+        })
+    } else {
+        hook.after_node_failure(&failure)
+    };
+    match decision {
         DebugDecision::Resume => Ok(()),
         DebugDecision::Cancel => Err(EngineError::DebugCancelled),
     }
