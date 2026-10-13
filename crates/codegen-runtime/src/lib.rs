@@ -156,6 +156,16 @@ pub enum RuntimeError {
     SourcePath(SourcePathError),
     OwnedSource(OwnedSourceError),
     BasicSourceBridge(BasicSourceBridgeError),
+    /// An owned source failure reached by one public generated expression.
+    OwnedSourceAtNode {
+        node: u32,
+        source: OwnedSourceError,
+    },
+    /// A paired source bridge failure reached by one public generated expression.
+    BasicSourceBridgeAtNode {
+        node: u32,
+        source: BasicSourceBridgeError,
+    },
     PrimaryRoot {
         node: u32,
         source: ir::PrimaryRootError,
@@ -335,6 +345,18 @@ pub enum RuntimeError {
     },
 }
 
+impl RuntimeError {
+    /// Adds a reached owned leaf's node to a bare owned or bridge failure.
+    /// Existing nodes and all other errors retain their original cause and form.
+    pub fn with_owned_source_node(self, node: u32) -> Self {
+        match self {
+            Self::OwnedSource(source) => Self::OwnedSourceAtNode { node, source },
+            Self::BasicSourceBridge(source) => Self::BasicSourceBridgeAtNode { node, source },
+            error => error,
+        }
+    }
+}
+
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -375,6 +397,10 @@ impl fmt::Display for RuntimeError {
             Self::SourcePath(error) => error.fmt(formatter),
             Self::OwnedSource(error) => error.fmt(formatter),
             Self::BasicSourceBridge(error) => error.fmt(formatter),
+            Self::OwnedSourceAtNode { node, source } => write!(formatter, "node {node}: {source}"),
+            Self::BasicSourceBridgeAtNode { node, source } => {
+                write!(formatter, "node {node}: {source}")
+            }
             Self::PrimaryRoot { node, source } => write!(formatter, "node {node}: {source}"),
             Self::Function(error) => error.fmt(formatter),
             Self::AggregateIntegerOverflow { function } => {
@@ -623,6 +649,8 @@ impl std::error::Error for RuntimeError {
             Self::SourcePath(error) => Some(error),
             Self::OwnedSource(error) => Some(error),
             Self::BasicSourceBridge(error) => Some(error),
+            Self::OwnedSourceAtNode { source, .. } => Some(source),
+            Self::BasicSourceBridgeAtNode { source, .. } => Some(source),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
             Self::FilterMapBudget { .. }
