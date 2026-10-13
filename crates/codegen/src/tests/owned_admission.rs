@@ -672,3 +672,762 @@ fn dynamic_path_revisits_have_fixed_environments_and_terminate_without_inherited
     assert_eq!(trace.iter().filter(|(_, _, id)| *id == 40).count(), 1);
     assert_eq!(trace.iter().filter(|(_, _, id)| *id == 41).count(), 1);
 }
+
+// Explicit filter admission remains generation-time borrowed declaration metadata.
+mod filter_admission {
+    use super::*;
+    use crate::{
+        OwnedSourceCapabilityOrigin as Origin, OwnedSourceCapabilityReason as Reason,
+        OwnedSourceDiagnostic as Diagnostic, OwnedSourceDiagnosticLocation as Location,
+        OwnedSourceDiagnosticOwner as Owner, OwnedSourceDiagnosticRequest as Request,
+        OwnedSourceNamespace as Namespace, OwnedSourceStructureReason as Structure,
+        ProgramValidationError as Error,
+        legacy_named_input_admission_plan_with_basic_owned_filters,
+    };
+    use mapping::{SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
+
+    fn primary() -> SourceScopeLocation {
+        SourceScopeLocation::root(SourceScopeTarget::Primary)
+    }
+    fn query(owner: SourceOwner) -> Expression {
+        Expression::OwnedSourceField(OwnedSourceField {
+            source: OwnedSourceRef {
+                owner,
+                path: path(&["Rows", "Value"]),
+            },
+            frame: Some(path(&["Rows"])),
+        })
+    }
+    fn fixture(owner: Option<SourceOwner>) -> crate::Program {
+        let mut p = input(
+            vec![
+                constant(0),
+                constant(1),
+                node(
+                    2,
+                    Expression::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+            ],
+            scope(vec![binding("Value", 1)]),
+        );
+        let source: crate::IterationSource = match owner {
+            Some(owner) => {
+                p.expressions[1].expression = query(owner.clone());
+                crate::OwnedSourceIteration::new(OwnedSourceRef {
+                    owner,
+                    path: path(&["Rows"]),
+                })
+                .into()
+            }
+            None => SourceIteration::new(path(&["Ref", "Rows"])).into(),
+        };
+        p.root.repeating = true;
+        p.root.iteration = Some(IterationPlan::new(
+            source,
+            Some(2),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        refresh(&mut p);
+        p
+    }
+    fn predicate(p: &mut crate::Program, id: u32) {
+        let source = p.root.iteration.as_ref().unwrap().input().clone();
+        p.root.iteration = Some(IterationPlan::new(
+            source,
+            Some(id),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+    }
+    fn observed<'a>(
+        label: &str,
+        p: &'a crate::Program,
+    ) -> Result<NamedInputAdmissionPlan<'a>, Error> {
+        let before = format!("{p:#?}");
+        let result = legacy_named_input_admission_plan_with_basic_owned_filters(p);
+        eprintln!("{label} complete Program={p:#?} complete filter admission Result={result:#?}");
+        assert_eq!(format!("{p:#?}"), before);
+        result
+    }
+    fn catalogue_expected<'a>(
+        p: &'a crate::Program,
+        required: &[usize],
+    ) -> crate::NamedInputCatalogue<'a> {
+        crate::NamedInputCatalogue {
+            entries: p
+                .extra_sources
+                .iter()
+                .enumerate()
+                .map(|(index, source)| crate::NamedInputAdmission {
+                    declaration_index: index,
+                    name: &source.name,
+                    availability: if source.dynamic.is_some() {
+                        A::ReservedUnavailable
+                    } else if required.contains(&index) {
+                        A::RequiredLegacy
+                    } else {
+                        A::Optional
+                    },
+                })
+                .collect(),
+        }
+    }
+    fn expected<'a>(p: &'a crate::Program, required: &[usize]) -> NamedInputAdmissionPlan<'a> {
+        NamedInputAdmissionPlan {
+            all_outputs: catalogue_expected(p, required),
+            primary: catalogue_expected(p, required),
+            named_targets: vec![],
+        }
+    }
+    fn scope_error(p: &crate::Program, reason: Reason) -> Error {
+        let route = primary();
+        Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Iteration {
+                    scope: route.clone(),
+                },
+                request: p
+                    .root
+                    .iteration
+                    .as_ref()
+                    .unwrap()
+                    .owned_source_iteration()
+                    .map(|source| Request::Iteration {
+                        owner: (&source.source().owner).into(),
+                        path: source.source().path.clone(),
+                    }),
+                reason,
+                origin: Origin::Scope { scope: route },
+            }),
+        }
+    }
+    fn retained_error(node: u32, reason: Reason) -> Error {
+        Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Expression {
+                    namespace: Namespace::Main,
+                    node,
+                    scope: None,
+                },
+                request: None,
+                reason,
+                origin: Origin::RetainedExpression {
+                    namespace: Namespace::Main,
+                    node,
+                },
+            }),
+        }
+    }
+
+    #[test]
+    fn control_free_default_results_catalogues_and_exact_borrowed_names_remain_unchanged() {
+        for selected in 0..5 {
+            let expression = match selected {
+                0 => Expression::Const {
+                    value: Value::String("fixed".into()),
+                },
+                1 => owned("Ref"),
+                2 => owned(" Ref 雪 "),
+                3 => legacy(&["Other", "Value"], None),
+                _ => legacy(&["Ref", "Value"], Some(&[])),
+            };
+            let p = input(vec![node(1, expression)], scope(vec![binding("Value", 1)]));
+            let ordinary = legacy_named_input_admission_plan(&p);
+            let actual = observed("N657-01 control-free", &p);
+            assert_eq!(actual, ordinary);
+            let plan = actual.unwrap();
+            assert_eq!(plan, expected(&p, if selected == 3 { &[2] } else { &[] }));
+            for (index, entry) in plan.primary.entries.iter().enumerate() {
+                assert_eq!(
+                    (entry.declaration_index, entry.name),
+                    (index, p.extra_sources[index].name.as_str())
+                );
+                assert!(std::ptr::eq(
+                    entry.name.as_ptr(),
+                    p.extra_sources[index].name.as_ptr()
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn filter_predicates_and_owned_legacy_coexistence_keep_original_slots_and_literal_names() {
+        for owner in [
+            None,
+            Some(SourceOwner::Primary),
+            Some(SourceOwner::Named { name: "Ref".into() }),
+            Some(SourceOwner::Named {
+                name: " Ref 雪 ".into(),
+            }),
+        ] {
+            let legacy_selector = owner.is_none();
+            let mut p = fixture(owner);
+            p.expressions.extend([
+                node(3, legacy(&["Guard", "Value"], None)),
+                node(
+                    4,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Exists,
+                        args: vec![3],
+                    },
+                ),
+                node(99, legacy(&["Driver", "Value"], None)),
+            ]);
+            predicate(&mut p, 4);
+            let actual = observed("N657-02 complete predicate catalogue", &p).unwrap();
+            assert_eq!(
+                actual,
+                expected(&p, if legacy_selector { &[1, 3] } else { &[3] })
+            );
+            assert_eq!(actual.primary.entries.len(), 8);
+            assert_eq!(actual.primary.entries[7].name, " Ref 雪 ");
+            assert_eq!(actual.primary.entries[5].availability, A::Optional);
+            assert_eq!(
+                actual.primary.entries[1].availability,
+                if legacy_selector {
+                    A::RequiredLegacy
+                } else {
+                    A::Optional
+                }
+            );
+            assert_eq!(
+                legacy_named_input_admission_plan(&p),
+                if legacy_selector {
+                    Ok(expected(&p, &[1, 3]))
+                } else {
+                    Err(scope_error(&p, Reason::ScopeControl))
+                }
+            );
+        }
+        for name in ["primary", "ref", " Ref 雪 "] {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.extra_sources[7].name = name.into();
+            p.expressions.extend([
+                node(3, legacy(&[name, "Value"], None)),
+                node(
+                    4,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Exists,
+                        args: vec![3],
+                    },
+                ),
+            ]);
+            predicate(&mut p, 4);
+            let actual = observed("N657-03 literal named predicate alias", &p).unwrap();
+            assert_eq!(actual, expected(&p, &[7]));
+            assert_eq!(actual.primary.entries[7].name, name);
+            assert!(std::ptr::eq(
+                actual.primary.entries[7].name.as_ptr(),
+                p.extra_sources[7].name.as_ptr()
+            ));
+        }
+    }
+
+    #[test]
+    fn every_potential_lazy_branch_default_raise_and_value_map_input_remains_eager() {
+        for operator in 0..4 {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions.extend([
+                node(3, legacy(&["Guard", "Value"], None)),
+                node(
+                    4,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Exists,
+                        args: vec![3],
+                    },
+                ),
+                node(5, legacy(&["Other", "Value"], None)),
+                node(
+                    6,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Exists,
+                        args: vec![5],
+                    },
+                ),
+                node(
+                    7,
+                    match operator {
+                        0 => Expression::If {
+                            condition: 2,
+                            then: 4,
+                            else_: 6,
+                        },
+                        1 => Expression::RuntimeParameterDefault {
+                            name: " optional 雪 ".into(),
+                            ty: ScalarType::Bool,
+                            default: 4,
+                        },
+                        2 => Expression::Raise { message: Some(3) },
+                        _ => Expression::ValueMap {
+                            input: 4,
+                            input_type: Some(ScalarType::Bool),
+                            table: vec![(Value::Bool(false), Value::Bool(true))],
+                            default: Some(Value::Bool(true)),
+                        },
+                    },
+                ),
+            ]);
+            predicate(&mut p, 7);
+            assert_eq!(
+                observed("N657-04 complete potential predicate edges", &p),
+                Ok(expected(&p, if operator == 0 { &[2, 3] } else { &[3] }))
+            );
+        }
+    }
+
+    #[test]
+    fn predicate_frame_overrides_path_without_compacting_or_recovering_names() {
+        for (frame, required) in [
+            (None, vec![3]),
+            (Some(&["Other", "Rows"][..]), vec![2]),
+            (Some(&[][..]), vec![]),
+        ] {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions.extend([
+                node(3, legacy(&["Guard", "Value"], frame)),
+                node(
+                    4,
+                    Expression::Call {
+                        function: crate::ScalarFunction::Exists,
+                        args: vec![3],
+                    },
+                ),
+            ]);
+            predicate(&mut p, 4);
+            assert_eq!(
+                observed("N657-05 exact frame catalogue", &p),
+                Ok(expected(&p, &required))
+            );
+        }
+    }
+
+    #[test]
+    fn named_targets_and_nested_filters_keep_complete_independent_catalogues() {
+        let mut p = fixture(None);
+        let mut child = scope(vec![binding("Value", 0)]);
+        child.target_field = "Child".into();
+        child.repeating = true;
+        child.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "Other".into(),
+                },
+                path: path(&["Rows"]),
+            }),
+            Some(4),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        p.root.children.push(child);
+        p.expressions.extend([
+            node(3, legacy(&["Guard", "Value"], None)),
+            node(
+                4,
+                Expression::Call {
+                    function: crate::ScalarFunction::Exists,
+                    args: vec![3],
+                },
+            ),
+            node(5, legacy(&["Path", "Value"], None)),
+            node(
+                6,
+                Expression::Call {
+                    function: crate::ScalarFunction::Exists,
+                    args: vec![5],
+                },
+            ),
+        ]);
+        refresh(&mut p);
+        let mut named = scope(vec![binding("Value", 0)]);
+        named.repeating = true;
+        named.iteration = Some(IterationPlan::new(
+            SourceIteration::new(path(&[" Ref 雪 ", "Rows"])),
+            Some(6),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        p.extra_targets.push(NamedTargetProgram {
+            name: " Target 雪 ".into(),
+            target: target_schema(&named, "Named"),
+            root: named,
+        });
+        let actual = observed("N657-06 all outputs and independent named target", &p).unwrap();
+        assert_eq!(
+            actual,
+            NamedInputAdmissionPlan {
+                all_outputs: catalogue_expected(&p, &[1, 3, 4, 7]),
+                primary: catalogue_expected(&p, &[1, 3]),
+                named_targets: vec![crate::NamedTargetInputCatalogue {
+                    target_index: 0,
+                    name: " Target 雪 ",
+                    catalogue: catalogue_expected(&p, &[4, 7]),
+                }],
+            }
+        );
+        assert!(std::ptr::eq(
+            actual.named_targets[0].name.as_ptr(),
+            p.extra_targets[0].name.as_ptr()
+        ));
+    }
+
+    #[test]
+    fn complete_validator_first_errors_and_unselected_owned_structure_are_forwarded_exactly() {
+        for malformed in 0..5 {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            let expected = match malformed {
+                0 => {
+                    p.source.numeric_range = Some(ir::NumericRange::Integer(
+                        ir::IntegerRange::new(Some(1), Some(2)).unwrap(),
+                    ));
+                    Error::InvalidSchemaMetadata {
+                        boundary: "source".into(),
+                        path: vec![],
+                    }
+                }
+                1 => {
+                    p.expressions.push(node(
+                        2,
+                        Expression::Const {
+                            value: Value::Bool(false),
+                        },
+                    ));
+                    Error::DuplicateExpression { node: 2 }
+                }
+                2 => {
+                    p.expressions.pop();
+                    Error::MissingFilterExpression {
+                        target_path: vec![],
+                        expression: 2,
+                    }
+                }
+                _ => {
+                    p.expressions.push(node(99, owned("Absent")));
+                    if malformed == 4 {
+                        p.expressions.push(node(
+                            3,
+                            Expression::If {
+                                condition: 2,
+                                then: 2,
+                                else_: 99,
+                            },
+                        ));
+                        predicate(&mut p, 3);
+                    }
+                    Error::OwnedSource {
+                        diagnostic: Box::new(Diagnostic::Structure {
+                            location: Location::Expression {
+                                namespace: Namespace::Main,
+                                node: 99,
+                                scope: None,
+                            },
+                            request: Request::Field {
+                                owner: Owner::Named {
+                                    name: "Absent".into(),
+                                },
+                                path: path(&["Value"]),
+                                frame: None,
+                            },
+                            reason: Structure::UnknownOwner,
+                        }),
+                    }
+                }
+            };
+            assert_eq!(
+                crate::validate_program_with_basic_owned_filters(&p),
+                Err(expected.clone())
+            );
+            assert_eq!(observed("N657-07 complete first error", &p), Err(expected));
+            assert_eq!(
+                legacy_named_input_admission_plan(&p).unwrap_err(),
+                validate_program(&p).unwrap_err()
+            );
+        }
+    }
+
+    #[test]
+    fn sort_windows_grouping_and_nonrepeated_filter_outputs_keep_full_closed_envelopes() {
+        for control in 0..9 {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions.push(node(
+                3,
+                Expression::Const {
+                    value: Value::Int(1),
+                },
+            ));
+            let sort = (control == 0).then(|| {
+                crate::SortPlan::new(
+                    crate::SortKey {
+                        expression: 1,
+                        descending: false,
+                    },
+                    vec![],
+                    crate::SortFilterOrder::FilterThenSort,
+                )
+            });
+            let windows = match control {
+                1 => vec![crate::SequenceWindow::SkipFirst { count: 3 }],
+                2 => vec![crate::SequenceWindow::First { count: 3 }],
+                3 => vec![crate::SequenceWindow::From { position: 3 }],
+                4 => vec![crate::SequenceWindow::FromTo { first: 3, last: 3 }],
+                5 => vec![crate::SequenceWindow::Last { count: 3 }],
+                _ => vec![],
+            };
+            let output = if control == 8 {
+                p.root.repeating = false;
+                p.target.repeating = false;
+                crate::IterationOutput::First
+            } else {
+                crate::IterationOutput::Repeated
+            };
+            let source = p.root.iteration.as_ref().unwrap().input().clone();
+            let mut iteration = IterationPlan::new(source, Some(2), sort, windows, output);
+            if control == 6 {
+                iteration = iteration.with_grouping(crate::GroupingPlan::By { key: 1 });
+            }
+            if control == 7 {
+                iteration = iteration.with_filtered_grouping(crate::GroupingPlan::By { key: 1 }, 2);
+            }
+            p.root.iteration = Some(iteration);
+            let expected = scope_error(
+                &p,
+                if control == 6 || control == 7 {
+                    Reason::Grouping
+                } else {
+                    Reason::ScopeControl
+                },
+            );
+            assert_eq!(
+                observed("N657-08 combined controls closed", &p),
+                Err(expected.clone())
+            );
+            assert_eq!(legacy_named_input_admission_plan(&p), Err(expected));
+        }
+    }
+
+    #[test]
+    fn inherited_parent_closure_and_named_target_routes_keep_exact_origin_order() {
+        let mut p = fixture(None);
+        p.expressions.push(node(
+            3,
+            Expression::Const {
+                value: Value::Int(1),
+            },
+        ));
+        let source = p.root.iteration.as_ref().unwrap().input().clone();
+        p.root.iteration = Some(IterationPlan::new(
+            source,
+            Some(2),
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            crate::IterationOutput::Repeated,
+        ));
+        let mut child = scope(vec![binding("Value", 0)]);
+        child.target_field = "Child".into();
+        child.repeating = true;
+        child.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Named { name: "Ref".into() },
+                path: path(&["Rows"]),
+            }),
+            Some(2),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        p.root.children.push(child);
+        refresh(&mut p);
+        let expected = Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Iteration {
+                    scope: primary().descendant(SourceScopeStep::Child(0)),
+                },
+                request: Some(Request::Iteration {
+                    owner: Owner::Named { name: "Ref".into() },
+                    path: path(&["Rows"]),
+                }),
+                reason: Reason::ScopeControl,
+                origin: Origin::Scope { scope: primary() },
+            }),
+        };
+        assert_eq!(
+            observed("N657-09 inherited first parent closure", &p),
+            Err(expected)
+        );
+        let mut p = input(
+            vec![
+                constant(0),
+                node(
+                    2,
+                    Expression::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                node(
+                    3,
+                    Expression::Const {
+                        value: Value::Int(1),
+                    },
+                ),
+            ],
+            scope(vec![binding("Value", 0)]),
+        );
+        let mut root = scope(vec![binding("Value", 0)]);
+        root.repeating = true;
+        root.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Named { name: "Ref".into() },
+                path: path(&["Rows"]),
+            }),
+            Some(2),
+            None,
+            vec![crate::SequenceWindow::Last { count: 3 }],
+            crate::IterationOutput::Repeated,
+        ));
+        p.extra_targets.push(NamedTargetProgram {
+            name: " Target 雪 ".into(),
+            target: target_schema(&root, "Named"),
+            root,
+        });
+        let route = SourceScopeLocation::root(SourceScopeTarget::Named {
+            index: 0,
+            name: " Target 雪 ".into(),
+        });
+        let expected = Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Iteration {
+                    scope: route.clone(),
+                },
+                request: Some(Request::Iteration {
+                    owner: Owner::Named { name: "Ref".into() },
+                    path: path(&["Rows"]),
+                }),
+                reason: Reason::ScopeControl,
+                origin: Origin::Scope { scope: route },
+            }),
+        };
+        assert_eq!(
+            observed("N657-10 exact named closure route", &p),
+            Err(expected)
+        );
+    }
+
+    #[test]
+    fn generated_document_dynamic_and_isolated_function_domains_stay_closed() {
+        let mut p = fixture(None);
+        p.expressions.extend([
+            node(
+                3,
+                Expression::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            node(4, legacy(&[], None)),
+        ]);
+        p.root.iteration = Some(IterationPlan::new(
+            GeneratedSequence::Range {
+                from: None,
+                to: 3,
+                item: 4,
+            },
+            Some(2),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        assert_eq!(
+            observed("N657-11 generated source", &p),
+            Err(scope_error(&p, Reason::GeneratedItem))
+        );
+        let mut p = fixture(None);
+        p.expressions.push(node(99, Expression::SourceDocumentPath));
+        assert_eq!(
+            observed("N657-12 stored document leaf", &p),
+            Err(retained_error(99, Reason::Document))
+        );
+        let mut p = fixture(None);
+        p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
+            path: 0,
+            driver: SourceIteration::new(path(&["Rows"])),
+        });
+        assert_eq!(
+            observed("N657-13 unused reserved dynamic declaration", &p),
+            Ok(expected(&p, &[1]))
+        );
+        p.root.iteration = Some(IterationPlan::new(
+            SourceIteration::new(path(&["Dynamic", "Rows"])),
+            Some(2),
+            None,
+            vec![],
+            crate::IterationOutput::Repeated,
+        ));
+        assert_eq!(
+            observed("N657-14 demanded dynamic source", &p),
+            Err(scope_error(&p, Reason::DynamicLoader))
+        );
+        let mut p = fixture(None);
+        p.user_functions.push(crate::UserFunctionProgram {
+            id: FunctionId::new(7),
+            library: "tests".into(),
+            name: "unused".into(),
+            parameters: vec![],
+            output_type: ScalarType::String,
+            expressions: vec![constant(0)],
+            output: 0,
+        });
+        let expected = Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Expression {
+                    namespace: Namespace::Function(FunctionId::new(7)),
+                    node: 0,
+                    scope: None,
+                },
+                request: None,
+                reason: Reason::IsolatedFunction,
+                origin: Origin::FunctionBody {
+                    function: FunctionId::new(7),
+                },
+            }),
+        };
+        assert_eq!(
+            observed("N657-15 even uncalled function remains closed", &p),
+            Err(expected)
+        );
+    }
+
+    #[test]
+    fn ordinary_failure_ownership_keeps_complete_failure_origin_before_catalogue_analysis() {
+        let mut p = fixture(Some(SourceOwner::Primary));
+        p.failure_rules.push(crate::FailureRule {
+            iteration: crate::FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+            selection: crate::FailureSelection::All,
+            message: Some(1),
+        });
+        let expected = Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 1,
+                    scope: None,
+                },
+                request: Some(Request::Field {
+                    owner: Owner::Primary,
+                    path: path(&["Rows", "Value"]),
+                    frame: Some(path(&["Rows"])),
+                }),
+                reason: Reason::FailureRule,
+                origin: Origin::Failure { index: 0 },
+            }),
+        };
+        assert_eq!(
+            observed("N657-16 ordinary failure ownership stays closed", &p),
+            Err(expected)
+        );
+    }
+}

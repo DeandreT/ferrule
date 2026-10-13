@@ -4,7 +4,7 @@
 use crate::{
     Expression, FailureIteration, GeneratedSequence, InnerJoin, IterationPlan, IterationSource,
     Program, ProgramValidationError, TargetConstruction, TargetScope, UserFunctionProgram,
-    validate_program,
+    validate_program, validate_program_with_basic_owned_filters,
 };
 use mapping::{FunctionId, NodeId, OwnedSourceRef};
 use std::collections::{BTreeMap, BTreeSet};
@@ -48,6 +48,21 @@ pub fn legacy_named_input_admission_plan(
     program: &Program,
 ) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
     validate_program(program)?;
+    Ok(admission_plan(program))
+}
+
+/// Validate the complete explicit Basic filter-only capability, then describe
+/// potential legacy eager requirements through the same declaration analyzer.
+/// This does not select a target, acquire inputs, or activate an emitter. Names
+/// and original ordinals borrow the unmodified Program exactly as in the default API.
+pub fn legacy_named_input_admission_plan_with_basic_owned_filters(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    validate_program_with_basic_owned_filters(program)?;
+    Ok(admission_plan(program))
+}
+
+fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     let primary_required = analyze(program, &program.root, Root::Primary).required;
     let primary = catalogue(program, &primary_required);
     let mut all_required = primary_required;
@@ -61,11 +76,11 @@ pub fn legacy_named_input_admission_plan(
             catalogue: catalogue(program, &required),
         });
     }
-    Ok(NamedInputAdmissionPlan {
+    NamedInputAdmissionPlan {
         all_outputs: catalogue(program, &all_required),
         primary,
         named_targets,
-    })
+    }
 }
 fn catalogue<'a>(program: &'a Program, required: &BTreeSet<usize>) -> NamedInputCatalogue<'a> {
     NamedInputCatalogue {

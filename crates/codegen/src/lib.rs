@@ -64,6 +64,7 @@ pub use model::{
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
     NamedTargetInputCatalogue, legacy_named_input_admission_plan,
+    legacy_named_input_admission_plan_with_basic_owned_filters,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
