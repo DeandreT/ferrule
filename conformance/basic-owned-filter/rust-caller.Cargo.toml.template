@@ -1,0 +1,9 @@
+[package]
+name = "ferrule_basic_filter_generated_662"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[workspace]
+[dependencies]
+codegen-runtime = { path = __RUNTIME_PATH__ }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }

@@ -1,0 +1,4609 @@
+{
+  "fixture": "basic-owned-filter-v1",
+  "issue": 662,
+  "models": [
+    {
+      "id": "phases",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "OwnedPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Root",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          },
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 3,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "id": 4,
+          "kind": "Call",
+          "function": "greater_than",
+          "args": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": 5,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Value"
+          ],
+          "frame": []
+        },
+        {
+          "id": 6,
+          "kind": "Position",
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 11,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 12,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 13,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 2
+          }
+        },
+        {
+          "id": 14,
+          "kind": "Call",
+          "function": "greater_than",
+          "args": [
+            12,
+            13
+          ]
+        },
+        {
+          "id": 15,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Value"
+          ],
+          "frame": []
+        },
+        {
+          "id": 16,
+          "kind": "Position",
+          "collection": []
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 4,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          },
+          {
+            "target_field": "OwnedPosition",
+            "node": 2
+          },
+          {
+            "target_field": "LegacyPosition",
+            "node": 6
+          },
+          {
+            "target_field": "Root",
+            "node": 5
+          }
+        ],
+        "children": []
+      },
+      "extra_targets": [
+        {
+          "name": "Filtered",
+          "schema": {
+            "name": "Filtered",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "OwnedPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "LegacyPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Root",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          },
+          "root_scope": {
+            "target_field": "",
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Named",
+                "name": "Ref"
+              },
+              "path": [
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "construction": "Constructed",
+            "filter": 14,
+            "sort": null,
+            "windows": [],
+            "grouping": null,
+            "bindings": [
+              {
+                "target_field": "Value",
+                "node": 11
+              },
+              {
+                "target_field": "OwnedPosition",
+                "node": 12
+              },
+              {
+                "target_field": "LegacyPosition",
+                "node": 16
+              },
+              {
+                "target_field": "Root",
+                "node": 15
+              }
+            ],
+            "children": []
+          }
+        }
+      ],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "nested_identity",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "OwnedPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Root",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Kids",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Position",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ParentPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          },
+          {
+            "name": "Identity",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ParentPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          },
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 3,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "id": 4,
+          "kind": "Call",
+          "function": "greater_than",
+          "args": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": 5,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Value"
+          ],
+          "frame": []
+        },
+        {
+          "id": 6,
+          "kind": "Position",
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 21,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows",
+            "Rows"
+          ]
+        },
+        {
+          "id": 22,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          },
+          "collection": [
+            "Rows",
+            "Rows"
+          ]
+        },
+        {
+          "id": 23,
+          "kind": "Call",
+          "function": "greater_than",
+          "args": [
+            22,
+            3
+          ]
+        },
+        {
+          "id": 24,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Bool",
+            "value": true
+          }
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 4,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          },
+          {
+            "target_field": "OwnedPosition",
+            "node": 2
+          },
+          {
+            "target_field": "LegacyPosition",
+            "node": 6
+          },
+          {
+            "target_field": "Root",
+            "node": 5
+          }
+        ],
+        "children": [
+          {
+            "target_field": "Kids",
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Primary"
+              },
+              "path": [
+                "Rows",
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "construction": "Constructed",
+            "filter": 23,
+            "sort": null,
+            "windows": [],
+            "grouping": null,
+            "bindings": [
+              {
+                "target_field": "Value",
+                "node": 21
+              },
+              {
+                "target_field": "Position",
+                "node": 22
+              },
+              {
+                "target_field": "ParentPosition",
+                "node": 2
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "Identity",
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Primary"
+              },
+              "path": [
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "construction": "Constructed",
+            "filter": 24,
+            "sort": null,
+            "windows": [],
+            "grouping": null,
+            "bindings": [
+              {
+                "target_field": "Value",
+                "node": 1
+              },
+              {
+                "target_field": "ParentPosition",
+                "node": 2
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "lazy_false",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Raise",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 2,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Flag"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 3,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Bool",
+            "value": false
+          }
+        },
+        {
+          "id": 4,
+          "kind": "If",
+          "condition": 3,
+          "then": 2,
+          "else": 3
+        },
+        {
+          "id": 5,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "String",
+            "value": "target must stay lazy"
+          }
+        },
+        {
+          "id": 6,
+          "kind": "Raise",
+          "message": 5
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 4,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          },
+          {
+            "target_field": "Raise",
+            "node": 6
+          }
+        ],
+        "children": []
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "non_bool",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 0,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 7
+          }
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 0,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          }
+        ],
+        "children": []
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "order",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          },
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 2,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "id": 3,
+          "kind": "Call",
+          "function": "equal",
+          "args": [
+            1,
+            2
+          ]
+        },
+        {
+          "id": 4,
+          "kind": "Raise",
+          "message": 7
+        },
+        {
+          "id": 5,
+          "kind": "If",
+          "condition": 3,
+          "then": 9,
+          "else": 4
+        },
+        {
+          "id": 6,
+          "kind": "Raise",
+          "message": 8
+        },
+        {
+          "id": 7,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "String",
+            "value": "later predicate"
+          }
+        },
+        {
+          "id": 8,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "String",
+            "value": "target first"
+          }
+        },
+        {
+          "id": 9,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Flag"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 5,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 6
+          }
+        ],
+        "children": []
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "global_rules",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "Flag",
+                "kind": "Scalar",
+                "type": "Bool",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        },
+        {
+          "name": " Ref 雪 ",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Ref",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "Int",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Flag",
+                    "kind": "Scalar",
+                    "type": "Bool",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "repeating": false
+                      },
+                      {
+                        "name": "Flag",
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "OwnedPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Root",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          },
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 3,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "id": 4,
+          "kind": "Call",
+          "function": "greater_than",
+          "args": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": 5,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Value"
+          ],
+          "frame": []
+        },
+        {
+          "id": 6,
+          "kind": "Position",
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 20,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Bool",
+            "value": false
+          }
+        },
+        {
+          "id": 21,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "String",
+            "value": "false rule message must stay lazy"
+          }
+        },
+        {
+          "id": 22,
+          "kind": "Raise",
+          "message": 21
+        },
+        {
+          "id": 30,
+          "kind": "Position",
+          "collection": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 31,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 2
+          }
+        },
+        {
+          "id": 32,
+          "kind": "Call",
+          "function": "equal",
+          "args": [
+            30,
+            31
+          ]
+        },
+        {
+          "id": 33,
+          "kind": "SourceField",
+          "path": [
+            "Flag"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        },
+        {
+          "id": 34,
+          "kind": "Call",
+          "function": "and",
+          "args": [
+            32,
+            33
+          ]
+        },
+        {
+          "id": 35,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ],
+          "frame": [
+            "Rows"
+          ]
+        }
+      ],
+      "root_scope": {
+        "target_field": "",
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "construction": "Constructed",
+        "filter": 4,
+        "sort": null,
+        "windows": [],
+        "grouping": null,
+        "bindings": [
+          {
+            "target_field": "Value",
+            "node": 1
+          },
+          {
+            "target_field": "OwnedPosition",
+            "node": 2
+          },
+          {
+            "target_field": "LegacyPosition",
+            "node": 6
+          },
+          {
+            "target_field": "Root",
+            "node": 5
+          }
+        ],
+        "children": []
+      },
+      "extra_targets": [],
+      "failure_rules": [
+        {
+          "collection": [
+            "Rows"
+          ],
+          "predicate": 20,
+          "message": 22
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "predicate": 34,
+          "message": 35
+        }
+      ],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    }
+  ],
+  "calls": [
+    {
+      "case": "F01",
+      "model": "phases",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "Value",
+                "value": {
+                  "kind": "Scalar",
+                  "type": "String",
+                  "value": "N.root"
+                }
+              },
+              {
+                "name": "Ref",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "String",
+                        "value": "embedded.shadow"
+                      }
+                    },
+                    {
+                      "name": "Rows",
+                      "value": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 999
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Rows",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "type": "Null",
+                      "value": null
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 3
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Scalar",
+                      "type": "JsonNull",
+                      "value": null
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 1
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 2
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F02",
+      "model": "phases",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "Primary"
+      }
+    },
+    {
+      "case": "F03",
+      "model": "phases",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "Value",
+                "value": {
+                  "kind": "Scalar",
+                  "type": "String",
+                  "value": "N.root"
+                }
+              },
+              {
+                "name": "Ref",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "String",
+                        "value": "embedded.shadow"
+                      }
+                    },
+                    {
+                      "name": "Rows",
+                      "value": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 999
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Rows",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "type": "Null",
+                      "value": null
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 3
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Scalar",
+                      "type": "JsonNull",
+                      "value": null
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 1
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Int",
+                            "value": 2
+                          }
+                        },
+                        {
+                          "name": "Flag",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "Bool",
+                            "value": true
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "selection": {
+        "kind": "Named",
+        "name": "Filtered"
+      }
+    },
+    {
+      "case": "F04",
+      "model": "phases",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Scalar",
+                  "type": "Null",
+                  "value": null
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Scalar",
+                  "type": "JsonNull",
+                  "value": null
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "Primary"
+      }
+    },
+    {
+      "case": "F05",
+      "model": "phases",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": []
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "Primary"
+      }
+    },
+    {
+      "case": "F06",
+      "model": "nested_identity",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Scalar",
+                  "type": "Null",
+                  "value": null
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    },
+                    {
+                      "name": "Rows",
+                      "value": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Scalar",
+                            "type": "Null",
+                            "value": null
+                          },
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 101
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "Scalar",
+                            "type": "JsonNull",
+                            "value": null
+                          },
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 102
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    },
+                    {
+                      "name": "Rows",
+                      "value": {
+                        "kind": "Repeated",
+                        "items": [
+                          {
+                            "kind": "Scalar",
+                            "type": "Null",
+                            "value": null
+                          },
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 201
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "Scalar",
+                            "type": "JsonNull",
+                            "value": null
+                          },
+                          {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "Value",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Int",
+                                  "value": 202
+                                }
+                              },
+                              {
+                                "name": "Flag",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "type": "Bool",
+                                  "value": true
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F07",
+      "model": "lazy_false",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F08",
+      "model": "non_bool",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F09",
+      "model": "order",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F10",
+      "model": "order",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": false
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F11",
+      "model": "global_rules",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "F12",
+      "model": "global_rules",
+      "primary": {
+        "kind": "Group",
+        "fields": [
+          {
+            "name": "Value",
+            "value": {
+              "kind": "Scalar",
+              "type": "String",
+              "value": "P.root"
+            }
+          },
+          {
+            "name": "Ref",
+            "value": {
+              "kind": "Group",
+              "fields": [
+                {
+                  "name": "Value",
+                  "value": {
+                    "kind": "Scalar",
+                    "type": "String",
+                    "value": "embedded.shadow"
+                  }
+                },
+                {
+                  "name": "Rows",
+                  "value": {
+                    "kind": "Repeated",
+                    "items": [
+                      {
+                        "kind": "Group",
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Int",
+                              "value": 999
+                            }
+                          },
+                          {
+                            "name": "Flag",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "Bool",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "Rows",
+            "value": {
+              "kind": "Repeated",
+              "items": [
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 30
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 10
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": false
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Int",
+                        "value": 20
+                      }
+                    },
+                    {
+                      "name": "Flag",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "supplied": [],
+      "selection": {
+        "kind": "All"
+      }
+    }
+  ],
+  "generated_limits": {
+    "max_roots": 16,
+    "max_active_frames": 8,
+    "max_path_segments": 16,
+    "max_metadata_bytes": 1048576,
+    "max_walk_contexts": 64
+  },
+  "native_limits": "public engine defaults; no private limit hook",
+  "execution": {
+    "mapping_path": "basic-owned-filter.mapping",
+    "runtime_parameters": null,
+    "loader": false,
+    "tracing": false,
+    "debugging": false
+  },
+  "exact_counts": {
+    "models": 6,
+    "calls_per_backend": 12,
+    "total_calls": 36
+  },
+  "full_filter_parity": false,
+  "total_parity": false
+}
