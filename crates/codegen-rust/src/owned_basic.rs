@@ -11,15 +11,20 @@ use codegen::{
 use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_source_with_nodes(program, false)
+    render_basic_owned_source_with_nodes(program, false, false)
 }
 
 fn render_basic_owned_source_with_nodes(
     program: &Program,
     owned_leaf_nodes: bool,
+    filter_only: bool,
 ) -> Result<String, EmitError> {
-    validate_program(program)?;
-    check_inventory(program)?;
+    if filter_only {
+        codegen::validate_program_with_basic_owned_filters(program)?;
+    } else {
+        validate_program(program)?;
+    }
+    check_inventory(program, filter_only)?;
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".into(), &mut scopes);
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -79,7 +84,7 @@ fn render_basic_owned_source_with_nodes(
         source.push_str(&failure::render_basic(program)?);
     }
     for (name, scope, children, _) in scopes {
-        source.push_str(&render_basic_scope(&name, scope, &children));
+        source.push_str(&render_basic_scope(&name, scope, &children, filter_only));
     }
     Ok(source)
 }
@@ -117,6 +122,7 @@ fn check_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
+    filter_only: bool,
 ) -> Result<(), EmitError> {
     if !matches!(
         &scope.construction,
@@ -129,7 +135,7 @@ fn check_scope(
         ));
     }
     if let Some(iteration) = &scope.iteration {
-        if iteration.filter().is_some()
+        if iteration.filter().is_some() && !filter_only
             || iteration.sort().is_some()
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
@@ -173,6 +179,7 @@ fn check_scope(
             program,
             child,
             route.descendant(SourceScopeStep::Child(index)),
+            filter_only,
         )?;
     }
     Ok(())
@@ -212,9 +219,9 @@ fn failure_expression_nodes(program: &Program, root: u32) -> std::collections::B
     found
 }
 
-fn check_inventory(program: &Program) -> Result<(), EmitError> {
+fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError> {
     let primary = SourceScopeLocation::root(SourceScopeTarget::Primary);
-    check_scope(program, &program.root, primary.clone())?;
+    check_scope(program, &program.root, primary.clone(), filter_only)?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         check_scope(
             program,
@@ -223,6 +230,7 @@ fn check_inventory(program: &Program) -> Result<(), EmitError> {
                 index,
                 name: target.name.clone(),
             }),
+            filter_only,
         )?;
     }
     // Inspect ordered rules as iteration, predicate, then message. Dynamic
@@ -408,7 +416,12 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
     }
 }
 
-fn render_basic_scope(name: &str, scope: &TargetScope, children: &[String]) -> String {
+fn render_basic_scope(
+    name: &str,
+    scope: &TargetScope,
+    children: &[String],
+    filter_only: bool,
+) -> String {
     let mut source = format!(
         "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n"
     );
@@ -425,6 +438,18 @@ fn render_basic_scope(name: &str, scope: &TargetScope, children: &[String]) -> S
             ),
             _ => unreachable!("private Basic inventory checked before rendering"),
         };
+        if filter_only && let Some(predicate) = iteration.filter() {
+            source.push_str(&format!("    let cohort = {walk};\n    let mut outputs = Vec::new();\n    context.visit_filtered_source_cohort(\n        &cohort,\n        |predicate_context| {{\n            let value = expression_{predicate}(predicate_context)?;\n            require_bool({predicate}, value)\n        }},\n        |item_context| {{\n"));
+            source.push_str(&render_scope_item(
+                scope,
+                children,
+                "            ",
+                "item_context",
+            ));
+            source.push_str("            if outputs.capacity() == 0 { outputs = Vec::with_capacity(cohort.len()); }\n            outputs.push(output);\n            Ok(())\n        },\n    )?;\n    Ok(repeated(outputs))\n");
+            source.push_str("}\n\n");
+            return source;
+        }
         source.push_str(&format!("    let cohort = {walk};\n    let mut outputs = Vec::with_capacity(cohort.len());\n    for candidate in cohort.iter() {{\n        let item_context = candidate.context();\n"));
         source.push_str(&render_scope_item(
             scope,
@@ -496,19 +521,24 @@ fn render_entries(program: &Program) -> String {
 // The neutral plan supplies complete generation-time metadata; the runtime
 // factory alone owns supplied-input normalization and admitted storage.
 pub(crate) fn render_checked_basic_owned_source(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_source_with_nodes(program, false)
+    render_checked_basic_owned_source_with_nodes(program, false, false)
 }
 
 fn render_checked_basic_owned_source_with_nodes(
     program: &Program,
     owned_leaf_nodes: bool,
+    filter_only: bool,
 ) -> Result<String, EmitError> {
-    let mut source = if owned_leaf_nodes {
-        render_basic_owned_source_with_nodes(program, true)?
+    let mut source = if owned_leaf_nodes || filter_only {
+        render_basic_owned_source_with_nodes(program, owned_leaf_nodes, filter_only)?
     } else {
         render_basic_owned_source(program)?
     };
-    let plan = codegen::legacy_named_input_admission_plan(program)?;
+    let plan = if filter_only {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_filters(program)?
+    } else {
+        codegen::legacy_named_input_admission_plan(program)?
+    };
     source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
     source.push_str(&render_checked_catalogue(
         "PRIVATE_CHECKED_ALL_INPUTS",
@@ -645,13 +675,28 @@ fn execute_private_checked_basic_context(
 // implementation. Prepared entry points, catalogues and observation hooks stay
 // nonpublic; the original private renderer remains byte-for-byte unchanged.
 pub(crate) fn render_public_basic_owned_source(program: &Program) -> Result<String, EmitError> {
+    render_public_basic_owned_source_with_filters(program, false)
+}
+
+pub(crate) fn render_public_basic_owned_filter_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_with_filters(program, true)
+}
+
+fn render_public_basic_owned_source_with_filters(
+    program: &Program,
+    filter_only: bool,
+) -> Result<String, EmitError> {
     let mut source = if program.expressions.iter().any(|node| {
         matches!(
             &node.expression,
             Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
         )
     }) {
-        render_checked_basic_owned_source_with_nodes(program, true)?
+        render_checked_basic_owned_source_with_nodes(program, true, filter_only)?
+    } else if filter_only {
+        render_checked_basic_owned_source_with_nodes(program, false, true)?
     } else {
         render_checked_basic_owned_source(program)?
     };

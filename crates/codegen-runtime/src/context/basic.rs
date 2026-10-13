@@ -801,6 +801,66 @@ impl<'ctx> BasicScopeContext<'ctx> {
         })
     }
 
+    /// Validates and charges the complete original walk before any callback.
+    /// Each predicate sees its structural context; an accepted output sees only
+    /// its newly introduced repeated cursor compacted to the next output index.
+    /// The output callback completes before the next predicate is evaluated.
+    pub fn visit_filtered_source_cohort<E, P, O>(
+        &self,
+        original: &RetainedSourceCohort<'ctx>,
+        mut predicate: P,
+        mut output: O,
+    ) -> Result<usize, E>
+    where
+        E: From<RuntimeError>,
+        P: FnMut(&BasicScopeContext<'ctx>) -> Result<bool, E>,
+        O: FnMut(&BasicScopeContext<'ctx>) -> Result<(), E>,
+    {
+        let mut budget = (|| -> Result<PairedBudget, RuntimeError> {
+            phase_count(
+                original.candidates.len(),
+                self.owned.registry.limits.max_walk_contexts,
+            )?;
+            // Preserve direct admission and witness error order. Core(3W) is
+            // the existing conservative workspace formula; actual row limits
+            // and the single shared UTF-8 allowance remain unchanged.
+            let (mut budget, ordinary) = self.budget(SourceOwnerRef::Primary, &[], None, false)?;
+            let bounds = retained_phase_bounds(self.owned.registry.limits)?;
+            budget.maximum = bounds.total;
+            budget.phase_slots(
+                bounds
+                    .core
+                    .checked_sub(ordinary.core)
+                    .ok_or_else(phase_overflow)?,
+            )?;
+            let selection = PhaseSelection::from_original(original, &[]);
+            validate_retained_phase(self, original, &selection)?;
+            // Reuse the retained operation's five holder/witness scratch slots.
+            // No index snapshot, output backing or second cohort is allocated.
+            budget.phase_slots(5)?;
+            for candidate in &original.candidates {
+                candidate.context.seed_phase_metadata(&mut budget)?;
+            }
+            Ok(budget)
+        })()
+        .map_err(E::from)?;
+        let mut accepted = 0usize;
+        for candidate in &original.candidates {
+            if predicate(candidate.context())? {
+                let next = accepted
+                    .checked_add(1)
+                    .ok_or_else(phase_overflow)
+                    .map_err(E::from)?;
+                // All accepted copies are charged to this same budget, even
+                // after a previous callback's temporary context was dropped.
+                let current = candidate.phase_under(next, &mut budget).map_err(E::from)?;
+                output(current.context())?;
+                accepted = next;
+            }
+        }
+        Ok(accepted)
+    }
+
     /// One boundary covers the parent, complete original, complete current and
     /// new output metadata. Additional caller-retained phase sets are outside it.
     /// An empty selection still validates and charges both complete input sets.
