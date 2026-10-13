@@ -408,7 +408,8 @@ mod owned_collection_stdio_admission_tests {
     use super::*;
 
     #[test]
-    fn owned_collection_refusal_leaves_stdin_unread() -> anyhow::Result<()> {
+    fn closed_source_function_refusal_with_owned_iteration_leaves_stdin_unread()
+    -> anyhow::Result<()> {
         struct Input(usize);
         impl Read for Input {
             fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
@@ -427,7 +428,9 @@ mod owned_collection_stdio_admission_tests {
         let path = directory.join("project.json");
         std::fs::write(
             &path,
-            serde_json::to_vec(&crate::closed_owned_collection_test_project())?,
+            serde_json::to_vec(
+                &crate::owned_collection_with_closed_source_function_test_project(),
+            )?,
         )?;
         let mut input = Input(0);
         let error = run_project_with_standard_streams(
@@ -440,12 +443,11 @@ mod owned_collection_stdio_admission_tests {
         .unwrap_err();
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedOwnedContext {
-                node: Some(9),
-                function: None,
-                scope: None,
-                context: engine::OwnedCapabilityContext::IsolatedFunction
-            })
+            Some(engine::EngineError::UnsupportedSourceOwnership {
+                node: 9,
+                function: Some(function),
+                kind: "owned_source_field"
+            }) if *function == mapping::FunctionId::new(7)
         ));
         assert_eq!(input.0, 0);
         std::fs::remove_file(path)?;

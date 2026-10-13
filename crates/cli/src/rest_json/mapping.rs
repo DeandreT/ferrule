@@ -308,8 +308,9 @@ mod owned_collection_rest_admission_tests {
     use super::*;
 
     #[test]
-    fn owned_collection_refusal_is_inside_preflight_and_retains_earlier_policy_errors() {
-        let project = crate::closed_owned_collection_test_project();
+    fn closed_source_function_refusal_with_owned_iteration_is_inside_preflight_and_retains_earlier_policy_errors()
+     {
+        let project = crate::owned_collection_with_closed_source_function_test_project();
         let options =
             RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
         let RestJsonError::Mapping(error) = preflight(&project, &options).unwrap_err() else {
@@ -317,12 +318,11 @@ mod owned_collection_rest_admission_tests {
         };
         assert!(matches!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(engine::EngineError::UnsupportedOwnedContext {
-                node: Some(9),
-                function: None,
-                scope: None,
-                context: engine::OwnedCapabilityContext::IsolatedFunction
-            })
+            Some(engine::EngineError::UnsupportedSourceOwnership {
+                node: 9,
+                function: Some(function),
+                kind: "owned_source_field"
+            }) if *function == ::mapping::FunctionId::new(7)
         ));
         let options =
             RestJsonMappingOptions::new(Path::new("response.xml"), Path::new("output.json"));
