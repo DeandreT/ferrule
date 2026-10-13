@@ -458,6 +458,16 @@ pub trait TraceSink {
         false
     }
 
+    /// Selects event kinds that should receive borrowed ownership context.
+    /// The default preserves existing value/input opt-ins; other kinds require
+    /// an explicit request. Returning false avoids per-event projection.
+    fn wants_owned_context_for(&self, event: &TraceEvent) -> bool {
+        matches!(
+            event,
+            TraceEvent::NodeValue { .. } | TraceEvent::NodeInputValue { .. }
+        ) && self.wants_owned_context()
+    }
+
     /// Receives the original event exactly once with synchronous borrowed context.
     /// Projection and snapshot failures are observer metadata, not execution errors.
     /// A sink that retains context must use its bounded snapshot API.
@@ -509,15 +519,11 @@ pub(crate) fn record_node_value(
     if program.trace_sink.is_none() {
         return;
     }
-    record_owned_expression(
-        program,
-        positions,
-        TraceEvent::NodeValue {
-            node,
-            positions: positions.iter().map(TracePosition::from).collect(),
-            value: TraceValue::new(value),
-        },
-    );
+    record_owned_event(program, positions, || TraceEvent::NodeValue {
+        node,
+        positions: positions.iter().map(TracePosition::from).collect(),
+        value: TraceValue::new(value),
+    });
 }
 
 pub(crate) fn record_node_input_value(
@@ -531,17 +537,13 @@ pub(crate) fn record_node_input_value(
     if program.trace_sink.is_none() {
         return;
     }
-    record_owned_expression(
-        program,
-        positions,
-        TraceEvent::NodeInputValue {
-            consumer,
-            input,
-            input_index,
-            positions: positions.iter().map(TracePosition::from).collect(),
-            value: TraceValue::new(value),
-        },
-    );
+    record_owned_event(program, positions, || TraceEvent::NodeInputValue {
+        consumer,
+        input,
+        input_index,
+        positions: positions.iter().map(TracePosition::from).collect(),
+        value: TraceValue::new(value),
+    });
 }
 
 pub(crate) fn record_function_node_value(
@@ -1244,20 +1246,21 @@ impl TraceOwnedRegistryView for TraceOwnedRegistry<'_> {
     }
 }
 
-fn record_owned_expression(
+pub(crate) fn record_owned_event(
     program: crate::eval_expr::EvalProgram<'_>,
     positions: &[PositionFrame],
-    event: TraceEvent,
+    event: impl FnOnce() -> TraceEvent,
 ) {
     let Some(sink) = program.trace_sink else {
         return;
     };
+    let event = event();
     let (Some(owned), Some(registry)) = (program.owned_context, program.owned_trace_registry)
     else {
         sink.record(event);
         return;
     };
-    if !sink.wants_owned_context() {
+    if !sink.wants_owned_context_for(&event) {
         sink.record(event);
         return;
     }

@@ -23,7 +23,7 @@ use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceOutputKind, TraceScope, TraceSortKey,
     TraceSourceRow, TraceTargetFieldBinding, TraceValue, TraceWindow, bounded_text, record,
-    scope_iteration, trace_positions,
+    record_owned_event, scope_iteration, trace_positions,
 };
 use crate::{DynamicSourceLoader, EngineError};
 
@@ -1418,11 +1418,13 @@ impl ItemEvaluator<'_> {
                 }
             })
             .transpose()?;
-        record(self.program.trace_sink, || TraceEvent::TargetProduced {
-            scope: self.trace_scope.clone(),
-            positions: trace_positions(output_positions),
-            output_path: output_path.as_deref().map(bounded_text),
-            kind: TraceOutputKind::of(&instance),
+        record_owned_event(self.program, output_positions, || {
+            TraceEvent::TargetProduced {
+                scope: self.trace_scope.clone(),
+                positions: trace_positions(output_positions),
+                output_path: output_path.as_deref().map(bounded_text),
+                kind: TraceOutputKind::of(&instance),
+            }
         });
         Ok(Some(ProducedItem {
             instance,
@@ -1710,7 +1712,7 @@ fn record_target_field(
     positions: &[PositionFrame],
     (kind, value): (TraceOutputKind, Option<TraceValue>),
 ) {
-    record(program.trace_sink, || TraceEvent::TargetFieldWritten {
+    record_owned_event(program, positions, || TraceEvent::TargetFieldWritten {
         scope: trace_scope.clone(),
         field,
         binding,
