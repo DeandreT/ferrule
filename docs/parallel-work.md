@@ -5,6 +5,93 @@ bounded work from the [roadmap](../ROADMAP.md). Issues define the problem,
 in/out of scope, likely files and acceptance checks; this page helps contributors
 choose a lane and avoid conflicting changes.
 
+## Current Basic ownership handoffs (2026-10-13)
+
+This [#635](https://github.com/DeandreT/ferrule/issues/635) snapshot is against
+merged main [`0f8b252`](https://github.com/DeandreT/ferrule/commit/0f8b252aedbb8ad99e51e7fc317919ca77f84870).
+The [current roadmap](../ROADMAP.md#current-basic-ownership-progress-2026-10-13)
+records implemented public behavior and qualified generated root pins.
+Earlier status tables and diagrams remain dated snapshots.
+
+[#627 / PR630](https://github.com/DeandreT/ferrule/pull/630) merged static root
+global failures. [#622 / PR634](https://github.com/DeandreT/ferrule/pull/634) merged
+bounded candidate retention for eligible constructed owned First scopes. The
+unchanged engine sources retain PR637's local qualification: 477 tests, including
+38 Basic, 35 core, 25 failure, 26 admission and 21 trace, with production and
+strict checks. PR634's 31 retention probe commands completed; all 29 complete
+outcomes matched. The retained-input
+scope establishes no whole-file parser or total-memory cap.
+
+[#631 / PR636](https://github.com/DeandreT/ferrule/pull/636) merged production
+borrowed trace-context witnesses and bounded snapshots; authentic root/frame
+references remain the producer's responsibility.
+[#633 / PR637](https://github.com/DeandreT/ferrule/pull/637) merged the narrow
+one-segment Primary Group row-failure profile and structural positions, with
+immutable named-root reads. Broader owned row provenance remains closed.
+
+[#632 / PR638](https://github.com/DeandreT/ferrule/pull/638) merged the
+Rust/C# declared nonrepeating empty-root-pin corrections. Source qualification
+passed 339 runtime tests, 149 Rust backend tests with eight ignored and 142 C#
+backend tests, plus production/strict checks. Six Rust generated programs passed
+22 calls; the newly built 95-file C# runtime passed all 216 smoke controls.
+The fresh matched probe completed 18 successful native/Rust/C# returns: each
+executor passed three None and three Some([]) routes. The earlier six generated
+InactiveSourceFrame refusals remain historical evidence of the fixed gap.
+The original failed C# RequestedName caller record remains separate from its
+corrected qualification and composed returns. Broader #612 occurrence/phase and
+#613 provenance/generated failure qualification remain pending. Owned
+trace/debug admission is still closed; witnesses alone do not activate observers.
+
+These follow-ons are assigned to `DeandreT`. Coordinate an explicit handoff
+before changing shared files. The two #632 backend lanes had independent source
+ownership and qualified together in PR638. Keep broader phase, failure
+and observer increments in separate PRs.
+
+| Lane | Source ownership | Status and next gate |
+| --- | --- | --- |
+| [#631 Borrowed trace-context witnesses](https://github.com/DeandreT/ferrule/issues/631) | `crates/engine/src/trace.rs`, `lib.rs`, and `tests/trace.rs`. | Merged in PR636 with 465 native tests, including 21 trace tests, and production/strict checks. Snapshots validate bounded supplied metadata; producers supply authentic root/frame references. Event integration and observer activation remain separate #606 increments. |
+| [#632 Rust empty-root pins](https://github.com/DeandreT/ferrule/issues/632) | `crates/codegen-runtime/src/context/basic.rs`, `resolve.rs`, `basic_tests.rs`, `source_field_tests.rs`; Rust `owned_basic.rs` and `tests/owned_basic.rs`. | Merged in PR638 with 339 runtime tests, 149 active Rust backend tests (eight ignored), 22 generated calls and production/strict checks. The fresh matched root-pin cohort passed all six Rust calls; broader occurrence/phase qualification remains #612. Common admission stayed read-only. |
+| [#632 C# empty-root pins](https://github.com/DeandreT/ferrule/issues/632) | `runtime/csharp/Ferrule.Runtime/ScopeContext.cs`, `Ferrule.Runtime.SmokeTests/BasicOwnershipContextTests.cs`; C# `owned_basic.rs` and `tests/owned_basic.rs`. | Merged in PR638 with 142 backend tests (64 owned Basic), production/strict checks and all 216 smoke controls against the newly built 95-file runtime. The fresh matched root-pin cohort passed all six C# calls; broader qualification remains separate. Common admission stayed read-only. |
+| [#633 Primary-row global failures](https://github.com/DeandreT/ferrule/issues/633) | Engine `failure.rs`, `tests/failure.rs`, `source_ownership.rs`, and `tests/source_ownership.rs`; final #622 walker/context interfaces read-only. | Merged in PR637 with 477 native tests, including 25 failure and 26 admission tests, and production/strict checks. Only one nonempty static collection segment from the actual Primary Group root is admitted, with structural positions and immutable named-root reads. Deeper/named-row, repeated-root Source[], sequence/dynamic/generated provenance and observers remain separate. |
+| [#612 Occurrence/phase qualification](https://github.com/DeandreT/ferrule/issues/612) | Matched fixtures and focused controls for the actual public implementation; coordinate any observed source fix with its file owner. | The fresh 18-return root-pin probe passed after #632; the prior disagreement and original caller negative are retained separately. Broader counts, outer pins, sort/filter/window phases, bindings and child-scope qualification remain pending. |
+| [#606 Event integration and observers](https://github.com/DeandreT/ferrule/issues/606) | Reconcile event/admission and affected host-control roles after the #631 interface is qualified; sequence shared scope/admission edits. | #622/#631 are merged. Integrate witnesses with events in a separate increment, then qualify observer behavior and activation. Public tracing/debugging remain closed; debugging/cancellation and final #436 acceptance retain their own checks. |
+| [#635 Current documentation](https://github.com/DeandreT/ferrule/issues/635) | `ROADMAP.md` and `docs/parallel-work.md` only. | Verify current source claims, links, counts and diagrams while preserving every prior snapshot and anchor. |
+
+```mermaid
+flowchart LR
+    RootFailures["#627 / PR630 Root failures<br/>merged"] --> Rows["#633 Primary-row failures<br/>merged PR637"]
+    First["#622 / PR634 First retention<br/>merged"] --> Rows
+    First --> Events["#606 Event integration<br/>pending"]
+    Witnesses["#631 Trace witnesses<br/>merged PR636"] --> Events
+    Rust["#632 Rust empty pins<br/>merged PR638"] -. "matched values/errors" .-> Phases["#612 Broader phase qualification<br/>pending"]
+    CSharp["#632 C# empty pins<br/>merged PR638"] -. "matched values/errors" .-> Phases
+    Rows -. "row qualification" .-> Acceptance["#606 Final Basic acceptance<br/>pending"]
+    Phases -. "phase qualification" .-> Acceptance
+    Events --> Acceptance
+```
+
+Solid arrows show implementation prerequisites; dotted arrows show qualification
+needed for final acceptance. The two #632 backend lanes have independent source ownership.
+Event integration follows merged #631 and #622. #633's narrow native row proof
+is complete; broader row/generated qualification remains separate. Serialize admission handoffs from #621 to #623
+to #613/#633, and arrange a fresh handoff for later #606 admission changes.
+
+- [x] Merge and qualify root-only #627 and bounded eligible First #622.
+- [x] Complete the fresh 18-return probe after #632, retaining the prior
+  disagreement and original caller negative as historical records.
+- [x] Merge and qualify #631 witnesses without opening trace/debug gates.
+- [x] Qualify and merge both independently owned #632 backend/runtime fixes,
+  with complete matched root-pin outcomes against the composed current sources.
+- [x] Merge and qualify #633's narrow primary-row subset, opening only that profile.
+- [ ] Complete broader #612 evidence and separately verified #606 event,
+  observer and final-acceptance increments.
+
+Reserve one shared compiler/artifact lane before local verification. Check disk
+headroom, reuse compatible artifacts with exact source/executable identities,
+and avoid duplicate caches or overlapping heavy builds. Run graphical checks
+on an alternate display. Keep source acceptance, local execution and physical
+workflow evidence separate; historical private results stay historical.
+
 ## Current public native ownership lanes (2026-10-13)
 
 This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against

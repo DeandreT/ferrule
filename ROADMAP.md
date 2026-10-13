@@ -2,6 +2,87 @@
 
 Updated: 2026-10-13
 
+## Current Basic ownership progress (2026-10-13)
+
+This [#635](https://github.com/DeandreT/ferrule/issues/635) snapshot is against
+merged main [`0f8b252`](https://github.com/DeandreT/ferrule/commit/0f8b252aedbb8ad99e51e7fc317919ca77f84870).
+It supersedes the earlier current-status sections below for these ownership
+lanes; all earlier snapshots retain their recorded evidence scope.
+
+Public Basic roots, scoped borrowed walks, positions, caller-owned scalar
+arguments and scalar target construction are implemented. Static root global
+failure predicates/messages are merged in
+[#627 / PR630](https://github.com/DeandreT/ferrule/pull/630), with one stored-order
+pre-target pass and lazy messages. The narrow primary-row failure increment is
+merged in [#633 / PR637](https://github.com/DeandreT/ferrule/pull/637): one nonempty
+static collection segment from the actual Primary Group root, structural
+positions and immutable named-root reads. Deeper/named-row, repeated-root
+Source[], sequence/dynamic/generated and specialized owned row provenance
+remain closed.
+
+Eligible constructed owned-source First scopes now retain one candidate while
+completing traversal, preserving cumulative work accounting and error priority
+in [#622 / PR634](https://github.com/DeandreT/ferrule/pull/634). Engine sources are
+unchanged from the qualified PR637 snapshot: all 477 library tests passed,
+including 38 Basic, 35 core, 25 failure, 26 admission and 21 trace tests, plus
+production compilation and strict checks. PR634's retention probe completed 31 commands and matched all
+29 complete outcomes. Those retained-input
+engine probes do not establish a whole-file parser or total-memory cap.
+
+Production borrowed trace-context witnesses and bounded snapshots are merged in
+[#631 / PR636](https://github.com/DeandreT/ferrule/pull/636). Snapshotting validates
+supplied metadata; producers must supply authentic root/frame references.
+Event integration, public owned tracing and debugging remain gated under
+[#606](https://github.com/DeandreT/ferrule/issues/606).
+
+### Qualified generated root pins
+
+[#632 / PR638](https://github.com/DeandreT/ferrule/pull/638) fixes
+declared nonrepeating empty-root pins in generated Rust and C#. Local source
+qualification passed 339 runtime tests, 149 Rust backend tests with eight ignored,
+and 142 C# backend tests, including 64 owned Basic tests, plus production and
+strict checks for all three packages. Six generated Rust programs passed their
+22 calls. The newly built 95-file C# runtime passed all 216 smoke controls.
+
+The fresh matched probe completed 18 successful native/Rust/C# returns across
+all, primary and named routes:
+
+| Root field pin | Native | Generated Rust | Generated C# |
+| --- | --- | --- | --- |
+| None | 3 successes | 3 successes | 3 successes |
+| Some([]) | 3 successes | 3 successes | 3 successes |
+
+The earlier probe's six generated InactiveSourceFrame refusals remain historical
+evidence of the fixed gap. The original C# RequestedName caller failure is
+retained separately from its corrected qualification and composed returns.
+This focused root-pin evidence does not qualify broader occurrence/phase,
+row-failure, observer or specialized behavior.
+
+### Current delivery checklist
+
+- [x] Merge static root global failures in #627/PR630.
+- [x] Merge bounded eligible First retention in #622/PR634, with native checks
+  and complete probe outcomes.
+- [x] Complete the fresh matched 18-return root-pin probe against the qualified
+  runtime/backend sources and retain the original caller negative separately.
+- [x] Merge and qualify production borrowed trace-context witnesses in
+  #631/PR636; event integration and observer activation remain separate #606
+  increments.
+- [x] Qualify and merge the independently owned Rust and C# empty-root-pin fixes
+  in #632/PR638, with source, runtime and matched root-pin checks.
+- [x] Merge and qualify the narrow primary-row failure increment in #633/PR637,
+  under [#613](https://github.com/DeandreT/ferrule/issues/613); broader provenance
+  and matched generated failure qualification remain pending.
+- [ ] Complete broader public occurrence/phase qualification under
+  [#612](https://github.com/DeandreT/ferrule/issues/612) and final Basic observer
+  acceptance under #606.
+
+[Current handoffs](docs/parallel-work.md#current-basic-ownership-handoffs-2026-10-13)
+record the exact source lanes and prerequisite diagram. Keep generated backend,
+row-failure and observer increments in separate PRs with their own local checks.
+Superseded PR619 and private-only #616 stay retired; their historical tests do
+not supply current public qualification.
+
 ## Current public native ownership (2026-10-13)
 
 This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against
