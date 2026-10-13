@@ -266,7 +266,9 @@ fn disconnected_and_unselected_nodes_do_not_close_legacy_execution() {
 fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
     let mut project = project();
     project.failure_rules.push(FailureRule {
-        iteration: FailureIteration::Source { collection: vec![] },
+        iteration: FailureIteration::Source {
+            collection: vec!["Rows".into()],
+        },
         selection: FailureSelection::WhenTrue { predicate: 2 },
         message: None,
     });
@@ -1076,7 +1078,9 @@ fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() 
         },
     );
     p.failure_rules.push(FailureRule {
-        iteration: FailureIteration::Source { collection: vec![] },
+        iteration: FailureIteration::Source {
+            collection: vec!["Rows".into()],
+        },
         selection: FailureSelection::WhenTrue { predicate: 3 },
         message: None,
     });
@@ -1113,5 +1117,182 @@ fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() 
             ..
         })
     ));
+    assert_eq!(loader.0.get(), 0);
+}
+
+#[test]
+fn root_failure_permission_has_distinct_visit_keys_from_rows_and_sequences() {
+    let mut p = project();
+    p.root = scope(2);
+    let root = FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::All,
+        message: Some(2),
+    };
+    p.failure_rules.push(root.clone());
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    // Stack admission sees the allowed root visit before the same leaf's row visit.
+    p.failure_rules = vec![
+        FailureRule {
+            iteration: FailureIteration::Source {
+                collection: vec!["Rows".into()],
+            },
+            selection: FailureSelection::All,
+            message: Some(2),
+        },
+        root.clone(),
+    ];
+    refuse_context(&p, None, 2, crate::OwnedCapabilityContext::FailureRule);
+    p.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    p.graph.nodes.insert(8, Node::Unconnected);
+    p.failure_rules = vec![
+        FailureRule {
+            iteration: FailureIteration::Sequence {
+                sequence: mapping::SequenceExpr::Generate {
+                    from: None,
+                    to: 7,
+                    item: 8,
+                },
+            },
+            selection: FailureSelection::All,
+            message: Some(2),
+        },
+        root,
+    ];
+    refuse_context(&p, None, 2, crate::OwnedCapabilityContext::FailureRule);
+}
+
+#[test]
+fn root_failure_positions_pins_and_potential_specialized_branches_stay_closed() {
+    let mut p = project();
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::All,
+        message: Some(2),
+    });
+    for node in [
+        Node::OwnedPosition(OwnedPosition {
+            owner: SourceOwner::Primary,
+            collection: None,
+        }),
+        Node::OwnedPosition(OwnedPosition {
+            owner: SourceOwner::Primary,
+            collection: Some(vec![]),
+        }),
+        Node::Position { collection: vec![] },
+        owned(SourceOwner::Primary, &["Rows", "Value"], Some(&["Rows"])),
+    ] {
+        p.graph.nodes.insert(2, node);
+        // A legacy position alone has no owned demand; a dead owned branch marks the new domain.
+        p.graph
+            .nodes
+            .insert(3, owned(SourceOwner::Primary, &["Value"], None));
+        p.graph.nodes.insert(
+            4,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        );
+        p.graph.nodes.insert(
+            5,
+            Node::If {
+                condition: 4,
+                then: 2,
+                else_: 3,
+            },
+        );
+        p.failure_rules[0].message = Some(5);
+        refuse_context(&p, None, 2, crate::OwnedCapabilityContext::FailureRule);
+    }
+    p.graph
+        .nodes
+        .insert(2, owned(SourceOwner::Primary, &["Value"], None));
+    p.graph.nodes.insert(6, Node::SourceDocumentPath);
+    p.graph.nodes.insert(
+        5,
+        Node::If {
+            condition: 4,
+            then: 2,
+            else_: 6,
+        },
+    );
+    refuse_context(&p, None, 6, crate::OwnedCapabilityContext::FailureRule);
+}
+
+#[test]
+fn root_failure_scalar_call_arguments_are_admitted_without_opening_function_bodies() {
+    let mut p = project();
+    let id = FunctionId::new(7);
+    p.user_functions
+        .insert(id, udf_unused_argument(ScalarType::String));
+    p.graph.nodes.insert(
+        3,
+        Node::UserFunctionCall {
+            function: id,
+            args: vec![2],
+        },
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::All,
+        message: Some(3),
+    });
+    assert!(check_source_ownership_capability(&p, None).is_ok());
+    let input = udf_group(vec![("Value", udf_text("caller.root"))]);
+    assert_eq!(
+        run(&p, &input),
+        Err(EngineError::MappingFailure {
+            rule: 1,
+            message: Some("function".into())
+        })
+    );
+    p.user_functions.get_mut(&id).unwrap().output = 2;
+    refuse(&p, None, 2, Some(id), "owned_source_field");
+}
+
+#[test]
+fn root_failure_dynamic_legacy_demand_is_rejected_before_acquisition() {
+    let mut p = project();
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+        node: 1,
+        iteration: vec![],
+    });
+    p.graph.nodes.insert(
+        3,
+        Node::SourceField {
+            path: vec![" Ref 雪 ".into(), "Value".into()],
+            frame: None,
+        },
+    );
+    p.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source { collection: vec![] },
+        selection: FailureSelection::WhenTrue { predicate: 3 },
+        message: Some(2),
+    });
+    refuse_context(&p, None, 3, crate::OwnedCapabilityContext::FailureRule);
+    struct Loader(Cell<usize>);
+    impl DynamicSourceLoader for Loader {
+        fn load(&self, _: &str, _: &str) -> Result<Arc<Instance>, String> {
+            self.0.set(self.0.get() + 1);
+            Err("unexpected acquisition".into())
+        }
+    }
+    let loader = Loader(Cell::new(0));
+    let execution =
+        ExecutionContext::new(Path::new("test.json")).with_dynamic_source_loader(&loader);
+    assert_eq!(
+        run_with_context(&p, &Instance::Group(Default::default()), &execution),
+        Err(EngineError::UnsupportedOwnedContext {
+            node: Some(3),
+            function: None,
+            scope: None,
+            context: crate::OwnedCapabilityContext::FailureRule,
+        })
+    );
     assert_eq!(loader.0.get(), 0);
 }

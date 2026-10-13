@@ -98,18 +98,26 @@ fn admit_roots<'a>(
                 admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule)
             }
         }
-        admission.push(
-            None,
-            OwnedCapabilityContext::FailureRule,
-            false,
-            rule.selection.predicate(),
-        );
-        admission.push(
-            None,
-            OwnedCapabilityContext::FailureRule,
-            false,
-            rule.message,
-        );
+        let root_owned = matches!(&rule.iteration,
+            FailureIteration::Source { collection } if collection.is_empty())
+            && failure_rule_uses_owned(&project.graph, rule);
+        if root_owned {
+            admission.push_root_failure(rule.selection.predicate());
+            admission.push_root_failure(rule.message);
+        } else {
+            admission.push(
+                None,
+                OwnedCapabilityContext::FailureRule,
+                false,
+                rule.selection.predicate(),
+            );
+            admission.push(
+                None,
+                OwnedCapabilityContext::FailureRule,
+                false,
+                rule.message,
+            );
+        }
     }
     admission.graph()?;
     Ok(admission.summary)
@@ -117,8 +125,20 @@ fn admit_roots<'a>(
 
 struct Admission<'a> {
     project: &'a Project,
-    pending: Vec<(Option<FunctionId>, OwnedCapabilityContext, bool, NodeId)>,
-    visited: BTreeSet<(Option<FunctionId>, OwnedCapabilityContext, bool, NodeId)>,
+    pending: Vec<(
+        Option<FunctionId>,
+        OwnedCapabilityContext,
+        bool,
+        bool,
+        NodeId,
+    )>,
+    visited: BTreeSet<(
+        Option<FunctionId>,
+        OwnedCapabilityContext,
+        bool,
+        bool,
+        NodeId,
+    )>,
     functions: BTreeSet<FunctionId>,
     dynamic: BTreeSet<usize>,
     summary: AdmissionSummary,
@@ -146,7 +166,14 @@ impl<'a> Admission<'a> {
         self.pending.extend(
             nodes
                 .into_iter()
-                .map(|node| (function, context, ancestry, node)),
+                .map(|node| (function, context, ancestry, false, node)),
+        );
+    }
+    fn push_root_failure(&mut self, nodes: impl IntoIterator<Item = NodeId>) {
+        self.pending.extend(
+            nodes
+                .into_iter()
+                .map(|node| (None, OwnedCapabilityContext::FailureRule, false, true, node)),
         );
     }
     fn scopes(
@@ -417,8 +444,11 @@ impl<'a> Admission<'a> {
         }
     }
     fn graph(&mut self) -> Result<(), EngineError> {
-        while let Some((function, context, ancestry, id)) = self.pending.pop() {
-            if !self.visited.insert((function, context, ancestry, id)) {
+        while let Some((function, context, ancestry, root_failure, id)) = self.pending.pop() {
+            if !self
+                .visited
+                .insert((function, context, ancestry, root_failure, id))
+            {
                 continue;
             }
             let project = self.project;
@@ -432,6 +462,14 @@ impl<'a> Admission<'a> {
             let Some(node) = graph.and_then(|graph| graph.nodes.get(&id)) else {
                 continue;
             };
+            if root_failure && !root_failure_node_is_static(project, node) {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: Some(id),
+                    function,
+                    scope: None,
+                    context: OwnedCapabilityContext::FailureRule,
+                });
+            }
             if let Some(kind) = node.owned_source_kind() {
                 if function.is_some() {
                     return Err(EngineError::UnsupportedSourceOwnership {
@@ -440,7 +478,10 @@ impl<'a> Admission<'a> {
                         kind,
                     });
                 }
-                if context != OwnedCapabilityContext::Basic {
+                let root_field = root_failure
+                    && context == OwnedCapabilityContext::FailureRule
+                    && matches!(node, Node::OwnedSourceField(_));
+                if context != OwnedCapabilityContext::Basic && !root_field {
                     return Err(EngineError::UnsupportedOwnedContext {
                         node: Some(id),
                         function,
@@ -494,7 +535,11 @@ impl<'a> Admission<'a> {
                     context: child_context,
                 });
             }
-            self.push(function, child_context, ancestry, node.dependencies());
+            self.pending.extend(
+                node.dependencies()
+                    .into_iter()
+                    .map(|node| (function, child_context, ancestry, root_failure, node)),
+            );
             match node {
                 Node::SourceField { path, frame }
                 | Node::DynamicSourceField {
@@ -535,6 +580,51 @@ impl<'a> Admission<'a> {
             }
         }
         Ok(())
+    }
+}
+
+/// Potential main-graph demand, independent of runtime If/message selection.
+/// Function bodies remain separately isolated by admission.
+pub(crate) fn failure_rule_uses_owned(graph: &mapping::Graph, rule: &mapping::FailureRule) -> bool {
+    let mut pending: Vec<_> = rule
+        .selection
+        .predicate()
+        .into_iter()
+        .chain(rule.message)
+        .collect();
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        let Some(node) = graph.nodes.get(&id) else {
+            continue;
+        };
+        if node.owned_source_kind().is_some() {
+            return true;
+        }
+        pending.extend(node.dependencies());
+    }
+    false
+}
+
+fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
+    if node_context(node) != OwnedCapabilityContext::Basic {
+        return false;
+    }
+    match node {
+        Node::OwnedPosition(_) | Node::Position { .. } => false,
+        Node::OwnedSourceField(field) => field.frame.as_ref().is_none_or(Vec::is_empty),
+        Node::SourceField { path, frame } => {
+            frame.as_ref().is_none_or(Vec::is_empty)
+                && !path.first().is_some_and(|name| {
+                    project
+                        .extra_sources
+                        .iter()
+                        .any(|source| source.name == *name && source.dynamic_path.is_some())
+                })
+        }
+        _ => true,
     }
 }
 

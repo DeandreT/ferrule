@@ -16,7 +16,28 @@ pub(super) fn evaluate(
     for (index, rule) in rules.iter().enumerate() {
         let sequence_items;
         let extensions = match &rule.iteration {
-            FailureIteration::Source { collection } => source_extensions(context, collection),
+            FailureIteration::Source { collection } => {
+                if collection.is_empty()
+                    && crate::source_ownership::failure_rule_uses_owned(program.graph, rule)
+                    && context.last().is_some_and(|base| {
+                        matches!(
+                            base,
+                            Instance::Repeated(_)
+                                | Instance::DocumentSet(_)
+                                | Instance::MappedSequence(_)
+                        )
+                    })
+                {
+                    // Guard the actual root before legacy walk can expand even an empty base.
+                    return Err(EngineError::UnsupportedOwnedContext {
+                        node: None,
+                        function: None,
+                        scope: None,
+                        context: crate::OwnedCapabilityContext::FailureRule,
+                    });
+                }
+                source_extensions(context, collection)
+            }
             FailureIteration::Sequence { sequence } => {
                 let values = eval_sequence(program, sequence, context, &[])?;
                 sequence_items =
