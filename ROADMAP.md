@@ -32,10 +32,10 @@ The additive Rust and C# public Basic emitter families under
 focused PRs: [PR591](https://github.com/DeandreT/ferrule/pull/591) and
 [PR588](https://github.com/DeandreT/ferrule/pull/588). #519 is closed with its
 acceptance checklist complete. This
-[#608](https://github.com/DeandreT/ferrule/issues/608) documentation snapshot is
+[#615](https://github.com/DeandreT/ferrule/issues/615) documentation snapshot is
 against merged main
-[`5f180df`](https://github.com/DeandreT/ferrule/commit/5f180df2d1b0592c9d4a0fdff2ceea05ab72251c),
-tree `f857774a5da0e15b7d41c2c7c0d166e0c8c7d054`.
+[`7217639`](https://github.com/DeandreT/ferrule/commit/721763924e4051ce468d407eb22703ac574ec4aa),
+tree `6120e1531c39857fc61a33a94b500a9a8c82f695`.
 
 C#'s additive public Basic emitter family is merged in
 [PR588](https://github.com/DeandreT/ferrule/pull/588), against main
@@ -83,9 +83,27 @@ C# [PR579](https://github.com/DeandreT/ferrule/pull/579) and
   [PR609](https://github.com/DeandreT/ferrule/pull/609) after all 375 engine
   library tests, including 14 new controls, and production/default-inventory/strict
   checks passed. Production admission stays unchanged.
-- [ ] Deliver the remaining native Basic sequence under #436: #604 frames,
-  #605 private execution integration and #606 verified activation.
-- [ ] Publish this two-document #608 refresh after documentation checks.
+- [x] Merge #604's test-scoped source walks and provenance frames in
+  [PR614](https://github.com/DeandreT/ferrule/pull/614) after all 391 engine
+  library tests passed, including the 30-test helper module (14 preserved root
+  controls and 16 new frame controls), production compilation and strict lint.
+  Independent contract and formatter/predecessor reviews accepted the source.
+  Native execution integration and default admission remain unchanged.
+- [x] Publish the two-document #608 refresh in
+  [PR610](https://github.com/DeandreT/ferrule/pull/610).
+- [ ] Deliver [#611](https://github.com/DeandreT/ferrule/issues/611): private root
+  reads and exact potential source closure, with public admission closed.
+- [ ] Complete [#616](https://github.com/DeandreT/ferrule/issues/616) within #611:
+  explicitly requested, bounded success capture, off by default, with visible
+  truncation/count metadata and independent complete first-error retention.
+- [ ] Deliver [#612](https://github.com/DeandreT/ferrule/issues/612) after #611:
+  occurrence frames, scope witnesses and Structural/Selection/Output positions.
+- [ ] Deliver [#613](https://github.com/DeandreT/ferrule/issues/613) after #612:
+  ordinary failure-row provenance and complete private trace/error witnesses;
+  settle #605 from locally verified native outcomes.
+- [ ] Qualify #606's Basic activation and affected #493 controls after #605;
+  settle #436 only from actual execution evidence.
+- [ ] Publish this two-document #615 refresh after documentation checks.
 
 The Basic family admits explicit static source ownership in its qualified scalar
 and collection contexts, with an explicit source policy and selected-output
@@ -112,15 +130,19 @@ claim. Whole-product parity remains open.
 | [#595 private Rust specialized-failure envelopes / PR601](https://github.com/DeandreT/ferrule/pull/601) | Merged and closed after 28 active source tests / seven ignored, 54 new controls, existing-three / package-one and strict checks. The 30 variants classify as eight upstream refusals, 11 specialized failure refusals, ten admitted and one dynamic refusal; the JoinAggregate witness retains its upstream root-context refusal. No new operator admission. |
 | [#589 private failure alignment tracker](https://github.com/DeandreT/ferrule/issues/589) | Closed after PR601 and PR607 with independent review. Private ValueMap behavior and complete refusal envelopes match; target behavior and shared/public failure gates stay unchanged. |
 | [#582 public target ValueMap / PR599](https://github.com/DeandreT/ferrule/pull/599) | Merged and closed. Target input edges, ordered/tagged/null/default results and lazy/error behavior are locally qualified in both public backends. Public failure maps remain outside this target scope. |
-| [#436 native Basic interpreter core](https://github.com/DeandreT/ferrule/issues/436) | Open after completed #435 and the merged #603 / PR609 test-scoped foundation. Deliver #604 → #605 → #606 as separate dependent increments. Native Basic admission remains closed until integrated controls and activation qualify. |
+| [#436 native Basic interpreter core](https://github.com/DeandreT/ferrule/issues/436) | Open after completed #435 and merged #603 / PR609 and #604 / PR614 test-scoped foundations. Deliver #611 → #612 → #613 under #605, then #606 activation, as separate dependent increments. Native Basic admission remains closed until integrated controls and activation qualify. |
 | [#603 borrowed exact-owner roots / PR609](https://github.com/DeandreT/ferrule/pull/609) | Merged and closed after all 375 engine library tests, including 14 new root/scalar controls, and production/default-inventory/strict checks passed. The test-scoped helper borrows declared primary/named roots and exact literal names without cloning input trees or reconstructing owners from the legacy wrapper. Interpreter execution and production admission remain unchanged. |
-| [#604 source walks and provenance frames](https://github.com/DeandreT/ferrule/issues/604) | Queued after #603. Extend the same helper/test scope with exact-owner walks, nested ancestry, pinned reads and explicit structural/filtered/sorted/window positions. Keep default admission and specialized provenance closed. |
-| [#605 private execution integration](https://github.com/DeandreT/ferrule/issues/605) | Queued after #603/#604. Reconcile the current Program/resolve/eval_expr/eval_scope/required_sources/trace files and ownership before integrating the borrowed context through a private seam. Preserve acquisition, laziness, global failure order and existing admission refusals. |
+| [#604 source walks and provenance frames / PR614](https://github.com/DeandreT/ferrule/pull/614) | Merged after all 391 engine library tests, the 30-test helper module (14 preserved / 16 new), production compilation, strict lint and independent source reviews passed. Borrowed exact-owner walks, nested ancestry, pinned reads and Structural/Selection/Output positions are qualified within the private helper. Default admission and specialized provenance remain closed. |
+| [#605 private execution integration](https://github.com/DeandreT/ferrule/issues/605) | Open after merged #603/#604. Serialize #611 → #612 → #613 over the overlapping evaluator and private seam/test files; read-only contract review and oracle preparation can run in parallel. Preserve acquisition, laziness, global failure order and public admission refusals in each buildable increment. |
+| [#611 private root execution](https://github.com/DeandreT/ferrule/issues/611) | Implementation in progress; qualification and merge pending. Own `lib.rs`, `eval_expr.rs`, `required_sources.rs` and the new private `owned_source_execution` module/tests. Execute nonrepeating root fields with exact potential named-source closure and root-only global failure order; selectors, positions, repetitions, functions and specialized contexts stay refused. #616's bounded, opt-in success capture and complete first-error retention remain pending in the same scope. |
+| [#612 private occurrence execution](https://github.com/DeandreT/ferrule/issues/612) | Pending after #611. Own `eval_expr.rs`, `eval_scope.rs`, `resolve.rs`, `required_sources.rs` and private seam/tests. Propagate exact-owner ancestry and the three position phases through actual scopes, with a private scope witness and explicit specialized refusals; row-dependent failures wait for #613. |
+| [#613 private failure and trace integration](https://github.com/DeandreT/ferrule/issues/613) | Pending after #612. Own `failure.rs`, `eval_expr.rs`, `eval_scope.rs` and private seam/tests; reconcile additional files before editing. Qualify one stored-order pre-target failure pass, exact row provenance and complete private witnesses/outcomes, then settle #605. Public admission stays closed. |
 | [#606 verified native Basic activation](https://github.com/DeandreT/ferrule/issues/606) | Queued after #605. Compare complete native/generated Basic outcomes before changing admission and updating affected #493 host controls. Grouping, joins, documents, dynamic loads, generated/function provenance, #440 controls and broader parity retain separate gates. |
 
 [Current file ownership and dependency graph](docs/parallel-work.md#basic-public-family-milestone-and-next-lanes)
-show which work can proceed independently and which edits need a same-language
-handoff. These lanes do not close the broader format, operator, authoring,
+show the exact engine paths and serialized implementation handoffs. Read-only
+review and oracle preparation can proceed in parallel; overlapping evaluator
+files need the previous increment merged before edits begin. These lanes do not close the broader format, operator, authoring,
 platform, and release work elsewhere in this roadmap.
 
 The Basic snapshot at `2d52eba` and the contributor/history sections below retain
