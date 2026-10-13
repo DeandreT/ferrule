@@ -11,6 +11,13 @@ use codegen::{
 use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
+    render_basic_owned_source_with_nodes(program, false)
+}
+
+fn render_basic_owned_source_with_nodes(
+    program: &Program,
+    owned_leaf_nodes: bool,
+) -> Result<String, EmitError> {
     validate_program(program)?;
     check_inventory(program)?;
     let mut scopes = Vec::new();
@@ -63,6 +70,7 @@ pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, Emi
                     filter_map: false,
                     owner_function: None,
                     basic: true,
+                    owned_leaf_nodes,
                 },
             )?);
         }
@@ -488,7 +496,18 @@ fn render_entries(program: &Program) -> String {
 // The neutral plan supplies complete generation-time metadata; the runtime
 // factory alone owns supplied-input normalization and admitted storage.
 pub(crate) fn render_checked_basic_owned_source(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_basic_owned_source(program)?;
+    render_checked_basic_owned_source_with_nodes(program, false)
+}
+
+fn render_checked_basic_owned_source_with_nodes(
+    program: &Program,
+    owned_leaf_nodes: bool,
+) -> Result<String, EmitError> {
+    let mut source = if owned_leaf_nodes {
+        render_basic_owned_source_with_nodes(program, true)?
+    } else {
+        render_basic_owned_source(program)?
+    };
     let plan = codegen::legacy_named_input_admission_plan(program)?;
     source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
     source.push_str(&render_checked_catalogue(
@@ -626,7 +645,16 @@ fn execute_private_checked_basic_context(
 // implementation. Prepared entry points, catalogues and observation hooks stay
 // nonpublic; the original private renderer remains byte-for-byte unchanged.
 pub(crate) fn render_public_basic_owned_source(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_source(program)?;
+    let mut source = if program.expressions.iter().any(|node| {
+        matches!(
+            &node.expression,
+            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+        )
+    }) {
+        render_checked_basic_owned_source_with_nodes(program, true)?
+    } else {
+        render_checked_basic_owned_source(program)?
+    };
     source = source.replacen(
         r#"// Private Basic prototype. Public emission remains closed.
 #[allow(unused_imports)]

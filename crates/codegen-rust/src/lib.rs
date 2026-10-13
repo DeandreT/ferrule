@@ -1323,6 +1323,7 @@ struct ExpressionEmission {
     filter_map: bool,
     owner_function: Option<u64>,
     basic: bool,
+    owned_leaf_nodes: bool,
 }
 impl ExpressionEmission {
     fn is_basic(self) -> bool {
@@ -1349,6 +1350,7 @@ fn render_expression(
             filter_map,
             owner_function,
             basic: false,
+            owned_leaf_nodes: false,
         },
     )
 }
@@ -1383,7 +1385,14 @@ fn render_expression_in_context(
     let call_expression =
         |node: NodeId, context: &str| format!("{prefix}{node}({context}{parameter_argument})");
     let body = if let Some(body) = owned_body {
-        body
+        if emission.owned_leaf_nodes {
+            // Keep the leaf's early `?` inside the Result being annotated.
+            format!(
+                "(|| -> Result<Value, RuntimeError> {{ {body} }})().map_err(|error| error.with_owned_source_node({id}))"
+            )
+        } else {
+            body
+        }
     } else {
         match expression {
             Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {

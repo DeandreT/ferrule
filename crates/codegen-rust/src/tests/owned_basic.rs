@@ -194,6 +194,7 @@ fn private_expression_seam_keeps_legacy_golden_bytes_and_public_errors() {
         &functions,
         ExpressionEmission {
             basic: false,
+            owned_leaf_nodes: false,
             filter_map: false,
             owner_function: None,
         },
@@ -4994,7 +4995,7 @@ const PUBLIC582_LAZY_ERRORS: &str = r#"
  let parameters=RuntimeParameters::new();let execution=ExecutionContext::new(std::path::Path::new("mapping.test")).with_parameters(&parameters);
  let e=selected("VM582-L07",&p,&[],Some((&execution,&parameters)),policy,TargetSelection::Named("Missing"));
  assert_eq!(a,Ok(SelectedTargetOutput::Primary(fields([("Value",text("primary"))]))));
- assert_eq!(b,Err(RuntimeError::OwnedSource(OwnedSourceError::SourceUnavailable{name:"Ref".into()})));
+ assert_eq!(b,Err(RuntimeError::OwnedSourceAtNode{node:4,source:OwnedSourceError::SourceUnavailable{name:"Ref".into()}}));
  assert_eq!(c,Ok(SelectedTargetOutput::Primary(fields([("Value",text("named"))]))));
  assert_eq!(d,Err(RuntimeError::MappingException{node:71,message:Some("map input".into())}));
  assert_eq!(e,Err(RuntimeError::MissingRuntimeParameter{node:81,name:"value".into()}));
@@ -6157,14 +6158,14 @@ const ROOT_PIN632_EMPTY: &str = r#"
  let p=repeated([source()]);let r=repeated([reference()]);let supplied=[BasicNamedSourceInput{name:"Ref",instance:&r}];
  let a=selected("R632-G11",&p,&supplied,policy,TargetSelection::Primary);
  let b=selected("R632-G12",&p,&supplied,policy,TargetSelection::Named("Named"));
- assert_eq!(a,Err(OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Primary,collection:Some(Vec::new())}.into()));
- assert_eq!(b,Err(OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Named("Ref".into()),collection:Some(Vec::new())}.into()));
+ assert_eq!(a,Err(RuntimeError::OwnedSourceAtNode{node:1,source:OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Primary,collection:Some(Vec::new())}}));
+ assert_eq!(b,Err(RuntimeError::OwnedSourceAtNode{node:2,source:OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Named("Ref".into()),collection:Some(Vec::new())}}));
  let p=Instance::DocumentSet(Vec::new());let doc=selected("R632-G19",&p,&[],policy,TargetSelection::Primary);
- assert_eq!(doc,Err(OwnedSourceError::UnsupportedSourceKind{owner:codegen_runtime::OwnedSourceIdentity::Primary,path:vec!["Value".into()],found:codegen_runtime::InstanceKind::DocumentSet}.into()));
+ assert_eq!(doc,Err(RuntimeError::OwnedSourceAtNode{node:1,source:OwnedSourceError::UnsupportedSourceKind{owner:codegen_runtime::OwnedSourceIdentity::Primary,path:vec!["Value".into()],found:codegen_runtime::InstanceKind::DocumentSet}}));
  let p=Instance::MappedSequence(Vec::new());let mapped=selected("R632-G20",&p,&[],policy,TargetSelection::Primary);
- assert_eq!(mapped,Err(OwnedSourceError::UnsupportedSourceKind{owner:codegen_runtime::OwnedSourceIdentity::Primary,path:vec!["Value".into()],found:codegen_runtime::InstanceKind::MappedSequence}.into()));
+ assert_eq!(mapped,Err(RuntimeError::OwnedSourceAtNode{node:1,source:OwnedSourceError::UnsupportedSourceKind{owner:codegen_runtime::OwnedSourceIdentity::Primary,path:vec!["Value".into()],found:codegen_runtime::InstanceKind::MappedSequence}}));
  let p=source();let missing=selected("R632-G21",&p,&[],policy,TargetSelection::Named("Named"));
- assert_eq!(missing,Err(OwnedSourceError::SourceUnavailable{name:"Ref".into()}.into()));
+ assert_eq!(missing,Err(RuntimeError::OwnedSourceAtNode{node:2,source:OwnedSourceError::SourceUnavailable{name:"Ref".into()}}));
  let mut zero=policy;zero.max_roots=0;let unknown=selected("R632-G22",&p,&[],zero,TargetSelection::Named("unknown"));
  assert_eq!(unknown,Err(RuntimeError::UnknownTarget{name:"unknown".into()}));
 }
@@ -6174,7 +6175,7 @@ const ROOT_PIN632_PRIMARY_DECLARED_REPEATING: &str = r#"
  let p=source();let r=reference();let supplied=[BasicNamedSourceInput{name:"Ref",instance:&r}];let policy=limits();
  let a=selected("R632-G07",&p,&supplied,policy,TargetSelection::Primary);
  let b=selected("R632-G08",&p,&supplied,policy,TargetSelection::Named("Named"));
- assert_eq!(a,Err(OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Primary,collection:Some(Vec::new())}.into()));
+ assert_eq!(a,Err(RuntimeError::OwnedSourceAtNode{node:1,source:OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Primary,collection:Some(Vec::new())}}));
  assert_eq!(b,Ok(SelectedTargetOutput::Named(NamedOutput{name:"Named".into(),instance:fields([("Value",text("N.root"))])})));
 }
 "#;
@@ -6184,7 +6185,7 @@ const ROOT_PIN632_NAMED_DECLARED_REPEATING: &str = r#"
  let a=selected("R632-G09",&p,&supplied,policy,TargetSelection::Primary);
  let b=selected("R632-G10",&p,&supplied,policy,TargetSelection::Named("Named"));
  assert_eq!(a,Ok(SelectedTargetOutput::Primary(fields([("Value",text("P.root"))]))));
- assert_eq!(b,Err(OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Named("Ref".into()),collection:Some(Vec::new())}.into()));
+ assert_eq!(b,Err(RuntimeError::OwnedSourceAtNode{node:2,source:OwnedSourceError::InactiveSourceFrame{owner:codegen_runtime::OwnedSourceIdentity::Named("Ref".into()),collection:Some(Vec::new())}}));
 }
 "#;
 const ROOT_PIN632_REPEATED: &str = r#"
@@ -6217,3 +6218,117 @@ const ROOT_PIN632_ROWS: &str = r#"
  assert_eq!(c,Ok(SelectedTargetOutput::Named(NamedOutput{name:"Named".into(),instance:named})));
 }
 "#;
+
+#[test]
+fn public_basic_owned_leaf_nodes_cover_exact_pins_and_unsigned_boundaries() {
+    for owner in [SourceOwner::Primary, named("Ref")] {
+        for pin in [None, Some(&[][..]), Some(&["Rows"][..])] {
+            let parts = if pin == Some(&["Rows"][..]) {
+                &["Rows", "Value"][..]
+            } else {
+                &["Value"][..]
+            };
+            for (id, expression, ty) in [
+                (0, owned(owner.clone(), parts, pin), ScalarType::String),
+                (u32::MAX, position(owner.clone(), pin), ScalarType::Int),
+            ] {
+                let program = basic(vec![node(id, expression)], &[("Value", id, ty)]);
+                let files = public519_result(
+                    "N650-pins",
+                    &program,
+                    &public519_options("public_owned_leaf_nodes"),
+                )
+                .expect("complete program and artifacts retained");
+                let public = public582_map_body(public519_source(&files), id);
+                eprintln!(
+                    "RAW N650-pins owner={owner:?} pin={pin:?} id={id} complete_leaf={public:?}"
+                );
+                assert!(public.contains("(|| -> Result<Value, RuntimeError> {"));
+                assert!(public.contains(&format!(".with_owned_source_node({id})")));
+                assert_eq!(public.matches(".with_owned_source_node(").count(), 1);
+                if ty == ScalarType::Int {
+                    let early = public.find("context.owned_position(").unwrap();
+                    let annotation = public.find(".map_err(|error|").unwrap();
+                    assert!(
+                        early < annotation
+                            && public[early..annotation]
+                                .contains("?; Ok(Value::Int(position as i64))")
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn public_basic_owned_nodes_leave_enclosing_calls_maps_and_lazy_branches_exact() {
+    let mut program = public582_lazy_program();
+    program.expressions.push(node(
+        7,
+        Expression::Call {
+            function: codegen::ScalarFunction::Upper,
+            args: vec![6],
+        },
+    ));
+    program.root.bindings[0].expression = 7;
+    let private = super::super::owned_basic::render_checked_basic_owned_source(&program);
+    eprintln!("RAW N650-nested complete_private={private:#?}");
+    let files = public519_result(
+        "N650-nested",
+        &program,
+        &public519_options("public_owned_nested_nodes"),
+    )
+    .expect("complete public artifacts retained");
+    let private = private.expect("complete private rendering retained");
+    let public = public519_source(&files);
+    for id in [1, 3, 5, 6, 7, 70, 71, 72, 81, 82] {
+        assert_eq!(
+            public582_map_body(public, id),
+            public582_map_body(&private, id),
+            "enclosing/nonowned expression {id}"
+        );
+    }
+    for id in [2, 4] {
+        assert!(public582_map_body(public, id).contains(&format!(".with_owned_source_node({id})")));
+        assert!(!public582_map_body(&private, id).contains("with_owned_source_node"));
+    }
+    assert_eq!(public.matches(".with_owned_source_node(").count(), 2);
+    assert!(public582_map_body(public, 6).contains("expression_3(context)"));
+    assert!(public582_map_body(public, 6).contains("expression_5(context)"));
+}
+
+#[test]
+fn public_basic_owned_nodes_preserve_private_leaf_bytes_and_unannotated_setup_walks() {
+    let program = root_pin632_rows_program();
+    let prepared = super::super::owned_basic::render_basic_owned_source(&program);
+    let checked = super::super::owned_basic::render_checked_basic_owned_source(&program);
+    eprintln!("RAW N650-private complete_prepared={prepared:#?} complete_checked={checked:#?}");
+    let files = public519_result(
+        "N650-private",
+        &program,
+        &public519_options("public_owned_private_preservation"),
+    )
+    .expect("complete public artifacts retained");
+    let prepared = prepared.expect("complete prepared rendering retained");
+    let checked = checked.expect("complete checked rendering retained");
+    assert!(!prepared.contains("with_owned_source_node"));
+    assert!(!checked.contains("with_owned_source_node"));
+    let public = public519_source(&files);
+    for name in [
+        "scope_root",
+        "scope_extra_0",
+        "execute_private_checked_basic_context",
+    ] {
+        let marker = format!("fn {name}(");
+        let start = public.find(&marker).unwrap();
+        let end = public[start..].find("\n}\n").unwrap() + start + "\n}\n".len();
+        let private_start = checked.find(&marker).unwrap();
+        let private_end =
+            checked[private_start..].find("\n}\n").unwrap() + private_start + "\n}\n".len();
+        assert_eq!(&public[start..end], &checked[private_start..private_end]);
+        assert!(!public[start..end].contains("with_owned_source_node"));
+    }
+    let golden = "fn expression_5(context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {\n    #[cfg(test)]\n    eprintln!(\"RAW PRIVATE_BASIC_EXPRESSION module={} node=5\", module_path!());\n    let _ = context;\n    { let position = context.owned_position(SourceOwnerRef::Primary, None)?; Ok(Value::Int(position as i64)) }\n}\n\n";
+    assert_eq!(public582_map_body(&prepared, 5), golden);
+    assert_eq!(public582_map_body(&checked, 5), golden);
+}

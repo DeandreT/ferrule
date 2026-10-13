@@ -3035,3 +3035,402 @@ fn basic_root_pin632_existing_budget_refusals_precede_owner_and_root_policy() {
         .into())
     );
 }
+
+fn owned_node650_causes() -> Vec<OwnedSourceError> {
+    vec![
+        OwnedSourceError::InvalidNamedOwner,
+        OwnedSourceError::UnknownOwner { name: "Ref".into() },
+        OwnedSourceError::AmbiguousOwner {
+            name: "Ref".into(),
+            declarations: vec![1, 3],
+        },
+        OwnedSourceError::SourceUnavailable { name: "Ref".into() },
+        OwnedSourceError::InactiveSourceFrame {
+            owner: OwnedSourceIdentity::Primary,
+            collection: None,
+        },
+        OwnedSourceError::InactiveSourceFrame {
+            owner: OwnedSourceIdentity::Named("Ref".into()),
+            collection: Some(vec![]),
+        },
+        OwnedSourceError::InactiveSourceFrame {
+            owner: OwnedSourceIdentity::Primary,
+            collection: Some(path(&["Rows"])),
+        },
+        OwnedSourceError::IncompatibleFramePath {
+            owner: OwnedSourceIdentity::Primary,
+            frame: path(&["Rows"]),
+            path: path(&["Value"]),
+        },
+        OwnedSourceError::UniteratedRepetition {
+            owner: OwnedSourceIdentity::Primary,
+            path: path(&["Rows", "Value"]),
+            segment: 1,
+        },
+        OwnedSourceError::UnsupportedSourceKind {
+            owner: OwnedSourceIdentity::Named("Ref".into()),
+            path: path(&["Rows"]),
+            found: InstanceKind::DocumentSet,
+        },
+        OwnedSourceError::Traversal {
+            owner: OwnedSourceIdentity::Primary,
+            source: SourcePathError::ExpectedScalar {
+                path: path(&["Rows"]),
+                found: InstanceKind::Group,
+            },
+        },
+        OwnedSourceError::InvalidPosition { index: 0 },
+        OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::MetadataBytes,
+            used: 2,
+            requested: 3,
+            max: 4,
+        },
+        OwnedSourceError::MetadataArithmeticOverflow {
+            kind: OwnedSourceLimitKind::MetadataSlots,
+        },
+    ]
+}
+
+fn owned_node650_bridge_causes() -> Vec<BasicSourceBridgeError> {
+    vec![
+        BasicSourceBridgeError::RegistryMismatch,
+        BasicSourceBridgeError::InvalidDeclarationWitness { index: 2, count: 1 },
+        BasicSourceBridgeError::UnsupportedBasicContext {
+            kind: InstanceKind::MappedSequence,
+        },
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "origin paths",
+            used: 2,
+            requested: 3,
+            maximum: 4,
+        },
+        BasicSourceBridgeError::PairedMetadataArithmeticOverflow {
+            component: "MetadataSlots",
+        },
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 2 },
+        BasicSourceBridgeError::DuplicatePhaseCandidate {
+            input_ordinal: 3,
+            candidate_ordinal: 1,
+        },
+    ]
+}
+
+#[test]
+fn basic_owned_node650_owned_causes_and_bare_conversions_remain_exact() {
+    for node in [0, u32::MAX] {
+        for (source, expected) in owned_node650_causes()
+            .into_iter()
+            .zip(owned_node650_causes())
+        {
+            let bare = RuntimeError::from(source);
+            assert!(matches!(&bare, RuntimeError::OwnedSource(_)));
+            assert_eq!(
+                bare.source().unwrap().downcast_ref::<OwnedSourceError>(),
+                Some(&expected)
+            );
+            assert_eq!(bare.to_string(), expected.to_string());
+            let display = format!("node {node}: {expected}");
+            let actual = bare.with_owned_source_node(node);
+            assert_eq!(
+                actual,
+                RuntimeError::OwnedSourceAtNode {
+                    node,
+                    source: expected
+                }
+            );
+            assert_eq!(actual.to_string(), display);
+            let embedded = match &actual {
+                RuntimeError::OwnedSourceAtNode { source, .. } => source,
+                other => panic!("complete owned annotation differs: {other:?}"),
+            };
+            let cause = actual.source().unwrap();
+            assert!(cause.downcast_ref::<RuntimeError>().is_none());
+            assert!(std::ptr::eq(
+                cause.downcast_ref::<OwnedSourceError>().unwrap(),
+                embedded
+            ));
+        }
+    }
+}
+
+#[test]
+fn basic_owned_node650_bridge_causes_and_bare_conversions_remain_exact() {
+    for node in [0, u32::MAX] {
+        for (source, expected) in owned_node650_bridge_causes()
+            .into_iter()
+            .zip(owned_node650_bridge_causes())
+        {
+            let bare = RuntimeError::from(source);
+            assert!(matches!(&bare, RuntimeError::BasicSourceBridge(_)));
+            assert_eq!(
+                bare.source()
+                    .unwrap()
+                    .downcast_ref::<BasicSourceBridgeError>(),
+                Some(&expected)
+            );
+            assert_eq!(bare.to_string(), expected.to_string());
+            let display = format!("node {node}: {expected}");
+            let actual = bare.with_owned_source_node(node);
+            assert_eq!(
+                actual,
+                RuntimeError::BasicSourceBridgeAtNode {
+                    node,
+                    source: expected
+                }
+            );
+            assert_eq!(actual.to_string(), display);
+            let embedded = match &actual {
+                RuntimeError::BasicSourceBridgeAtNode { source, .. } => source,
+                other => panic!("complete bridge annotation differs: {other:?}"),
+            };
+            let cause = actual.source().unwrap();
+            assert!(cause.downcast_ref::<RuntimeError>().is_none());
+            assert!(std::ptr::eq(
+                cause.downcast_ref::<BasicSourceBridgeError>().unwrap(),
+                embedded
+            ));
+            assert!(cause.source().is_none());
+        }
+    }
+}
+
+#[test]
+fn basic_owned_node650_annotation_moves_owned_payloads_and_traversal_chain() {
+    for node in [0, u32::MAX] {
+        let source = OwnedSourceError::Traversal {
+            owner: OwnedSourceIdentity::Named("Ref".into()),
+            source: SourcePathError::CannotTraverse {
+                path: path(&["Rows", "Value"]),
+                segment: 1,
+                found: InstanceKind::Scalar,
+            },
+        };
+        let (owner_buffer, path_buffer, first_buffer, second_buffer) = match &source {
+            OwnedSourceError::Traversal {
+                owner: OwnedSourceIdentity::Named(name),
+                source: SourcePathError::CannotTraverse { path, .. },
+            } => (
+                name.as_ptr(),
+                path.as_ptr(),
+                path[0].as_ptr(),
+                path[1].as_ptr(),
+            ),
+            other => panic!("complete original cause differs: {other:?}"),
+        };
+        let actual = RuntimeError::from(source).with_owned_source_node(node);
+        assert_eq!(
+            actual,
+            RuntimeError::OwnedSourceAtNode {
+                node,
+                source: OwnedSourceError::Traversal {
+                    owner: OwnedSourceIdentity::Named("Ref".into()),
+                    source: SourcePathError::CannotTraverse {
+                        path: path(&["Rows", "Value"]),
+                        segment: 1,
+                        found: InstanceKind::Scalar
+                    },
+                },
+            }
+        );
+        let embedded = match &actual {
+            RuntimeError::OwnedSourceAtNode { source, .. } => source,
+            other => panic!("complete moved cause differs: {other:?}"),
+        };
+        let owned = actual
+            .source()
+            .unwrap()
+            .downcast_ref::<OwnedSourceError>()
+            .unwrap();
+        assert!(std::ptr::eq(owned, embedded));
+        let nested = owned
+            .source()
+            .unwrap()
+            .downcast_ref::<SourcePathError>()
+            .unwrap();
+        match embedded {
+            OwnedSourceError::Traversal {
+                owner: OwnedSourceIdentity::Named(name),
+                source,
+            } => {
+                assert_eq!(name.as_ptr(), owner_buffer);
+                assert!(std::ptr::eq(nested, source));
+                match source {
+                    SourcePathError::CannotTraverse { path, .. } => {
+                        assert_eq!(path.as_ptr(), path_buffer);
+                        assert_eq!(path[0].as_ptr(), first_buffer);
+                        assert_eq!(path[1].as_ptr(), second_buffer);
+                    }
+                    other => panic!("complete typed traversal changed: {other:?}"),
+                }
+            }
+            other => panic!("complete owned payload changed: {other:?}"),
+        }
+        assert!(nested.source().is_none());
+    }
+}
+
+#[test]
+fn basic_owned_node650_first_owned_and_bridge_nodes_are_preserved() {
+    for (first, outer) in [(0, u32::MAX), (u32::MAX, 0)] {
+        let actual =
+            RuntimeError::OwnedSource(OwnedSourceError::UnknownOwner { name: "Ref".into() })
+                .with_owned_source_node(first)
+                .with_owned_source_node(outer);
+        assert_eq!(
+            actual,
+            RuntimeError::OwnedSourceAtNode {
+                node: first,
+                source: OwnedSourceError::UnknownOwner { name: "Ref".into() }
+            }
+        );
+        let bridge =
+            RuntimeError::BasicSourceBridge(BasicSourceBridgeError::InvalidDeclarationWitness {
+                index: 2,
+                count: 1,
+            })
+            .with_owned_source_node(first)
+            .with_owned_source_node(outer);
+        assert_eq!(
+            bridge,
+            RuntimeError::BasicSourceBridgeAtNode {
+                node: first,
+                source: BasicSourceBridgeError::InvalidDeclarationWitness { index: 2, count: 1 }
+            }
+        );
+    }
+}
+
+#[test]
+fn basic_owned_node650_nonowned_errors_and_source_path_stay_unchanged() {
+    for node in [0, u32::MAX] {
+        let source = SourcePathError::MissingFrame {
+            frame: path(&["Rows"]),
+            path: path(&["Rows", "Value"]),
+        };
+        let (frame_buffer, path_buffer) = match &source {
+            SourcePathError::MissingFrame { frame, path } => (frame.as_ptr(), path.as_ptr()),
+            other => panic!("complete source path control differs: {other:?}"),
+        };
+        let actual = RuntimeError::from(source).with_owned_source_node(node);
+        assert_eq!(
+            actual,
+            RuntimeError::SourcePath(SourcePathError::MissingFrame {
+                frame: path(&["Rows"]),
+                path: path(&["Rows", "Value"])
+            })
+        );
+        let embedded = match &actual {
+            RuntimeError::SourcePath(source) => source,
+            other => panic!("nonowned path became annotated: {other:?}"),
+        };
+        assert!(std::ptr::eq(
+            actual
+                .source()
+                .unwrap()
+                .downcast_ref::<SourcePathError>()
+                .unwrap(),
+            embedded
+        ));
+        match embedded {
+            SourcePathError::MissingFrame { frame, path } => {
+                assert_eq!(frame.as_ptr(), frame_buffer);
+                assert_eq!(path.as_ptr(), path_buffer);
+            }
+            other => panic!("complete nonowned path changed: {other:?}"),
+        }
+        assert_eq!(
+            RuntimeError::MappingException {
+                node: 17,
+                message: Some("raised".into())
+            }
+            .with_owned_source_node(node),
+            RuntimeError::MappingException {
+                node: 17,
+                message: Some("raised".into())
+            }
+        );
+        assert_eq!(
+            RuntimeError::MappingFailure {
+                rule: 3,
+                message: Some("earlier failure".into())
+            }
+            .with_owned_source_node(node),
+            RuntimeError::MappingFailure {
+                rule: 3,
+                message: Some("earlier failure".into())
+            }
+        );
+        assert_eq!(
+            RuntimeError::UnknownTarget {
+                name: "missing".into()
+            }
+            .with_owned_source_node(node),
+            RuntimeError::UnknownTarget {
+                name: "missing".into()
+            }
+        );
+    }
+}
+
+#[test]
+fn basic_owned_node650_boxed_boundaries_are_not_annotated_or_rewrapped() {
+    let source = Box::new(RuntimeError::OwnedSource(OwnedSourceError::UnknownOwner {
+        name: "Ref".into(),
+    }));
+    let box_address = source.as_ref() as *const RuntimeError;
+    let actual = RuntimeError::FilterMapRuntime {
+        boundary: crate::FilterMapBoundary {
+            item: 1,
+            phase: crate::FilterMapPhase::Predicate,
+            capture_index: None,
+            source_position: Some(7),
+            function: Some(9),
+            node: Some(31),
+            kind: crate::FilterMapBoundaryKind::NodeEvaluation,
+        },
+        source,
+    }
+    .with_owned_source_node(u32::MAX);
+    assert_eq!(
+        actual,
+        RuntimeError::FilterMapRuntime {
+            boundary: crate::FilterMapBoundary {
+                item: 1,
+                phase: crate::FilterMapPhase::Predicate,
+                capture_index: None,
+                source_position: Some(7),
+                function: Some(9),
+                node: Some(31),
+                kind: crate::FilterMapBoundaryKind::NodeEvaluation
+            },
+            source: Box::new(RuntimeError::OwnedSource(OwnedSourceError::UnknownOwner {
+                name: "Ref".into()
+            })),
+        }
+    );
+    let embedded = match &actual {
+        RuntimeError::FilterMapRuntime { source, .. } => source.as_ref(),
+        other => panic!("complete existing boxed boundary changed: {other:?}"),
+    };
+    assert!(std::ptr::eq(embedded, box_address));
+    assert!(std::ptr::eq(
+        actual
+            .source()
+            .unwrap()
+            .downcast_ref::<RuntimeError>()
+            .unwrap(),
+        embedded
+    ));
+    assert_eq!(
+        embedded,
+        &RuntimeError::OwnedSource(OwnedSourceError::UnknownOwner { name: "Ref".into() })
+    );
+    assert!(
+        embedded
+            .source()
+            .unwrap()
+            .downcast_ref::<OwnedSourceError>()
+            .is_some()
+    );
+}
