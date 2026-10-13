@@ -756,7 +756,7 @@ fn root_scalar_reports_complete_invalid_instance_shapes() {
 }
 
 #[test]
-fn test_scoped_owner_context_keeps_production_refusals_and_legacy_outputs() {
+fn test_scoped_owner_context_keeps_basic_admission_and_legacy_outputs() {
     let mut project = project(record_schema(), &["Ref"]);
     project.graph.nodes.insert(
         7,
@@ -766,23 +766,37 @@ fn test_scoped_owner_context_keeps_production_refusals_and_legacy_outputs() {
         target_field: "Value".into(),
         node: 7,
     });
-    let expected = crate::EngineError::UnsupportedSourceOwnership {
-        node: 7,
-        function: None,
-        kind: "owned_source_field",
-    };
     assert_eq!(
         crate::check_source_ownership_capability(&project, None),
-        Err(expected)
+        Ok(())
     );
     let input = group(vec![("Value", text("legacy primary"))]);
+    let request = field(named("Ref"), &["Value"], None);
+    let context = OwnedSourceContext::new(&project, Some(&input), &[]);
+    assert_eq!(
+        context.scalar(&request),
+        Err(RootReadError::MissingEndpoint {
+            declaration: extra(&project, 0, None).declaration,
+            request: &request
+        })
+    );
     assert_eq!(
         crate::run(&project, &input),
-        Err(crate::EngineError::UnsupportedSourceOwnership {
-            node: 7,
-            function: None,
-            kind: "owned_source_field"
+        Err(crate::EngineError::OwnedSourceAccess {
+            node: Some(7),
+            scope: None,
+            source: crate::OwnedSourceError::SourceUnavailable {
+                owner: named("Ref")
+            }
         })
+    );
+    assert_eq!(
+        crate::run_with_sources(
+            &project,
+            &input,
+            vec![("Ref".into(), group(vec![("Value", text("owned named"))]))]
+        ),
+        Ok(group(vec![("Value", text("owned named"))]))
     );
     project.graph.nodes.insert(
         8,

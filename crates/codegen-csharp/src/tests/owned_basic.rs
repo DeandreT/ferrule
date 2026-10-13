@@ -5260,8 +5260,8 @@ fn failure594_refuse(label: &str, program: &Program, expected: ProgramValidation
     assert_eq!(retained585_extract(actual), expected, "{label}");
 }
 
-// These two Programs are the frozen matched-host subjects for #594.
-// Building/running their hosts is a separate Root qualification step.
+// Generated consumers use these Programs to exercise predicate, message,
+// default, lazy-input, and typed-error behavior.
 fn failure594_matched_program_one() -> Program {
     let mut program = failure_program(vec![
         failure_legacy(10, &["Score"], None),
