@@ -243,6 +243,7 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
                 then,
                 else_,
             } => pending.extend([*condition, *then, *else_]),
+            Expression::ValueMap { input, .. } => pending.push(*input),
             Expression::RuntimeParameterDefault { default, .. } => pending.push(*default),
             Expression::Raise { message } => pending.extend(message.iter().copied()),
             _ => {}
@@ -307,6 +308,7 @@ fn validate_private_inventory(program: &Program) -> Result<(), EmitError> {
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }
             | Expression::RuntimeParameterDefault { .. }
+            | Expression::ValueMap { .. }
             | Expression::Raise { .. } => continue,
             Expression::SourceRootXmlTypeEquals { .. }
             | Expression::XmlSerialize { .. }
