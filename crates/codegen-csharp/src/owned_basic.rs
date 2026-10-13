@@ -572,6 +572,7 @@ fn validate_basic_failures(program: &Program) -> Result<(), EmitError> {
                         | Expression::RuntimeParameter { .. }
                         | Expression::RuntimeParameterDefault { .. }
                         | Expression::Raise { .. }
+                        | Expression::ValueMap { .. }
                 ) {
                     // Owned requests are refused by common validation first.
                     // Every other specialized failure domain stays closed with
