@@ -32,10 +32,10 @@ The additive Rust and C# public Basic emitter families under
 focused PRs: [PR591](https://github.com/DeandreT/ferrule/pull/591) and
 [PR588](https://github.com/DeandreT/ferrule/pull/588). #519 is closed with its
 acceptance checklist complete. This
-[#590](https://github.com/DeandreT/ferrule/issues/590) documentation snapshot is
+[#600](https://github.com/DeandreT/ferrule/issues/600) documentation snapshot is
 against merged main
-[`a42ef0d`](https://github.com/DeandreT/ferrule/commit/a42ef0df53a2675f3ec1fdc2a43c899f5f0695f0),
-tree `99eb55be41fca3fa4a7e22f70d5d43ff75a28296`.
+[`fecf591`](https://github.com/DeandreT/ferrule/commit/fecf5914420ae313f328887b592711be8b097b23),
+tree `f7d7c9182c0b1f74fbafb1437950d90c04b04bfc`.
 
 C#'s additive public Basic emitter family is merged in
 [PR588](https://github.com/DeandreT/ferrule/pull/588), against main
@@ -48,10 +48,14 @@ C# [PR579](https://github.com/DeandreT/ferrule/pull/579) and
 
 ### Public-family qualification and publication
 
-| Increment | Recorded qualification | Remaining publication gate |
+| Increment | Recorded local qualification | Publication state |
 | --- | --- | --- |
 | C# public Basic family / [PR588](https://github.com/DeandreT/ferrule/pull/588) | 42 Basic source controls, eight existing controls, the 120-test inventory, default production compilation, strict checks, and seven nonfriend external consumers / 24 calls | Merged. Preserve those contracts in follow-on changes. |
 | Rust public Basic family / [PR591](https://github.com/DeandreT/ferrule/pull/591) | Final current-main qualification covers the 141-test driver, exact 23-entry Basic module inventory, ordered completion of 17 source controls, four existing controls, and strict checks. Source correspondence retains accepted production compiler invocations for current IR, common codegen, and the Rust backend, public-symbol exposure, and five external modules / 14 calls, including the [#580](https://github.com/DeandreT/ferrule/issues/580) fixture correction. | Merged. Preserve those contracts in follow-on changes. |
+| Private C# target ValueMap / [PR596](https://github.com/DeandreT/ferrule/pull/596) | All 48 focused source tests, eight existing controls, the 126-test default inventory, ordinary production compilation, strict checks, and six fresh friend hosts / eight calls passed. Complete typed inputs, results, errors, nodes, frames and catalogue observations were retained. | Merged; this completes one #566 increment, not its whole tracking scope. |
+| C# retained inventory / [#585 / PR598](https://github.com/DeandreT/ferrule/pull/598) | All 53 focused source tests, eight existing controls, the 131-test default inventory, production compilation, strict checks, and the corrected retention host's three probes passed. The original verifier failure and fixture corrections remain recorded. | Merged; #585 is closed. |
+| Paired public target ValueMap / [#582 / PR599](https://github.com/DeandreT/ferrule/pull/599) | Common codegen's 403 tests, Rust's 24 active Basic tests / seven ignored, C#'s 55 Basic tests / eight existing controls, default inventories and production compilation, and strict checks passed. Two generated programs / seven matching calls per backend retained complete inputs, results and typed errors. | Merged; #582 is closed. Independent shared/public failure refusals remain intact. |
+| Private Rust specialized-failure envelopes / [#595 / PR601](https://github.com/DeandreT/ferrule/pull/601) | Default production compilation, the 153-test inventory, all 28 active Basic tests / seven ignored, 54 new labeled controls, three existing owned controls, one package-validation control and strict checks passed. The JoinAggregate witness was corrected to expect its upstream root-context refusal. | Merged; #595 is closed. This diagnostic-only increment widens no operator admission and requires no new generated runtime hosts. |
 
 - [x] Merge both languages' checked-input and ordinary source-failure bridges in
   separate focused PRs.
@@ -62,26 +66,39 @@ C# [PR579](https://github.com/DeandreT/ferrule/pull/579) and
 - [x] Merge the Rust public family in PR591 and record the actual main/tree above.
 - [x] Close #519 with its acceptance checklist complete after both public
   families are merged.
-- [ ] Publish the two-document #590 refresh with these accepted merge and
-  verification records; keep the follow-on gates below separate.
+- [x] Publish the two-document #590 refresh in
+  [PR593](https://github.com/DeandreT/ferrule/pull/593).
+- [x] Merge the private C# target ValueMap increment in PR596.
+- [x] Merge C# retention in PR598 and close #585.
+- [x] Merge paired public target ValueMap in PR599 and close #582.
+- [x] Merge private Rust refusal-envelope alignment in PR601 and close #595.
+- [ ] Qualify private C# failure ValueMap in #594, including the pending matched
+  two-program / eight-call generated checks, then settle #589 and #566 tracking
+  acceptance.
+- [ ] Publish this two-document #600 refresh after source and diagram review.
 
 The Basic family admits explicit static source ownership in its qualified scalar
 and collection contexts, with an explicit source policy and selected-output
 contract. It is additive: ordinary generated interfaces retain their existing
-ownership admission gates. Public target ValueMap admission remains closed until
-its separate [#582](https://github.com/DeandreT/ferrule/issues/582) increment is
-qualified and merged. This milestone adds no CLI selection mode or broader
-GUI/native-workflow claim. Whole-product parity remains open.
+ownership admission gates. Public target ValueMap admission is supported through
+[#582 / PR599](https://github.com/DeandreT/ferrule/pull/599), using the existing
+renderers and runtime behavior. Failure-rule ValueMap admission remains closed
+in shared/public Basic gates. Private C# ordinary-failure support is the separate
+[#594](https://github.com/DeandreT/ferrule/issues/594) increment; Rust's accepted
+private behavior is preserved. This milestone adds no CLI selection mode or
+broader GUI/native-workflow claim. Whole-product parity remains open.
 
 ### Focused follow-on lanes
 
 | Lane | Current state and acceptance boundary |
 | --- | --- |
-| [#566 private target ValueMap and inventory alignment](https://github.com/DeandreT/ferrule/issues/566) | A private target ValueMap increment is being qualified against the published API baseline. Keep #566 open until all four acceptance areas in its issue are settled; target ValueMap alone does not complete that tracker. |
-| [#585 C# retention](https://github.com/DeandreT/ferrule/issues/585) | Production retention/emission and focused tests. Coordinate its C# source handoff with #566; no verification result is recorded here. |
+| [#566 private inventory and ValueMap tracker](https://github.com/DeandreT/ferrule/issues/566) | Private C# target maps (PR596), C# retention (PR598), and Rust dynamic failure diagnostics (PR592) are merged. Keep #566 open for the remaining complete typed oracles, fixture corrections, appropriate checks and independent review; those increments do not close all four acceptance areas. |
+| [#585 C# retention / PR598](https://github.com/DeandreT/ferrule/pull/598) | Merged and closed. Dead valid ordinary nodes and unreferenced ordinary definitions are omitted; stored calls and potential dependencies remain retained, exact referenced-function refusals remain, and unconditional stored owned validation stays first. |
 | [#586 Rust dynamic failure diagnostics / PR592](https://github.com/DeandreT/ferrule/pull/592) | Merged after 22 source tests passed with six ignored, all 35 new labeled cases, four existing controls, and strict checks. The two-role change preserves exact per-rule iteration/predicate/message diagnostic origins and unrelated operator envelopes. |
-| [#589 private specialized-failure inventory](https://github.com/DeandreT/ferrule/issues/589) | Assess the operator matrix and exact diagnostic envelopes after #585, #586, and the private #566 increment. Any production alignment needs separate dependent language PRs; this is not automatically a test-only matrix. Shared/public failure gates stay closed. |
-| [#582 public target ValueMap](https://github.com/DeandreT/ferrule/issues/582) | Common-only source proposal: two roles, four proposed tests / 54 controls; unqualified. The recorded dependencies remain #519 and the full #566 issue until that dependency is explicitly revised. Preserve the independent failure refusal gate. |
+| [#594 private C# failure ValueMap](https://github.com/DeandreT/ferrule/issues/594) | Open after PR596 and PR598. Add matching private ordinary-failure admission with source and generated checks for predicates/messages, defaults, laziness, order and complete typed errors. Preserve the failure walker, retained-input diagnostics and shared/public refusals. |
+| [#595 private Rust specialized-failure envelopes / PR601](https://github.com/DeandreT/ferrule/pull/601) | Merged and closed after the local source qualification above. Dynamic-first per-rule refusals now match C# while accepted private ValueMap, general/target diagnostics and upstream-owned validation remain unchanged. The 30 variants classify as eight upstream refusals, 11 specialized failure refusals, ten admitted and one dynamic refusal; the corrected JoinAggregate witness receives upstream root-context refusal. No new operator admission. |
+| [#589 private failure alignment tracker](https://github.com/DeandreT/ferrule/issues/589) | Rust refusal alignment is merged in PR601. Matching private C# ValueMap admission remains in #594, with its two-program / eight-call generated qualification pending. Keep #589 and #566 open for complete matched outcomes and remaining acceptance; shared/public failure gates stay closed. |
+| [#582 public target ValueMap / PR599](https://github.com/DeandreT/ferrule/pull/599) | Merged and closed. Target input edges, ordered/tagged/null/default results and lazy/error behavior are locally qualified in both public backends. This target-only scope does not activate public failure maps or complete #566. |
 
 [Current file ownership and dependency graph](docs/parallel-work.md#basic-public-family-milestone-and-next-lanes)
 show which work can proceed independently and which edits need a same-language
@@ -90,7 +107,8 @@ platform, and release work elsewhere in this roadmap.
 
 The Basic snapshot at `2d52eba` and the contributor/history sections below retain
 their original dates, evidence, checklists, and diagrams. This milestone section
-supersedes their Basic publication status without rewriting historical claims.
+supersedes their Basic publication and ValueMap/retention status without
+rewriting historical claims.
 
 ## Basic owned-source progress (2026-10-12)
 
