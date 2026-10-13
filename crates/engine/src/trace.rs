@@ -1285,20 +1285,37 @@ pub(crate) fn record_owned_event(
         return;
     };
     let event = event();
-    let (Some(owned), Some(registry)) = (program.owned_context, program.owned_trace_registry)
-    else {
+    if program.owned_context.is_none() || program.owned_trace_registry.is_none() {
         sink.record(event);
         return;
-    };
+    }
     if !sink.wants_owned_context_for(&event) {
         sink.record(event);
         return;
     }
+    with_owned_witness(program, positions, |context| {
+        sink.record_with_owned_context(event, context)
+    });
+}
+
+/// Projects the existing Basic borrowed view only after a consumer opts in.
+/// Callers have already checked that both admitted context and registry exist.
+/// The callback cannot retain its borrowed view; bounded snapshots are explicit.
+pub(crate) fn with_owned_witness<R>(
+    program: crate::eval_expr::EvalProgram<'_>,
+    positions: &[PositionFrame],
+    observe: impl FnOnce(Result<TraceOwnedWitness<'_>, &TraceOwnedContextError>) -> R,
+) -> R {
+    let owned = program
+        .owned_context
+        .expect("admitted owned observer context");
+    let registry = program
+        .owned_trace_registry
+        .expect("admitted owned observer registry");
     let roots = match registry.roots() {
         Ok(roots) => roots,
         Err(error) => {
-            sink.record_with_owned_context(event, Err(error));
-            return;
+            return observe(Err(error));
         }
     };
     let frames = owned
@@ -1317,8 +1334,7 @@ pub(crate) fn record_owned_event(
     let frames = match frames {
         Ok(frames) => frames,
         Err(error) => {
-            sink.record_with_owned_context(event, Err(&error));
-            return;
+            return observe(Err(&error));
         }
     };
     let origins = owned
@@ -1336,25 +1352,21 @@ pub(crate) fn record_owned_event(
     let origins = match origins {
         Ok(origins) => origins,
         Err(error) => {
-            sink.record_with_owned_context(event, Err(&error));
-            return;
+            return observe(Err(&error));
         }
     };
     let positions = positions
         .iter()
         .map(TraceOwnedPositionRef::from)
         .collect::<Vec<_>>();
-    sink.record_with_owned_context(
-        event,
-        Ok(TraceOwnedWitness {
-            project: registry.project(),
-            domain: TraceOwnedDomain::Basic,
-            phase: program.owned_trace_phase,
-            roots,
-            frames: &frames,
-            origins: &origins,
-            positions: &positions,
-            owned_ancestry: owned.owned_ancestry,
-        }),
-    );
+    observe(Ok(TraceOwnedWitness {
+        project: registry.project(),
+        domain: TraceOwnedDomain::Basic,
+        phase: program.owned_trace_phase,
+        roots,
+        frames: &frames,
+        origins: &origins,
+        positions: &positions,
+        owned_ancestry: owned.owned_ancestry,
+    }))
 }
