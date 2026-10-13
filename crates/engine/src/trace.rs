@@ -118,11 +118,25 @@ impl TraceScope {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TraceIteration {
     Once,
-    Source { path: Vec<String> },
-    DynamicDocuments { source: Vec<String> },
-    Generated { kind: &'static str },
-    Join { join: JoinId },
-    Concatenate { segments: usize },
+    Source {
+        path: Vec<String>,
+    },
+    /// Exact declared owner and endpoint-relative path; never a legacy wrapper path.
+    OwnedSource {
+        source: mapping::OwnedSourceRef,
+    },
+    DynamicDocuments {
+        source: Vec<String>,
+    },
+    Generated {
+        kind: &'static str,
+    },
+    Join {
+        join: JoinId,
+    },
+    Concatenate {
+        segments: usize,
+    },
 }
 
 pub(crate) fn scope_iteration(
@@ -143,6 +157,22 @@ pub(crate) fn scope_iteration(
             segments: segments.iter().count(),
         },
     })
+}
+
+/// Metadata for an already admitted Basic owned scope; the legacy helper stays closed.
+pub(crate) fn basic_scope_iteration(
+    iteration: &ScopeIteration,
+) -> Result<TraceIteration, mapping::OwnedSourceAccess> {
+    match iteration {
+        ScopeIteration::OwnedSource {
+            source,
+            output_path: None,
+        } => Ok(TraceIteration::OwnedSource {
+            source: source.clone(),
+        }),
+        ScopeIteration::OwnedSource { .. } => Err(mapping::OwnedSourceAccess),
+        _ => scope_iteration(iteration),
+    }
 }
 
 fn sequence_kind(sequence: &SequenceExpr) -> &'static str {
