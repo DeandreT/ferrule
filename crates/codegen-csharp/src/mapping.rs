@@ -1768,6 +1768,7 @@ const fn scalar_type_name(value: ScalarType) -> &'static str {
 enum ExpressionContext {
     Legacy,
     Basic,
+    PublicBasicOwnedNodes,
 }
 
 // The Legacy branch retains the ordinary source bytes and scalar evaluation order.
@@ -1785,18 +1786,32 @@ fn render_expression(
             "context",
             "Position",
         ),
-        ExpressionContext::Basic => (
+        ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes => (
             "global::Ferrule.Runtime.FerruleBasicScopeContext",
             "context.LegacyView",
             "LegacyPosition",
         ),
     };
-    if matches!(mode, ExpressionContext::Basic) {
-        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        return NodeBody_{node}(context);\n    }}\n"));
+    if matches!(
+        mode,
+        ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+    ) {
+        if matches!(mode, ExpressionContext::PublicBasicOwnedNodes)
+            && matches!(
+                expression,
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+            )
+        {
+            output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        try {{ return NodeBody_{node}(context); }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error)\n        {{\n            error.WithOwnedSourceNode({node}U);\n            throw;\n        }}\n    }}\n"));
+        } else {
+            output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        return NodeBody_{node}(context);\n    }}\n"));
+        }
     }
     let method = match mode {
         ExpressionContext::Legacy => format!("Node_{node}"),
-        ExpressionContext::Basic => format!("NodeBody_{node}"),
+        ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes => {
+            format!("NodeBody_{node}")
+        }
     };
     output.push('\n');
     output.push_str(&format!(
@@ -1804,7 +1819,10 @@ fn render_expression(
     ));
     match expression {
         Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
-            if matches!(mode, ExpressionContext::Basic) {
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) {
                 return crate::owned_basic::render_owned_leaf(node, expression, output);
             }
             return Err(codegen::owned_expression_emission_error(
@@ -1815,7 +1833,10 @@ fn render_expression(
             .into());
         }
         Expression::SourceField { frame, path } => {
-            if matches!(mode, ExpressionContext::Basic) {
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) {
                 output.push_str(" =>\n        context.ResolveLegacyField(");
                 render_path(path, output);
                 output.push_str(", ");
@@ -2358,6 +2379,21 @@ pub(super) fn render_basic_expression(
         &BTreeMap::new(),
         false,
         ExpressionContext::Basic,
+        output,
+    )
+}
+
+pub(super) fn render_public_basic_expression(
+    node: NodeId,
+    expression: &Expression,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    render_expression(
+        node,
+        expression,
+        &BTreeMap::new(),
+        false,
+        ExpressionContext::PublicBasicOwnedNodes,
         output,
     )
 }

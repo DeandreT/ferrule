@@ -206,13 +206,27 @@ public sealed class FerruleRuntimeException : Exception
         return new FerruleRuntimeException(bridge);
     }
 
+    /// <summary>Adds the first public Basic owned-leaf node without replacing the error or its causes.</summary>
+    public FerruleRuntimeException WithOwnedSourceNode(uint node)
+    {
+        if (!Node.HasValue &&
+            ((Error == FerruleRuntimeError.OwnedSource && OwnedSourceFailure is not null &&
+                ReferenceEquals(OwnedSourceFailure, InnerException)) ||
+             (Error == FerruleRuntimeError.BasicSourceBridge && BasicSourceBridgeFailure is not null &&
+                ReferenceEquals(BasicSourceBridgeFailure, InnerException))))
+        {
+            Node = node;
+        }
+        return this;
+    }
+
     public FerruleOwnedSourceException? OwnedSourceFailure { get; }
 
     public FerruleBasicSourceBridgeException? BasicSourceBridgeFailure { get; }
 
     public FerruleRuntimeError Error { get; }
 
-    public uint? Node { get; }
+    public uint? Node { get; private set; }
 
     public string? Function { get; }
 
