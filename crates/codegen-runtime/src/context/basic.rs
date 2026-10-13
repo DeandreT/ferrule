@@ -1590,34 +1590,17 @@ struct BasicOwnedObserver<'p, 'ctx> {
 }
 impl BasicOwnedObserver<'_, '_> {
     fn legacy_path(&mut self, path: &[String]) -> Result<Vec<String>, RuntimeError> {
-        let name = match self.key {
-            OwnedOwnerKey::Primary => None,
-            OwnedOwnerKey::Named(index) => Some(
-                self.parent
-                    .owned
-                    .registry
-                    .named
-                    .get(index)
-                    .ok_or(BasicSourceBridgeError::InvalidDeclarationWitness {
-                        index,
-                        count: self.parent.owned.registry.named.len(),
-                    })?
-                    .name,
-            ),
-        };
-        let len = add(path.len(), usize::from(name.is_some()))?;
-        self.budget.slots(len)?;
-        self.budget.strings(path)?;
-        if let Some(name) = name {
-            self.budget.bytes(name.len())?;
+        if let OwnedOwnerKey::Named(index) = self.key {
+            self.parent.owned.registry.named.get(index).ok_or(
+                BasicSourceBridgeError::InvalidDeclarationWitness {
+                    index,
+                    count: self.parent.owned.registry.named.len(),
+                },
+            )?;
         }
-        paired_capacity::<String>(len)?;
-        let mut result = Vec::with_capacity(len);
-        if let Some(name) = name {
-            result.push(name.to_string());
-        }
-        result.extend(path.iter().cloned());
-        Ok(result)
+        // Ownership stays in the owned frame. The native legacy view projects
+        // the actual owner-relative collection without a declaration-name alias.
+        self.budget.path(path)
     }
 }
 impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
