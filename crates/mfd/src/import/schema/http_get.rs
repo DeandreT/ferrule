@@ -9,9 +9,10 @@ use mapping::{
 use crate::resource::ResourceResolver;
 
 use super::{
-    ComponentFormat, SchemaComponent, collect_entry_ports, collect_json_ports, entry_key_sets,
-    entry_tree_schema, is_default_output, json_entry_value_schema, merge_generic_xml_entries,
-    normalize_xml_text_ports, read_xml_schema_file, record_entry_keys, resolve_resource_reference,
+    ComponentFormat, PortDeclarationCensus, SchemaComponent, collect_entry_ports_with_declarations,
+    collect_json_ports_with_declarations, entry_key_sets, entry_tree_schema, is_default_output,
+    json_entry_value_schema, merge_generic_xml_entries, normalize_xml_text_ports,
+    read_xml_schema_file, record_entry_keys, resolve_resource_reference,
 };
 
 pub(super) fn read(
@@ -179,6 +180,8 @@ fn read_get(
     let mut ports = BTreeMap::new();
     let mut output_count = 0usize;
     let mut input_count = 0usize;
+    let mut declarations = PortDeclarationCensus::default();
+    declarations.record(payload, &[]);
     record_entry_keys(
         &payload,
         &[],
@@ -186,12 +189,13 @@ fn read_get(
         &mut output_count,
         &mut input_count,
     );
-    collect_entry_ports(
+    collect_entry_ports_with_declarations(
         &payload,
         &mut Vec::new(),
         &mut ports,
         &mut output_count,
         &mut input_count,
+        Some(&mut declarations),
     );
     normalize_xml_text_ports(&schema, &mut ports);
 
@@ -215,6 +219,7 @@ fn read_get(
         input_ancestors: BTreeMap::new(),
         input_keys: payload_inputs,
         output_keys: payload_outputs,
+        port_declarations: Some(declarations.finish(data)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
@@ -337,6 +342,8 @@ fn read_post(
     let mut ports = BTreeMap::new();
     let mut output_count = 0usize;
     let mut input_count = 0usize;
+    let mut declarations = PortDeclarationCensus::default();
+    declarations.record(*response_payload, &[]);
     record_entry_keys(
         response_payload,
         &[],
@@ -344,13 +351,14 @@ fn read_post(
         &mut output_count,
         &mut input_count,
     );
-    collect_json_ports(
+    collect_json_ports_with_declarations(
         response_payload,
         &mut Vec::new(),
         &mut ports,
         &mut output_count,
         &mut input_count,
         warnings,
+        Some(&mut declarations),
     );
     if input_count != 0 || output_count == 0 {
         return Err("HTTP POST response JSON ports are invalid".to_string());
@@ -397,6 +405,7 @@ fn read_post(
         input_keys: request_inputs,
         input_ancestors: BTreeMap::new(),
         output_keys: response_outputs,
+        port_declarations: Some(declarations.finish(data)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

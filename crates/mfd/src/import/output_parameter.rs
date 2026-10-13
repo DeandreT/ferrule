@@ -136,6 +136,7 @@ fn build(
         output_keys: BTreeSet::new(),
         ports,
         input_ancestors: BTreeMap::new(),
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

@@ -103,6 +103,7 @@ pub(super) fn read(
         input_ancestors,
         input_keys: state.input_keys,
         output_keys: state.output_keys,
+        port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

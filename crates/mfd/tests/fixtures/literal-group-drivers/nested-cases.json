@@ -1,0 +1,92 @@
+[
+  {
+    "input": "{\"Rows\":[{\"Label\":\"second\"},{\"Label\":\"first\"}]}",
+    "expected": {
+      "Results": [
+        {
+          "Label": "second",
+          "Details": [
+            {
+              "Value": "second"
+            }
+          ],
+          "Empty": [
+            {}
+          ]
+        },
+        {
+          "Label": "first",
+          "Details": [
+            {
+              "Value": "first"
+            }
+          ],
+          "Empty": [
+            {}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Label\":\"雪 é\"},{\"Label\":\"\"},{}]}",
+    "expected": {
+      "Results": [
+        {
+          "Label": "雪 é",
+          "Details": [
+            {
+              "Value": "雪 é"
+            }
+          ],
+          "Empty": [
+            {}
+          ]
+        },
+        {
+          "Label": "",
+          "Details": [
+            {
+              "Value": ""
+            }
+          ],
+          "Empty": [
+            {}
+          ]
+        },
+        {
+          "Details": [
+            {}
+          ],
+          "Empty": [
+            {}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Results": []
+    }
+  },
+  {
+    "input": "{}",
+    "expected": {
+      "Results": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Label\":false}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{},{}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Extra\":1}]}",
+    "reject": true
+  }
+]

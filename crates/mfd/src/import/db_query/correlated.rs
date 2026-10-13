@@ -244,6 +244,7 @@ fn read_correlated_component(
         input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
+        port_declarations: None,
         db_queries: queries,
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,

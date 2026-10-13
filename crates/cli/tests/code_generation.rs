@@ -1403,3 +1403,18 @@ mod xml_dynamic_input_document_outputs;
 
 #[path = "code_generation/xml_mixed_named_outputs.rs"]
 mod xml_mixed_named_outputs;
+
+#[path = "code_generation/literal_group_drivers.rs"]
+mod literal_group_drivers;
+
+#[path = "code_generation/constructed_variable_aliases.rs"]
+mod constructed_variable_aliases;
+
+#[path = "code_generation/constructed_variable_drivers.rs"]
+mod constructed_variable_drivers;
+
+#[path = "code_generation/constructed_variable_copy_all.rs"]
+mod constructed_variable_copy_all;
+
+#[path = "code_generation/constructed_variable_conditionals.rs"]
+mod constructed_variable_conditionals;

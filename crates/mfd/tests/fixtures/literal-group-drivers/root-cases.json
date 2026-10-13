@@ -1,0 +1,53 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Once": [
+        {
+          "Label": "created"
+        }
+      ],
+      "Empty": [
+        {}
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Once": [
+        {
+          "Label": "created"
+        }
+      ],
+      "Empty": [
+        {}
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Label\":\"unused\"},{\"Label\":\"still unused\"}]}",
+    "expected": {
+      "Once": [
+        {
+          "Label": "created"
+        }
+      ],
+      "Empty": [
+        {}
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Label\":false}]}",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]
