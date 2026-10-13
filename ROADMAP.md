@@ -1,6 +1,79 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-12
+Updated: 2026-10-13
+
+## Current public native ownership (2026-10-13)
+
+This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against
+merged main [`80274d0`](https://github.com/DeandreT/ferrule/commit/80274d0079f0adbe70004780701c7bf1cbbe0280),
+which includes [PR618](https://github.com/DeandreT/ferrule/pull/618),
+[PR625](https://github.com/DeandreT/ferrule/pull/625),
+[PR626](https://github.com/DeandreT/ferrule/pull/626) and
+[PR628](https://github.com/DeandreT/ferrule/pull/628). It records
+current native interpreter behavior and follow-ups. Earlier snapshots, emitter
+milestones and other workstreams below retain their recorded evidence scope.
+
+The public engine executes Basic static owned root reads and scoped borrowed
+collection walks, including owned fields and Structural, Selection and Output
+positions. Owned global failure rules, tracing and debugging remain refused.
+Grouping, joins, documents, dynamic loads, generated/function provenance and
+other specialized ownership domains keep their separate admission gates.
+Explicit nonrepeating root pins (#620), caller-owned scalar function arguments
+(#621) and Basic owned scalar target construction (#623) are implemented and
+merged in PR625, PR626 and PR628. PR628's native verification passed all 437
+engine library tests, including the exact 35-test core module, 18 source-ownership
+tests and 31 owned Basic tests. Production compilation and strict library/test
+checks also passed. Matched generated outcomes and the remaining occurrence,
+failure and observer qualification are still pending. The planned 18 matched
+native/Rust/C# calls remain unrun.
+
+[PR619](https://github.com/DeandreT/ferrule/pull/619) is closed without merging:
+PR618 superseded its private root executor. Its retained 407-test results apply
+only to that older private proposal and do not qualify current main.
+[#616](https://github.com/DeandreT/ferrule/issues/616) is closed as not planned;
+the public executor has no retained success-witness log to bound.
+
+### Current delivery checklist
+
+- [x] Implement public Basic roots, scoped walks and occurrence position phases
+  in merged PR618.
+- [x] Retire superseded PR619 and its private-only #616 retention work.
+- [x] Correct explicit nonrepeating root pins in
+  [#620 / PR625](https://github.com/DeandreT/ferrule/pull/625), preserving the
+  active-occurrence requirement for declared or actual repeating roots. Native
+  local checks passed; #620 is closed as completed.
+- [x] Admit caller-owned scalar arguments to ordinary functions in
+  [#621 / PR626](https://github.com/DeandreT/ferrule/pull/626), preserving isolated
+  function bodies and inherited specialized-context refusals. Native local
+  checks passed; #621 is closed as completed.
+- [ ] Measure and bound retained candidate/ancestry metadata in
+  [#622](https://github.com/DeandreT/ferrule/issues/622), then stream eligible
+  First/window paths where their phase semantics permit. The text-work limit
+  does not bound total input, output or resident memory. Keep measurement and
+  implementation together in focused increments. Measurements remain unrun.
+- [x] Support Basic owned scalar target construction in
+  [#623 / PR628](https://github.com/DeandreT/ferrule/pull/628), preserving the
+  existing constructor/conversion path and specialized refusals. Native local
+  checks passed; #623 is closed as completed.
+- [ ] Integrate stored-order global failure rules and exact row provenance in
+  [#613](https://github.com/DeandreT/ferrule/issues/613), preserving lazy messages
+  and typed failures. Assigned root-only
+  [#627](https://github.com/DeandreT/ferrule/issues/627) source work is in progress
+  after #623's admission handoff; row provenance remains closed.
+- [ ] Qualify the actual public occurrence and position-phase implementation in
+  [#612](https://github.com/DeandreT/ferrule/issues/612) against complete native
+  outputs/errors and matched generated controls.
+- [ ] Complete observer integration and final Basic acceptance in
+  [#606](https://github.com/DeandreT/ferrule/issues/606), using confirmed matched
+  execution from #612 and #613. Observer source work can proceed independently
+  once its context interface is agreed.
+
+[Current native contributor lanes](docs/parallel-work.md#current-public-native-ownership-lanes-2026-10-13)
+record source handoffs and the dependency diagram. Merged #620 precedes #623;
+overlapping
+admission, walker and scope-storage edits must be sequenced. Each increment needs
+its own local verification before publication. The current snapshot adds no
+current-main test credit from older private execution results.
 
 ## Goal
 

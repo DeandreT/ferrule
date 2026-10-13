@@ -5,6 +5,90 @@ bounded work from the [roadmap](../ROADMAP.md). Issues define the problem,
 in/out of scope, likely files and acceptance checks; this page helps contributors
 choose a lane and avoid conflicting changes.
 
+## Current public native ownership lanes (2026-10-13)
+
+This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against
+merged main [`80274d0`](https://github.com/DeandreT/ferrule/commit/80274d0079f0adbe70004780701c7bf1cbbe0280),
+including [PR618](https://github.com/DeandreT/ferrule/pull/618),
+[PR625](https://github.com/DeandreT/ferrule/pull/625),
+[PR626](https://github.com/DeandreT/ferrule/pull/626) and
+[PR628](https://github.com/DeandreT/ferrule/pull/628). The
+[current roadmap](../ROADMAP.md#current-public-native-ownership-2026-10-13)
+records the public Basic root/scoped-walk and occurrence-position implementation.
+Owned global failure rules, tracing and debugging remain closed; specialized
+ownership domains retain their separate gates. #620's explicit nonrepeating
+root pins, #621's caller-owned scalar function arguments and #623's Basic owned
+scalar construction are merged in PR625, PR626 and PR628. PR628's native
+verification passed all 437 engine library tests, including the exact 35-test
+core module, 18 source-ownership tests and 31 owned Basic tests. Production
+compilation and strict library/test checks also passed. Earlier PR625/PR626
+results retain their own increment scopes. Matched generated qualification and
+the remaining occurrence, failure and observer work are pending. The planned
+18 matched native/Rust/C# calls remain unrun.
+
+[PR619](https://github.com/DeandreT/ferrule/pull/619) is closed without merging
+because PR618 superseded its private root executor. Its retained 407-test result
+qualifies only the older private proposal.
+[#616](https://github.com/DeandreT/ferrule/issues/616) is closed as not planned:
+the public executor has no retained success-witness log. Candidate/ancestry
+metadata and large-input memory behavior belong to #622.
+
+The active lanes are assigned to `DeandreT`. Coordinate a source handoff before
+changing shared files; they are unavailable for a new independent claim. The
+older tables and diagrams below remain dated snapshots.
+
+| Lane | Source scope and required handoff | Current status and next gate |
+| --- | --- | --- |
+| [#620 Explicit nonrepeating root pins](https://github.com/DeandreT/ferrule/issues/620) | `crates/engine/src/owned_context.rs` and `tests/owned_source_basic.rs`; hand off walker changes to #622. | Merged in [PR625](https://github.com/DeandreT/ferrule/pull/625); #620 is closed as completed. Native checks passed: 422 engine library tests, including 31 owned Basic tests, production compilation and strict library/test checks. Exact-owner repeating/inactive-frame distinctions are preserved. #623's prerequisite is satisfied. |
+| [#621 Caller-owned scalar function arguments](https://github.com/DeandreT/ferrule/issues/621) | `crates/engine/src/source_ownership.rs` and `tests/source_ownership.rs`; hand shared admission files to #623, then #613. | Merged in [PR626](https://github.com/DeandreT/ferrule/pull/626); #621 is closed as completed. Native checks passed: 429 engine library tests, including the exact 18-test source-ownership module, production compilation and strict library/test checks. Arguments retain caller context; the body remains isolated and inherited specialized contexts retain their refusals. |
+| [#622 Large-input candidate metadata](https://github.com/DeandreT/ferrule/issues/622) | Owned walking in `owned_context.rs`, phase storage in `eval_scope.rs`, and focused performance controls; coordinate #620's walker and #623's scope edits. | Measurements remain unrun. Measure retained metadata across First, filters, sorting and windows; bound actual retention with typed limits, then stream eligible paths. Preserve complete outputs and Structural/Selection/Output positions. Keep measurements with the focused implementation increments. |
+| [#623 Basic scalar target construction](https://github.com/DeandreT/ferrule/issues/623) | Scalar admission in `source_ownership.rs`, routing in `eval_scope.rs`, and focused tests; hand shared admission files to #613's root-only #627 increment. | Merged in [PR628](https://github.com/DeandreT/ferrule/pull/628); #623 is closed as completed. Native checks passed: 437 engine library tests, including the exact 35-test core module, production compilation and strict library/test checks. The existing constructor/conversion path and specialized refusals are preserved. |
+| [#613 Global failure rules and row provenance](https://github.com/DeandreT/ferrule/issues/613) | Root-only #627 owns `failure.rs`, `tests/failure.rs`, `source_ownership.rs` and `tests/source_ownership.rs`; coordinate the admission handoff and later occurrence interface. | Assigned [#627 Static root global failures](https://github.com/DeandreT/ferrule/issues/627) source work is in progress after #623's admission handoff. Root-valued support is the first focused increment; row provenance remains closed. Preserve one stored-order pre-target pass, lazy messages and typed errors. |
+| [#612 Public occurrence and phase qualification](https://github.com/DeandreT/ferrule/issues/612) | Current public walker/scope implementation and focused controls; coordinate proposed fixes with the active owner of each touched file. | Pending; the planned 18 matched native/Rust/C# calls remain unrun. Qualify nested counts, outer pins, filters, sorting, windows, bindings and child scopes with complete native/generated outcomes; include #620's root-pin correction. |
+| [#606 Observer integration and final Basic acceptance](https://github.com/DeandreT/ferrule/issues/606) | Observer/admission boundaries, necessary host controls and matched execution controls; agree the context interface before independent observer source work. | Pending. Observer implementation may proceed independently; final acceptance requires confirmed matched execution, including #612 and #613. Keep unsupported domains refused. |
+| [#624 Current documentation](https://github.com/DeandreT/ferrule/issues/624) | `ROADMAP.md` and `docs/parallel-work.md` only. | Reconcile current implementation/status; verify source claims, links and the diagram while preserving dated evidence and anchors. |
+
+```mermaid
+flowchart LR
+    RootPins["#620 Explicit root pins<br/>merged PR625"] --> Scalar["#623 Scalar construction<br/>merged PR628"]
+    Arguments["#621 Caller scalar arguments<br/>merged PR626"]
+    Metadata["#622 Candidate metadata"]
+    Phases["#612 Occurrence and phase qualification"]
+    Failures["#613 Global failure qualification"]
+    Observers["#606 Observer integration"]
+    Acceptance["#606 Final Basic acceptance"]
+    Phases -. "matched execution" .-> Acceptance
+    Failures -. "matched execution" .-> Acceptance
+    Observers -. "verified observer contract" .-> Acceptance
+```
+
+The solid arrow records the #620-to-#623 merge dependency, now satisfied by
+PR625. Dashed
+arrows identify evidence needed for final #606 acceptance; they do not serialize
+independent observer implementation once its interface is agreed. #621 and #622
+have distinct behavior scopes. Shared admission, walker and scope-storage files
+still require sequenced edits and explicit handoffs.
+Serialize shared admission source edits and handoffs in the order #621, then #623,
+then #613.
+
+- [x] PR618's public Basic roots, scoped walks and occurrence positions are
+  implemented; superseded PR619 and private-only #616 are retired.
+- [x] Verify and merge #620 in PR625 using its native local checks.
+- [x] Verify and merge #621 in PR626 using its native local checks.
+- [x] Verify and merge #623 in PR628 using its native local checks, then hand
+  shared admission files to #613's root-only #627 increment.
+- [ ] Measure and bound #622 candidate metadata within its implementation work;
+  measurements remain unrun. Preserve required materialization and position phases.
+- [ ] Qualify #612/#613 against actual public execution and matched generated
+  controls, then settle #606 observer behavior and final Basic acceptance.
+
+Reserve shared compiler/artifact capacity before local checks. Reuse compatible
+build artifacts, retain exact source/executable identities and check disk
+headroom; avoid duplicate caches and concurrent heavy builds. Run graphical
+checks on an alternate display. Source review, local execution and physical
+workflow evidence remain separate gates. Historical private checks do not
+supply current-main qualification.
+
 ## Claim a lane
 
 1. Read the issue and its linked contracts. Check current assignees and comments;
