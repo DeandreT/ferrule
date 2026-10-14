@@ -1,6 +1,7 @@
 //! Portable rebasing for project-owned static instance paths.
 
-use std::path::{Component, Path, PathBuf};
+use std::ffi::OsString;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 /// Rebases every static local instance path when a project document moves.
 ///
@@ -127,7 +128,8 @@ fn normalize_absolute(path: &Path) -> Option<PathBuf> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+            Component::Prefix(prefix) => normalized.push(ordinary_prefix(prefix.kind())),
+            Component::RootDir | Component::Normal(_) => {
                 normalized.push(component.as_os_str());
             }
             Component::CurDir => {}
@@ -137,6 +139,36 @@ fn normalize_absolute(path: &Path) -> Option<PathBuf> {
         }
     }
     Some(normalized)
+}
+
+/// Spells a verbatim disk or UNC prefix in its ordinary form.
+///
+/// Canonical Windows paths are verbatim (`\\?\C:\...`) while user-supplied
+/// paths usually are not; both name the same volume, so relative paths must be
+/// computed between equal prefixes.
+fn ordinary_prefix(prefix: Prefix<'_>) -> OsString {
+    match prefix {
+        Prefix::VerbatimDisk(drive) | Prefix::Disk(drive) => {
+            format!("{}:", char::from(drive.to_ascii_uppercase())).into()
+        }
+        Prefix::VerbatimUNC(server, share) | Prefix::UNC(server, share) => {
+            let mut ordinary = OsString::from(r"\\");
+            ordinary.push(server);
+            ordinary.push(r"\");
+            ordinary.push(share);
+            ordinary
+        }
+        Prefix::Verbatim(name) => {
+            let mut verbatim = OsString::from(r"\\?\");
+            verbatim.push(name);
+            verbatim
+        }
+        Prefix::DeviceNS(name) => {
+            let mut device = OsString::from(r"\\.\");
+            device.push(name);
+            device
+        }
+    }
 }
 
 fn relative_path(from: &Path, target: &Path) -> Option<PathBuf> {
@@ -197,10 +229,20 @@ mod tests {
 
     use super::*;
 
+    /// Spells a rooted test path as an absolute path on the current platform.
+    fn absolute(path: &str) -> String {
+        if cfg!(windows) {
+            format!("C:{path}")
+        } else {
+            path.to_string()
+        }
+    }
+
     #[test]
     fn rebases_relative_paths_and_preserves_wildcards() {
-        let from = Path::new("/package/maps");
-        let to = Path::new("/package/projects/nested");
+        let from = absolute("/package/maps");
+        let to = absolute("/package/projects/nested");
+        let (from, to) = (Path::new(&from), Path::new(&to));
 
         assert_eq!(
             rebase_path("../data/orders.json", from, to)
@@ -216,14 +258,17 @@ mod tests {
 
     #[test]
     fn leaves_urls_and_absolute_paths_unchanged() {
-        let from = Path::new("/package/maps");
-        let to = Path::new("/package/projects");
+        let from = absolute("/package/maps");
+        let to = absolute("/package/projects");
         for path in [
             "https://example.test/orders.json",
-            "/var/data/orders.json",
+            &absolute("/var/data/orders.json"),
             r"C:\Data\orders.json",
         ] {
-            assert_eq!(rebase_path(path, from, to).unwrap(), None);
+            assert_eq!(
+                rebase_path(path, Path::new(&from), Path::new(&to)).unwrap(),
+                None
+            );
         }
     }
 
@@ -294,6 +339,39 @@ mod tests {
         let path = PathBuf::from(std::ffi::OsString::from_vec(vec![b'f', 0xff]));
         let error = path_to_portable(&path).expect_err("non-Unicode path must not be corrupted");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rebases_between_verbatim_and_ordinary_prefixes() {
+        assert_eq!(
+            rebase_path(
+                "data/orders.json",
+                Path::new(r"\\?\C:\package\maps"),
+                Path::new(r"C:\package\projects"),
+            )
+            .unwrap()
+            .as_deref(),
+            Some("../maps/data/orders.json")
+        );
+        assert_eq!(
+            rebase_path(
+                "orders.json",
+                Path::new(r"\\?\UNC\server\share\maps"),
+                Path::new(r"\\server\share\projects"),
+            )
+            .unwrap()
+            .as_deref(),
+            Some("../maps/orders.json")
+        );
+        assert_eq!(
+            mapping_identity_relative_to(
+                Path::new(r"\\?\c:\package\maps\design.mfd"),
+                Path::new(r"C:\package\pipelines\pipeline.json"),
+            )
+            .unwrap(),
+            "../maps/design.mfd"
+        );
     }
 
     #[cfg(windows)]
