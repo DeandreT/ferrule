@@ -135,7 +135,9 @@ retains its artifact set and typed/JSON APIs. The companion adds
 ### Repeating interchange envelopes
 
 The repeating-interchange profile admits the ownership that an imported
-X12 `Envelope.Config` produces when Ferrule imports a design. Select it explicitly on each intended X12 endpoint through
+X12 `Envelope.Config` produces when Ferrule imports a design. Select it
+explicitly on each intended X12 endpoint, with the CLI value
+`repeating-interchanges` for either envelope flag or through
 `cli::generate_project_with_x12_envelope_profiles`. The descriptor retains its serialized envelope-profile value. The shape is never inferred from
 a schema or retained options. Static-document and CSV routes apply the same
 selection to their own X12 endpoints.
