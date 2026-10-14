@@ -505,7 +505,7 @@ impl PdfWorkerManager {
             let evidence = job.dir.path.clone();
             self.job = Some(job);
             return Err(BeginFailure::OwnedStopping {
-                failure: f,
+                failure: Box::new(f),
                 evidence,
             });
         }
@@ -526,11 +526,11 @@ impl PdfWorkerManager {
         };
         if let Some(terminal) = &job.terminal {
             let progress = JobProgress::FailedClosed {
-                failure: ClosedFailure {
+                failure: Box::new(ClosedFailure {
                     failure: terminal.failure.clone(),
                     child_outcome: terminal.child_outcome.clone(),
                     receipt: terminal.receipt.clone(),
-                },
+                }),
                 retained: job.history.retained_path(&job.dir.path),
             };
             self.job = Some(job);
@@ -874,7 +874,7 @@ impl PdfWorkerManager {
         job.receipt.failure = job.failure.clone();
         job.receipt.secondary_failures = job.secondary.clone();
         if let Some(instance) = instance {
-            let receipt = job.receipt.clone();
+            let receipt = Box::new(job.receipt.clone());
             if self.retain_success {
                 self.retained_successes.push(job.dir);
             }
@@ -890,11 +890,11 @@ impl PdfWorkerManager {
             receipt: job.receipt.clone(),
         });
         let progress = JobProgress::FailedClosed {
-            failure: ClosedFailure {
+            failure: Box::new(ClosedFailure {
                 failure,
                 child_outcome: outcome,
                 receipt: job.receipt.clone(),
-            },
+            }),
             retained: job.history.retained_path(&job.dir.path),
         };
         self.job = Some(job);

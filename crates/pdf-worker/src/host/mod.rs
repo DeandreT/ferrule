@@ -112,7 +112,10 @@ pub struct CleanupReceipt {
 #[derive(Debug)]
 pub enum BeginFailure {
     NoChild(Failure),
-    OwnedStopping { failure: Failure, evidence: PathBuf },
+    OwnedStopping {
+        failure: Box<Failure>,
+        evidence: PathBuf,
+    },
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct OwnedReapUsage {
@@ -252,10 +255,10 @@ pub enum JobProgress {
     },
     Succeeded {
         instance: ir::Instance,
-        receipt: ClosedReceipt,
+        receipt: Box<ClosedReceipt>,
     },
     FailedClosed {
-        failure: ClosedFailure,
+        failure: Box<ClosedFailure>,
         retained: PathBuf,
     },
     ClosureIncomplete {
