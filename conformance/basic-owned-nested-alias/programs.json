@@ -1,0 +1,2094 @@
+{
+  "fixture": "basic-owned-nested-alias-v1",
+  "issue": 688,
+  "models": [
+    {
+      "id": "outer_suffix",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Ref",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "OuterValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OuterPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Items",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "InnerValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LongPinValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LegacyOuter",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "LegacyInner",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "LegacyNearest",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ExactOwnedOuter",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ExactOwnedInner",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [
+            "Ref",
+            "Rows"
+          ],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Ref",
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Ref",
+            "Rows"
+          ],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          }
+        },
+        {
+          "collection": [
+            "Ref",
+            "Rows"
+          ],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 4,
+          "kind": "Position"
+        },
+        {
+          "collection": [],
+          "id": 5,
+          "kind": "Position"
+        },
+        {
+          "frame": [
+            "Ref",
+            "Rows"
+          ],
+          "id": 6,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 7,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 8,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "id": 9,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "args": [
+            4,
+            9
+          ],
+          "function": "greater_than",
+          "id": 10,
+          "kind": "Call"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "OuterValue"
+          },
+          {
+            "node": 2,
+            "target_field": "OuterPosition"
+          }
+        ],
+        "children": [
+          {
+            "bindings": [
+              {
+                "node": 7,
+                "target_field": "InnerValue"
+              },
+              {
+                "node": 6,
+                "target_field": "LongPinValue"
+              },
+              {
+                "node": 3,
+                "target_field": "LegacyOuter"
+              },
+              {
+                "node": 4,
+                "target_field": "LegacyInner"
+              },
+              {
+                "node": 5,
+                "target_field": "LegacyNearest"
+              },
+              {
+                "node": 2,
+                "target_field": "ExactOwnedOuter"
+              },
+              {
+                "node": 8,
+                "target_field": "ExactOwnedInner"
+              }
+            ],
+            "children": [],
+            "construction": "Constructed",
+            "filter": 10,
+            "grouping": null,
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Named",
+                "name": "Ref"
+              },
+              "path": [
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "sort": null,
+            "target_field": "Items",
+            "windows": []
+          }
+        ],
+        "construction": "Constructed",
+        "filter": null,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Ref",
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "nested_rows",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  },
+                  {
+                    "name": "Rows",
+                    "kind": "Group",
+                    "children": [
+                      {
+                        "name": "Value",
+                        "kind": "Scalar",
+                        "type": "String",
+                        "repeating": false
+                      }
+                    ],
+                    "repeating": true
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "OuterValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OuterPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Items",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "InnerValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "ShortPinValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LongPinValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LegacyShort",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "LegacyLong",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ExactOwnedOuter",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ExactOwnedInner",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "collection": [
+            "Rows",
+            "Rows"
+          ],
+          "id": 4,
+          "kind": "Position"
+        },
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 5,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "frame": [
+            "Rows",
+            "Rows"
+          ],
+          "id": 6,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "frame": [
+            "Rows",
+            "Rows"
+          ],
+          "id": 7,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows",
+            "Rows"
+          ],
+          "id": 8,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "id": 9,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "args": [
+            3,
+            9
+          ],
+          "function": "greater_than",
+          "id": 10,
+          "kind": "Call"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "OuterValue"
+          },
+          {
+            "node": 2,
+            "target_field": "OuterPosition"
+          }
+        ],
+        "children": [
+          {
+            "bindings": [
+              {
+                "node": 7,
+                "target_field": "InnerValue"
+              },
+              {
+                "node": 5,
+                "target_field": "ShortPinValue"
+              },
+              {
+                "node": 6,
+                "target_field": "LongPinValue"
+              },
+              {
+                "node": 3,
+                "target_field": "LegacyShort"
+              },
+              {
+                "node": 4,
+                "target_field": "LegacyLong"
+              },
+              {
+                "node": 2,
+                "target_field": "ExactOwnedOuter"
+              },
+              {
+                "node": 8,
+                "target_field": "ExactOwnedInner"
+              }
+            ],
+            "children": [],
+            "construction": "Constructed",
+            "filter": 10,
+            "grouping": null,
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Named",
+                "name": "Ref"
+              },
+              "path": [
+                "Rows",
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "sort": null,
+            "target_field": "Items",
+            "windows": []
+          }
+        ],
+        "construction": "Constructed",
+        "filter": null,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "empty_root",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "OwnedValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "LegacyPinnedValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OwnedPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyNearest",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyAliasPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "collection": [],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "collection": [],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "collection": [
+            "Ref"
+          ],
+          "id": 4,
+          "kind": "Position"
+        },
+        {
+          "frame": [],
+          "id": 5,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "id": 6,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "args": [
+            3,
+            6
+          ],
+          "function": "greater_than",
+          "id": 7,
+          "kind": "Call"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "OwnedValue"
+          },
+          {
+            "node": 5,
+            "target_field": "LegacyPinnedValue"
+          },
+          {
+            "node": 2,
+            "target_field": "OwnedPosition"
+          },
+          {
+            "node": 3,
+            "target_field": "LegacyNearest"
+          },
+          {
+            "node": 4,
+            "target_field": "LegacyAliasPosition"
+          }
+        ],
+        "children": [],
+        "construction": "Constructed",
+        "filter": 7,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "same_owner",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "OuterValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OuterPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Items",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "SameValue",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LegacyPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "OwnedPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "id": 4,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "args": [
+            3,
+            4
+          ],
+          "function": "greater_than",
+          "id": 5,
+          "kind": "Call"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "OuterValue"
+          },
+          {
+            "node": 2,
+            "target_field": "OuterPosition"
+          }
+        ],
+        "children": [
+          {
+            "bindings": [
+              {
+                "node": 1,
+                "target_field": "SameValue"
+              },
+              {
+                "node": 3,
+                "target_field": "LegacyPosition"
+              },
+              {
+                "node": 2,
+                "target_field": "OwnedPosition"
+              }
+            ],
+            "children": [],
+            "construction": "Constructed",
+            "filter": 5,
+            "grouping": null,
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Named",
+                "name": "Ref"
+              },
+              "path": [
+                "Rows"
+              ],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "sort": null,
+            "target_field": "Items",
+            "windows": []
+          }
+        ],
+        "construction": "Constructed",
+        "filter": 5,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "singleton",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "OuterValue",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OuterPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "Items",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "OwnedSingleton",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "RelativeSingleton",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "FramedOuter",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              },
+              {
+                "name": "LegacyNearest",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "LegacyAliasPosition",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              },
+              {
+                "name": "ExactOwnedOuter",
+                "kind": "Scalar",
+                "type": "Int",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Primary"
+          }
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "id": 4,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 1
+          }
+        },
+        {
+          "args": [
+            3,
+            4
+          ],
+          "function": "greater_than",
+          "id": 5,
+          "kind": "Call"
+        },
+        {
+          "id": 6,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Bool",
+            "value": true
+          }
+        },
+        {
+          "frame": [],
+          "id": 7,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "frame": null,
+          "id": 8,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 9,
+          "kind": "SourceField",
+          "path": [
+            "Value"
+          ]
+        },
+        {
+          "collection": [],
+          "id": 10,
+          "kind": "Position"
+        },
+        {
+          "collection": [
+            "Ref"
+          ],
+          "id": 11,
+          "kind": "Position"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "OuterValue"
+          },
+          {
+            "node": 2,
+            "target_field": "OuterPosition"
+          }
+        ],
+        "children": [
+          {
+            "bindings": [
+              {
+                "node": 7,
+                "target_field": "OwnedSingleton"
+              },
+              {
+                "node": 8,
+                "target_field": "RelativeSingleton"
+              },
+              {
+                "node": 9,
+                "target_field": "FramedOuter"
+              },
+              {
+                "node": 10,
+                "target_field": "LegacyNearest"
+              },
+              {
+                "node": 11,
+                "target_field": "LegacyAliasPosition"
+              },
+              {
+                "node": 2,
+                "target_field": "ExactOwnedOuter"
+              }
+            ],
+            "children": [],
+            "construction": "Constructed",
+            "filter": 6,
+            "grouping": null,
+            "iteration": {
+              "kind": "OwnedSource",
+              "owner": {
+                "kind": "Named",
+                "name": "Ref"
+              },
+              "path": [],
+              "output_path": null
+            },
+            "iteration_output": "Repeated",
+            "sort": null,
+            "target_field": "Items",
+            "windows": []
+          }
+        ],
+        "construction": "Constructed",
+        "filter": 5,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Primary"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    },
+    {
+      "id": "raw_compact",
+      "source_schema": {
+        "name": "Input",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Rows",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Value",
+                "kind": "Scalar",
+                "type": "String",
+                "repeating": false
+              }
+            ],
+            "repeating": true
+          }
+        ],
+        "repeating": false
+      },
+      "named_sources": [
+        {
+          "name": "Ref",
+          "schema": {
+            "name": "Input",
+            "kind": "Group",
+            "children": [
+              {
+                "name": "Rows",
+                "kind": "Group",
+                "children": [
+                  {
+                    "name": "Value",
+                    "kind": "Scalar",
+                    "type": "String",
+                    "repeating": false
+                  }
+                ],
+                "repeating": true
+              }
+            ],
+            "repeating": false
+          }
+        }
+      ],
+      "target_schema": {
+        "name": "Output",
+        "kind": "Group",
+        "children": [
+          {
+            "name": "Value",
+            "kind": "Scalar",
+            "type": "String",
+            "repeating": false
+          },
+          {
+            "name": "OwnedPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          },
+          {
+            "name": "LegacyPosition",
+            "kind": "Scalar",
+            "type": "Int",
+            "repeating": false
+          }
+        ],
+        "repeating": true
+      },
+      "nodes": [
+        {
+          "frame": [
+            "Rows"
+          ],
+          "id": 1,
+          "kind": "OwnedSourceField",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows",
+            "Value"
+          ]
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 2,
+          "kind": "OwnedPosition",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          }
+        },
+        {
+          "collection": [
+            "Rows"
+          ],
+          "id": 3,
+          "kind": "Position"
+        },
+        {
+          "id": 4,
+          "kind": "Const",
+          "value": {
+            "kind": "Scalar",
+            "type": "Int",
+            "value": 2
+          }
+        },
+        {
+          "args": [
+            3,
+            4
+          ],
+          "function": "greater_than",
+          "id": 5,
+          "kind": "Call"
+        }
+      ],
+      "root_scope": {
+        "bindings": [
+          {
+            "node": 1,
+            "target_field": "Value"
+          },
+          {
+            "node": 2,
+            "target_field": "OwnedPosition"
+          },
+          {
+            "node": 3,
+            "target_field": "LegacyPosition"
+          }
+        ],
+        "children": [],
+        "construction": "Constructed",
+        "filter": 5,
+        "grouping": null,
+        "iteration": {
+          "kind": "OwnedSource",
+          "owner": {
+            "kind": "Named",
+            "name": "Ref"
+          },
+          "path": [
+            "Rows"
+          ],
+          "output_path": null
+        },
+        "iteration_output": "Repeated",
+        "sort": null,
+        "windows": [],
+        "target_field": ""
+      },
+      "extra_targets": [],
+      "failure_rules": [],
+      "user_functions": [],
+      "options": {
+        "source_path": null,
+        "target_path": null,
+        "source_format_options": "Default",
+        "target_format_options": "Default"
+      }
+    }
+  ],
+  "calls": [
+    {
+      "case": "C01",
+      "model": "outer_suffix",
+      "primary": {
+        "fields": [
+          {
+            "name": "Ref",
+            "value": {
+              "fields": [
+                {
+                  "name": "Rows",
+                  "value": {
+                    "items": [
+                      {
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "String",
+                              "value": "P1"
+                            }
+                          }
+                        ],
+                        "kind": "Group"
+                      },
+                      {
+                        "fields": [
+                          {
+                            "name": "Value",
+                            "value": {
+                              "kind": "Scalar",
+                              "type": "String",
+                              "value": "P2"
+                            }
+                          }
+                        ],
+                        "kind": "Group"
+                      }
+                    ],
+                    "kind": "Repeated"
+                  }
+                }
+              ],
+              "kind": "Group"
+            }
+          }
+        ],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "fields": [
+              {
+                "name": "Rows",
+                "value": {
+                  "items": [
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N1"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N2"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N3"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    }
+                  ],
+                  "kind": "Repeated"
+                }
+              }
+            ],
+            "kind": "Group"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "C02",
+      "model": "nested_rows",
+      "primary": {
+        "fields": [],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "fields": [
+              {
+                "name": "Rows",
+                "value": {
+                  "items": [
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N1"
+                          }
+                        },
+                        {
+                          "name": "Rows",
+                          "value": {
+                            "items": [
+                              {
+                                "fields": [
+                                  {
+                                    "name": "Value",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "type": "String",
+                                      "value": "I11"
+                                    }
+                                  }
+                                ],
+                                "kind": "Group"
+                              },
+                              {
+                                "fields": [
+                                  {
+                                    "name": "Value",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "type": "String",
+                                      "value": "I12"
+                                    }
+                                  }
+                                ],
+                                "kind": "Group"
+                              }
+                            ],
+                            "kind": "Repeated"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N2"
+                          }
+                        },
+                        {
+                          "name": "Rows",
+                          "value": {
+                            "items": [
+                              {
+                                "fields": [
+                                  {
+                                    "name": "Value",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "type": "String",
+                                      "value": "I21"
+                                    }
+                                  }
+                                ],
+                                "kind": "Group"
+                              },
+                              {
+                                "fields": [
+                                  {
+                                    "name": "Value",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "type": "String",
+                                      "value": "I22"
+                                    }
+                                  }
+                                ],
+                                "kind": "Group"
+                              },
+                              {
+                                "fields": [
+                                  {
+                                    "name": "Value",
+                                    "value": {
+                                      "kind": "Scalar",
+                                      "type": "String",
+                                      "value": "I23"
+                                    }
+                                  }
+                                ],
+                                "kind": "Group"
+                              }
+                            ],
+                            "kind": "Repeated"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    }
+                  ],
+                  "kind": "Repeated"
+                }
+              }
+            ],
+            "kind": "Group"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "C03",
+      "model": "empty_root",
+      "primary": {
+        "fields": [],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "items": [
+              {
+                "kind": "Scalar",
+                "type": "Null",
+                "value": null
+              },
+              {
+                "fields": [
+                  {
+                    "name": "Value",
+                    "value": {
+                      "kind": "Scalar",
+                      "type": "String",
+                      "value": "N2"
+                    }
+                  }
+                ],
+                "kind": "Group"
+              },
+              {
+                "kind": "Scalar",
+                "type": "JsonNull",
+                "value": null
+              },
+              {
+                "fields": [
+                  {
+                    "name": "Value",
+                    "value": {
+                      "kind": "Scalar",
+                      "type": "String",
+                      "value": "N4"
+                    }
+                  }
+                ],
+                "kind": "Group"
+              }
+            ],
+            "kind": "Repeated"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "C04",
+      "model": "same_owner",
+      "primary": {
+        "fields": [],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "fields": [
+              {
+                "name": "Rows",
+                "value": {
+                  "items": [
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N1"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N2"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N3"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    }
+                  ],
+                  "kind": "Repeated"
+                }
+              }
+            ],
+            "kind": "Group"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "C05",
+      "model": "singleton",
+      "primary": {
+        "fields": [
+          {
+            "name": "Rows",
+            "value": {
+              "items": [
+                {
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "String",
+                        "value": "P1"
+                      }
+                    }
+                  ],
+                  "kind": "Group"
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "String",
+                        "value": "P2"
+                      }
+                    }
+                  ],
+                  "kind": "Group"
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "Value",
+                      "value": {
+                        "kind": "Scalar",
+                        "type": "String",
+                        "value": "P3"
+                      }
+                    }
+                  ],
+                  "kind": "Group"
+                }
+              ],
+              "kind": "Repeated"
+            }
+          }
+        ],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "fields": [
+              {
+                "name": "Value",
+                "value": {
+                  "kind": "Scalar",
+                  "type": "String",
+                  "value": "S"
+                }
+              }
+            ],
+            "kind": "Group"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    },
+    {
+      "case": "C06",
+      "model": "raw_compact",
+      "primary": {
+        "fields": [],
+        "kind": "Group"
+      },
+      "supplied": [
+        {
+          "name": "Ref",
+          "instance": {
+            "fields": [
+              {
+                "name": "Rows",
+                "value": {
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "type": "Null",
+                      "value": null
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N2"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    },
+                    {
+                      "kind": "Scalar",
+                      "type": "JsonNull",
+                      "value": null
+                    },
+                    {
+                      "fields": [
+                        {
+                          "name": "Value",
+                          "value": {
+                            "kind": "Scalar",
+                            "type": "String",
+                            "value": "N4"
+                          }
+                        }
+                      ],
+                      "kind": "Group"
+                    }
+                  ],
+                  "kind": "Repeated"
+                }
+              }
+            ],
+            "kind": "Group"
+          }
+        }
+      ],
+      "selection": {
+        "kind": "All"
+      }
+    }
+  ],
+  "generated_limits": {
+    "max_roots": 16,
+    "max_active_frames": 8,
+    "max_path_segments": 16,
+    "max_metadata_bytes": 1048576,
+    "max_walk_contexts": 64
+  },
+  "native_limits": "public engine defaults; no private limit hook",
+  "execution": {
+    "mapping_path": "basic-owned-nested-alias.mapping",
+    "runtime_parameters": null,
+    "loader": false,
+    "tracing": false,
+    "debugging": false
+  },
+  "exact_counts": {
+    "models": 6,
+    "calls_per_backend": 6,
+    "total_calls": 18
+  },
+  "full_filter_parity": false,
+  "full_error_parity": false,
+  "total_parity": false,
+  "nested_alias_source_contract": "Six genuine static Group Projects through explicit Basic filter APIs; exact owner identity, opposing legacy suffix directions, real empty collection frames, identity without new cursor, singleton plain terminal, raw predicate and compact target positions. No sort/windows/functions/dynamic input, no private strict schema policy.",
+  "typed_failure_coverage": false
+}
