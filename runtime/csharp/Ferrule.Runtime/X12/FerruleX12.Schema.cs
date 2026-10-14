@@ -72,7 +72,7 @@ public static partial class FerruleX12
             if (root.Repeating || root.Type is not null)
                 throw Failure(FerruleX12Error.Schema, "X12 requires a singular root container.");
             GroupedShape? groupedShape = grouped ? ValidateGroupedShape(root) : null;
-            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped);
+            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped, modern: version.Modern);
             var envelopes = new List<Node>();
             CollectEnvelopes(root, envelopes, true);
             string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
@@ -346,15 +346,21 @@ public static partial class FerruleX12
             && name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character)) ? name : null;
     }
 
-    private static void ValidateShape(Node node, bool root, bool element, bool component, bool repeated, bool grouped = false)
+    private static void ValidateShape(Node node, bool root, bool element, bool component, bool repeated, bool grouped = false,
+        bool modern = false)
     {
         if (element)
         {
-            if (node.Repeating || component && node.Type is null)
+            if (node.Repeating && !modern || component && node.Type is null)
                 throw Failure(FerruleX12Error.UnsupportedProfile, "004010 elements cannot repeat or contain nested composites.");
+            if (node.Repeating && component)
+                throw Failure(FerruleX12Error.UnsupportedProfile, "X12 components cannot repeat.");
+            // Qualifier matching and fixed materialization address one occurrence.
+            if (node.Repeating && (node.Fixed is not null || node.Count is not null || node.Children.Any(child => child.Fixed is not null)))
+                throw Failure(FerruleX12Error.Schema, "Repeating X12 elements cannot carry fixed values or item cardinality.");
             if (node.Children.Length > MaximumElements) throw Limit("X12 composite schema component limit exceeded.");
             if (node.Type is null)
-                foreach (Node child in node.Children) ValidateShape(child, false, true, true, false, grouped);
+                foreach (Node child in node.Children) ValidateShape(child, false, true, true, false, grouped, modern);
             return;
         }
         if (node.Type is not null) throw Failure(FerruleX12Error.Schema, "X12 containers require groups.");
@@ -364,9 +370,22 @@ public static partial class FerruleX12
             if (node.Children.Length > MaximumElements) throw Limit("X12 schema element limit exceeded.");
             if (IsEnvelope(id) && (node.Repeating || repeated) && !grouped)
                 throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope schemas cannot repeat.");
-            foreach (Node child in node.Children) ValidateShape(child, false, true, false, false, grouped);
+            foreach (Node child in node.Children) ValidateShape(child, false, true, false, false, grouped, modern);
         }
-        else foreach (Node child in node.Children) ValidateShape(child, false, false, false, repeated || node.Repeating, grouped);
+        else foreach (Node child in node.Children) ValidateShape(child, false, false, false, repeated || node.Repeating, grouped, modern);
+    }
+
+    // Segment IDs with at least one declared repeating element. Every other
+    // segment refuses repetition syntax during tokenization.
+    private static IEnumerable<string> RepeatingSegmentIds(Node node, bool root = false)
+    {
+        if (!root && SegmentId(node.Name) is { } id)
+        {
+            if (node.Children.Any(child => child.Repeating)) yield return id;
+            yield break;
+        }
+        foreach (Node child in node.Children)
+            foreach (string childId in RepeatingSegmentIds(child)) yield return childId;
     }
 
     private static GroupedShape ValidateGroupedShape(Node root)

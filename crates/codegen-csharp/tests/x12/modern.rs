@@ -325,7 +325,6 @@ fn modern_profile_admission_retains_versions_direction_and_typed_refusals() {
                 options(isa, None),
             ),
             ("st03", candidate.clone(), options(isa, None)),
-            ("repeating-element", candidate.clone(), options(isa, None)),
             (
                 "fixed-isa11-conflict",
                 candidate.clone(),
@@ -348,9 +347,6 @@ fn modern_profile_admission_retains_versions_direction_and_typed_refusals() {
                     child_mut(child_mut(&mut rejected.target, "ISA"), "ISA12").fixed = None
                 }
                 "st03" => children_mut(child_mut(&mut rejected.target, "ST")).push(scalar("ST03")),
-                "repeating-element" => {
-                    child_mut(child_mut(&mut rejected.target, "W05"), "W0502").repeating = true
-                }
                 "fixed-isa11-conflict" => {
                     child_mut(child_mut(&mut rejected.target, "ISA"), "ISA11").fixed =
                         Some("+".into())

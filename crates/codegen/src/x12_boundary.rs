@@ -457,6 +457,7 @@ fn validate_schema(
     }
     let mut nodes = 0;
     let mut envelopes = Vec::new();
+    let mut repeats = Vec::new();
     visit_schema(
         schema,
         side,
@@ -467,6 +468,7 @@ fn validate_schema(
         true,
         options.envelope_profile,
         &mut envelopes,
+        &mut repeats,
     )?;
     let expected = [
         ("ISA", 16),
@@ -562,6 +564,7 @@ fn validate_schema(
             "retained interchange version must agree with fixed ISA12",
         ));
     }
+    validate_repeated_elements(&repeats, version, side)?;
     if version != "004010" {
         let syntax = options.separators.unwrap_or(X12Separators {
             element: '*',
@@ -707,6 +710,7 @@ fn visit_schema<'a>(
     root: bool,
     envelope_profile: X12EnvelopeProfile,
     envelopes: &mut Vec<(&'a str, &'a SchemaNode, Vec<String>)>,
+    repeats: &mut Vec<RepeatedElement<'a>>,
 ) -> Result<(), X12BoundaryPolicyError> {
     *nodes += 1;
     if depth > MAX_X12_SCHEMA_DEPTH || *nodes > MAX_X12_SCHEMA_NODES {
@@ -759,7 +763,7 @@ fn visit_schema<'a>(
         }
         for child in children {
             path.push(child.name.clone());
-            validate_element(child, side, path, depth + 1, nodes, false)?;
+            validate_element(child, side, path, depth + 1, nodes, false, repeats)?;
             path.pop();
         }
     } else {
@@ -775,6 +779,7 @@ fn visit_schema<'a>(
                 false,
                 envelope_profile,
                 envelopes,
+                repeats,
             )?;
             path.pop();
         }
@@ -782,13 +787,22 @@ fn visit_schema<'a>(
     Ok(())
 }
 
-fn validate_element(
-    node: &SchemaNode,
+/// A declared repeating element or component, checked once the fixed
+/// ISA12/GS08 pair has selected whether the profile has active repetition.
+struct RepeatedElement<'a> {
+    node: &'a SchemaNode,
+    path: Vec<String>,
+    component: bool,
+}
+
+fn validate_element<'a>(
+    node: &'a SchemaNode,
     side: X12BoundarySide,
     path: &mut Vec<String>,
     depth: usize,
     nodes: &mut usize,
     component: bool,
+    repeats: &mut Vec<RepeatedElement<'a>>,
 ) -> Result<(), X12BoundaryPolicyError> {
     *nodes += 1;
     if depth > MAX_X12_SCHEMA_DEPTH || *nodes > MAX_X12_SCHEMA_NODES {
@@ -799,11 +813,11 @@ fn validate_element(
         ));
     }
     if node.repeating {
-        return Err(schema_error(
-            side,
-            path,
-            "004010 elements and components cannot repeat",
-        ));
+        repeats.push(RepeatedElement {
+            node,
+            path: path.clone(),
+            component,
+        });
     }
     match &node.kind {
         SchemaKind::Scalar {
@@ -835,7 +849,7 @@ fn validate_element(
                     ));
                 }
                 path.push(child.name.clone());
-                validate_element(child, side, path, depth + 1, nodes, true)?;
+                validate_element(child, side, path, depth + 1, nodes, true, repeats)?;
                 path.pop();
             }
             Ok(())
@@ -846,6 +860,46 @@ fn validate_element(
             "elements require String/Int/Float scalars or one flat composite level",
         )),
     }
+}
+
+/// Modern profiles admit top-level body element repetition. Components never
+/// repeat, and a repeating element carries no fixed qualifier: qualifier
+/// matching and fixed materialization address exactly one occurrence.
+fn validate_repeated_elements(
+    repeats: &[RepeatedElement<'_>],
+    version: &str,
+    side: X12BoundarySide,
+) -> Result<(), X12BoundaryPolicyError> {
+    for repeated in repeats {
+        if version == "004010" {
+            return Err(schema_error(
+                side,
+                &repeated.path,
+                "004010 elements and components cannot repeat",
+            ));
+        }
+        if repeated.component {
+            return Err(schema_error(
+                side,
+                &repeated.path,
+                "X12 components cannot repeat",
+            ));
+        }
+        let fixed = match &repeated.node.kind {
+            SchemaKind::Group { children, .. } => {
+                children.iter().any(|component| component.fixed.is_some())
+            }
+            _ => repeated.node.fixed.is_some(),
+        };
+        if fixed {
+            return Err(schema_error(
+                side,
+                &repeated.path,
+                "repeating X12 elements cannot carry fixed values",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn require_metadata(

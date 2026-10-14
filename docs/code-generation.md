@@ -132,7 +132,8 @@ strict UTF-8 bytes. Selected input metadata supports bounded lenient traversal
 and Float implied-decimal scaling; selected output metadata supports compact
 date/time and plain-decimal formatting plus explicit X12 envelope completion.
 Repetition punctuation is inactive metadata under 00401 and active ISA11
-syntax in the modern profiles; repeated element values remain refused.
+syntax in the modern profiles, where declared repeating body elements read and
+write ordered occurrences.
 The envelope defaults to one functional group and transaction. Explicit
 `--x12-source-envelope-profile grouped-transactions` or
 `--x12-target-envelope-profile grouped-transactions` selects declared repeated

@@ -1239,8 +1239,11 @@ their refusals.
 - [x] Support canonical generated C# `00501`/`005010` and `00604`/`006040`
   single-envelope scalar-element profiles in
   [#272](https://github.com/DeandreT/ferrule/issues/272), with exact declared version
-  agreement and active ISA11 repetition delimiters. Repeated element values
-  and implementation references require separate contracts.
+  agreement and active ISA11 repetition delimiters. Implementation references
+  require a separate contract.
+- [x] Support declared repeating body elements in the generated C# `005010` and
+  `006040` profiles: scalar and flat composite occurrences follow native empty
+  and absent semantics, per-occurrence options and the shared instance limit.
 - [x] Support explicit generated C# grouped transaction ownership in
   [#273](https://github.com/DeandreT/ferrule/issues/273): one interchange with
   declared repeated GS/GE and ST/SE owners, exact counts/controls and occurrence

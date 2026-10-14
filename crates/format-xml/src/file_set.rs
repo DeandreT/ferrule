@@ -44,6 +44,8 @@ impl Default for LocalFileSetLimits {
 #[derive(Debug)]
 pub struct LocalXmlFileSet {
     pub instance: Instance,
+    /// Canonical member paths. On Windows these use the ordinary drive-letter
+    /// form whenever it names the same file as the verbatim canonical path.
     pub paths: Vec<PathBuf>,
     pub total_bytes: u64,
 }
@@ -85,7 +87,7 @@ pub enum LocalFileSetError {
     MemberXml {
         path: PathBuf,
         #[source]
-        source: XmlFormatError,
+        source: Box<XmlFormatError>,
     },
 }
 
@@ -160,6 +162,7 @@ pub fn read_local_file_set(
 
     let mut total_bytes = 0_u64;
     let mut documents = Vec::with_capacity(paths.len());
+    let mut locations = Vec::with_capacity(paths.len());
     for path in &paths {
         let remaining = limits.max_total_bytes().saturating_sub(total_bytes);
         let mut file = std::fs::File::open(path).map_err(|source| LocalFileSetError::MemberIo {
@@ -187,7 +190,7 @@ pub fn read_local_file_set(
         })?;
         let value = from_str(text, schema).map_err(|source| LocalFileSetError::MemberXml {
             path: path.clone(),
-            source,
+            source: Box::new(source),
         })?;
         let relative =
             path.strip_prefix(&canonical_base)
@@ -196,7 +199,8 @@ pub fn read_local_file_set(
                     base: canonical_base.clone(),
                 })?;
         let relative = relative.to_string_lossy().replace('\\', "/");
-        let source_path = path.to_string_lossy().into_owned();
+        let location = ordinary_path(path);
+        let source_path = location.to_string_lossy().into_owned();
         let member = DocumentMember::new_source(relative, source_path, value).ok_or_else(|| {
             LocalFileSetError::InvalidPattern {
                 pattern: pattern.display().to_string(),
@@ -204,13 +208,52 @@ pub fn read_local_file_set(
             }
         })?;
         documents.push(member);
+        locations.push(location);
     }
 
     Ok(LocalXmlFileSet {
         instance: Instance::DocumentSet(documents),
-        paths,
+        paths: locations,
         total_bytes,
     })
+}
+
+/// Returns the ordinary drive-letter form of a verbatim (`\\?\C:\...`)
+/// canonical path when that form resolves back to the same file.
+///
+/// Win32 parsing of an ordinary path can rewrite names, such as by dropping a
+/// trailing dot, so a path whose ordinary form does not round-trip through
+/// canonicalization stays verbatim.
+#[cfg(windows)]
+fn ordinary_path(canonical: &Path) -> PathBuf {
+    use std::path::Prefix;
+
+    let mut components = canonical.components();
+    let (Some(Component::Prefix(prefix)), Some(Component::RootDir)) =
+        (components.next(), components.next())
+    else {
+        return canonical.to_owned();
+    };
+    let Prefix::VerbatimDisk(drive) = prefix.kind() else {
+        return canonical.to_owned();
+    };
+    let mut ordinary = PathBuf::from(format!("{}:\\", char::from(drive)));
+    for component in components {
+        let Component::Normal(name) = component else {
+            return canonical.to_owned();
+        };
+        ordinary.push(name);
+    }
+    if std::fs::canonicalize(&ordinary).is_ok_and(|resolved| resolved == canonical) {
+        ordinary
+    } else {
+        canonical.to_owned()
+    }
+}
+
+#[cfg(not(windows))]
+fn ordinary_path(canonical: &Path) -> PathBuf {
+    canonical.to_owned()
 }
 
 fn split_pattern(base: &Path, pattern: &Path) -> Result<(PathBuf, String), LocalFileSetError> {
@@ -345,10 +388,19 @@ mod tests {
         };
         assert_eq!(documents.len(), 2);
         assert_eq!(documents[0].path(), "item-a.xml");
-        assert_eq!(
-            documents[0].source_path(),
-            directory.0.join("item-a.xml").to_string_lossy()
-        );
+        let canonical = std::fs::canonicalize(directory.0.join("item-a.xml"))?;
+        let canonical = canonical.to_string_lossy();
+        // Windows canonical paths are verbatim; members expose the ordinary
+        // drive-letter path to the same file.
+        let expected = if cfg!(windows) {
+            canonical
+                .strip_prefix(r"\\?\")
+                .ok_or("canonical Windows path is not verbatim")?
+        } else {
+            &*canonical
+        };
+        assert_eq!(documents[0].source_path(), expected);
+        assert_eq!(loaded.paths[0], Path::new(expected));
         assert_eq!(
             documents[0]
                 .value()
@@ -356,6 +408,42 @@ mod tests {
                 .and_then(Instance::as_scalar),
             Some(&ir::Value::String("a".into()))
         );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn keeps_verbatim_paths_without_an_ordinary_equivalent() -> Result<(), Box<dyn Error>> {
+        let directory = TempDir::new()?;
+        let canonical = std::fs::canonicalize(&directory.0)?;
+        // Win32 parsing drops a trailing dot, so only the verbatim path names
+        // this member.
+        let dotted = canonical.join("item-a.");
+        std::fs::write(&dotted, "<root><value>a</value></root>")?;
+        let ordinary = canonical.join("item-b.xml");
+        std::fs::write(&ordinary, "<root><value>b</value></root>")?;
+
+        let loaded = read_local_file_set(
+            &directory.0,
+            Path::new("item-*"),
+            &schema(),
+            LocalFileSetLimits::default(),
+        )?;
+
+        let Instance::DocumentSet(documents) = loaded.instance else {
+            return Err("file-set result was not a document set".into());
+        };
+        assert_eq!(documents[0].path(), "item-a.");
+        assert_eq!(documents[0].source_path(), dotted.to_string_lossy());
+        assert_eq!(loaded.paths[0], dotted);
+        assert_eq!(
+            Some(documents[1].source_path()),
+            ordinary
+                .to_str()
+                .and_then(|path| path.strip_prefix(r"\\?\"))
+        );
+        let unc = Path::new(r"\\?\UNC\server\share\item.xml");
+        assert_eq!(ordinary_path(unc), unc);
         Ok(())
     }
 
@@ -396,6 +484,27 @@ mod tests {
             read_local_file_set(&directory.0, Path::new("item-*.xml"), &schema(), one_byte),
             Err(LocalFileSetError::TooManyBytes { limit: 1 })
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn reports_member_parse_failures_with_their_path() -> Result<(), Box<dyn Error>> {
+        let directory = TempDir::new()?;
+        std::fs::write(directory.0.join("item-a.xml"), "<root><value>a</value>")?;
+
+        let Err(LocalFileSetError::MemberXml { path, source }) = read_local_file_set(
+            &directory.0,
+            Path::new("item-*.xml"),
+            &schema(),
+            LocalFileSetLimits::default(),
+        ) else {
+            return Err("malformed member was not reported as an XML failure".into());
+        };
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("item-a.xml")
+        );
+        assert!(matches!(*source, XmlFormatError::Parse(_)));
         Ok(())
     }
 }

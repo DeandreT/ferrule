@@ -34,10 +34,12 @@ public static partial class FerruleX12
                         || value is FerruleScalar { Value.Kind: FerruleValueKind.String } empty && empty.Value.StringValue.Length == 0))
                     value = new FerruleScalar(FerruleValue.FromString(child.Fixed is { Length: > 0 } fixedValue
                         ? fixedValue : repetition.ToString()));
-                string text = WriteElement(child, value,
-                    syntax, [.. path, child.Name], budget, depth + 1, id == "ISA" && index == 15,
-                    Math.Max(0, budget.RemainingOutput - id.Length - 1 - (syntax.Segment == '\n' ? 0 : 1)
-                        - textBytes - index - 1), id == "ISA" && index == 10);
+                long remaining = Math.Max(0, budget.RemainingOutput - id.Length - 1 - (syntax.Segment == '\n' ? 0 : 1)
+                    - textBytes - index - 1);
+                string text = child.Repeating
+                    ? WriteRepeatedElement(child, value, profile, [.. path, child.Name], budget, depth + 1, remaining)
+                    : WriteElement(child, value, syntax, [.. path, child.Name], budget, depth + 1, id == "ISA" && index == 15,
+                        remaining, id == "ISA" && index == 10);
                 elements[index] = text;
                 textBytes += StrictUtf8.GetByteCount(text);
                 if (id == "ISA" && index is 1 or 3 or 5 or 7)
@@ -49,7 +51,8 @@ public static partial class FerruleX12
                 budget.CheckOutput(wireBytes);
             }
             budget.AddOutput(wireBytes);
-            segments.Add(new(id, elements));
+            segments.Add(new(id, elements, node.Children.Any(child => child.Repeating)
+                ? node.Children.Select(child => child.Repeating).ToArray() : null));
             return;
         }
         foreach (Node child in node.Children)
@@ -78,6 +81,39 @@ public static partial class FerruleX12
             else WriteContainer(child, value ?? throw Failure(FerruleX12Error.Value, "X12 output is missing a required group.", path: string.Join('/', childPath)),
                 profile, childPath, segments, budget, depth + 1);
         }
+    }
+
+    // A missing or Null repeating element has no occurrences. Each occurrence
+    // keeps the ordinary scalar or composite rules before repetition joins it.
+    private static string WriteRepeatedElement(Node node, FerruleInstance? instance, Profile profile, string[] path,
+        Budget budget, int depth, long maximumBytes)
+    {
+        budget.Visit(depth);
+        IReadOnlyList<FerruleInstance> items = instance switch
+        {
+            null or FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull } => [],
+            FerruleRepeated repeated => repeated.Items,
+            FerruleMappedSequence sequence => sequence.Items,
+            _ => throw Failure(FerruleX12Error.Value, "X12 repeating fields require an ordered collection.", path: string.Join('/', path)),
+        };
+        if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
+        Syntax syntax = profile.OutputSyntax;
+        char repetition = syntax.Repetition
+            ?? throw Failure(FerruleX12Error.UnsupportedProfile, "Modern X12 output requires a selected repetition separator.");
+        var occurrences = new List<string>(items.Count);
+        long bytes = 0;
+        for (int index = 0; index < items.Count; index++)
+        {
+            budget.Loop();
+            string[] itemPath = profile.Grouped is not null
+                ? [.. path[..^1], path[^1] + "[" + index.ToString(CultureInfo.InvariantCulture) + "]"] : path;
+            string text = WriteElement(node, items[index], syntax, itemPath, budget, depth + 1,
+                maximumBytes: Math.Max(0, maximumBytes - bytes - (index > 0 ? 1 : 0)));
+            bytes += StrictUtf8.GetByteCount(text) + (index > 0 ? 1 : 0);
+            if (bytes > maximumBytes) throw Limit("X12 repeated element byte limit exceeded.");
+            occurrences.Add(text);
+        }
+        return string.Join(repetition, occurrences);
     }
 
     private static string WriteElement(Node node, FerruleInstance? instance, Syntax syntax, string[] path,

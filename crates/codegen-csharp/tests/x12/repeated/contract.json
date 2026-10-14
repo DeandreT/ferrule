@@ -1,0 +1,90 @@
+{
+  "scope": "Selected generated C# 005010/006040 repeated body element values. Native reading and writing define the positive value and wire contract; generated admission is stricter for fixed values, component repetition and cardinality.",
+  "cases": [
+    { "id": "default", "syntax": { "element": "*", "component": ":", "segment": "~", "repetition": "^" } },
+    { "id": "custom", "syntax": { "element": "|", "component": ">", "segment": "!", "repetition": "+" } },
+    { "id": "sparse", "syntax": { "element": "*", "component": ":", "segment": "~", "repetition": "^" } }
+  ],
+  "options": {
+    "implied_decimals": [ { "path": ["N9", "N902", "Qty"], "places": 1 } ],
+    "lexical_formats": [ { "path": ["REF", "REF02"], "kind": "compact_date8" } ],
+    "input_lines": { "REF": "REF*ZZ*20300615^20300616*1^^3*TAIL~", "N9": "N9*X*AB:15^^CD:250~" },
+    "input_values": {
+      "REF": { "REF01": "ZZ", "REF02": ["20300615", "20300616"], "REF03": [1, null, 3], "REF04": "TAIL" },
+      "N9": { "N901": "X", "N902": [ { "Code": "AB", "Qty": 1.5 }, { "Code": null, "Qty": null }, { "Code": "CD", "Qty": 25.0 } ] }
+    },
+    "lexical_occurrences": ["2030-06-15", "2030-06-16"],
+    "output_lines": { "REF": "REF*ZZ*20300615^20300616*1^^3*TAIL~", "N9": "N9*X*AB:1.5^^CD:25~" }
+  },
+  "errors": {
+    "undeclared_repetition": {
+      "error": "UnsupportedProfile",
+      "message": "Repeated X12 element values are outside the selected profile.",
+      "segment_index": 3,
+      "field_path": null
+    },
+    "nonrepeating_in_repeating_segment": {
+      "error": "UnsupportedProfile",
+      "message": "Repeated X12 element values are outside the selected profile.",
+      "segment_index": 4,
+      "field_path": null
+    },
+    "repeated_scalar_composite_syntax": {
+      "error": "Schema",
+      "message": "X12 scalar contains undeclared composite syntax.",
+      "segment_index": 4,
+      "field_path": "REF/REF02"
+    },
+    "repeated_invalid_int": {
+      "error": "Value",
+      "message": "X12 scalar has an invalid numeric representation.",
+      "segment_index": null,
+      "field_path": "REF/REF03"
+    },
+    "repeated_extra_component": {
+      "error": "Schema",
+      "message": "X12 composite contains undeclared components.",
+      "segment_index": 5,
+      "field_path": "N9/N902"
+    },
+    "output_item_repetition": {
+      "error": "Value",
+      "message": "X12 scalar contains an unrepresentable delimiter.",
+      "segment_index": null,
+      "field_path": "REF/REF02"
+    },
+    "output_not_collection": {
+      "error": "Value",
+      "message": "X12 repeating fields require an ordered collection.",
+      "segment_index": null,
+      "field_path": "REF/REF02"
+    },
+    "descriptor_legacy_repeating": {
+      "error": "UnsupportedProfile",
+      "message": "004010 elements cannot repeat or contain nested composites.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_component_repeating": {
+      "error": "UnsupportedProfile",
+      "message": "X12 components cannot repeat.",
+      "segment_index": null,
+      "field_path": null
+    },
+    "descriptor_fixed_repeating": {
+      "error": "Schema",
+      "message": "Repeating X12 elements cannot carry fixed values or item cardinality.",
+      "segment_index": null,
+      "field_path": null
+    }
+  },
+  "policy_errors": {
+    "legacy-version": { "variant": "Schema", "side": "Target", "path": ["REF", "REF02"], "reason": "004010 elements and components cannot repeat" },
+    "repeating-component": { "variant": "Schema", "side": "Target", "path": ["N9", "N902", "Code"], "reason": "X12 components cannot repeat" },
+    "fixed-repeating-scalar": { "variant": "Schema", "side": "Target", "path": ["REF", "REF02"], "reason": "repeating X12 elements cannot carry fixed values" },
+    "fixed-repeating-component": { "variant": "Schema", "side": "Target", "path": ["N9", "N902"], "reason": "repeating X12 elements cannot carry fixed values" },
+    "repeating-envelope-element": { "variant": "Schema", "side": "Target", "path": ["ST"], "reason": "envelope elements require their exact width and String type" }
+  },
+  "empty_semantics": "Mirrors native format-edi: an absent element position reads as zero occurrences; a present empty element reads as one Null occurrence. Zero occurrences and a single trailing Null occurrence both write an empty, trimmed element.",
+  "ordering": "Segments without a declared repeating element refuse repetition syntax during tokenization, before envelope/schema/mapping. Segments declaring one defer to their reader, which refuses repetition in each non-repeating element in element order."
+}

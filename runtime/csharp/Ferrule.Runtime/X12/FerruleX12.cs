@@ -39,7 +39,8 @@ public static partial class FerruleX12
             || selected.Component != syntax.Component || selected.Segment != syntax.Segment
             || selected.Repetition is { } repetition && repetition != syntax.Repetition))
             throw Failure(FerruleX12Error.Syntax, "Configured separators do not match ISA.");
-        List<Segment> segments = Tokenize(document, syntax);
+        List<Segment> segments = Tokenize(document, syntax,
+            new HashSet<string>(RepeatingSegmentIds(profile.Root, root: true), StringComparer.Ordinal));
         ValidateEnvelope(segments, profile, syntax);
         var cursor = new Cursor(segments, syntax, profile);
         FerruleInstance result = ReadContainer(profile.Root, cursor, [], 0, [], root: true);
@@ -99,7 +100,7 @@ public static partial class FerruleX12
             {
                 string text = segment.Elements[index];
                 RequireOutputText(text, syntax, segment.Id == "ISA" && index == 15,
-                    segment.Id == "ISA" && index == 10);
+                    segment.Id == "ISA" && index == 10, segment.Repeating?[index] == true);
                 Add(syntax.Element.ToString());
                 Add(text);
             }
@@ -119,7 +120,9 @@ public static partial class FerruleX12
     }
 
     private readonly record struct Syntax(char Element, char Component, char Segment, char? Repetition = null);
-    private sealed record Segment(string Id, string[] Elements);
+    // Output segments mark repeating elements, whose occurrences were validated
+    // before the selected repetition delimiter joined them.
+    private sealed record Segment(string Id, string[] Elements, bool[]? Repeating = null);
 
     private static Syntax DiscoverSyntax(string text, Profile profile)
     {
@@ -152,7 +155,7 @@ public static partial class FerruleX12
             throw Failure(FerruleX12Error.Syntax, "X12 separators must be distinct ASCII punctuation; the segment terminator may be LF.");
     }
 
-    private static List<Segment> Tokenize(string text, Syntax syntax)
+    private static List<Segment> Tokenize(string text, Syntax syntax, HashSet<string> repeatingIds)
     {
         var segments = new List<Segment>();
         int start = 0;
@@ -185,7 +188,9 @@ public static partial class FerruleX12
             if (id.Length is < 2 or > 3 || !char.IsAsciiLetterUpper(id[0])
                 || id.Any(character => !char.IsAsciiLetterUpper(character) && !char.IsAsciiDigit(character)))
                 throw Failure(FerruleX12Error.Syntax, "X12 segment identifiers must be two or three uppercase alphanumeric characters.", segments.Count);
-            if (syntax.Repetition is { } repetition)
+            // Segments declaring a repeating element defer this check to their
+            // reader, which still refuses repetition in non-repeating elements.
+            if (syntax.Repetition is { } repetition && !repeatingIds.Contains(id))
                 for (int index = 1; index < parts.Count; index++)
                     if (!(id == "ISA" && index == 11) && parts[index].Contains(repetition))
                         throw Failure(FerruleX12Error.UnsupportedProfile,
@@ -428,12 +433,12 @@ public static partial class FerruleX12
     private static bool Digits(string text, int minimum, int maximum)
         => text.Length >= minimum && text.Length <= maximum && text.All(char.IsAsciiDigit);
 
-    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent, bool isaRepetition)
+    private static void RequireOutputText(string text, Syntax syntax, bool isaComponent, bool isaRepetition, bool repeated = false)
     {
         if (isaComponent && text == syntax.Component.ToString()) return;
         if (isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString()) return;
         if (text.Any(character => char.IsControl(character) || character == syntax.Element || character == syntax.Segment
-            || character == syntax.Repetition))
+            || !repeated && character == syntax.Repetition))
             throw Failure(FerruleX12Error.Value, "X12 output contains an unrepresentable delimiter or control character.");
         // Composite elements have already been built from validated components.
     }
