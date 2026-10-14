@@ -5,6 +5,74 @@ bounded work from the [roadmap](../ROADMAP.md). Issues define the problem,
 in/out of scope, likely files and acceptance checks; this page helps contributors
 choose a lane and avoid conflicting changes.
 
+## Current Basic milestone handoffs (2026-10-14)
+
+[#697](https://github.com/DeandreT/ferrule/issues/697) coordinates the
+[current roadmap](../ROADMAP.md#current-basic-ownership-milestone-2026-10-14)
+against merged main [`d92a0bb`](https://github.com/DeandreT/ferrule/commit/d92a0bb67826d13fc3069c9b7c0acad85f7c4073).
+Sort profiles and the retained PR705 48-outcome cohort are merged. The separate
+singleton runtime corrections are merged in PR712 and PR716. Their local checks
+and current C05/nested18/alias9/filter36 comparisons passed within their finite
+scopes. PR718 merged the common window profile after 448 local tests passed;
+separate backend window implementation is next. Earlier dated tables retain
+their historical scope. Source review, local execution and matched outcomes
+remain separate evidence.
+
+| Lane | Source ownership | Next gate |
+| --- | --- | --- |
+| #693 Rust singleton projection | `crates/codegen-runtime/src/context/basic.rs` and `basic_tests.rs`. | Merged in PR712. Current runtime375/backend164-active-plus-ten-ignored and filter24/sort26 checks passed. Bind the merged runtime preimages at #702's handoff; do not reuse older runtime source identities. |
+| #694 C# singleton projection | `runtime/csharp/Ferrule.Runtime/ScopeContext.cs` and `Ferrule.Runtime.SmokeTests/BasicOwnershipContextTests.cs`. | Merged in PR716. Backend164/strict and all 45 runtime/generated commands passed, including smoke216/public44/new-singleton33. Bind the fresh runtime source and DLL at #703's handoff. |
+| #688/#692 nested-context qualification | Focused conformance fixtures and complete output/error oracles. | Current C05 six-call comparison passed. The original six-model/18-call cohort is accepted after retained-capture reconciliation: four C05 expected strings changed in memory, no execution replay and original failures/fixtures preserved. Broader error and observer qualification remains separate. |
+| #677 alias/filter cohorts | Original alias and filter models; no production edits. | Current alias9 and filter36 passed after both fixes, with all ten alias and 16 filter commands passing. Broader nested and matched-sort claims retain separate gates. |
+| #698 common windows | Common `lib.rs`, `lower.rs`, `owned_admission.rs`, `validate/mod.rs`, `validate/owned_sources.rs`, `tests/basic_owned_emission.rs`, `tests/owned_admission.rs`. | Merged in PR718 after all four local commands passed, including 448 tests/Basic40/admission32, production and strict checks. The separate backend window handoff is ready. |
+| #702 Rust windows / #703 C# windows | Separate backend renderer, entrypoint and test scopes; each owns its language runtime files after the #693/#694 handoff. | Planned implementation is authorized after merged #698. Use the merged singleton runtime preimages, then qualify bounds, both filter/sort orders, First, typed failures and finite generated consumers separately. |
+| #704 matched windows | One focused portable window corpus; no production edits. | Follow both qualified backend window merges. Preserve earlier sort and nested-context evidence. |
+| #709 CJK font fallback | GUI `main.rs`, new `fonts.rs` and one pinned regular font with OFL/copyright/provenance assets. | Source accepted; local font tests, production and private-display checks are unrun. Preserve Latin/Greek primary fonts and the separate Lucide family; rerun failed C02 after qualification. |
+| #406 compact GUI workflows | Current GUI build/tests and alternate-display desktop workflows. | Six of nine workflows passed; C02 failed on CJK glyphs. C03 named hover/accessibility and C06 target-height/pin-edge evidence remain unverified. C09 passed protected186, two normal exits and full source guards. |
+| #612/#613/#606 broader acceptance | Claim each remaining engine/host scope separately. | Matched finite cohorts inform acceptance; public observer activation requires its own checks. |
+
+```mermaid
+flowchart LR
+    SortMatched["#670/PR705<br/>48 earlier matched outcomes"]
+    Runtime["#693/#694 Singleton fixes<br/>merged PR712/PR716"]
+    Rerun["C05/nested18/alias9/filter36<br/>finite comparisons passed"]
+    CommonWindow["#698/PR718 Common windows<br/>merged, 448 checks passed"]
+    RustWindow["#702 Rust windows<br/>implementation planned"]
+    CSharpWindow["#703 C# windows<br/>implementation planned"]
+    WindowMatched["#704 Matched windows<br/>pending"]
+    Acceptance["#612/#613/#606<br/>broader acceptance pending"]
+    Font["#709 CJK fallback<br/>source accepted, checks pending"]
+    GUI["#406 Six workflows passed<br/>C02 failed; C03/C06 unverified"]
+
+    Runtime --> Rerun
+    SortMatched --> CommonWindow
+    CommonWindow --> RustWindow
+    CommonWindow --> CSharpWindow
+    Runtime -->|runtime handoff| RustWindow
+    Runtime -->|runtime handoff| CSharpWindow
+    RustWindow --> WindowMatched
+    CSharpWindow --> WindowMatched
+    Rerun -.-> Acceptance
+    WindowMatched -.-> Acceptance
+    Font -->|C02 rerun| GUI
+```
+
+Solid arrows identify implementation prerequisites or file handoffs; dotted
+arrows supply finite qualification evidence. Font and desktop work are separate
+from common/backend window source scopes. Shared compilation and artifact access
+still use one coordinated verification slot.
+
+- [x] Merge sort profiles, the earlier #670 cohort and separate #693/#694 fixes.
+- [x] Qualify current C05/nested18/alias9/filter36 against both runtime corrections.
+- [x] Verify #698's common window candidate locally with all 448 tests.
+- [x] Merge #698's verified common window profile in PR718.
+- [ ] Implement separate #702/#703 increments, then qualify #704's cohort.
+- [ ] Qualify #709, rerun C02 and complete C03/C06 desktop evidence.
+- [ ] Complete broader Basic acceptance before public observer activation.
+
+Merge focused increments after their appropriate local checks without waiting
+for CI. Keep failed captures, earlier cohorts and their source identities distinct.
+
 ## Current Basic ownership handoffs (2026-10-13)
 
 This [#679](https://github.com/DeandreT/ferrule/issues/679) snapshot records

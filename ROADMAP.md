@@ -1,6 +1,68 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-13
+Updated: 2026-10-14
+
+## Current Basic ownership milestone (2026-10-14)
+
+This [#697](https://github.com/DeandreT/ferrule/issues/697) snapshot records
+merged main [`d92a0bb`](https://github.com/DeandreT/ferrule/commit/d92a0bb67826d13fc3069c9b7c0acad85f7c4073).
+It supersedes the current-status claims in earlier dated sections, which retain
+their original evidence scope. Completed cohorts do not establish full parity.
+
+| Verified increment | Local evidence |
+| --- | --- |
+| Common sort, #667/PR684 | 437 common tests, including 33 Basic and 28 admission controls; production and strict checks. |
+| Rust sort and singleton projection, #668/PR695 and #693/PR712 | Current runtime checks passed 375 tests, including 90 Basic controls; the backend passed 164 active tests with ten ignored. All 24 filter and 26 sort generated calls passed; production and strict checks passed. |
+| C# sort and singleton projection, #669/PR700 and #694/PR716 | 164 backend tests and strict checks passed. All 45 runtime/generated commands passed, including 216 smoke controls, 44 public calls and 33 new focused singleton controls against the fresh runtime. |
+| Matched sort, #670/PR705 | The retained cohort qualified 16 genuine models/48 complete expected outcomes with all 37 commands passing. #701's harness scope correction is included in the same nine-file cohort. This precedes the later singleton runtime increments and supplies no fresh matched-sort credit for them. |
+| Current C05, nested, alias and filter comparisons after PR712/PR716 | Six fresh C05 trees match. All 18 complete typed outputs across the six frozen nested models are accepted after retained-capture reconciliation. Alias9 and filter36 also match; all ten alias and 16 filter commands passed. Each result keeps its finite scope. |
+| Common windows, #698/PR718 | Merged after all four local commands passed: production, exact 448-test inventory/full common tests and strict checks, including 40 Basic and 32 admission controls. This qualifies the common profile; generated window execution remains pending. |
+| Native windows and borrowed failure hooks, #676/PR682 and #685/PR690 | The later engine increment passed 533 library tests, including 77 trace controls, production compilation and strict checks. Public owned trace/debug admission remains closed. |
+| Compact GUI nodes, #406/PR410 | Icons are merged. PR700-baseline production, all 798 GUI tests and guards passed. The private-display walkthrough passed six of nine workflows; C02 failed on missing CJK glyphs, while C03 and C06 remain unverified. C09 passed protected-file checks, two normal GUI exits and full source guards. |
+
+### Delivery checklist
+
+- [x] Merge common, Rust and C# bounded sort/filter profiles, preserving ordinary
+  and default API behavior; retain #670's qualified PR705 matched cohort.
+- [x] Locally qualify and merge the separate
+  [#693 Rust](https://github.com/DeandreT/ferrule/issues/693) and
+  [#694 C#](https://github.com/DeandreT/ferrule/issues/694) singleton projection
+  fixes in PR712 and PR716.
+- [x] Qualify six complete C05 results and the original nine-call alias and
+  36-call filter cohorts against both current runtime corrections. Preserve the
+  earlier mismatches and each cohort's original scope.
+- [x] Accept all 18 complete typed results in the original six-model nested
+  cohort after retained-capture reconciliation. Only four C05 string expectations
+  changed in memory; no execution was replayed, and the original failure and
+  frozen fixtures remain preserved.
+- [x] Locally qualify [#698](https://github.com/DeandreT/ferrule/issues/698)'s
+  seven-role common window candidate with 448 tests, production and strict checks.
+- [x] Merge #698's verified common window profile in PR718.
+- [ ] Implement and qualify separate
+  [#702 Rust](https://github.com/DeandreT/ferrule/issues/702) and
+  [#703 C#](https://github.com/DeandreT/ferrule/issues/703) window increments using
+  the merged singleton runtime handoffs, followed by
+  [#704](https://github.com/DeandreT/ferrule/issues/704)'s matched window cohort.
+- [ ] Qualify [#709](https://github.com/DeandreT/ferrule/issues/709)'s CJK font
+  fallback and rerun C02. The scoped source proposal is accepted; font tests,
+  production compilation and desktop verification remain unrun.
+- [ ] Complete [#406](https://github.com/DeandreT/ferrule/issues/406)'s C03 named
+  endpoint hover/accessibility and C06 target-height/pin-edge workflow checks.
+- [ ] Complete the broader #612/#613 occurrence, provenance and failure cohorts,
+  then #606 observer activation and final Basic acceptance.
+
+The retained C05 observation exposed P2/P3 in the interpreter and S/S in the
+generated backends. After both corrections, the fresh six-call comparison now
+matches complete trees across the interpreter, Rust and C#. Current alias9 and
+filter36 also passed. The retained original18 comparison is now accepted after
+a narrowly scoped expectation reconciliation, qualifying that frozen positive
+cohort. The earlier PR705 matched-sort cohort retains its original runtime scope;
+these results grant no broader error, observer or whole-product parity.
+Generated window execution and sorted First await their backend increments;
+specialized ownership families retain their separate admission gates. Full sort, filter, error and total parity remain incomplete.
+
+[Current handoffs](docs/parallel-work.md#current-basic-milestone-handoffs-2026-10-14)
+identify file ownership, dependencies and independent qualification.
 
 ## Current Basic ownership progress (2026-10-13)
 
