@@ -1,0 +1,90 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    if (test.TryGetProperty("input", out var inputElement))
+    {
+        var input = inputElement.GetString()!;
+        Verify(() => GeneratedMapping.ExecuteJson(input), test);
+        Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input))), test);
+        if (test.TryGetProperty("expected_xml", out var expectedXml))
+        {
+            var sourceSchema = test.GetProperty("source_schema").GetString()!;
+            var targetSchema = test.GetProperty("target_schema").GetString()!;
+            foreach (var source in new[] {
+                FerruleJson.ParseEmbedded(sourceSchema, input),
+                FerruleJson.ParseEmbeddedBytes(sourceSchema, Encoding.UTF8.GetBytes(input)) })
+            {
+                var output = GeneratedMapping.Execute(source);
+                var xml = FerruleXml.SerializeDocumentEmbedded(targetSchema, output, false, false, null, null);
+                if (!Encoding.UTF8.GetBytes(xml).SequenceEqual(Encoding.UTF8.GetBytes(expectedXml.GetString()!)))
+                    throw new Exception($"XML output differs: {test}; actual: {xml}");
+            }
+        }
+    }
+    else
+    {
+        var bytes = test.GetProperty("bytes").EnumerateArray().Select(item => item.GetByte()).ToArray();
+        Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(bytes)), test);
+    }
+}
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    if (test.TryGetProperty("boolean_error", out var expectedBoolean))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (
+            error.Error == FerruleRuntimeError.NotABool &&
+            error.Node == expectedBoolean.GetProperty("node").GetUInt32() &&
+            error.FoundKind?.ToString().ToLowerInvariant() == expectedBoolean.GetProperty("found").GetString())
+        { return; }
+        throw new Exception($"Expected Boolean condition failure was accepted: {test}");
+    }
+    if (test.TryGetProperty("execution_error", out var expectedError))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (
+            error.Error == FerruleRuntimeError.FunctionInvalidArgument &&
+            error.Function == expectedError.GetProperty("function").GetString() &&
+            error.Detail == expectedError.GetProperty("message").GetString())
+        { return; }
+        throw new Exception($"Expected execution failure was accepted: {test}");
+    }
+    if (test.TryGetProperty("reject", out _) || test.TryGetProperty("reject_output", out _))
+    {
+        try
+        {
+            _ = run();
+        }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
+        {
+            return;
+        }
+        throw new Exception($"Invalid JSON boundary was accepted: {test}");
+    }
+    var actual = run();
+    var expected = test.TryGetProperty("expected_json", out var expectedText)
+        ? expectedText.GetString()!
+        : test.GetProperty("expected").GetRawText();
+    if (test.TryGetProperty("exact_output", out var exact) && exact.GetBoolean())
+    {
+        if (!string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            throw new Exception($"Exact JSON output differs: {test}; actual: {actual}");
+        }
+        return;
+    }
+    var comparisonOptions = new JsonDocumentOptions { MaxDepth = 256 };
+    if (!JsonNode.DeepEquals(
+            JsonNode.Parse(actual, documentOptions: comparisonOptions),
+            JsonNode.Parse(expected, documentOptions: comparisonOptions)))
+    {
+        throw new Exception($"JSON output differs: {test}; actual: {actual}");
+    }
+}

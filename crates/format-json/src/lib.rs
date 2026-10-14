@@ -185,6 +185,8 @@ pub enum JsonFormatError {
     InvalidXmlAttributeRequired { node: String },
     #[error("JSON array-wrapper metadata on `{name}` is invalid")]
     InvalidArrayWrapperMetadata { name: String },
+    #[error("JSON object-item nullability metadata on `{name}` is invalid")]
+    InvalidObjectItemNullabilityMetadata { name: String },
     #[error(
         "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
     )]
@@ -204,6 +206,11 @@ impl<'a> RecursiveSchemas<'a> {
         let mut references = Vec::new();
         let mut pending = vec![root];
         while let Some(node) = pending.pop() {
+            if !node.json_object_item_nullable_is_valid() {
+                return Err(JsonFormatError::InvalidObjectItemNullabilityMetadata {
+                    name: node.name.clone(),
+                });
+            }
             if !node.json_array_wrapper_is_valid() {
                 return Err(JsonFormatError::InvalidArrayWrapperMetadata {
                     name: node.name.clone(),
@@ -293,6 +300,7 @@ impl<'a> RecursiveSchemas<'a> {
         resolved.name.clone_from(&occurrence.name);
         resolved.repeating = occurrence.repeating;
         resolved.container_nullable = occurrence.container_nullable;
+        resolved.json_object_item_nullable = occurrence.json_object_item_nullable;
         resolved
             .item_count_range
             .clone_from(&occurrence.item_count_range);
@@ -590,7 +598,7 @@ fn read_node_with_patterns(
             value,
         )?)));
     }
-    if value.is_null() && schema.container_nullable {
+    if value.is_null() && schema.json_single_container_nullable() {
         return Ok(Instance::Scalar(Value::json_null()));
     }
     match &schema.kind {
@@ -1094,7 +1102,9 @@ fn write_single_node_with_patterns(
     if schema.json_any {
         return write_json_any(schema, instance);
     }
-    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+    if schema.json_single_container_nullable()
+        && matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+    {
         return Ok(serde_json::Value::Null);
     }
     match (&schema.kind, instance) {

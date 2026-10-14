@@ -1,0 +1,95 @@
+// Complete authored Project oracle; constructor body matches the independent
+// native JSON oracle. This module does not call the importer or interpreter.
+use std::collections::BTreeMap;
+use ir::{Instance, ScalarType, SchemaNode, Value};
+use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration, ScopeSequence};
+
+fn required_group(name: &str, children: Vec<SchemaNode>) -> SchemaNode {
+    let required = children.iter().map(|child| child.name.clone()).collect();
+    SchemaNode::group(name, children).with_required_fields(required).unwrap()
+}
+
+fn row_children() -> Vec<SchemaNode> {
+    vec![
+        SchemaNode::scalar("Flag", ScalarType::Bool),
+        SchemaNode::scalar("Id", ScalarType::String),
+        SchemaNode::scalar("Zero", ScalarType::Int),
+    ]
+}
+
+pub(super) fn expected_project(literals: bool) -> Project {
+    let source = required_group("Source", vec![required_group("Rows", row_children()).repeating()]);
+    let mut record_children = vec![SchemaNode::scalar("Branch", ScalarType::String)];
+    record_children.extend(row_children());
+    let target = required_group("Target", vec![required_group("Batches", vec![
+        required_group("Records", record_children).repeating(),
+    ]).repeating()]);
+    let frame = Some(vec!["Rows".into()]);
+    let mut graph = Graph {
+        nodes: BTreeMap::from([
+            (0, Node::Const { value: Value::String("left".into()) }),
+            (1, Node::Const { value: Value::String("right".into()) }),
+            (2, Node::SourceField { path: vec!["Flag".into()], frame: frame.clone() }),
+            (3, Node::SourceField { path: vec!["Id".into()], frame: frame.clone() }),
+            (4, Node::SourceField { path: vec!["Zero".into()], frame }),
+        ]),
+    };
+    if literals {
+        graph.nodes.insert(2, Node::Const { value: Value::Bool(false) });
+        graph.nodes.insert(3, Node::Const { value: Value::String("".into()) });
+        graph.nodes.insert(4, Node::Const { value: Value::Int(0) });
+    }
+    let segment = |branch_node| Scope {
+        bindings: vec![
+            Binding { target_field: "Branch".into(), node: branch_node },
+            Binding { target_field: "Flag".into(), node: 2 },
+            Binding { target_field: "Id".into(), node: 3 },
+            Binding { target_field: "Zero".into(), node: 4 },
+        ],
+        ..Default::default()
+    };
+    Project {
+        source,
+        target,
+        source_path: Some("source.json".into()),
+        target_path: Some("target.json".into()),
+        source_options: FormatOptions { json_document: true, ..Default::default() },
+        target_options: FormatOptions { json_document: true, ..Default::default() },
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Batches".into(),
+                iteration: ScopeIteration::Source(vec!["Rows".into()]),
+                children: vec![Scope {
+                    target_field: "Records".into(),
+                    iteration: ScopeIteration::Concatenate(ScopeSequence::new(segment(0), vec![segment(1)])),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+    }
+}
+
+
+// Typed expected values come only from the authored complete value catalogue.
+// Explicit field order and Bool/Int/String variants are independent of parsing.
+pub(super) fn expected_instance(value: &serde_json::Value) -> Instance {
+    let batches = value["Batches"].as_array().unwrap().iter().map(|batch| {
+        let records = batch["Records"].as_array().unwrap().iter().map(|record| {
+            Instance::Group(vec![
+                ("Branch".into(), Instance::Scalar(Value::String(record["Branch"].as_str().unwrap().into()))),
+                ("Flag".into(), Instance::Scalar(Value::Bool(record["Flag"].as_bool().unwrap()))),
+                ("Id".into(), Instance::Scalar(Value::String(record["Id"].as_str().unwrap().into()))),
+                ("Zero".into(), Instance::Scalar(Value::Int(record["Zero"].as_i64().unwrap()))),
+            ].into())
+        }).collect();
+        Instance::Group(vec![("Records".into(), Instance::Repeated(records))].into())
+    }).collect();
+    Instance::Group(vec![("Batches".into(), Instance::Repeated(batches))].into())
+}

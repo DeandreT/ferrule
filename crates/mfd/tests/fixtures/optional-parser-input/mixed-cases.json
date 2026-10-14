@@ -1,0 +1,196 @@
+[
+  {
+    "name": "omitted preserves rows and suppresses envelope",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"},{\"Value\":null},{}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "name": "supplied null suppresses envelope",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"},{\"Value\":null},{}]}",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {
+      "Rows": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "name": "absent Header suppresses envelope",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"},{\"Value\":null},{}]}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "expected": {
+      "Rows": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "name": "present parser object supplies missing source values",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"},{\"Value\":null},{}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Envelope": {
+            "Label": "LEFT"
+          }
+        },
+        {
+          "Envelope": {
+            "Label": "RIGHT"
+          }
+        },
+        {
+          "Envelope": {
+            "Label": "RIGHT"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "present empty replacement is retained",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Envelope": {
+            "Label": ""
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty rows do not demand malformed parameter",
+    "input": "{\"Rows\":[]}",
+    "parameters": {
+      "payload": ""
+    },
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "empty rows do not demand missing leaf",
+    "input": "{\"Rows\":[]}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "empty rows with omitted input",
+    "input": "{\"Rows\":[]}",
+    "parameters": {},
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "present left skips missing replacement after object presence",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"}]}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Envelope": {
+            "Label": "LEFT"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "present empty string",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": ""
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "malformed JSON",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "invalid unused field",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\",\"Unused\":10}}"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "nonnullable parser leaf",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":null}}"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "null row item",
+    "input": "{\"Rows\":[null]}",
+    "parameters": {},
+    "reject": true
+  },
+  {
+    "name": "null array",
+    "input": "{\"Rows\":null}",
+    "parameters": {},
+    "reject": true
+  },
+  {
+    "name": "too many rows",
+    "input": "{\"Rows\":[{},{},{},{},{}]}",
+    "parameters": {},
+    "reject": true
+  },
+  {
+    "name": "unexpected source property",
+    "input": "{\"Rows\":[{}],\"Extra\":true}",
+    "parameters": {},
+    "reject": true
+  }
+]

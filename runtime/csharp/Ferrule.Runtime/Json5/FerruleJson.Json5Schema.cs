@@ -166,6 +166,7 @@ public static partial class FerruleJson
         {
             "name" or "kind" => true,
             "nullable" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            "json_object_item_nullable" => false,
             "xml_namespace" or "xml_wildcard_namespace" or "recursive_ref" or "fixed"
             or "json_allowed_values" or "numeric_range" or "json_multiple_of" or "item_count_range"
             or "json_contains" or "json_dependent_schemas" or "property_count_range"

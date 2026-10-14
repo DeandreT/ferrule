@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Deserialize;
 
+#[path = "fixtures/nested_clone_owners/same_source_expected_project.rs"]
+mod same_source_expected_project;
+
 #[derive(Deserialize)]
 struct Case {
     name: String,
@@ -67,7 +70,7 @@ fn fixtures() -> PathBuf {
 fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(), Box<dyn Error>> {
     let cases: Vec<Case> =
         serde_json::from_str(include_str!("fixtures/nested_clone_owners/cases.json"))?;
-    assert_eq!(cases.len(), 8, "frozen full-value corpus");
+    assert_eq!(cases.len(), 11, "frozen full-value corpus");
     for case in cases {
         let evidence = Evidence::new(&case.name)?;
         std::fs::write(evidence.0.join("input.original.xml"), &case.input_xml)?;
@@ -75,6 +78,12 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
             evidence.0.join("expected-before-run.json"),
             serde_json::to_vec_pretty(&case.expected_json)?,
         )?;
+        if case.design == "same_source_owners.mfd" {
+            std::fs::write(
+                evidence.0.join("project-expected-before-run.json"),
+                serde_json::to_vec_pretty(&same_source_expected_project::project())?,
+            )?;
+        }
         let imported = evidence.import(&case.design)?;
         let validation = engine::validate(&imported.project);
         evidence.record("validation.original.txt", &validation)?;
@@ -85,6 +94,31 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
             imported.warnings
         );
         assert!(validation.is_empty(), "{}: {validation:?}", case.name);
+        if case.design == "same_source_owners.mfd" {
+            let wanted = serde_json::to_value(same_source_expected_project::project())?;
+            assert_eq!(serde_json::to_value(&imported.project)?, wanted, "{}", case.name);
+            let strict = mfd::import_with_profile(
+                &evidence.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable,
+            );
+            let snapshot = match &strict {
+                Ok(outcome) => serde_json::json!({
+                    "project": outcome.imported.project,
+                    "warnings": outcome.imported.warnings,
+                    "report": outcome.report,
+                }),
+                Err(error) => serde_json::json!({"error": error.to_string()}),
+            };
+            std::fs::write(
+                evidence.0.join("strict.original.json"),
+                serde_json::to_vec_pretty(&snapshot)?,
+            )?;
+            let strict = strict?;
+            assert_eq!(strict.report, mfd::ImportReport { executable: true, issues: Vec::new() });
+            assert!(strict.imported.warnings.is_empty(), "{}", case.name);
+            assert_eq!(serde_json::to_value(&strict.imported.project)?, wanted, "{}", case.name);
+        }
         let source = format_xml::from_str(&case.input_xml, &imported.project.source)?;
         let expected =
             format_json::from_str(&case.expected_json.to_string(), &imported.project.target)?;
@@ -104,27 +138,6 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
 #[test]
 fn ambiguous_owners_and_distinct_singular_feeds_remain_refusals() -> Result<(), Box<dyn Error>> {
     for (design, expected) in [
-        (
-            "same_source_owners.mfd",
-            vec![
-                (
-                    "scope `Group`",
-                    "target field `Side` is bound more than once",
-                ),
-                (
-                    "scope `Group/Row`",
-                    "target field `Value` is bound more than once",
-                ),
-                (
-                    "scope `Group/Row`",
-                    "target field `Value` is bound more than once",
-                ),
-                (
-                    "scope `Group/Row`",
-                    "target field `Value` is bound more than once",
-                ),
-            ],
-        ),
         (
             "distinct_scalar_feeds.mfd",
             vec![(

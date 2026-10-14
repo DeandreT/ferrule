@@ -1,0 +1,30 @@
+{
+  "title": "Report",
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "properties": {
+          "Envelope": {
+            "type": "object",
+            "properties": {
+              "Label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,100 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+using var sourceSchema = JsonDocument.Parse(File.ReadAllText("source-schema.json"));
+var targetSchema = File.ReadAllText("target-schema.json");
+var calls = 0;
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var parameters = new FerruleRuntimeParameters(test.GetProperty("parameters").EnumerateObject().Select(parameter =>
+        KeyValuePair.Create(parameter.Name, parameter.Value.ValueKind switch
+        {
+            JsonValueKind.String => FerruleValue.FromString(parameter.Value.GetString()!),
+            JsonValueKind.True => FerruleValue.FromBoolean(true),
+            JsonValueKind.False => FerruleValue.FromBoolean(false),
+            JsonValueKind.Number => FerruleValue.FromInt64(parameter.Value.GetInt64()),
+            JsonValueKind.Null => FerruleValue.Null,
+            _ => throw new Exception("Unsupported authored parameter"),
+        })));
+    var context = new FerruleExecutionContext("edi-primary-global-json.ferrule.json", "edi-primary-global-json.ferrule.json", null, parameters);
+    var literal = test.GetProperty("primary_typed_value").GetRawText();
+    using var text = JsonDocument.Parse(literal);
+    using var bytes = JsonDocument.Parse(Encoding.UTF8.GetBytes(literal));
+    foreach (var document in new[] { text, bytes })
+    {
+        var input = Typed(document.RootElement, sourceSchema.RootElement);
+        var before = Literal(input).ToJsonString();
+        Verify(() => GeneratedMapping.Execute(input, context), test, targetSchema);
+        if (Literal(input).ToJsonString() != before) throw new Exception($"Caller source changed: {test}");
+        calls++;
+    }
+}
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} EDI-primary parser cases and {calls} executions");
+
+// These are explicit typed EDI fixtures, including Null for empty elements.
+// The ordinary generated JSON reader and managed raw-X12 facade are distinct.
+static FerruleInstance Typed(JsonElement value, JsonElement schema, bool item = false)
+{
+    if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("typed_root_sequence", out var roots))
+    {
+        if (value.EnumerateObject().Count() != 1) throw new Exception("Malformed authored typed roots");
+        return new FerruleRepeated(roots.EnumerateArray().Select(root => Typed(root, schema)));
+    }
+    if (!item && schema.TryGetProperty("repeating", out var repeating) && repeating.GetBoolean())
+        return new FerruleRepeated(value.EnumerateArray().Select(child => Typed(child, schema, item: true)));
+    var kind = schema.GetProperty("kind");
+    if (kind.GetProperty("kind").GetString() == "group")
+    {
+        var children = kind.GetProperty("children");
+        if (value.EnumerateObject().Count() != children.GetArrayLength()) throw new Exception("Authored whole EDI fields differ");
+        return new FerruleGroup(children.EnumerateArray().Select(child =>
+            new FerruleField(child.GetProperty("name").GetString()!, Typed(value.GetProperty(child.GetProperty("name").GetString()!), child))));
+    }
+    if (kind.GetProperty("kind").GetString() != "scalar") throw new Exception("Unsupported authored schema");
+    return new FerruleScalar(value.ValueKind switch
+    {
+        JsonValueKind.String => FerruleValue.FromString(value.GetString()!),
+        JsonValueKind.Null => FerruleValue.Null,
+        JsonValueKind.Number => FerruleValue.FromInt64(value.GetInt64()),
+        JsonValueKind.True => FerruleValue.FromBoolean(true),
+        JsonValueKind.False => FerruleValue.FromBoolean(false),
+        _ => throw new Exception("Unsupported authored scalar"),
+    });
+}
+
+static JsonNode Literal(FerruleInstance value) => value switch
+{
+    FerruleGroup group => new JsonObject(group.Fields.Select(field => KeyValuePair.Create<string, JsonNode?>(field.Name, Literal(field.Value)))),
+    FerruleRepeated repeated => new JsonArray(repeated.Items.Select(item => (JsonNode?)Literal(item)).ToArray()),
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Null => JsonValue.Create((string?)null)!,
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.String => JsonValue.Create(scalar.Value.StringValue)!,
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Int64 => JsonValue.Create(scalar.Value.Int64Value)!,
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Bool => JsonValue.Create(scalar.Value.BooleanValue)!,
+    _ => throw new Exception("Unsupported authored instance"),
+};
+
+static void Verify(Func<FerruleInstance> run, JsonElement test, string targetSchema)
+{
+    if (test.TryGetProperty("expected_error", out var expected))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error)
+        {
+            if (expected.TryGetProperty("kind", out var kind))
+            {
+                if (kind.GetString() == "MissingRuntimeParameter" && error.Error == FerruleRuntimeError.MissingRuntimeParameter && error.Node == expected.GetProperty("node").GetUInt32() && error.RuntimeParameter == expected.GetProperty("name").GetString()) return;
+                if (kind.GetString() == "MappingException" && error.Error == FerruleRuntimeError.MappingException && error.Node == expected.GetProperty("node").GetUInt32() && error.MappingExceptionMessage == expected.GetProperty("message").GetString()) return;
+            }
+            else if (error.Error == FerruleRuntimeError.FunctionInvalidArgument && error.Function == expected.GetProperty("function").GetString() && error.Detail == expected.GetProperty("message").GetString()) return;
+            throw new Exception($"Whole typed error differs: {test}", error);
+        }
+        throw new Exception($"Expected error absent: {test}");
+    }
+    var actual = FerruleJson.SerializeEmbedded(targetSchema, run());
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected_complete_json").GetRawText())))
+        throw new Exception($"Whole output differs: {test}; actual: {actual}");
+}

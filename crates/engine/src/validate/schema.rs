@@ -220,6 +220,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.json_object_item_nullable_is_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "JSON object-item nullability metadata{suffix} requires a repeating object group"
+            ),
+        ));
+    }
     if !schema.json_any_is_valid() {
         issues.push(ValidationIssue::new(
             root,

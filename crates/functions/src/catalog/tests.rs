@@ -121,6 +121,7 @@ fn authoring_names_are_derived_from_catalog_exposure() {
 
     assert_eq!(actual, expected);
     assert!(!actual.contains(&"json_parse_field"));
+    assert!(!actual.contains(&"json_parse_object_exists"));
 }
 
 #[test]
@@ -199,6 +200,16 @@ fn representative_metadata_covers_each_authoring_domain() {
             domain: ScalarDomain::JsonText,
         }],
         ScalarDomain::Any,
+        BuiltinExposure::Internal,
+    );
+    assert_metadata(
+        "json_parse_object_exists",
+        BuiltinCategory::Json,
+        &[BuiltinParameter {
+            name: "input",
+            domain: ScalarDomain::JsonText,
+        }],
+        ScalarDomain::Boolean,
         BuiltinExposure::Internal,
     );
     assert_metadata(

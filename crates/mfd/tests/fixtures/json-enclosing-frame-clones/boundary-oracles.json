@@ -1,0 +1,75 @@
+[
+  {
+    "name": "missing-required-array",
+    "input": {},
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "null-array-container",
+    "input": {
+      "Rows": null
+    },
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "null-object-item",
+    "input": {
+      "Rows": [
+        null
+      ]
+    },
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "missing-required-leaf",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Zero": 0
+        }
+      ]
+    },
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "explicit-null-leaf",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Id": null,
+          "Zero": 0
+        }
+      ]
+    },
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "wrong-leaf-type",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Id": "A",
+          "Zero": "0"
+        }
+      ]
+    },
+    "expected": "input boundary error before execution"
+  },
+  {
+    "name": "unknown-field",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Id": "A",
+          "Zero": 0,
+          "Unknown": 1
+        }
+      ]
+    },
+    "expected": "input boundary error before execution"
+  }
+]

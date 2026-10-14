@@ -9,7 +9,8 @@ pub(super) type BindingOrigins = BTreeMap<(Vec<String>, NodeId), BTreeSet<usize>
 
 /// Import-only ownership. These markers identify declared target entries, not
 /// source expressions or serialized Ferrule scope identities.
-#[derive(Debug)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub(super) struct DeclaredBranch {
     pub(super) lineage: Vec<u32>,
     pub(super) anchors: Anchors,
@@ -17,9 +18,10 @@ pub(super) struct DeclaredBranch {
     pub(super) bindings: BindingOrigins,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(test, derive(Debug))]
 pub(super) struct DeclaredBranches {
-    layouts: BTreeMap<Vec<String>, Vec<DeclaredBranch>>,
+    pub(super) layouts: BTreeMap<Vec<String>, Vec<DeclaredBranch>>,
 }
 
 impl DeclaredBranches {
@@ -315,7 +317,7 @@ fn plain_wrapper(scope: &Scope) -> bool {
         })
 }
 
-fn replaceable_placeholder(scope: &Scope) -> bool {
+pub(super) fn replaceable_placeholder(scope: &Scope) -> bool {
     !scope.iterates()
         && scope.iteration_output == mapping::IterationOutput::Repeated
         && scope.construction == ScopeConstruction::Constructed

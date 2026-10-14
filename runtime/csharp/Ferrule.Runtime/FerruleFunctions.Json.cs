@@ -7,7 +7,66 @@ namespace Ferrule.Runtime;
 public static partial class FerruleFunctions
 {
     private const string JsonParseFieldName = "json_parse_field";
+    private const string JsonParseObjectExistsName = "json_parse_object_exists";
     private const string JsonSerializeObjectName = "json_serialize_object";
+
+    private static FerruleValue JsonParseObjectExists(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = JsonParseObjectExistsName;
+        RequireArity(function, arguments, 3);
+        var schema = RequireString(arguments[1], function);
+        var path = RequireString(arguments[2], function);
+        var input = arguments[0];
+        if (input.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        {
+            return FerruleValue.FromBoolean(false);
+        }
+        if (input.Kind != FerruleValueKind.String)
+        {
+            throw Type(function, input);
+        }
+        try
+        {
+            FerruleJson.ValidateFunctionSchema(schema);
+        }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
+        {
+            throw InvalidArgument(function, "schema descriptor is invalid");
+        }
+        var segments = ParseJsonStringArray(path, function, "field path descriptor is invalid");
+        if (!FerruleJson.IsOrdinaryFunctionObjectPath(schema, segments))
+        {
+            throw InvalidArgument(function, "field path does not resolve to an ordinary object");
+        }
+        FerruleInstance current;
+        try
+        {
+            current = FerruleJson.ParseFunctionInput(schema, input.StringValue);
+        }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
+        {
+            throw InvalidArgument(function, "input does not match the JSON schema");
+        }
+        if (current is FerruleRepeated or FerruleDocumentSet)
+        {
+            throw InvalidArgument(function, "input does not match the JSON schema");
+        }
+        foreach (var segment in segments)
+        {
+            if (current is not FerruleGroup group || !group.TryGetField(segment, out var child))
+            {
+                return FerruleValue.FromBoolean(false);
+            }
+            current = child;
+        }
+        return current switch
+        {
+            FerruleGroup => FerruleValue.FromBoolean(true),
+            FerruleScalar scalar when scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                => FerruleValue.FromBoolean(false),
+            _ => throw InvalidArgument(function, "field path does not resolve to an ordinary object"),
+        };
+    }
 
     private static FerruleValue JsonParseField(IReadOnlyList<FerruleValue> arguments)
     {

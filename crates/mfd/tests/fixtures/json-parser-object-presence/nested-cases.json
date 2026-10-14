@@ -1,0 +1,134 @@
+[
+  {
+    "name": "present nested object",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Envelope": {
+        "Label": "R"
+      }
+    }
+  },
+  {
+    "name": "present object retains source value",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Envelope": {
+        "Label": "S"
+      }
+    }
+  },
+  {
+    "name": "empty nested object preserves present source value",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "expected": {
+      "Envelope": {
+        "Label": "S"
+      }
+    }
+  },
+  {
+    "name": "absent nested object suppresses scalar demand",
+    "input": "{}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "expected": {}
+  },
+  {
+    "name": "explicit null nested object suppresses scalar demand",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":null}"
+    },
+    "expected": {}
+  },
+  {
+    "name": "null runtime value suppresses nested object",
+    "input": "{}",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {}
+  },
+  {
+    "name": "missing parameter retains identity",
+    "input": "{}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "malformed document",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "schema validates unused fields",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Unused\":\"wrong\"}}"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "empty nested object leaves missing replacement absent",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "expected": {
+      "Envelope": {}
+    }
+  },
+  {
+    "name": "null replacement remains JSON null",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":null}}"
+    },
+    "expected": {
+      "Envelope": {
+        "Label": null
+      }
+    }
+  },
+  {
+    "name": "input type rejected",
+    "input": "{\"Value\":3}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "reject": true
+  },
+  {
+    "name": "parser object does not accept flat document rows",
+    "input": "{}",
+    "parameters": {
+      "payload": "[{\"Header\":{\"Replacement\":\"R\"}}]"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  }
+]

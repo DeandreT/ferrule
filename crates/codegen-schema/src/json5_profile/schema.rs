@@ -178,6 +178,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         xml_attribute_required,
         nullable: _,
         container_nullable,
+        json_object_item_nullable,
         json_array_wrapper,
         json_any,
         fixed,
@@ -210,6 +211,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
     macro_rules! empty { ($($field:ident),+ $(,)?) => { $(if !$field.is_empty() { return Err(unsupported(stringify!($field))); })+ }; }
     macro_rules! off { ($($field:ident),+ $(,)?) => { $(if *$field { return Err(unsupported(stringify!($field))); })+ }; }
     none!(
+        json_object_item_nullable,
         xml_namespace,
         xml_wildcard_namespace,
         recursive_ref,

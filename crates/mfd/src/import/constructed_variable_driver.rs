@@ -553,6 +553,10 @@ fn parent_scalar(
                 node.is_some_and(|node| same_scalar_schema(expected, node))
             });
         }
+        if let Some(node) = super::constructed_parser_scalar::schema(feed, builder) {
+            return plain_parent_chain(target_path, scopes)
+                && expected.is_none_or(|expected| same_scalar_schema(expected, node));
+        }
         if hop == MAX_SCALAR_ALIAS_HOPS
             || builder
                 .sources

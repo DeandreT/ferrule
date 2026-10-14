@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, _, actual, _) in &outcomes { if let Ok(value) = actual { origins(value, name, &mut retained); } }
     fs::write(directory.join("host-complete-origins.original.txt"), retained)?;
     println!("{outcomes:#?}");
-    let expected_cases = if args[0] == "unequal" { 3 } else { 1 };
+    let expected_cases = if matches!(args[0].as_str(), "unequal" | "same_source_owners") { 3 } else { 1 };
     if outcomes.len() != expected_cases || outcomes.iter().any(|(_, _, actual, expected)| !matches!(actual, Ok(actual) if actual == expected)) {
         return Err("complete typed generated values differ from frozen literals".into());
     }

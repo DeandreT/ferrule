@@ -7,9 +7,14 @@ use super::function::FnComponent;
 use super::schema::{SchemaComponent, parse_u32};
 use super::udf::{Call as UdfCall, Registry as UdfRegistry};
 
+#[derive(Clone)]
 pub(super) struct GraphBuilder<'a> {
     pub(super) graph: Graph,
     pub(super) native_decimal_input_names: BTreeMap<NodeId, String>,
+    pub(super) optional_parser_input_names: BTreeMap<NodeId, String>,
+    /// Optional absence adapters belong only to parser consumers. General
+    /// function lowering must never reuse them through `fn_nodes`.
+    pub(super) parser_input_nodes: BTreeMap<u32, NodeId>,
     pub(super) next_id: NodeId,
     pub(super) fn_nodes: BTreeMap<usize, NodeId>,
     pub(super) sequence_items: BTreeMap<usize, NodeId>,
@@ -35,6 +40,9 @@ pub(super) struct GraphBuilder<'a> {
     /// All conditioned entry ports, including expressions without a typed interpretation.
     pub(super) xml_condition_ports: BTreeSet<u32>,
     pub(super) edge_from: &'a BTreeMap<u32, u32>,
+    /// Complete raw selected CSV/X12 design authority for the bounded adapter.
+    /// Existing lowering routes do not consume this additional witness.
+    pub(super) csv_occurrence_raw_authority: bool,
     pub(super) sources: &'a [&'a SchemaComponent],
     pub(super) source_names: &'a [String],
     pub(super) intermediates: &'a [&'a SchemaComponent],
@@ -150,6 +158,7 @@ pub(super) fn read_edges(
 pub(super) struct EdgeInputs {
     pub(super) feeds: BTreeMap<u32, u32>,
     pub(super) conflicts: Vec<String>,
+    pub(super) complete: bool,
 }
 
 /// Census both saved vocabularies before choosing any input feed. Identical
@@ -227,7 +236,11 @@ pub(super) fn read_edge_inputs(
     }
     let mut feeds = BTreeMap::new();
     let mut conflicts = Vec::new();
+    let mut complete = true;
     for (input, sources) in sources {
+        if sources.len() != 1 || !selected_inputs.contains(&input) {
+            complete = false;
+        }
         if sources.len() == 1 && selected_inputs.contains(&input) {
             feeds.insert(input, *sources.first().expect("one source"));
         } else if sources.len() > 1 {
@@ -241,7 +254,7 @@ pub(super) fn read_edge_inputs(
             ));
         }
     }
-    EdgeInputs { feeds, conflicts }
+    EdgeInputs { feeds, conflicts, complete }
 }
 
 pub(super) fn read_copy_all_targets(

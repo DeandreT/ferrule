@@ -664,6 +664,38 @@ fn run_generated_boundary_cases_json(
     cases: &[serde_json::Value],
     name: &str,
 ) -> TestResult<()> {
+    run_generated_boundary_cases_json_with_harnesses(
+        project_json,
+        cases,
+        name,
+        include_str!("fixtures/json_text_boundaries_rust.rs.txt"),
+        include_str!("fixtures/json_text_boundaries_csharp.cs.txt"),
+    )
+}
+
+pub(super) fn run_generated_boundary_cases_with_harnesses(
+    project: &Project,
+    cases: &[serde_json::Value],
+    name: &str,
+    rust_harness: &str,
+    csharp_harness: &str,
+) -> TestResult<()> {
+    run_generated_boundary_cases_json_with_harnesses(
+        mapping::project_file::encode_pretty(project)?.as_bytes(),
+        cases,
+        name,
+        rust_harness,
+        csharp_harness,
+    )
+}
+
+fn run_generated_boundary_cases_json_with_harnesses(
+    project_json: &[u8],
+    cases: &[serde_json::Value],
+    name: &str,
+    rust_harness: &str,
+    csharp_harness: &str,
+) -> TestResult<()> {
     let mut directory = JsonBoundaryDirectory::new(name)?;
     let project_path = directory.path.join("project.json");
     std::fs::write(&project_path, project_json)?;
@@ -688,7 +720,7 @@ fn run_generated_boundary_cases_json(
     std::fs::write(rust_output.join("cases.json"), &fixtures)?;
     std::fs::write(
         rust_output.join("src/main.rs"),
-        include_str!("fixtures/json_text_boundaries_rust.rs.txt"),
+        rust_harness,
     )?;
     let target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
         Some(path) => {
@@ -736,7 +768,7 @@ fn run_generated_boundary_cases_json(
     )?;
     std::fs::write(
         harness.join("Program.cs"),
-        include_str!("fixtures/json_text_boundaries_csharp.cs.txt"),
+        csharp_harness,
     )?;
     let mut csharp_command = dotnet_command(&csharp_output);
     csharp_command

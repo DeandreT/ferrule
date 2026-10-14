@@ -39,6 +39,7 @@ fn json_options(options: &::mapping::FormatOptions, input: bool) -> bool {
     remaining.json_document = false;
     remaining.json_schema_unresolved_reference = None;
     remaining.mfd_decimal_input_names.clear();
+    remaining.mfd_optional_parser_input_names.clear();
     if input {
         if remaining
             .external_source

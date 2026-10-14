@@ -470,12 +470,23 @@ pub(super) fn parse_scalar_domain_array_any_of(
     }
     let mut node = reduce_array_any_of(name, arrays)?;
     ensure_annotation_or_range_only(name, schema, "anyOf")?;
-    node.container_nullable = nullable;
+    set_container_nullable(&mut node, nullable);
     ranges::validate_ignored(name, schema)?;
     item_counts::apply(name, schema, &mut node, false)?;
     contains::apply(name, schema, &mut node, doc, active_refs, false)?;
     patterns::validate_ignored(name, schema)?;
     Ok(Some(node))
+}
+
+fn set_container_nullable(node: &mut SchemaNode, nullable: bool) {
+    let object_item_nullable = (node.repeating
+        && matches!(node.kind, ir::SchemaKind::Group { .. })
+        && !node.json_array_wrapper)
+        .then(|| node.json_single_container_nullable());
+    node.container_nullable = nullable;
+    if let Some(item_nullable) = object_item_nullable {
+        node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+    }
 }
 
 fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> bool {
@@ -886,12 +897,12 @@ pub(super) fn parse_nullable_composition(
         // The retained composition already accepts null, so the outer exact
         // null branch makes null match twice. Its non-null domain is unchanged.
         node.nullable = false;
-        node.container_nullable = false;
+        set_container_nullable(&mut node, false);
         check_scalar_type_sibling(name, outer_type, &node, true)?;
         return Ok(Some(node));
     }
     if node.repeating || matches!(node.kind, ir::SchemaKind::Group { .. }) {
-        node.container_nullable = true;
+        set_container_nullable(&mut node, true);
     } else if node.is_scalar() {
         node.nullable = true;
     } else {

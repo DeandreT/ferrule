@@ -1,0 +1,136 @@
+use codegen_runtime::{ExecutionContext, Instance, RuntimeError, RuntimeParameters, Value};
+use ferrule_generated_mapping::execute_with_context;
+use ir::{SchemaKind, SchemaNode};
+use std::path::Path;
+
+// Authored typed EDI values retain Null for empty physical elements. This
+// constructor is a test adapter, not the ordinary generated JSON input reader.
+fn typed(value: &serde_json::Value, schema: &SchemaNode) -> Instance {
+    if let Some(values) = value.get("typed_root_sequence") {
+        assert_eq!(value.as_object().unwrap().len(), 1);
+        return Instance::Repeated(
+            values
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| typed(value, schema))
+                .collect(),
+        );
+    }
+    if schema.repeating {
+        let mut item = schema.clone();
+        item.repeating = false;
+        return Instance::Repeated(
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| typed(value, &item))
+                .collect(),
+        );
+    }
+    match &schema.kind {
+        SchemaKind::Group { children, .. } => {
+            let object = value.as_object().unwrap();
+            assert_eq!(object.len(), children.len());
+            Instance::Group(
+                children
+                    .iter()
+                    .map(|child| (child.name.clone(), typed(&object[&child.name], child)))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )
+        }
+        SchemaKind::Scalar { .. } => Instance::Scalar(match value {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::String(value) => Value::String(value.clone()),
+            serde_json::Value::Number(value) => Value::Int(value.as_i64().unwrap()),
+            serde_json::Value::Bool(value) => Value::Bool(*value),
+            _ => panic!("unsupported authored scalar"),
+        }),
+        _ => panic!("unsupported authored EDI schema"),
+    }
+}
+
+fn verify(result: Result<Instance, RuntimeError>, case: &serde_json::Value, target: &str) {
+    if let Some(expected) = case.get("expected_error") {
+        match expected["kind"].as_str() {
+            Some("MissingRuntimeParameter") => assert!(
+                matches!(result,
+                Err(RuntimeError::MissingRuntimeParameter { node, name })
+                if node == expected["node"].as_u64().unwrap() as u32 && name == expected["name"].as_str().unwrap()),
+                "{case}"
+            ),
+            Some("MappingException") => assert!(
+                matches!(result,
+                Err(RuntimeError::MappingException { node, message })
+                if node == expected["node"].as_u64().unwrap() as u32 && message.as_deref() == expected["message"].as_str()),
+                "{case}"
+            ),
+            None => assert!(
+                matches!(result,
+                Err(RuntimeError::Function(codegen_runtime::FunctionError::InvalidArgument { function, message }))
+                if function == expected["function"].as_str().unwrap() && message == expected["message"].as_str().unwrap()),
+                "{case}"
+            ),
+            _ => panic!("unsupported authored error: {case}"),
+        }
+    } else {
+        let output = codegen_runtime::serialize_json(target, &result.unwrap()).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+            case["expected_complete_json"],
+            "{case}"
+        );
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json"))?;
+    let source_schema: SchemaNode = serde_json::from_str(include_str!("../source-schema.json"))?;
+    let target_schema = include_str!("../target-schema.json");
+    let mut calls = 0;
+    for case in &cases {
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in case["parameters"].as_object().unwrap() {
+            parameters.insert(
+                name,
+                match value {
+                    serde_json::Value::String(value) => Value::String(value.clone()),
+                    serde_json::Value::Null => Value::Null,
+                    serde_json::Value::Bool(value) => Value::Bool(*value),
+                    serde_json::Value::Number(value) => Value::Int(value.as_i64().unwrap()),
+                    _ => panic!("unsupported authored parameter"),
+                },
+            )?;
+        }
+        let context = ExecutionContext::new(Path::new("edi-primary-global-json.ferrule.json"))
+            .with_parameters(&parameters);
+        let text = serde_json::to_string(&case["primary_typed_value"])?;
+        let literal_text: serde_json::Value = serde_json::from_str(&text)?;
+        let literal_bytes: serde_json::Value = serde_json::from_slice(text.as_bytes())?;
+        let source = typed(&case["primary_typed_value"], &source_schema);
+        for literal in [&literal_text, &literal_bytes] {
+            let input = typed(literal, &source_schema);
+            assert_eq!(input, source);
+            verify(execute_with_context(&input, &context), case, target_schema);
+            assert_eq!(input, source, "caller source changed: {case}");
+            calls += 1;
+        }
+        if let Some(document) = case.get("input_x12") {
+            let document = document.as_str().unwrap();
+            for text in [document, std::str::from_utf8(document.as_bytes())?] {
+                let input = format_edi::x12::from_str(text, &source_schema, true)?;
+                assert_eq!(input, source, "whole Native X12 adapter input: {case}");
+                verify(execute_with_context(&input, &context), case, target_schema);
+                assert_eq!(input, source, "caller X12 source changed: {case}");
+                calls += 1;
+            }
+        }
+    }
+    println!(
+        "verified {} EDI-primary parser cases and {calls} executions",
+        cases.len()
+    );
+    Ok(())
+}

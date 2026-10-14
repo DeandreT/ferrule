@@ -1,0 +1,101 @@
+[
+  {
+    "name": "present left",
+    "input": "{\"Rows\":[{\"Value\":\"L\",\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "L"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty left remains present",
+    "input": "{\"Rows\":[{\"Value\":\"\",\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "null left chooses physical fallback",
+    "input": "{\"Rows\":[{\"Value\":null,\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "R"
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent left chooses physical fallback",
+    "input": "{\"Rows\":[{\"Replacement\":\"\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent fallback becomes Null",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "null fallback remains Null",
+    "input": "{\"Rows\":[{\"Value\":null,\"Replacement\":null}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "complete ordered occurrences",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"},{}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "A"
+        },
+        {
+          "Label": "B"
+        },
+        {
+          "Label": "C"
+        },
+        {
+          "Label": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "numeric fallback refuses source",
+    "input": "{\"Rows\":[{\"Value\":\"L\",\"Replacement\":1}]}",
+    "parameters": {},
+    "reject": true
+  }
+]

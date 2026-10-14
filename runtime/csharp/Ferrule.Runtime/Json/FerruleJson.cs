@@ -150,6 +150,22 @@ public static partial class FerruleJson
         _ = ParseSchema(schemaJson);
     }
 
+    internal static bool IsOrdinaryFunctionObjectPath(string schemaJson, IReadOnlyList<string> path)
+    {
+        var current = ParseSchema(schemaJson);
+        static bool Ordinary(JsonSchemaNode node) => !node.IsScalar && !node.Repeating &&
+            !node.JsonArrayWrapper && !node.JsonAny && node.Dynamic is null && node.Alternatives.Count == 0;
+        foreach (var segment in path)
+        {
+            if (!Ordinary(current) || current.Child(segment) is not { } child)
+            {
+                return false;
+            }
+            current = child;
+        }
+        return Ordinary(current);
+    }
+
     public static string Serialize(string schemaJson, FerruleInstance instance)
         => SerializeCore(schemaJson, instance, embedded: false);
 
@@ -299,6 +315,11 @@ public static partial class FerruleJson
                 $"Embedded JSON schema node '{name}' has unknown kind '{kind}'."),
         };
         var jsonAny = OptionalBoolean(element, "json_any");
+        bool? jsonObjectItemNullable = element.TryGetProperty("json_object_item_nullable", out _)
+            ? OptionalBoolean(element, "json_object_item_nullable")
+            : null;
+        if (jsonObjectItemNullable is not null && (!repeating || kind != "group" || jsonArrayWrapper || jsonAny))
+            throw Boundary($"Embedded JSON schema node '{name}' has invalid JSON object-item nullability metadata.");
         var nullable = OptionalBoolean(element, "nullable");
         var jsonFormats = ReadJsonFormats(name, element, scalarDomain, jsonAny);
         var fixedLexical = OptionalString(element, "fixed");
@@ -566,6 +587,7 @@ public static partial class FerruleJson
             repeating,
             nullable,
             OptionalBoolean(element, "container_nullable"),
+            jsonObjectItemNullable,
             jsonArrayWrapper,
             jsonAny,
             jsonFormats,
@@ -1336,7 +1358,7 @@ public static partial class FerruleJson
                     : CanonicalizeAnyJson(element)));
         }
 
-        if (schema.ContainerNullable && element.ValueKind == JsonValueKind.Null)
+        if (schema.SingleContainerNullable && element.ValueKind == JsonValueKind.Null)
         {
             return new FerruleScalar(FerruleValue.JsonNull);
         }
@@ -1626,7 +1648,7 @@ public static partial class FerruleJson
             return;
         }
 
-        if (schema.ContainerNullable &&
+        if (schema.SingleContainerNullable &&
             instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull })
         {
             writer.WriteNullValue();
@@ -3407,6 +3429,7 @@ public static partial class FerruleJson
             bool repeating,
             bool nullable,
             bool containerNullable,
+            bool? jsonObjectItemNullable,
             bool jsonArrayWrapper,
             bool jsonAny,
             IReadOnlyList<string> jsonFormats,
@@ -3438,6 +3461,7 @@ public static partial class FerruleJson
             Repeating = repeating;
             Nullable = nullable;
             ContainerNullable = containerNullable;
+            JsonObjectItemNullable = jsonObjectItemNullable;
             JsonArrayWrapper = jsonArrayWrapper;
             JsonAny = jsonAny;
             JsonFormats = jsonFormats;
@@ -3474,6 +3498,8 @@ public static partial class FerruleJson
         public bool Nullable { get; }
 
         public bool ContainerNullable { get; private set; }
+        public bool? JsonObjectItemNullable { get; private set; }
+        public bool SingleContainerNullable => JsonObjectItemNullable ?? ContainerNullable;
         public bool JsonArrayWrapper { get; }
 
         public bool JsonAny { get; }
@@ -3544,6 +3570,7 @@ public static partial class FerruleJson
             resolved.Name = Name;
             resolved.Repeating = Repeating;
             resolved.ContainerNullable = ContainerNullable;
+            resolved.JsonObjectItemNullable = JsonObjectItemNullable;
             resolved.ItemCountRange = ItemCountRange;
             resolved.JsonContains = JsonContains;
             resolved.JsonUniqueItems = JsonUniqueItems;

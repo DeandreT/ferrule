@@ -56,6 +56,8 @@ pub(super) struct IterationFeed {
     pub(super) filter_after_grouping: bool,
     /// The group-by's key expression key, if a group-by was crossed.
     pub(super) group_key: Option<u32>,
+    /// Exact group-by component owner; its key is source position 1.
+    pub(super) group_by_component: Option<usize>,
     /// Whether a key-based group operation was crossed.
     pub(super) has_key_grouping: bool,
     /// Boundary predicate for a contiguous group-starting-with operation.

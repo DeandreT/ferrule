@@ -40,6 +40,9 @@ impl Project {
         self.source_options
             .mfd_decimal_input_names
             .retain(|id, _| reachable.contains(id));
+        self.source_options
+            .mfd_optional_parser_input_names
+            .retain(|id, _| reachable.contains(id));
     }
 }
 

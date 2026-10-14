@@ -1,0 +1,19 @@
+{
+  "title": "Payload",
+  "type": "object",
+  "properties": {
+    "Header": {
+      "type": "object",
+      "properties": {
+        "Replacement": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Tail": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

@@ -14,7 +14,16 @@ use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use super::source::SourcePath;
 
 mod branch_owners;
+mod implicit_branches;
+mod sparse_child;
 use branch_owners::{BindingOrigins, DeclaredBranch, DeclaredBranches};
+
+pub(super) fn csv_raw_authority(
+    structure: &roxmltree::Node<'_, '_>,
+    feeds: &std::collections::BTreeMap<u32, u32>,
+) -> bool {
+    implicit_branches::csv_raw_authority(structure, feeds)
+}
 
 pub(super) fn build(
     iterations: Vec<TargetIteration>,
@@ -30,9 +39,21 @@ pub(super) fn build(
     let mut skipped = builder.rejected_join_paths.iter().cloned().collect();
     let mut claimed_bindings = BTreeSet::new();
     let mut declared_branches = DeclaredBranches::default();
+    let explicit_iterations = iterations.clone();
     for iteration in iterations {
         if iteration.additional_feeds.is_empty() {
-            build_one(iteration, target, &connected, builder, scopes, &mut skipped);
+            if !sparse_child::build(
+                &iteration,
+                target,
+                bindings,
+                builder,
+                scopes,
+                &mut declared_branches,
+            ) {
+                // Refused candidates leave every builder and ownership value
+                // unchanged; retain the ordinary import/fallback behavior.
+                build_one(iteration, target, &connected, builder, scopes, &mut skipped);
+            }
         } else {
             build_concatenated(
                 iteration,
@@ -46,6 +67,15 @@ pub(super) fn build(
             );
         }
     }
+    implicit_branches::build(
+        target,
+        bindings,
+        &explicit_iterations,
+        builder,
+        scopes,
+        &mut claimed_bindings,
+        &mut declared_branches,
+    );
     declared_branches.distribute(&mut scopes.root, &mut builder.warnings);
     let mut index = 0;
     bindings.retain(|_| {
@@ -699,9 +729,12 @@ fn build_one(
     let distinct = feed
         .distinct_key
         .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
-    let group = feed
-        .group_key
-        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
+    let group = feed.group_by_component
+        .filter(|_| feed.order_issue.is_none() && distinct.is_none()
+            && !feed.has_start_grouping && !feed.has_adjacent_grouping
+            && !feed.has_end_grouping && !feed.has_block_grouping)
+        .and_then(|index| builder.group_by_key_node(index, &iteration_anchor))
+        .or_else(|| feed.group_key.and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor)))
         .or(distinct);
     let resolved_block = feed
         .block_size

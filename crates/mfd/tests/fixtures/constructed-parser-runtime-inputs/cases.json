@@ -1,0 +1,233 @@
+[
+  {
+    "input": "{}",
+    "name": "supplied-runtime-overrides-preview",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7}}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 7
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Count\":2}",
+    "name": "zero",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":0}}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 0
+        }
+      ]
+    }
+  },
+  {
+    "input": "{}",
+    "name": "complete-optional-fields",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":9,\"Unused\":\"ok\"},\"Tail\":true}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 9
+        }
+      ]
+    }
+  },
+  {
+    "input": "{}",
+    "name": "missing-runtime-parameter",
+    "parameters": {},
+    "missing_parameter": {
+      "name": "payload",
+      "node": 1
+    }
+  },
+  {
+    "input": "{}",
+    "name": "scalar-boolean-coerces-before-parser",
+    "parameters": {
+      "payload": true
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "scalar-integer-coerces-before-parser",
+    "parameters": {
+      "payload": 7
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "supplied-null-is-an-absent-field",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{}",
+    "name": "nonfinite-runtime-parameter-type",
+    "parameters": {
+      "payload": {
+        "non_finite": "positive-infinity"
+      }
+    },
+    "parameter_type_error": {
+      "name": "payload",
+      "found": "float",
+      "node": 1,
+      "expected": "string"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "selected-number-range",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":10}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "unselected-sibling-type",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Unused\":123}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "unselected-sibling-length",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Unused\":\"long\"}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "unknown-unselected-property",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Extra\":true}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "missing-required-selected-property",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "malformed-encoded-json",
+    "parameters": {
+      "payload": "{invalid"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "overwritten-invalid-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":\"bad\",\"Count\":7}}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 7
+        }
+      ]
+    }
+  },
+  {
+    "input": "{}",
+    "name": "last-invalid-duplicate-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Count\":\"bad\"}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{}",
+    "name": "last-valid-duplicate-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":2,\"Count\":7}}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Count": 7
+        }
+      ]
+    }
+  },
+  {
+    "input": "{}",
+    "name": "duplicate-does-not-hide-invalid-sibling",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":\"bad\",\"Count\":7,\"Unused\":123}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Count\":\"bad\"}",
+    "name": "invalid-primary-input",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7}}"
+    },
+    "reject": true
+  }
+]

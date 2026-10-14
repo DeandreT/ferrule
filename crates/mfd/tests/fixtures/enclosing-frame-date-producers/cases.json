@@ -1,0 +1,15 @@
+[
+  {"input":"{}","expected":{"Batch":[]},"expected_xml":"<Result></Result>"},
+  {"input":"{\"Rows\":[]}","expected":{"Batch":[]},"expected_xml":"<Result></Result>"},
+  {"input":"{\"Rows\":[{\"RawA\":\"2024-02-29\",\"RawB\":\"2025-01-03\"},{\"RawA\":\"2000-12-31\",\"RawB\":\"2001-01-01\"}]}","expected":{"Batch":[{"Record":[{"Date":"2024-02-29"},{"Date":"2025-01-03"}]},{"Record":[{"Date":"2000-12-31"},{"Date":"2001-01-01"}]}]},"expected_xml":"<Result><Batch><Record><Date>2024-02-29</Date></Record><Record><Date>2025-01-03</Date></Record></Batch><Batch><Record><Date>2000-12-31</Date></Record><Record><Date>2001-01-01</Date></Record></Batch></Result>"},
+  {"input":"{\"Rows\":[{\"RawA\":\"2023-02-29\",\"RawB\":\"2025-01-03\"}]}","execution_error":{"function":"parse_date","message":"requires a value matching a supported date/time picture"}},
+  {"input":"{\"Rows\":[{\"RawA\":\"2024-02-29\",\"RawB\":\"not-a-date\"}]}","execution_error":{"function":"parse_date","message":"requires a value matching a supported date/time picture"}},
+  {"input":"{\"Rows\":[{\"RawA\":\"2024-02-29\",\"RawB\":\"2025-01-03\"},{\"RawA\":\"2024/02/29\",\"RawB\":\"2025-01-03\"}]}","execution_error":{"function":"parse_date","message":"requires a value matching a supported date/time picture"}},
+  {"input":"{\"Rows\":[{\"RawA\":\"\",\"RawB\":\"2025-01-03\"}]}","execution_error":{"function":"parse_date","message":"requires a value matching a supported date/time picture"}},
+  {"input":"{\"Rows\":[{\"RawA\":\"2024-02-29\"}]}","reject":true},
+  {"input":"{\"Rows\":[{\"RawA\":null,\"RawB\":\"2025-01-03\"}]}","reject":true},
+  {"input":"{\"Rows\":[{\"RawA\":20240229,\"RawB\":\"2025-01-03\"}]}","reject":true},
+  {"input":"{\"Rows\":[null]}","reject":true},
+  {"input":"{\"Rows\":null}","reject":true},
+  {"input":"{\"Rows\":[{\"RawA\":\"2024-02-29\",\"RawB\":\"2025-01-03\",\"Extra\":1}]}","reject":true}
+]

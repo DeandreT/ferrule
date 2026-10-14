@@ -1821,6 +1821,7 @@ fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
         || node.recursive_ref.is_some()
         || node.nullable
         || node.container_nullable
+        || node.json_object_item_nullable.is_some()
         || node.json_any
         || node.value_generation.is_some()
         || !node.xml_repeating_sequences.is_empty()

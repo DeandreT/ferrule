@@ -227,6 +227,7 @@ pub(crate) enum BuiltinId {
     SqliteMultiply,
     JsonSerializeObject,
     JsonParseField,
+    JsonParseObjectExists,
     FlextextParseField,
     DelayPassthrough,
     CoerceDatetime,
@@ -1332,6 +1333,23 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Projects a typed field from JSON text."
+    ),
+    builtin!(
+        JsonParseObjectExists,
+        "json_parse_object_exists",
+        "JSON Object Exists",
+        Json,
+        &[
+            parameter("input", JsonText),
+            parameter("schema", JsonText),
+            parameter("path", JsonText)
+        ],
+        BuiltinArity::fixed(3),
+        Boolean,
+        true,
+        true,
+        Internal,
+        "Tests ordinary object presence after validating the complete JSON document."
     ),
     builtin!(
         FlextextParseField,

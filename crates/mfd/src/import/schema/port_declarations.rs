@@ -2,6 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::parse_u32;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum JsonPortRole {
+    Scalar(ir::ScalarType),
+    ArrayObjectFrame,
+}
+
 /// Declaration facts for bounded proofs. Ordinary port normalization is unchanged.
 #[derive(Default)]
 pub(in crate::import) struct PortDeclarations {
@@ -10,9 +16,28 @@ pub(in crate::import) struct PortDeclarations {
     ambiguous: BTreeSet<u32>,
     ambiguous_paths: BTreeMap<u32, Vec<Vec<String>>>,
     unlowered: BTreeSet<u32>,
+    json_roles: BTreeMap<u32, Option<JsonPortRole>>,
+    complete_x12_config: bool,
+    occurrence: Option<super::occurrence_provenance::RawOccurrenceOwner>,
 }
 
 impl PortDeclarations {
+    pub(in crate::import) fn complete_x12_config(&self) -> bool {
+        self.complete_x12_config
+    }
+
+    pub(in crate::import) fn occurrence(&self) -> Option<&super::occurrence_provenance::RawOccurrenceOwner> {
+        self.occurrence.as_ref()
+    }
+
+    pub(in crate::import) fn json_scalar(&self, key: u32, ty: ir::ScalarType) -> bool {
+        self.json_roles.get(&key) == Some(&Some(JsonPortRole::Scalar(ty)))
+    }
+
+    pub(in crate::import) fn json_array_object_frame(&self, key: u32) -> bool {
+        self.json_roles.get(&key) == Some(&Some(JsonPortRole::ArrayObjectFrame))
+    }
+
     pub(super) fn declares_output(&self, key: u32) -> bool {
         self.outputs.contains(&key)
     }
@@ -65,6 +90,12 @@ pub(in crate::import) struct PortDeclarationCensus<'doc, 'input> {
 }
 
 impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
+    /// Only successful physical X12 configuration compilation supplies this
+    /// import-only witness. Entry-tree and embedded fallback schemas cannot.
+    pub(in crate::import) fn mark_complete_x12_config(&mut self) {
+        self.facts.complete_x12_config = true;
+    }
+
     /// Called from the actual port walk, before it overwrites the normalized map.
     pub(in crate::import) fn record(
         &mut self,
@@ -76,6 +107,10 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
                 continue;
             };
             self.visited.insert((entry.range().start, direction));
+            let role = json_port_role(entry);
+            self.facts.json_roles.entry(key).and_modify(|previous| {
+                if *previous != role { *previous = None; }
+            }).or_insert(role);
             match direction {
                 Direction::Input => self.facts.inputs.insert(key),
                 Direction::Output => self.facts.outputs.insert(key),
@@ -113,6 +148,9 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
         mut self,
         root: roxmltree::Node<'doc, 'input>,
     ) -> PortDeclarations {
+        self.facts.occurrence = root.ancestors()
+            .find(|node| node.has_tag_name("component"))
+            .and_then(super::occurrence_provenance::capture);
         for entry in root
             .descendants()
             .filter(|node| node.is_element() && node.tag_name().name() == "entry")
@@ -133,6 +171,67 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
         }
         self.facts
     }
+}
+
+fn entry_children<'doc, 'input>(
+    node: roxmltree::Node<'doc, 'input>,
+) -> Vec<roxmltree::Node<'doc, 'input>> {
+    node.children().filter(|child| child.has_tag_name("entry")).collect()
+}
+
+/// Keep raw wrapper evidence separate from the reader's transparent JSON path.
+/// A duplicate object view is an occurrence only within one ordinary array/item.
+pub(super) fn ordinary_json_object_item(object: roxmltree::Node<'_, '_>) -> bool {
+    if object.attribute("name") != Some("object") || object.attribute("type").is_some()
+        || object.ancestors().any(|node| node.attribute("type") == Some("json-subtype"))
+    {
+        return false;
+    }
+    let Some(item) = object.parent() else { return false; };
+    let Some(array) = item.parent() else { return false; };
+    let Some(property) = array.parent() else { return false; };
+    item.has_tag_name("entry") && item.attribute("name") == Some("item")
+        && item.attribute("type") == Some("json-item")
+        && array.has_tag_name("entry") && array.attribute("name") == Some("array")
+        && array.attribute("type").is_none()
+        && entry_children(array).as_slice() == [item]
+        && property.has_tag_name("entry") && property.attribute("type") == Some("json-property")
+        && entry_children(property).as_slice() == [array]
+        && entry_children(item).iter().all(|child| {
+            child.attribute("name") == Some("object") && child.attribute("type").is_none()
+        })
+}
+
+fn json_port_role(entry: roxmltree::Node<'_, '_>) -> Option<JsonPortRole> {
+    if entry.attribute("type").is_some()
+        || entry.ancestors().any(|node| node.attribute("type") == Some("json-subtype"))
+    {
+        return None;
+    }
+    let ty = match entry.attribute("name")? {
+        "boolean" => Some(ir::ScalarType::Bool),
+        "integer" => Some(ir::ScalarType::Int),
+        "string" => Some(ir::ScalarType::String),
+        _ => None,
+    };
+    if let Some(ty) = ty {
+        let property = entry.parent()?;
+        return (property.attribute("type") == Some("json-property")
+            && entry_children(property).as_slice() == [entry]
+            && entry_children(entry).is_empty())
+            .then_some(JsonPortRole::Scalar(ty));
+    }
+    let object = if entry.attribute("name") == Some("array") {
+        let children = entry_children(entry);
+        let [item] = children.as_slice() else { return None; };
+        let objects = entry_children(*item);
+        let [object] = objects.as_slice() else { return None; };
+        *object
+    } else {
+        entry
+    };
+    (ordinary_json_object_item(object) && entry_children(object.parent()?).len() == 1)
+        .then_some(JsonPortRole::ArrayObjectFrame)
 }
 
 fn same_raw_role(
@@ -270,5 +369,26 @@ mod tests {
         assert!(!facts.unambiguous_output(8));
         assert!(facts.declares_output(7));
         assert!(facts.declares_output(8));
+    }
+
+    #[test]
+    fn json_raw_role_proof_is_sticky_invalid_across_equivalent_saved_references() {
+        for invalid_first in [false, true] {
+            let valid = r#"<entry name="Value" type="json-property"><entry name="string" outkey="7"/></entry>"#;
+            let invalid = r#"<entry name="Value" type="json-property"><entry name="string" outkey="7"><entry name="unexpected"/></entry></entry>"#;
+            let text = if invalid_first {
+                format!("<root>{invalid}{valid}</root>")
+            } else {
+                format!("<root>{valid}{invalid}</root>")
+            };
+            let document = roxmltree::Document::parse(&text).unwrap();
+            let mut census = PortDeclarationCensus::default();
+            for entry in document.descendants().filter(|node| node.attribute("outkey") == Some("7")) {
+                census.record(entry, &["Value".into()]);
+            }
+            let facts = census.finish(document.root_element());
+            assert!(facts.unambiguous_output(7));
+            assert!(!facts.json_scalar(7, ir::ScalarType::String));
+        }
     }
 }

@@ -93,6 +93,7 @@ pub(super) fn validate(descriptor: &str) -> Result<(), Json5ProfileError> {
                 | "json_any"
                 | "json_unique_items"
                 | "xml_type_alternatives" => default(value.as_bool() == Some(false), field)?,
+                "json_object_item_nullable" => default(false, field)?,
                 "xml_name_alternatives"
                 | "xml_repeating_sequences"
                 | "xml_repeating_choices"

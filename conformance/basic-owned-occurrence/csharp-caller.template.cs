@@ -275,7 +275,7 @@ internal static class Program
             if (input == "singleton")
             {
                 var provenance = row.GetProperty("expected_error_provenance");
-                Check(provenance.GetProperty("node").ValueKind == JsonValueKind.Null && provenance.GetProperty("node_field_present").GetBoolean() && provenance.GetProperty("native_semantic_node").GetInt32() == 2, "frozen C# error provenance gap: " + id);
+                Check(provenance.GetProperty("node").ValueKind == JsonValueKind.Null && provenance.GetProperty("node_field_present").GetBoolean() && provenance.GetProperty("native_semantic_node").GetInt32() == 2, "historical frozen C# provenance descriptor: " + id);
             }
         }
         return rows;
@@ -331,7 +331,7 @@ internal static class Program
         var outer = (FerruleRuntimeException)actual.Error!;
         Check(outer.Error == FerruleRuntimeError.OwnedSource && outer.Message == "owned source access failed", "exact outer error kind/message: " + actual.Id);
         Check(outer.HResult == new Exception().HResult && outer.Data.Count == 0, "complete outer base exception metadata: " + actual.Id);
-        Check(outer.Node is null && outer.Function is null && outer.ExpectedArity is null && outer.ActualArity is null && outer.FoundKind is null && outer.AggregateOperation is null && outer.Detail is null && outer.RequestedItems is null && outer.MaximumItems is null && outer.MaximumDepth is null && outer.RuntimeValue is null && outer.FailureRule is null && outer.MappingFailureMessage is null && outer.MappingExceptionMessage is null && outer.Join is null && outer.UserFunction is null && outer.FunctionParameter is null && outer.ExpectedScalarType is null && outer.RuntimeParameter is null && outer.SourceField is null && outer.FoundInstance is null && outer.PrimaryRoot is null && outer.BasicSourceBridgeFailure is null, "complete unrelated outer metadata stays null: " + actual.Id);
+        Check(outer.Node == 2 && outer.Function is null && outer.ExpectedArity is null && outer.ActualArity is null && outer.FoundKind is null && outer.AggregateOperation is null && outer.Detail is null && outer.RequestedItems is null && outer.MaximumItems is null && outer.MaximumDepth is null && outer.RuntimeValue is null && outer.FailureRule is null && outer.MappingFailureMessage is null && outer.MappingExceptionMessage is null && outer.Join is null && outer.UserFunction is null && outer.FunctionParameter is null && outer.ExpectedScalarType is null && outer.RuntimeParameter is null && outer.SourceField is null && outer.FoundInstance is null && outer.PrimaryRoot is null && outer.BasicSourceBridgeFailure is null, "exact current node and complete unrelated outer metadata stays null: " + actual.Id);
         var cause = outer.OwnedSourceFailure;
         Check(cause is not null && cause.GetType() == typeof(FerruleOwnedSourceException) && ReferenceEquals(cause, outer.InnerException), "exact owned inner identity/type: " + actual.Id);
         var owned = cause!;
@@ -370,12 +370,12 @@ internal static class Program
                 Console.WriteLine(Json(new
                 {
                     id = actual.Id,
-                    classification = "error_parity_gap",
+                    classification = "public_owned_node_contract_match",
                     lane = "CSharp",
                     program = ProgramName,
                     per_backend_contract_success = true,
                     full_error_parity = false,
-                    provenance_gap = true,
+                    provenance_gap = false,
                     node_field_present = true,
                     actual_node = ((FerruleRuntimeException)actual.Error!).Node,
                     native_semantic_node = 2,
@@ -398,7 +398,7 @@ internal static class Program
             complete_value_contract_calls = 4,
             complete_inactive_error_contract_calls = 2,
             full_error_parity = false,
-            provenance_gap = true,
+            provenance_gap = false,
             generated_parity_claim = false,
         }));
     }

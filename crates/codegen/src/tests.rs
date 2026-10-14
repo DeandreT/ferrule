@@ -595,6 +595,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "create_guid",
         "random",
         "json_parse_field",
+        "json_parse_object_exists",
         "json_serialize_object",
         "format_number",
         "substitute_missing",

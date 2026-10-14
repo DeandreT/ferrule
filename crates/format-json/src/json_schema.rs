@@ -29,7 +29,7 @@
 //! enforced on concrete object shapes. Other shape-neutral validation
 //! keywords are accepted but are not enforced by the mapping schema.
 
-use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaNode};
+use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -621,7 +621,14 @@ fn parse_array_schema(
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
+        let object_item_nullable = (matches!(node.kind, SchemaKind::Group { .. })
+            && !node.json_array_wrapper
+            && !node.json_any)
+            .then(|| node.json_single_container_nullable());
         node.container_nullable = nullable;
+        if let Some(item_nullable) = object_item_nullable {
+            node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+        }
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         contains::apply(name, schema, &mut node, doc, active_refs, false)?;
@@ -656,6 +663,8 @@ fn parse_array_schema(
         name
     };
     let item = parse(item_name, items, doc, active_refs)?;
+    let object_item_nullable = (!item.repeating && matches!(item.kind, SchemaKind::Group { .. }))
+        .then_some(item.container_nullable);
     let mut node = if item.repeating {
         if !nested_array {
             return Err(unsupported_union(
@@ -671,6 +680,9 @@ fn parse_array_schema(
         item.repeating()
     };
     node.container_nullable = nullable;
+    if let Some(item_nullable) = object_item_nullable {
+        node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+    }
     ranges::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
     item_counts::apply(name, schema, &mut node, false)?;
@@ -1263,6 +1275,11 @@ fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
 /// `title` so the name survives a roundtrip.
 pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
+    if !schema.json_object_item_nullability_tree_is_valid() {
+        return Err(JsonFormatError::InvalidObjectItemNullabilityMetadata {
+            name: schema.name.clone(),
+        });
+    }
     if !schema.json_array_wrappers_tree_is_valid() {
         return Err(JsonFormatError::InvalidArrayWrapperMetadata {
             name: schema.name.clone(),

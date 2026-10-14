@@ -344,6 +344,11 @@ pub struct FormatOptions {
     /// changes how the graph executes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mfd_decimal_input_names: BTreeMap<NodeId, String>,
+    /// Optional global String parser inputs with no authored connected default,
+    /// keyed by their parser-only absence adapter. This .mfd provenance prevents
+    /// export from inventing an authored Null default connection.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mfd_optional_parser_input_names: BTreeMap<NodeId, String>,
     /// JSON5 instance syntax. JSON schemas remain ordinary JSON. This can be
     /// selected independently of the instance filename extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]

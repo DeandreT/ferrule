@@ -1,0 +1,18 @@
+{
+  "title": "Source",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["Code"],
+        "properties": {"Code": {"type": "string"}}
+      }
+    }
+  }
+}

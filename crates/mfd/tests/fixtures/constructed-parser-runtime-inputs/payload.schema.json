@@ -1,0 +1,18 @@
+{
+  "title": "Payload",
+  "type": "object",
+  "properties": {
+    "Header": {
+      "type": "object",
+      "properties": {
+        "Count": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "Unused": { "type": "string", "maxLength": 3 }
+      },
+      "required": ["Count"],
+      "additionalProperties": false
+    },
+    "Tail": { "type": "boolean" }
+  },
+  "required": ["Header"],
+  "additionalProperties": false
+}

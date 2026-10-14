@@ -1,0 +1,13 @@
+{
+  "title": "Report",
+  "type": "object",
+  "properties": {
+    "Label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

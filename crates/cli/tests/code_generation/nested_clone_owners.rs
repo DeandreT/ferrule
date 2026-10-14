@@ -1,6 +1,9 @@
 use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[path = "../../../mfd/tests/fixtures/nested_clone_owners/same_source_expected_project.rs"]
+mod same_source_expected_project;
+
 struct Evidence(PathBuf);
 impl Evidence {
     fn new() -> TestResult<Self> {
@@ -63,6 +66,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         "child_condition",
         "reversed_keys_and_edges",
         "three_level",
+        "same_source_owners",
     ] {
         let package = evidence.0.join(format!("{design}-package"));
         std::fs::create_dir(&package)?;
@@ -77,6 +81,12 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         let mapping = package.join("mapping.mfd");
         std::fs::copy(fixtures.join(format!("{design}.mfd")), &mapping)?;
         std::fs::write(package.join("expected-before-run.json"), &cases)?;
+        if design == "same_source_owners" {
+            std::fs::write(
+                package.join("project-expected-before-run.json"),
+                serde_json::to_vec_pretty(&same_source_expected_project::project())?,
+            )?;
+        }
         let imported = mfd::import(&mapping);
         let snapshot = match &imported {
             Ok(value) => serde_json::json!({"project": value.project, "warnings": value.warnings}),
@@ -91,6 +101,31 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         evidence.record(&format!("{design}-validation.original.txt"), &validation)?;
         if !imported.warnings.is_empty() || !validation.is_empty() {
             return Err("authored project must import and validate before generation".into());
+        }
+        if design == "same_source_owners" {
+            let wanted = serde_json::to_value(same_source_expected_project::project())?;
+            assert_eq!(serde_json::to_value(&imported.project)?, wanted, "{design}");
+            let strict = mfd::import_with_profile(
+                &mapping,
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable,
+            );
+            let snapshot = match &strict {
+                Ok(outcome) => serde_json::json!({
+                    "project": outcome.imported.project,
+                    "warnings": outcome.imported.warnings,
+                    "report": outcome.report,
+                }),
+                Err(error) => serde_json::json!({"error": error.to_string()}),
+            };
+            std::fs::write(
+                package.join("strict.original.json"),
+                serde_json::to_vec_pretty(&snapshot)?,
+            )?;
+            let strict = strict?;
+            assert_eq!(strict.report, mfd::ImportReport { executable: true, issues: Vec::new() });
+            assert!(strict.imported.warnings.is_empty(), "{design}");
+            assert_eq!(serde_json::to_value(&strict.imported.project)?, wanted, "{design}");
         }
         let project = package.join("project.json");
         std::fs::write(
@@ -214,7 +249,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         }
     }
     evidence.record("cohort.original.txt", &outcomes)?;
-    if outcomes.len() != 12
+    if outcomes.len() != 14
         || outcomes
             .iter()
             .any(|(_, outcome, stable)| !stable || !matches!(outcome, Ok(true)))

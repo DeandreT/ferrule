@@ -7,12 +7,58 @@ use crate::canonical_function;
 
 use super::schema::parse_u32;
 
+#[cfg(test)]
+#[path = "function/total_string_tests.rs"]
+mod total_string_tests;
+mod parse_date;
+pub(super) use parse_date::RawParseDateOwnership;
+mod group_by;
+pub(super) use group_by::RawGroupByOwnership;
+
+#[cfg(test)]
+#[path = "function/conditional_string_tests.rs"]
+mod conditional_string_tests;
+
 /// Typed lookup data declared by a native .mfd value-map component.
 #[derive(Clone, Default)]
 pub(super) struct ValueMapData {
     pub(super) table: Vec<(Value, Value)>,
     pub(super) default: Option<Value>,
     pub(super) input_type: Option<ScalarType>,
+    /// Exact bounded raw metadata for total enclosing-frame String maps.
+    /// General value-map parsing keeps its independent compatibility rules.
+    pub(super) total_string: Option<TotalStringValueMap>,
+}
+
+#[derive(Clone)]
+pub(super) struct TotalStringValueMap {
+    pub(super) table: Vec<(String, String)>,
+    pub(super) default: String,
+    pub(super) ownership: Option<RawValueMapOwnership>,
+}
+
+#[derive(Clone)]
+pub(super) struct RawValueMapOwnership {
+    pub(super) output: u32,
+    pub(super) source: u32,
+}
+
+/// Raw output and feed ownership across every structure in the document.
+/// Skipped component kinds must not disappear from a bounded scalar proof.
+pub(super) struct RawStringSubstitution {
+    pub(super) left_pin: u32,
+    pub(super) fallback_pin: u32,
+    pub(super) output: u32,
+    pub(super) left: u32,
+    pub(super) fallback: u32,
+    pub(super) constant: Option<String>,
+    pub(super) parser_input: Option<u32>,
+}
+
+pub(super) struct RawConditionalOwnership {
+    pub(super) output: u32,
+    pub(super) sources: [u32; 3],
+    pub(super) primary_outputs: BTreeSet<u32>,
 }
 
 #[derive(Clone)]
@@ -64,6 +110,18 @@ pub(super) struct FnComponent {
     /// Exact raw pin metadata for bounded scalar constants and conditionals.
     /// The general pin reader may normalize malformed positions; this proof may not.
     pub(super) bounded_scalar_pins_valid: bool,
+    pub(super) lazy_string_substitution: Option<RawStringSubstitution>,
+    /// Exact saved owners and feeds for physical String conditional branches.
+    /// Skipped libraries and omitted schema roots still participate in this census.
+    pub(super) conditional_ownership: Option<RawConditionalOwnership>,
+    /// Dedicated exact raw two-input parse-date contract. This never broadens
+    /// the shared bounded scalar contract used by other importer routes.
+    pub(super) raw_parse_date_pins_valid: bool,
+    /// Raw owners and connected operand feeds from the entire owning structure,
+    /// including components which the ordinary reader may skip.
+    pub(super) parse_date_ownership: Option<RawParseDateOwnership>,
+    /// Dedicated raw owner and source-position proof for String group-by keys.
+    pub(super) group_by_ownership: Option<RawGroupByOwnership>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
     /// Public host parameter declaration of a kind=6 input component.
@@ -71,6 +129,9 @@ pub(super) struct FnComponent {
     /// Raw lexical value used only during design-time preview. Keep it
     /// separate from a connected runtime default and preserve empty values.
     pub(super) input_preview: Option<String>,
+    /// One raw literal datum with explicit value/type, independent of the
+    /// general reader's first-data/first-constant normalization.
+    pub(super) raw_literal_valid: bool,
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
     /// Sort directions in key-index order; `Some` also identifies a sort
@@ -172,6 +233,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         && match (kind, name.as_str()) {
             (2, "constant") => Some(0),
             (4, "if-else") => Some(3),
+            (23, "value-map") => Some(1),
             _ => None,
         }
         .is_some_and(|count| {
@@ -192,6 +254,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 })
             })
         });
+
+    let raw_parse_date_pins_valid = parse_date::pins_valid(component, &inputs, &output_pins);
+    let parse_date_ownership = raw_parse_date_pins_valid
+        .then(|| parse_date::ownership(component))
+        .flatten();
 
     let data = component
         .children()
@@ -239,6 +306,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 })
         })
         .flatten();
+    let raw_literal_valid = exact_literal_data(component);
     let constant = data
         .and_then(|d| {
             d.children()
@@ -297,6 +365,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 table,
                 default,
                 input_type,
+                total_string: exact_total_string_value_map(component, vm),
             }
         });
     let sort_directions = data
@@ -318,6 +387,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         });
     let db_where =
         (library == "db" && kind == 21).then(|| parse_db_where(component, &inputs, &outputs));
+    let conditional_ownership = if library == "core" && name == "if-else" && kind == 4 {
+        exact_conditional_ownership(component)
+    } else {
+        None
+    };
 
     FnComponent {
         library,
@@ -329,15 +403,378 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         declared_output_keys,
         raw_single_output_valid,
         bounded_scalar_pins_valid,
+        lazy_string_substitution: exact_string_substitution(component),
+        conditional_ownership,
+        raw_parse_date_pins_valid,
+        parse_date_ownership,
+        group_by_ownership: group_by::ownership(component),
         input_type,
         input_parameter_name,
         input_preview,
+        raw_literal_valid,
         constant,
         valuemap,
         sort_directions,
         db_where,
         recursive: None,
     }
+}
+
+fn exact_string_substitution(component: &roxmltree::Node) -> Option<RawStringSubstitution> {
+    if !matches!(
+        (
+            component.attribute("library"),
+            component.attribute("kind"),
+            component.attribute("name")
+        ),
+        (Some("core"), Some("5"), Some("substitute-missing"))
+            | (Some("db"), Some("5"), Some("substitute-null"))
+    ) || !exact_component_children(component, &["sources", "targets"])
+    {
+        return None;
+    }
+    let inputs = exact_substitution_pins(component, "sources", 2)?;
+    let output = exact_substitution_pins(component, "targets", 1)?[0];
+    let structure = component
+        .parent()?
+        .parent()
+        .filter(|node| node.has_tag_name("structure"))?;
+    let parent = structure.parent();
+    let edges = super::graph::read_edge_inputs(&structure, parent.as_ref());
+    let left = *edges.feeds.get(&inputs[0])?;
+    let fallback = *edges.feeds.get(&inputs[1])?;
+    let owners = || {
+        component.document().root().descendants().filter(|node| {
+            node.has_tag_name("component")
+                && node.parent().is_some_and(|children| {
+                    children.has_tag_name("children")
+                        && children
+                            .parent()
+                            .is_some_and(|node| node.has_tag_name("structure"))
+                })
+        })
+    };
+    if [output, left, fallback]
+        .iter()
+        .any(|key| super::constructed_parser_scalar::declared_output_count(owners(), *key) != 1)
+    {
+        return None;
+    }
+    let constant = owners().find_map(|owner| exact_string_constant(owner, fallback));
+    let parser_input = owners().find_map(|owner| {
+        if !owner.descendants().any(|node| {
+            node.has_tag_name("parameter") && node.attribute("usageKind") == Some("stringparse")
+        }) || super::constructed_parser_scalar::declared_output_count(
+            std::iter::once(owner),
+            fallback,
+        ) != 1
+        {
+            return None;
+        }
+        let inputs = owner
+            .descendants()
+            .filter(|node| node.has_tag_name("entry"))
+            .filter_map(|node| parse_u32(node.attribute("inpkey")))
+            .collect::<Vec<_>>();
+        let [input] = inputs.as_slice() else {
+            return None;
+        };
+        let feed = *edges.feeds.get(input)?;
+        (super::constructed_parser_scalar::declared_output_count(owners(), feed) == 1)
+            .then_some(feed)
+    });
+    Some(RawStringSubstitution {
+        left_pin: inputs[0],
+        fallback_pin: inputs[1],
+        output,
+        left,
+        fallback,
+        constant,
+        parser_input,
+    })
+}
+
+fn exact_component_children(component: &roxmltree::Node, allowed: &[&str]) -> bool {
+    component.tag_name().namespace().is_none()
+        && component.attributes().all(|attribute| {
+            attribute.namespace().is_none()
+                && matches!(attribute.name(), "name" | "library" | "kind" | "uid")
+        })
+        && component.children().all(|node| {
+            !node.is_element()
+                || node.tag_name().namespace().is_none()
+                    && allowed.contains(&node.tag_name().name())
+        })
+        && !component
+            .children()
+            .any(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
+}
+
+fn exact_substitution_pins(
+    component: &roxmltree::Node,
+    tag: &str,
+    count: usize,
+) -> Option<Vec<u32>> {
+    let keys = exact_pin_keys(component, tag, count)?;
+    if let Some(container) = component.children().find(|node| node.has_tag_name(tag)) {
+        if container.tag_name().namespace().is_some()
+            || container.attributes().len() != 0
+            || container.children().any(|node| {
+                node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
+                    || node.is_element()
+                        && !exact_metadata_leaf(
+                            node,
+                            if node.attribute("pos").is_some() {
+                                &["pos", "key"]
+                            } else {
+                                &["key"]
+                            },
+                        )
+            })
+        {
+            return None;
+        }
+    }
+    Some(keys)
+}
+
+fn exact_string_constant(component: roxmltree::Node, output: u32) -> Option<String> {
+    if component.attribute("library") != Some("core")
+        || component.attribute("kind") != Some("2")
+        || !exact_component_children(&component, &["sources", "targets", "data"])
+        || !exact_substitution_pins(&component, "sources", 0)?.is_empty()
+        || exact_substitution_pins(&component, "targets", 1)? != [output]
+    {
+        return None;
+    }
+    let mut data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"));
+    let data_node = data.next()?;
+    let constants = data_node
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let [constant] = constants.as_slice() else {
+        return None;
+    };
+    if data.next().is_some()
+        || data_node.tag_name().namespace().is_some()
+        || data_node.attributes().len() != 0
+        || data_node
+            .children()
+            .any(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
+        || !constant.has_tag_name("constant")
+        || !exact_metadata_leaf(*constant, &["datatype", "value"])
+        || constant.attribute("datatype") != Some("string")
+    {
+        return None;
+    }
+    Some(constant.attribute("value")?.to_string())
+}
+
+fn exact_total_string_value_map(
+    component: &roxmltree::Node,
+    map: roxmltree::Node,
+) -> Option<TotalStringValueMap> {
+    const MAX_ENTRIES: usize = 256;
+    const MAX_STRING_BYTES: usize = 65_536;
+
+    let mut data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"));
+    let container = data.next()?;
+    if data.next().is_some()
+        || container.tag_name().namespace().is_some()
+        || container.attributes().len() != 0
+        || container
+            .children()
+            .filter(roxmltree::Node::is_element)
+            .collect::<Vec<_>>()
+            != [map]
+        || map.tag_name().namespace().is_some()
+        || map.attributes().len() != 1
+        || !(map.attribute("defaultValueMode") == Some("custom")
+            || map.attribute("enableDefaultValue") == Some("1"))
+        || !exact_single_value_map_pin(component, "sources")
+        || !exact_single_value_map_pin(component, "targets")
+    {
+        return None;
+    }
+    let children = map
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    if children.len() != 3 {
+        return None;
+    }
+    let one = |name| {
+        let mut found = children
+            .iter()
+            .copied()
+            .filter(|node| node.has_tag_name(name));
+        let node = found.next()?;
+        found.next().is_none().then_some(node)
+    };
+    let input = one("input")?;
+    let result = one("result")?;
+    let table = one("valuemapTable")?;
+    if !exact_metadata_leaf(input, &["name", "type"])
+        || input.attribute("name") != Some("input")
+        || input.attribute("type") != Some("string")
+        || !exact_metadata_leaf(result, &["name", "type", "defaultValue"])
+        || result.attribute("name") != Some("result")
+        || result.attribute("type") != Some("string")
+        || table.tag_name().namespace().is_some()
+        || table.attributes().len() != 0
+    {
+        return None;
+    }
+    let default = result.attribute("defaultValue")?;
+    let mut bytes = default.len();
+    if bytes > MAX_STRING_BYTES {
+        return None;
+    }
+    let mut entries = Vec::new();
+    for entry in table.children().filter(roxmltree::Node::is_element) {
+        if entries.len() == MAX_ENTRIES
+            || !entry.has_tag_name("entry")
+            || !exact_metadata_leaf(entry, &["from", "to"])
+        {
+            return None;
+        }
+        let from = entry.attribute("from")?;
+        let to = entry.attribute("to")?;
+        bytes = bytes.checked_add(from.len())?.checked_add(to.len())?;
+        if bytes > MAX_STRING_BYTES {
+            return None;
+        }
+        entries.push((from.to_string(), to.to_string()));
+    }
+    // Unknown text is not silently treated as an empty or partial table.
+    if [container, map, table].iter().any(|node| {
+        node.children().any(|child| {
+            child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+        })
+    }) {
+        return None;
+    }
+    Some(TotalStringValueMap {
+        table: entries,
+        default: default.to_string(),
+        ownership: exact_value_map_ownership(component),
+    })
+}
+
+fn exact_value_map_ownership(component: &roxmltree::Node) -> Option<RawValueMapOwnership> {
+    let input = exact_pin_keys(component, "sources", 1)?[0];
+    let output = exact_pin_keys(component, "targets", 1)?[0];
+    let siblings = component.parent()?;
+    let structure = siblings
+        .parent()
+        .filter(|node| node.has_tag_name("structure"))?;
+    let owners = || {
+        siblings
+            .children()
+            .filter(|node| node.has_tag_name("component"))
+    };
+    if super::constructed_parser_scalar::declared_output_count(owners(), output) != 1 {
+        return None;
+    }
+    let parent = structure.parent();
+    let edges = super::graph::read_edge_inputs(&structure, parent.as_ref());
+    let source = *edges.feeds.get(&input)?;
+    if super::constructed_parser_scalar::declared_output_count(owners(), source) != 1 {
+        return None;
+    }
+    Some(RawValueMapOwnership { output, source })
+}
+
+fn exact_conditional_ownership(component: &roxmltree::Node) -> Option<RawConditionalOwnership> {
+    let inputs = exact_pin_keys(component, "sources", 3)?;
+    let output = exact_pin_keys(component, "targets", 1)?[0];
+    let siblings = component.parent()?;
+    let structure = siblings.parent().filter(|node| node.has_tag_name("structure"))?;
+    let owners = || siblings.children().filter(|node| node.has_tag_name("component"));
+    let count = |key| super::constructed_parser_scalar::declared_output_count(owners(), key);
+    if count(output) != 1 {
+        return None;
+    }
+    let parent = structure.parent();
+    let edges = super::graph::read_edge_inputs(&structure, parent.as_ref());
+    let sources = [
+        *edges.feeds.get(&inputs[0])?,
+        *edges.feeds.get(&inputs[1])?,
+        *edges.feeds.get(&inputs[2])?,
+    ];
+    if sources.iter().any(|key| count(*key) != 1) {
+        return None;
+    }
+    let primary = owners().find(|owner| {
+        super::constructed_parser_scalar::declared_output_count(std::iter::once(*owner), sources[0]) == 1
+    })?;
+    if primary.attribute("library") != Some("json") || primary.attribute("kind") != Some("31") {
+        return None;
+    }
+    let primary_outputs = primary.children().filter(|node| node.has_tag_name("data"))
+        .flat_map(|data| data.children().filter(|node| node.has_tag_name("root")))
+        .flat_map(|root| root.descendants())
+        .filter(|node| node.has_tag_name("entry"))
+        .filter_map(|entry| parse_u32(entry.attribute("outkey")))
+        .collect::<BTreeSet<_>>();
+    if !primary_outputs.contains(&sources[0])
+        || primary_outputs.iter().any(|key| count(*key) != 1)
+    {
+        return None;
+    }
+    Some(RawConditionalOwnership { output, sources, primary_outputs })
+}
+
+fn exact_single_value_map_pin(component: &roxmltree::Node, name: &str) -> bool {
+    let mut containers = component.children().filter(|node| node.has_tag_name(name));
+    let Some(container) = containers.next() else {
+        return false;
+    };
+    if containers.next().is_some()
+        || container.tag_name().namespace().is_some()
+        || container.attributes().len() != 0
+    {
+        return false;
+    }
+    let points = container
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let [point] = points.as_slice() else {
+        return false;
+    };
+    point.has_tag_name("datapoint")
+        && exact_metadata_leaf(
+            *point,
+            if point.attribute("pos").is_some() {
+                &["key", "pos"]
+            } else {
+                &["key"]
+            },
+        )
+        && point
+            .attribute("pos")
+            .is_none_or(|position| position == "0")
+}
+
+fn exact_metadata_leaf(node: roxmltree::Node, attributes: &[&str]) -> bool {
+    node.tag_name().namespace().is_none()
+        && node.attributes().len() == attributes.len()
+        && node.attributes().all(|attribute| {
+            attribute.namespace().is_none() && attributes.contains(&attribute.name())
+        })
+        && attributes
+            .iter()
+            .all(|name| node.attribute(*name).is_some())
+        && !node.children().any(|child| {
+            child.is_element()
+                || child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+        })
 }
 
 fn exact_pin_keys(component: &roxmltree::Node, tag: &str, count: usize) -> Option<Vec<u32>> {
@@ -673,6 +1110,35 @@ pub(super) fn is_recursive_construction(component: &FnComponent) -> bool {
                     | RecursiveComponent::Invalid
             )
         )
+}
+
+fn exact_literal_data(component: &roxmltree::Node<'_, '_>) -> bool {
+    let data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect::<Vec<_>>();
+    let [data] = data.as_slice() else {
+        return false;
+    };
+    let children = data.children().filter(|node| node.is_element()).collect::<Vec<_>>();
+    let [literal] = children.as_slice() else {
+        return false;
+    };
+    data.attributes().len() == 0
+        && data.tag_name().namespace().is_none()
+        && data.children().all(|node| !node.is_text()
+            || node.text().is_none_or(|text| text.trim().is_empty()))
+        && literal.has_tag_name("constant")
+        && literal.tag_name().namespace().is_none()
+        && literal.attribute("value").is_some()
+        && matches!(literal.attribute("datatype"),
+            Some("string" | "boolean" | "integer" | "int" | "long"))
+        && literal.attributes().all(|attribute| {
+            attribute.namespace().is_none() && matches!(attribute.name(), "value" | "datatype")
+        })
+        && literal.children().all(|node| {
+            !node.is_element() && node.text().is_none_or(|text| text.trim().is_empty())
+        })
 }
 
 pub(super) fn parse_constant(value: &str, datatype: &str) -> Value {

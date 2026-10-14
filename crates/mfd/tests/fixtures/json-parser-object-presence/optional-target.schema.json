@@ -1,0 +1,6 @@
+{
+  "title": "Report",
+  "type": "object",
+  "properties": { "Total": { "type": "number" } },
+  "additionalProperties": false
+}

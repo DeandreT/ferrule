@@ -673,6 +673,7 @@ impl GraphBuilder<'_> {
         let mut udf_filters = Vec::new();
         let mut has_filter = false;
         let mut group_key = None;
+        let mut group_by_component = None;
         let mut has_key_grouping = false;
         let mut group_starting_with = None;
         let mut has_start_grouping = false;
@@ -745,6 +746,7 @@ impl GraphBuilder<'_> {
                         );
                     }
                     group_key = group_key.or(control.group_key);
+                    group_by_component = group_by_component.or(control.group_by_component);
                     has_key_grouping |= control.has_key_grouping;
                     group_starting_with = group_starting_with.or(control.group_starting_with);
                     has_start_grouping |= control.has_start_grouping;
@@ -1006,6 +1008,7 @@ impl GraphBuilder<'_> {
                 match fc.name.as_str() {
                     "group-by" if fc.outputs.first() == Some(&from) => {
                         has_key_grouping = true;
+                        group_by_component = group_by_component.or(Some(idx));
                         let Some(nodes_feed) = self.input_feed(idx, 0) else {
                             break;
                         };
@@ -1068,6 +1071,7 @@ impl GraphBuilder<'_> {
             has_filter,
             filter_after_grouping,
             group_key,
+            group_by_component,
             has_key_grouping,
             group_starting_with,
             has_start_grouping,

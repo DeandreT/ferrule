@@ -107,7 +107,10 @@ pub(super) fn classify_target_connection(
     }
     let structural_feeds =
         connected_structural_feeds(target, target_path, builder, copy_all_targets);
-    let Some(connection_role) = structural_feeds.get(&feed) else {
+    let Some((_, connection_role)) = structural_feeds
+        .iter()
+        .find(|(candidate, role)| *candidate == feed && role.input_ports.contains(&input_key))
+    else {
         return;
     };
     let copy_all = connection_role.copy_all;
@@ -228,7 +231,7 @@ pub(super) fn classify_target_connection(
                 {
                     let mut feeds = repeated_feeds
                         .iter()
-                        .map(|(feed, role)| (**feed, role.representative, role.copy_all));
+                        .map(|(feed, role)| (*feed, role.representative, role.copy_all));
                     if let Some((feed, target_port, projects_whole_group)) = feeds.next() {
                         iterations.push(TargetIteration {
                             target_path: target_path.to_vec(),
@@ -282,7 +285,7 @@ pub(super) fn classify_target_connection(
         let mapped_feeds = structural_feeds
             .iter()
             .filter(|(structural_feed, role)| {
-                let candidate = builder.resolve_iteration_feed(**structural_feed);
+                let candidate = builder.resolve_iteration_feed(*structural_feed);
                 mapped_group_sequence(target, target_path, builder, &candidate, role.copy_all)
             })
             .collect::<Vec<_>>();
@@ -298,12 +301,12 @@ pub(super) fn classify_target_connection(
                 role.driver_port == input_key
                     && branches_are_compatible
                     && mapped_feeds.iter().all(|(feed, role)| {
-                        compatible_xml_type_conditions(builder, **feed, role.driver_port)
+                        compatible_xml_type_conditions(builder, *feed, role.driver_port)
                     })
             }) {
                 let mut feeds = mapped_feeds
                     .iter()
-                    .map(|(feed, role)| (**feed, role.representative, role.copy_all));
+                    .map(|(feed, role)| (*feed, role.representative, role.copy_all));
                 if let Some((feed, target_port, projects_whole_group)) = feeds.next() {
                     iterations.push(TargetIteration {
                         target_path: target_path.to_vec(),
@@ -362,7 +365,7 @@ fn cloned_branch_coverage(
     target: &SchemaComponent,
     target_path: &[String],
     builder: &GraphBuilder<'_>,
-    feeds: &[(&u32, &StructuralFeedRole)],
+    feeds: &[&(u32, StructuralFeedRole)],
 ) -> ClonedBranchCoverage {
     let representatives = feeds
         .iter()
@@ -408,7 +411,7 @@ fn exact_mapped_branches(
     target: &SchemaComponent,
     target_path: &[String],
     builder: &GraphBuilder<'_>,
-    feeds: &[(&u32, &StructuralFeedRole)],
+    feeds: &[&(u32, StructuralFeedRole)],
 ) -> bool {
     let representatives = feeds
         .iter()
@@ -459,6 +462,7 @@ struct StructuralFeedRole {
     representative: u32,
     driver_port: u32,
     copy_all: bool,
+    input_ports: Vec<u32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -473,7 +477,7 @@ fn connected_structural_feeds(
     target_path: &[String],
     builder: &GraphBuilder<'_>,
     copy_all_targets: &BTreeSet<u32>,
-) -> BTreeMap<u32, StructuralFeedRole> {
+) -> Vec<(u32, StructuralFeedRole)> {
     let mut branches = BTreeMap::<StructuralBranch, Vec<(u32, u32, bool)>>::new();
     for (key, path) in &target.ports {
         if path != target_path {
@@ -501,7 +505,7 @@ fn connected_structural_feeds(
             .push((*key, *feed, copy_all_targets.contains(key)));
     }
 
-    let mut feeds = BTreeMap::new();
+    let mut feeds = Vec::new();
     for (branch, candidates) in branches {
         let representative = match branch {
             StructuralBranch::Marker(marker) | StructuralBranch::Port(marker) => marker,
@@ -532,16 +536,20 @@ fn connected_structural_feeds(
             (controlled, depth, std::cmp::Reverse(*port))
         });
         if let Some((driver_port, feed, _)) = selected {
-            feeds.insert(
+            // Declared occurrences remain distinct when they reuse a feed.
+            feeds.push((
                 *feed,
                 StructuralFeedRole {
                     representative,
                     driver_port: *driver_port,
                     copy_all,
+                    input_ports: candidates.iter().map(|(port, _, _)| *port).collect(),
                 },
-            );
+            ));
         }
     }
+    // Preserve distinct-feed enumeration and retain equal-feed occurrences.
+    feeds.sort_by_key(|(feed, _)| *feed);
     feeds
 }
 

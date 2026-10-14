@@ -1,0 +1,77 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var utf8 = new UTF8Encoding(false, true);
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    if (test.TryGetProperty("input", out var inputElement))
+    {
+        var input = inputElement.GetString()!;
+        var savedInput = input;
+        Verify(() => GeneratedMapping.ExecuteJson(input), test);
+        var bytes = utf8.GetBytes(input);
+        var savedBytes = bytes.ToArray();
+        VerifyBytes(() => GeneratedMapping.ExecuteJsonBytes(bytes), test, utf8);
+        if (!string.Equals(input, savedInput, StringComparison.Ordinal) || !bytes.SequenceEqual(savedBytes))
+        { throw new Exception($"Caller input changed: {test}"); }
+    }
+    else
+    {
+        var bytes = test.GetProperty("bytes").EnumerateArray().Select(item => item.GetByte()).ToArray();
+        var savedBytes = bytes.ToArray();
+        VerifyBytes(() => GeneratedMapping.ExecuteJsonBytes(bytes), test, utf8);
+        if (!bytes.SequenceEqual(savedBytes))
+        { throw new Exception($"Caller invalid UTF-8 changed: {test}"); }
+    }
+}
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} ordinary JSON implicit occurrence cases");
+
+static void VerifyBytes(Func<byte[]> run, JsonElement test, UTF8Encoding utf8)
+{
+    if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
+    {
+        Verify(() => utf8.GetString(run()), test);
+        return;
+    }
+    var bytes = run();
+    if (!bytes.SequenceEqual(utf8.GetBytes(test.GetProperty("expected_json").GetString()!)))
+    { throw new Exception($"Literal ordered UTF-8 bytes differ: {test}"); }
+    Verify(() => utf8.GetString(bytes), test);
+}
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary &&
+            !string.IsNullOrEmpty(error.Detail))
+        {
+            if (test.TryGetProperty("invalid_utf8", out var invalidUtf8) && invalidUtf8.GetBoolean() &&
+                error.Detail != "JSON input is not UTF-8.")
+            { throw new Exception($"UTF-8 boundary error differs: {test}", error); }
+            return;
+        }
+        throw new Exception($"Expected input boundary refusal was accepted: {test}");
+    }
+    var actual = run();
+    if (!string.Equals(actual, test.GetProperty("expected_json").GetString(), StringComparison.Ordinal))
+    { throw new Exception($"Literal ordered JSON text differs: {test}; actual: {actual}"); }
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+    { throw new Exception($"Complete output value differs: {test}; actual: {actual}"); }
+    using var output = JsonDocument.Parse(actual);
+    var batches = output.RootElement.GetProperty("Batches");
+    if (batches.GetArrayLength() != test.GetProperty("parent_count").GetInt32())
+    { throw new Exception($"Parent cardinality differs: {test}"); }
+    foreach (var batch in batches.EnumerateArray())
+    {
+        var records = batch.GetProperty("Records");
+        if (records.GetArrayLength() != 2 || records[0].GetProperty("Branch").GetString() != "left" ||
+            records[1].GetProperty("Branch").GetString() != "right")
+        { throw new Exception($"Occurrence order/cardinality differs: {test}"); }
+    }
+}

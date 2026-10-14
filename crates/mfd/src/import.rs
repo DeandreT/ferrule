@@ -21,6 +21,7 @@ use crate::{
 mod aggregate;
 mod alternatives;
 mod compatibility;
+mod constructed_parser_scalar;
 mod constructed_variable_driver;
 mod db_query;
 mod db_where;
@@ -34,6 +35,7 @@ mod feed;
 mod first_presence;
 mod flextext_parser;
 mod function;
+mod group_by_key;
 mod generated_occurrence;
 mod graph;
 mod group_projection;
@@ -41,10 +43,13 @@ mod instance_path;
 mod iteration;
 mod join;
 mod json_parser;
+mod json_parser_object;
 mod json_serializer;
 mod json_variable;
+mod lazy_string_substitution;
 mod materialize;
 mod mixed_content;
+mod optional_parser_input;
 mod output_parameter;
 mod pipeline_exception;
 mod protobuf_target;
@@ -1510,6 +1515,8 @@ fn import_resolved(
 
     let edges = read_edge_inputs(&structure, Some(&wrapper));
     let mut warnings = edges.conflicts.clone();
+    let csv_occurrence_raw_authority = edges.complete
+        && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
     let mut json_serializers = Vec::new();
@@ -2270,6 +2277,8 @@ fn import_resolved(
     let mut builder = GraphBuilder {
         graph: Graph::default(),
         native_decimal_input_names: BTreeMap::new(),
+        optional_parser_input_names: BTreeMap::new(),
+        parser_input_nodes: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
         sequence_items: BTreeMap::new(),
@@ -2294,6 +2303,7 @@ fn import_resolved(
         xml_type_conditions,
         xml_condition_ports,
         edge_from: &edge_from,
+        csv_occurrence_raw_authority,
         sources: &sources,
         source_names: &source_names,
         intermediates: &intermediates,
@@ -2502,6 +2512,8 @@ fn import_resolved(
     let mut source_options = primary.options.clone();
     source_options.mfd_decimal_input_names =
         std::mem::take(&mut builder.native_decimal_input_names);
+    source_options.mfd_optional_parser_input_names =
+        std::mem::take(&mut builder.optional_parser_input_names);
     let mut project = Project {
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),
@@ -2670,6 +2682,7 @@ fn build_target_scope(
     let dynamic_target = dynamic_json::prepare_target(target, builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
+    let mut parser_object_targets = Vec::new();
     let mut group_projections = Vec::new();
     let mut structured_udf_targets = Vec::new();
     let mut csv_singleton_bindings = BTreeMap::new();
@@ -2688,6 +2701,24 @@ fn build_target_scope(
             continue;
         }
         let node_kind = schema_node_at(&target.schema, target_path);
+        if builder.json_parser_declares_object(from) {
+            if !matches!(
+                node_kind.map(|node| &node.kind),
+                Some(SchemaKind::Group { .. })
+            ) {
+                builder.warnings.push(format!(
+                    "JSON string parser output port `{from}` requires an ordinary object target; skipped",
+                ));
+                continue;
+            }
+            parser_object_targets.push((
+                target_path.clone(),
+                inpkey,
+                from,
+                copy_all_targets.contains(&inpkey),
+            ));
+            continue;
+        }
         if let Some(node) = node_kind
             && recursive::accept_target(target_path, node, from, builder, &mut scopes)
         {
@@ -2786,6 +2817,12 @@ fn build_target_scope(
     }
     let mut skipped_iteration_paths =
         target_iteration::build(iterations, target, &mut bindings, builder, &mut scopes);
+    skipped_iteration_paths.extend(json_parser_object::install(
+        &parser_object_targets,
+        target,
+        builder,
+        &mut scopes,
+    ));
     protobuf_target::infer_singleton_messages(
         target,
         &bindings,

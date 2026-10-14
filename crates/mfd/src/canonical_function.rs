@@ -12,6 +12,7 @@ pub(crate) fn is_internal(name: &str) -> bool {
             | "to_number"
             | "json_serialize_object"
             | "json_parse_field"
+            | "json_parse_object_exists"
             | "flextext_parse_field"
             | "coerce_datetime"
     )

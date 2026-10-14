@@ -156,3 +156,85 @@ fn csv_x12_backend_and_atomic_refusals_preserve_destination() -> Result<(), Box<
     }
     Ok(())
 }
+
+#[test]
+fn csv_x12_explicit_target_selection_preserves_every_captured_option() -> Result<(), Box<dyn Error>> {
+    let mut input = project()?;
+    input.source_options.delimiter = Some(';');
+    input.source_options.csv_preserve_empty_strings = false;
+    input.target_options.lenient_segments = true;
+    let before = serde_json::to_value(&input)?;
+    let ordinary = policy(&input)?;
+    assert_eq!(policy_with_envelope_profile(&input, None)?, ordinary);
+    assert_eq!(
+        policy_with_envelope_profile(&input, Some(codegen::X12EnvelopeProfile::SingleTransaction))?,
+        ordinary,
+    );
+    let grouped = policy_with_envelope_profile(
+        &input,
+        Some(codegen::X12EnvelopeProfile::GroupedTransactions),
+    )?;
+    let mut expected = ordinary;
+    expected.target.envelope_profile = codegen::X12EnvelopeProfile::GroupedTransactions;
+    assert_eq!(grouped, expected);
+    assert_eq!(serde_json::to_value(&input)?, before);
+    input.source_options.tabular_kind = Some(TabularBoundaryKind::Xlsx);
+    assert_eq!(
+        policy_with_envelope_profile(&input, Some(codegen::X12EnvelopeProfile::GroupedTransactions))
+            .unwrap_err().to_string(),
+        policy(&input).unwrap_err().to_string(),
+    );
+    Ok(())
+}
+
+#[test]
+fn csv_x12_explicit_grouped_selection_keeps_complete_borrowed_grammar_guards() -> Result<(), Box<dyn Error>> {
+    let mut input = project()?;
+    input.target = serde_json::from_str(include_str!(
+        "../../../../codegen-csharp/tests/x12/grouped/fixtures/004010-schema.json"
+    ))?;
+    input.graph = mapping::Graph::default();
+    input.root = mapping::Scope::default();
+    let before = serde_json::to_value(&input)?;
+    let default = policy_with_envelope_profile(&input, None)?;
+    assert!(matches!(
+        codegen::prepare_csv_x12_project_boundary(&input, &default),
+        Err(codegen::CsvX12BoundaryError::TargetX12(_)),
+    ));
+    let selected = policy_with_envelope_profile(
+        &input,
+        Some(codegen::X12EnvelopeProfile::GroupedTransactions),
+    )?;
+    let profile = codegen::prepare_csv_x12_project_boundary(&input, &selected)?;
+    let descriptor: serde_json::Value = serde_json::from_str(&profile.target_descriptor)?;
+    assert_eq!(descriptor["envelope_profile"], "grouped_transactions");
+    assert_eq!(serde_json::to_value(&input)?, before);
+    // A selection cannot reinterpret an extra wrapper as the physical envelope.
+    input.target = ir::SchemaNode::group("Extra", vec![input.target]);
+    assert!(matches!(
+        codegen::prepare_csv_x12_project_boundary(&input, &selected),
+        Err(codegen::CsvX12BoundaryError::TargetX12(_)),
+    ));
+    Ok(())
+}
+
+#[test]
+fn csv_x12_selected_target_backend_refusal_still_precedes_any_output() -> Result<(), Box<dyn Error>> {
+    let root = evidence("explicit-backend")?;
+    for (label, selection) in [
+        ("absent", None),
+        ("single", Some(codegen::X12EnvelopeProfile::SingleTransaction)),
+        ("grouped", Some(codegen::X12EnvelopeProfile::GroupedTransactions)),
+    ] {
+        let output = root.join(label).join("output");
+        let result = crate::generate_project_with_csv_x12_envelope_profile(
+            &root.join("absent-project.json"),
+            &output,
+            crate::GenerateTarget::Rust { runtime_path: root.join("absent-runtime") },
+            selection,
+        );
+        assert_eq!(result.unwrap_err().to_string(), "generated CSV-to-X12 adapters require the C# backend");
+        assert!(!output.parent().unwrap().exists());
+    }
+    Ok(())
+}

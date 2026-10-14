@@ -1,0 +1,97 @@
+[
+  {
+    "arguments": [
+      "{}",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[]"
+    ],
+    "expected": true
+  },
+  {
+    "arguments": [
+      "{\"Header\":{}}",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[\"Header\"]"
+    ],
+    "expected": true
+  },
+  {
+    "arguments": [
+      "{}",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[\"Header\"]"
+    ],
+    "expected": false
+  },
+  {
+    "arguments": [
+      "{\"Header\":null}",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[\"Header\"]"
+    ],
+    "expected": false
+  },
+  {
+    "arguments": [
+      "bad input",
+      "bad schema",
+      "bad path"
+    ],
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "schema descriptor is invalid"
+    }
+  },
+  {
+    "arguments": [
+      "bad input",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "bad path"
+    ],
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "field path descriptor is invalid"
+    }
+  },
+  {
+    "arguments": [
+      "bad input",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[]"
+    ],
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "arguments": [
+      "{}",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[\"Header\",\"Label\"]"
+    ],
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "field path does not resolve to an ordinary object"
+    }
+  },
+  {
+    "arguments": [
+      "[{\"Header\":{}}]",
+      "{\"name\":\"Payload\",\"repeating\":false,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Header\",\"repeating\":false,\"container_nullable\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Label\",\"repeating\":false,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}",
+      "[\"Header\"]"
+    ],
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "arguments": [
+      null,
+      "bad schema",
+      "bad path"
+    ],
+    "expected": false
+  }
+]

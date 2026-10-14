@@ -1,9 +1,97 @@
-use ir::{Instance, SchemaNode, Value};
+use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::FunctionError;
 
 const FUNCTION: &str = "json_serialize_object";
 const PARSE_FUNCTION: &str = "json_parse_field";
+const OBJECT_FUNCTION: &str = "json_parse_object_exists";
+
+pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
+    let [input, schema, path] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: OBJECT_FUNCTION,
+            expected: 3,
+            got: args.len(),
+        });
+    };
+    let Value::String(schema) = schema else {
+        return Err(FunctionError::TypeMismatch {
+            function: OBJECT_FUNCTION,
+            got: schema.type_name(),
+        });
+    };
+    let Value::String(path) = path else {
+        return Err(FunctionError::TypeMismatch {
+            function: OBJECT_FUNCTION,
+            got: path.type_name(),
+        });
+    };
+    let Value::String(input) = input else {
+        if matches!(input, Value::Null | Value::JsonNull(_)) {
+            return Ok(Value::Bool(false));
+        }
+        return Err(FunctionError::TypeMismatch {
+            function: OBJECT_FUNCTION,
+            got: input.type_name(),
+        });
+    };
+    let schema: SchemaNode =
+        serde_json::from_str(schema).map_err(|_| FunctionError::InvalidArgument {
+            function: OBJECT_FUNCTION,
+            message: "schema descriptor is invalid",
+        })?;
+    let path: Vec<String> =
+        serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
+            function: OBJECT_FUNCTION,
+            message: "field path descriptor is invalid",
+        })?;
+    let object_path_error = || FunctionError::InvalidArgument {
+        function: OBJECT_FUNCTION,
+        message: "field path does not resolve to an ordinary object",
+    };
+    let mut selected = &schema;
+    for segment in &path {
+        if !ordinary_object(selected) {
+            return Err(object_path_error());
+        }
+        selected = selected.child(segment).ok_or_else(object_path_error)?;
+    }
+    if !ordinary_object(selected) {
+        return Err(object_path_error());
+    }
+    let parsed =
+        format_json::from_str(input, &schema).map_err(|_| FunctionError::InvalidArgument {
+            function: OBJECT_FUNCTION,
+            message: "input does not match the JSON schema",
+        })?;
+    if matches!(parsed, Instance::Repeated(_) | Instance::DocumentSet(_)) {
+        return Err(FunctionError::InvalidArgument {
+            function: OBJECT_FUNCTION,
+            message: "input does not match the JSON schema",
+        });
+    }
+    let mut current = &parsed;
+    for segment in &path {
+        let Some(child) = current.field(segment) else {
+            return Ok(Value::Bool(false));
+        };
+        current = child;
+    }
+    match current {
+        Instance::Group(_) => Ok(Value::Bool(true)),
+        Instance::Scalar(Value::Null | Value::JsonNull(_)) => Ok(Value::Bool(false)),
+        _ => Err(object_path_error()),
+    }
+}
+
+fn ordinary_object(schema: &SchemaNode) -> bool {
+    matches!(schema.kind, SchemaKind::Group { .. })
+        && !schema.repeating
+        && !schema.json_array_wrapper
+        && !schema.json_any
+        && schema.dynamic_fields().is_none()
+        && schema.alternatives().is_empty()
+}
 
 pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
     let [input, schema, path] = args else {
@@ -199,7 +287,111 @@ mod tests {
 
     use crate::FunctionError;
 
-    use super::{parse_field, serialize_object};
+    use super::{object_exists, parse_field, serialize_object};
+
+    #[test]
+    fn object_presence_keeps_empty_objects_and_omits_missing_or_null_objects() {
+        let schema = SchemaNode::group(
+            "Payload",
+            vec![
+                SchemaNode::group(
+                    "Header",
+                    vec![SchemaNode::scalar("Label", ScalarType::String)],
+                )
+                .nullable_container()
+                .unwrap(),
+                SchemaNode::scalar("Unused", ScalarType::Int),
+            ],
+        );
+        let descriptor = serde_json::to_string(&schema).unwrap();
+        for (input, path, present) in [
+            (r#"{}"#, "[]", true),
+            (r#"{"Header":{}}"#, r#"["Header"]"#, true),
+            (r#"{}"#, r#"["Header"]"#, false),
+            (r#"{"Header":null}"#, r#"["Header"]"#, false),
+        ] {
+            assert_eq!(
+                object_exists(&[
+                    Value::String(input.into()),
+                    Value::String(descriptor.clone()),
+                    Value::String(path.into()),
+                ]),
+                Ok(Value::Bool(present)),
+                "{input}: {path}"
+            );
+        }
+        assert_eq!(
+            object_exists(&[
+                Value::String(r#"{"Header":{},"Unused":"wrong"}"#.into()),
+                Value::String(descriptor),
+                Value::String(r#"["Header"]"#.into()),
+            ]),
+            Err(FunctionError::InvalidArgument {
+                function: "json_parse_object_exists",
+                message: "input does not match the JSON schema",
+            })
+        );
+    }
+
+    #[test]
+    fn object_presence_refuses_scalar_and_array_paths_and_preserves_null_short_circuit() {
+        let descriptor = serde_json::to_string(&SchemaNode::group(
+            "Payload",
+            vec![
+                SchemaNode::scalar("Label", ScalarType::String),
+                SchemaNode::group("Rows", vec![]).repeating(),
+            ],
+        ))
+        .unwrap();
+        for path in [r#"["Label"]"#, r#"["Rows"]"#, r#"["Missing"]"#] {
+            assert_eq!(
+                object_exists(&[
+                    Value::String(r#"{"Label":"ok","Rows":[]}"#.into()),
+                    Value::String(descriptor.clone()),
+                    Value::String(path.into()),
+                ]),
+                Err(FunctionError::InvalidArgument {
+                    function: "json_parse_object_exists",
+                    message: "field path does not resolve to an ordinary object",
+                })
+            );
+        }
+        for input in [Value::Null, Value::json_null()] {
+            assert_eq!(
+                object_exists(&[
+                    input,
+                    Value::String("bad schema".into()),
+                    Value::String("bad path".into())
+                ]),
+                Ok(Value::Bool(false))
+            );
+        }
+        for (schema, path, message) in [
+            ("bad schema", "bad path", "schema descriptor is invalid"),
+            (
+                descriptor.as_str(),
+                "bad path",
+                "field path descriptor is invalid",
+            ),
+            (
+                descriptor.as_str(),
+                "[]",
+                "input does not match the JSON schema",
+            ),
+        ] {
+            assert_eq!(
+                object_exists(&[
+                    Value::String("bad input".into()),
+                    Value::String(schema.into()),
+                    Value::String(path.into()),
+                ]),
+                Err(FunctionError::InvalidArgument {
+                    function: "json_parse_object_exists",
+                    message
+                })
+            );
+        }
+    }
 
     #[test]
     fn parses_a_nested_field_with_schema_types() {

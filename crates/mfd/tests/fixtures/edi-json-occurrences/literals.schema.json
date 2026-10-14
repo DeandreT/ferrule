@@ -1,0 +1,72 @@
+{
+  "title": "Target",
+  "type": "object",
+  "properties": {
+    "Groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Transactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "Batches": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "Records": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "Branch": {
+                              "type": "string"
+                            },
+                            "Label": {
+                              "type": "string"
+                            },
+                            "Enabled": {
+                              "type": "boolean"
+                            },
+                            "Count": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "Branch",
+                            "Enabled",
+                            "Count"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "Records"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "Batches"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "Transactions"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "Groups"
+  ],
+  "additionalProperties": false
+}

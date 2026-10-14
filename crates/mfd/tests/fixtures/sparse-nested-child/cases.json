@@ -1,0 +1,165 @@
+[
+  {
+    "name": "empty_all",
+    "input": "{\"First\":[],\"Second\":[]}",
+    "expected": {
+      "Parent": []
+    },
+    "expected_xml": "<Result></Result>"
+  },
+  {
+    "name": "first_only",
+    "input": "{\"First\":[{\"Id\":1},{\"Id\":2}],\"Second\":[]}",
+    "expected": {
+      "Parent": [
+        {
+          "Marker": "left",
+          "Id": 1
+        },
+        {
+          "Marker": "left",
+          "Id": 2
+        }
+      ]
+    },
+    "expected_xml": "<Result><Parent><Marker>left</Marker><Id>1</Id></Parent><Parent><Marker>left</Marker><Id>2</Id></Parent></Result>"
+  },
+  {
+    "name": "second_empty_details",
+    "input": "{\"First\":[],\"Second\":[{\"Id\":10,\"Details\":[]}]}",
+    "expected": {
+      "Parent": [
+        {
+          "Marker": "right",
+          "Id": 10,
+          "Child": []
+        }
+      ]
+    },
+    "expected_xml": "<Result><Parent><Marker>right</Marker><Id>10</Id></Parent></Result>"
+  },
+  {
+    "name": "empty_text_zero_parent_field",
+    "input": "{\"First\":[{\"Id\":1}],\"Second\":[{\"Id\":10,\"Details\":[{\"Value\":\"\",\"Qty\":0}]}]}",
+    "expected": {
+      "Parent": [
+        {
+          "Marker": "left",
+          "Id": 1
+        },
+        {
+          "Marker": "right",
+          "Id": 10,
+          "Child": [
+            {
+              "Header": {
+                "Value": "",
+                "Qty": 0,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Detail": {
+                "Value": "",
+                "Qty": 0,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Footer": {
+                "Value": "",
+                "Qty": 0,
+                "OwnerId": 10,
+                "Label": "right"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_xml": "<Result><Parent><Marker>left</Marker><Id>1</Id></Parent><Parent><Marker>right</Marker><Id>10</Id><Child><Header><Value></Value><Qty>0</Qty><OwnerId>10</OwnerId><Label>right</Label></Header><Detail><Value></Value><Qty>0</Qty><OwnerId>10</OwnerId><Label>right</Label></Detail><Footer><Value></Value><Qty>0</Qty><OwnerId>10</OwnerId><Label>right</Label></Footer></Child></Parent></Result>"
+  },
+  {
+    "name": "multiple_frames_order_unicode",
+    "input": "{\"First\":[{\"Id\":1}],\"Second\":[{\"Id\":10,\"Details\":[{\"Value\":\"α\",\"Qty\":2},{\"Value\":\"β\",\"Qty\":3}]},{\"Id\":20,\"Details\":[{\"Value\":\"末\",\"Qty\":4}]}]}",
+    "expected": {
+      "Parent": [
+        {
+          "Marker": "left",
+          "Id": 1
+        },
+        {
+          "Marker": "right",
+          "Id": 10,
+          "Child": [
+            {
+              "Header": {
+                "Value": "α",
+                "Qty": 2,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Detail": {
+                "Value": "α",
+                "Qty": 2,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Footer": {
+                "Value": "α",
+                "Qty": 2,
+                "OwnerId": 10,
+                "Label": "right"
+              }
+            },
+            {
+              "Header": {
+                "Value": "β",
+                "Qty": 3,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Detail": {
+                "Value": "β",
+                "Qty": 3,
+                "OwnerId": 10,
+                "Label": "right"
+              },
+              "Footer": {
+                "Value": "β",
+                "Qty": 3,
+                "OwnerId": 10,
+                "Label": "right"
+              }
+            }
+          ]
+        },
+        {
+          "Marker": "right",
+          "Id": 20,
+          "Child": [
+            {
+              "Header": {
+                "Value": "末",
+                "Qty": 4,
+                "OwnerId": 20,
+                "Label": "right"
+              },
+              "Detail": {
+                "Value": "末",
+                "Qty": 4,
+                "OwnerId": 20,
+                "Label": "right"
+              },
+              "Footer": {
+                "Value": "末",
+                "Qty": 4,
+                "OwnerId": 20,
+                "Label": "right"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected_xml": "<Result><Parent><Marker>left</Marker><Id>1</Id></Parent><Parent><Marker>right</Marker><Id>10</Id><Child><Header><Value>α</Value><Qty>2</Qty><OwnerId>10</OwnerId><Label>right</Label></Header><Detail><Value>α</Value><Qty>2</Qty><OwnerId>10</OwnerId><Label>right</Label></Detail><Footer><Value>α</Value><Qty>2</Qty><OwnerId>10</OwnerId><Label>right</Label></Footer></Child><Child><Header><Value>β</Value><Qty>3</Qty><OwnerId>10</OwnerId><Label>right</Label></Header><Detail><Value>β</Value><Qty>3</Qty><OwnerId>10</OwnerId><Label>right</Label></Detail><Footer><Value>β</Value><Qty>3</Qty><OwnerId>10</OwnerId><Label>right</Label></Footer></Child></Parent><Parent><Marker>right</Marker><Id>20</Id><Child><Header><Value>末</Value><Qty>4</Qty><OwnerId>20</OwnerId><Label>right</Label></Header><Detail><Value>末</Value><Qty>4</Qty><OwnerId>20</OwnerId><Label>right</Label></Detail><Footer><Value>末</Value><Qty>4</Qty><OwnerId>20</OwnerId><Label>right</Label></Footer></Child></Parent></Result>"
+  }
+]

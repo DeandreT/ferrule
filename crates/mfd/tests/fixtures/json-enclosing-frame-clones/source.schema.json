@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Flag": {
+            "type": "boolean"
+          },
+          "Id": {
+            "type": "string"
+          },
+          "Zero": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "Flag",
+          "Id",
+          "Zero"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "Rows"
+  ],
+  "additionalProperties": false,
+  "title": "Source"
+}

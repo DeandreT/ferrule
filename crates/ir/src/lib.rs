@@ -561,6 +561,10 @@ pub struct SchemaNode {
     /// array wrapper.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub container_nullable: bool,
+    /// Explicit nullability of each object item in a repeating JSON group.
+    /// Absence retains the legacy `container_nullable` item behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_object_item_nullable: Option<bool>,
     /// This repeating group preserves an outer JSON array whose items are
     /// themselves arrays. Its sole repeating `item` child owns the complete
     /// inner array schema; JSON boundaries make this group frame transparent.
@@ -729,6 +733,15 @@ pub(crate) fn schema_deserialization_is_active() -> bool {
     SCHEMA_DESERIALIZE_DEPTH.with(|depth| depth.get() != 0)
 }
 
+fn deserialize_explicit_object_item_nullable<'de, D>(
+    deserializer: D,
+) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bool::deserialize(deserializer).map(Some)
+}
+
 impl<'de> Deserialize<'de> for SchemaNode {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -763,6 +776,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
             nullable: bool,
             #[serde(default)]
             container_nullable: bool,
+            #[serde(
+                default,
+                deserialize_with = "deserialize_explicit_object_item_nullable"
+            )]
+            json_object_item_nullable: Option<bool>,
             #[serde(default)]
             json_array_wrapper: bool,
             #[serde(default)]
@@ -835,6 +853,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             xml_attribute_required: repr.xml_attribute_required,
             nullable: repr.nullable,
             container_nullable: repr.container_nullable,
+            json_object_item_nullable: repr.json_object_item_nullable,
             json_array_wrapper: repr.json_array_wrapper,
             json_any: repr.json_any,
             fixed: repr.fixed,
@@ -863,6 +882,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
             database_relation: repr.database_relation,
             kind: repr.kind,
         };
+        if !node.json_object_item_nullable_is_valid() {
+            return Err(serde::de::Error::custom(
+                "invalid JSON object-item nullability metadata",
+            ));
+        }
         if guard.is_root && !node.json_array_wrappers_tree_is_valid() {
             return Err(serde::de::Error::custom(
                 "invalid JSON array-wrapper metadata",
@@ -1126,6 +1150,7 @@ impl SchemaNode {
             && self.database_relation_is_valid()
             && self.nullable_is_valid()
             && self.container_nullable_is_valid()
+            && self.json_object_item_nullable_is_valid()
             && self.json_any_is_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
@@ -1166,6 +1191,7 @@ impl SchemaNode {
             && self.database_relation_is_valid()
             && self.nullable_is_valid()
             && self.container_nullable_is_valid()
+            && self.json_object_item_nullable_is_valid()
             && self.json_any_is_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
@@ -1187,6 +1213,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
             fixed: None,
@@ -1239,6 +1266,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
             fixed: None,
@@ -1323,6 +1351,7 @@ impl SchemaNode {
             xml_attribute_required: false,
             nullable: false,
             container_nullable: false,
+            json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
             fixed: None,
@@ -2485,6 +2514,35 @@ impl SchemaNode {
         !self.container_nullable || self.repeating || matches!(self.kind, SchemaKind::Group { .. })
     }
 
+    pub fn json_object_item_nullable_is_valid(&self) -> bool {
+        self.json_object_item_nullable.is_none()
+            || (self.repeating
+                && matches!(self.kind, SchemaKind::Group { .. })
+                && !self.json_array_wrapper
+                && !self.json_any)
+    }
+
+    pub fn json_object_item_nullability_tree_is_valid(&self) -> bool {
+        self.walk_json_schema_nodes(Self::json_object_item_nullable_is_valid)
+    }
+
+    pub fn contains_json_object_item_nullability(&self) -> bool {
+        !self.walk_json_schema_nodes(|node| node.json_object_item_nullable.is_none())
+    }
+
+    /// Nullability at a single JSON object occurrence, independent of its array.
+    pub fn json_single_container_nullable(&self) -> bool {
+        if self.repeating
+            && matches!(self.kind, SchemaKind::Group { .. })
+            && !self.json_array_wrapper
+        {
+            self.json_object_item_nullable
+                .unwrap_or(self.container_nullable)
+        } else {
+            self.container_nullable
+        }
+    }
+
     /// Validates the distinct array frame without copying its child tree.
     pub fn json_array_wrapper_is_valid(&self) -> bool {
         if !self.json_array_wrapper {
@@ -2517,6 +2575,7 @@ impl SchemaNode {
             && !self.xml_optional
             && !self.xml_attribute_required
             && !self.nullable
+            && self.json_object_item_nullable.is_none()
             && !self.json_any
             && self.fixed.is_none()
             && self.json_allowed_values.is_none()

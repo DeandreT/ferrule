@@ -28,6 +28,10 @@ mod csv_x12_adapters;
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]
 mod dynamic_properties;
+#[path = "code_generation/enclosing_frame_value_maps.rs"]
+mod enclosing_frame_value_maps;
+#[path = "code_generation/enclosing_frame_date_producers.rs"]
+mod enclosing_frame_date_producers;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]
@@ -66,6 +70,8 @@ mod json_variable_array_descendants;
 mod empty_constructed_scopes;
 #[path = "code_generation/empty_iterated_scopes.rs"]
 mod empty_iterated_scopes;
+#[path = "code_generation/lazy_string_substitution.rs"]
+mod lazy_string_substitution;
 #[path = "code_generation/lexical_numeric_bounds.rs"]
 mod lexical_numeric_bounds;
 #[path = "code_generation/lookups.rs"]
@@ -74,6 +80,8 @@ mod lookups;
 mod nested_array_wrappers;
 #[path = "code_generation/nested_clone_owners.rs"]
 mod nested_clone_owners;
+#[path = "code_generation/optional_parser_input.rs"]
+mod optional_parser_input;
 #[path = "code_generation/optional_runtime_defaults.rs"]
 mod optional_runtime_defaults;
 #[path = "code_generation/path_hierarchy.rs"]
@@ -1418,3 +1426,27 @@ mod constructed_variable_copy_all;
 
 #[path = "code_generation/constructed_variable_conditionals.rs"]
 mod constructed_variable_conditionals;
+
+#[path = "code_generation/constructed_parser_runtime_inputs.rs"]
+mod constructed_parser_runtime_inputs;
+
+#[path = "code_generation/json_parser_object_presence.rs"]
+mod json_parser_object_presence;
+
+#[path = "code_generation/enclosing_frame_clones.rs"]
+mod enclosing_frame_clones;
+
+#[path = "code_generation/enclosing_frame_conditionals.rs"]
+mod enclosing_frame_conditionals;
+
+#[path = "code_generation/enclosing_frame_string_branches.rs"]
+mod enclosing_frame_string_branches;
+
+#[path = "code_generation/json_enclosing_frame_clones.rs"]
+mod json_enclosing_frame_clones;
+
+#[path = "code_generation/sparse_nested_child.rs"]
+mod sparse_nested_child;
+
+#[path = "code_generation/edi_primary_global_json.rs"]
+mod edi_primary_global_json;

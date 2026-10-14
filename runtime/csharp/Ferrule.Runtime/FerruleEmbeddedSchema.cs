@@ -10,6 +10,7 @@ internal static class FerruleEmbeddedSchema
 {
     internal const string V2Prefix = "FERRULE-EMBEDDED-SCHEMA/2\n";
     internal const string V3Prefix = "FERRULE-EMBEDDED-SCHEMA/3\n";
+    internal const string V4Prefix = "FERRULE-EMBEDDED-SCHEMA/4\n";
     private const string VersionStem = "FERRULE-EMBEDDED-SCHEMA/";
     private const string FloatBitsPrefix = "FERRULE-F64-BITS:";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -26,7 +27,8 @@ internal static class FerruleEmbeddedSchema
                 $"embedded schema is {bytes} bytes; maximum is {maximumBytes}");
         }
         var prefix = descriptor.StartsWith(V2Prefix, StringComparison.Ordinal) ? V2Prefix :
-            descriptor.StartsWith(V3Prefix, StringComparison.Ordinal) ? V3Prefix : null;
+            descriptor.StartsWith(V3Prefix, StringComparison.Ordinal) ? V3Prefix :
+            descriptor.StartsWith(V4Prefix, StringComparison.Ordinal) ? V4Prefix : null;
         if (prefix is null)
         {
             if (descriptor.StartsWith(VersionStem, StringComparison.Ordinal))

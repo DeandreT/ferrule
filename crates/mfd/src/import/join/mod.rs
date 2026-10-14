@@ -164,7 +164,8 @@ struct PendingJoin {
     parsed: ParsedJoin,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(test, derive(Debug))]
 pub(super) struct Registry {
     joins: BTreeMap<JoinId, ResolvedJoin>,
     row_outputs: BTreeMap<u32, JoinId>,
@@ -175,6 +176,8 @@ pub(super) struct Registry {
     rejected_field_outputs: BTreeSet<u32>,
 }
 
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 struct ResolvedJoin {
     parsed: ParsedJoin,
     inputs: Vec<ResolvedInput>,
@@ -183,12 +186,16 @@ struct ResolvedJoin {
     target_path: Option<Vec<String>>,
 }
 
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 struct ResolvedInput {
     source: usize,
     path: Vec<String>,
     singleton: bool,
 }
 
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 struct ResolvedField {
     join: JoinId,
     input_index: usize,
