@@ -1282,12 +1282,11 @@
   },
   {
     "design": "scalar",
-    "expected_complete_json": {
-      "Label": null
-    },
+    "expected_complete_json": {},
+    "expected_typed_null_field": "Label",
     "input_contract": "authored X12 reader and typed-instance controls",
     "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
-    "name": "scalar-only host Null is scalar Null",
+    "name": "scalar-only host Null remains typed absence at the JSON boundary",
     "parameters": {
       "payload": null
     },

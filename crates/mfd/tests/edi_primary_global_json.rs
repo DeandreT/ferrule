@@ -103,6 +103,13 @@ fn verify(project: &Project, source: &Instance, case: &serde_json::Value) {
     } else {
         let result =
             result.unwrap_or_else(|error| panic!("unexpected runtime error for {case}: {error:?}"));
+        if let Some(field) = case.get("expected_typed_null_field") {
+            assert_eq!(
+                result.field(field.as_str().unwrap()),
+                Some(&Instance::Scalar(Value::Null)),
+                "typed absence changed before JSON serialization: {case}"
+            );
+        }
         assert_eq!(
             format_json::to_value(&project.target, &result).unwrap(),
             case["expected_complete_json"],
@@ -369,7 +376,7 @@ impl Drop for TemporaryFixture {
 }
 
 #[test]
-fn unsupported_primary_and_raw_parser_controls_omit_the_complete_root_mapping() {
+fn unsupported_primary_and_raw_parser_controls_preserve_complete_refusals() {
     let original = std::fs::read_to_string(fixture("required-edi-root.mfd")).unwrap();
     let warning = "JSON parser object presence into `` requires one plain object connection and a uniquely declared global String input without a connected default; skipped";
     for (name, text) in [
@@ -390,9 +397,46 @@ fn unsupported_primary_and_raw_parser_controls_omit_the_complete_root_mapping() 
         let mut expected = project_oracle::expected("root");
         expected.root = Scope::default();
         expected.graph.nodes.clear();
+        let unresolved = "unsupported:required-input:db:substitute-null:2";
+        if name == "invalid optional setting" {
+            expected.root.bindings.push(mapping::Binding {
+                target_field: "Label".into(),
+                node: 0,
+            });
+            expected.graph.nodes = [
+                (0, Node::Call { function: unresolved.into(), args: vec![1] }),
+                (1, Node::SourceField { path: vec!["NTE".into(), "Text".into()], frame: None }),
+            ].into();
+        }
         if name == "other root" { expected.source.name = "Other".into(); }
         if name == "non-X12" { expected.source_options.edi_kind = Some(mapping::EdiBoundaryKind::Edifact); }
         assert_eq!(serde_json::to_value(&imported.project).unwrap(), serde_json::to_value(expected).unwrap(), "{name}");
-        assert!(!imported.project.graph.nodes.values().any(|node| matches!(node, Node::RuntimeParameter { .. } | Node::Call { .. })));
+        assert!(!imported.project.graph.nodes.values().any(|node| matches!(node, Node::RuntimeParameter { .. } | Node::RuntimeParameterDefault { .. })));
+        if name == "invalid optional setting" {
+            let message = format!("unknown function `{unresolved}`");
+            let issues = engine::validate(&imported.project);
+            assert_eq!(issues.len(), 1, "{issues:?}");
+            assert_eq!(issues[0].location, "graph node 0");
+            assert_eq!(issues[0].message, message);
+            let error = codegen::lower(&imported.project).unwrap_err();
+            assert_eq!(error.diagnostics(), &[codegen::Diagnostic::Validation {
+                location: "graph node 0".into(),
+                message,
+            }]);
+            let cases: Vec<serde_json::Value> = serde_json::from_slice(
+                &std::fs::read(fixture("cases.json")).unwrap(),
+            ).unwrap();
+            let source = typed(&cases[0]["primary_typed_value"], &imported.project.source);
+            let before = source.clone();
+            let result = engine::run_with_context(
+                &imported.project,
+                &source,
+                &engine::ExecutionContext::new(Path::new("unresolved-parser.mfd")),
+            );
+            assert!(matches!(result, Err(engine::EngineError::Function(functions::FunctionError::UnknownFunction(ref function))) if function == unresolved));
+            assert_eq!(source, before);
+        } else {
+            assert!(!imported.project.graph.nodes.values().any(|node| matches!(node, Node::Call { .. })));
+        }
     }
 }
