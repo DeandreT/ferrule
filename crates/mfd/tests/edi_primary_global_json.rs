@@ -101,8 +101,10 @@ fn verify(project: &Project, source: &Instance, case: &serde_json::Value) {
             _ => panic!("unsupported authored error: {case}"),
         }
     } else {
+        let result = result
+            .unwrap_or_else(|error| panic!("unexpected runtime error for {case}: {error:?}"));
         assert_eq!(
-            format_json::to_value(&project.target, &result.unwrap()).unwrap(),
+            format_json::to_value(&project.target, &result).unwrap(),
             case["expected_complete_json"],
             "{case}"
         );
@@ -379,7 +381,12 @@ fn unsupported_primary_and_raw_parser_controls_omit_the_complete_root_mapping() 
     ] {
         assert_ne!(text, original, "{name}");
         let imported = TemporaryFixture::new(&text).import();
-        assert!(imported.warnings.iter().any(|value| value == warning), "{name}: {:?}", imported.warnings);
+        let expected_warning = if name == "invalid optional setting" {
+            "JSON string parser `parsed` is unsupported: output port `420` is structural; object presence requires a declared global String input without a connected default"
+        } else {
+            warning
+        };
+        assert!(imported.warnings.iter().any(|value| value == expected_warning), "{name}: {:?}", imported.warnings);
         let mut expected = project_oracle::expected("root");
         expected.root = Scope::default();
         expected.graph.nodes.clear();

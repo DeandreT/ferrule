@@ -364,13 +364,12 @@
   },
   {
     "design": "root",
-    "expected_error": {
-      "function": "json_parse_field",
-      "message": "field path does not resolve to a scalar"
+    "expected_complete_json": {
+      "Label": "EDI"
     },
     "input_contract": "authored X12 reader and typed-instance controls",
     "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*EDI~IEA*0*000000001~",
-    "name": "required root present object with missing leaf retains field error",
+    "name": "required root absent scalar in a present object preserves physical value",
     "parameters": {
       "payload": "{\"Header\":{}}"
     },
@@ -903,13 +902,14 @@
   },
   {
     "design": "nested",
-    "expected_error": {
-      "function": "json_parse_field",
-      "message": "field path does not resolve to a scalar"
+    "expected_complete_json": {
+      "Envelope": {
+        "Label": "EDI"
+      }
     },
     "input_contract": "authored X12 reader and typed-instance controls",
     "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*EDI~IEA*0*000000001~",
-    "name": "nested empty ordinary object demands scalar even with primary value",
+    "name": "nested absent scalar in a present object preserves physical value",
     "parameters": {
       "payload": "{\"Header\":{}}"
     },

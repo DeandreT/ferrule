@@ -218,10 +218,13 @@
   },
   {
     "design": "optional-root",
-    "expected_complete_json": {},
+    "expected_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    },
     "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
     "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
-    "name": "optional root JSON Null suppresses target",
+    "name": "optional root String null remains distinct from host Null",
     "parameters": {
       "payload": "null"
     },
@@ -256,13 +259,12 @@
   },
   {
     "design": "optional-root",
-    "expected_error": {
-      "function": "json_parse_field",
-      "message": "field path does not resolve to a scalar"
+    "expected_complete_json": {
+      "Label": "EDI"
     },
     "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
     "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*EDI~IEA*0*000000001~",
-    "name": "optional root demanded missing scalar leaf retains complete error",
+    "name": "optional root absent scalar in a present object preserves physical value",
     "parameters": {
       "payload": "{\"Header\":{}}"
     },
