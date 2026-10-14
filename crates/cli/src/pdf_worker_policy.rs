@@ -121,7 +121,7 @@ impl FilesystemRunPolicy {
                         return Ok(instance);
                     }
                     JobProgress::FailedClosed { failure, retained } => {
-                        return Err(anyhow::Error::new(failure).context(format!(
+                        return Err(anyhow::Error::new(*failure).context(format!(
                             "closed PDF worker evidence retained at {}",
                             retained.display()
                         )));
