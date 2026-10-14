@@ -101,8 +101,8 @@ fn verify(project: &Project, source: &Instance, case: &serde_json::Value) {
             _ => panic!("unsupported authored error: {case}"),
         }
     } else {
-        let result = result
-            .unwrap_or_else(|error| panic!("unexpected runtime error for {case}: {error:?}"));
+        let result =
+            result.unwrap_or_else(|error| panic!("unexpected runtime error for {case}: {error:?}"));
         assert_eq!(
             format_json::to_value(&project.target, &result).unwrap(),
             case["expected_complete_json"],
