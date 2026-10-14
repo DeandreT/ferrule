@@ -826,11 +826,12 @@ fn cleanup_stage_paths(stages: &[PathBuf]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        OutputDestination, PublishFailure, TargetOutput, restore_backups, rollback_publication,
-        write_target_outputs,
-    };
+    #[cfg(unix)]
+    use super::{OutputDestination, TargetOutput, write_target_outputs};
+    use super::{PublishFailure, restore_backups, rollback_publication};
+    #[cfg(unix)]
     use ir::{Instance, ScalarType, SchemaNode, Value};
+    #[cfg(unix)]
     use mapping::FormatOptions;
 
     fn test_root(label: &str) -> std::path::PathBuf {
