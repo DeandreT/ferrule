@@ -533,7 +533,21 @@ fn load_source(
         format_xml::LocalFileSetLimits::default(),
     )
     .map_err(|error| error.to_string())?;
-    Ok((loaded.instance, loaded.paths.into_iter().collect()))
+    // Windows file-set members report ordinary drive-letter paths; keep input
+    // identities in the same canonical form as every other resolved sample path.
+    let paths = loaded
+        .paths
+        .into_iter()
+        .map(|path| {
+            std::fs::canonicalize(&path).map_err(|error| {
+                format!(
+                    "resolving file-set member `{}` failed: {error}",
+                    path.display()
+                )
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    Ok((loaded.instance, paths))
 }
 
 fn survey_file(
@@ -1228,6 +1242,35 @@ fn network_and_parent_paths_are_not_local_sample_inputs() -> Result<(), Box<dyn 
     );
     assert!(resolve_sample_input(&sample_root, "https://example.test/input.xml").is_err());
     assert!(resolve_sample_input_from(&sample_root, &nested, "../../outside.xml").is_err());
+    Ok(())
+}
+
+#[test]
+fn file_set_inputs_use_canonical_sample_paths() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let sample_root = workspace.0.join("samples");
+    std::fs::create_dir(&sample_root)?;
+    let sample_root = std::fs::canonicalize(&sample_root)?;
+    std::fs::write(sample_root.join("item-a.xml"), "<Root/>")?;
+    let options = FormatOptions {
+        xml_document: true,
+        local_xml_file_set: true,
+        ..FormatOptions::default()
+    };
+
+    let (_, paths) = load_source(
+        &sample_root,
+        &sample_root,
+        "item-*.xml",
+        &SchemaNode::group("Root", Vec::new()),
+        &options,
+    )?;
+
+    // Explicit references are refused by comparing with these input paths.
+    assert_eq!(
+        paths,
+        BTreeSet::from([resolve_sample_input(&sample_root, "item-a.xml")?])
+    );
     Ok(())
 }
 
