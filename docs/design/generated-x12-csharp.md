@@ -3,7 +3,9 @@
 Generated C# libraries can include an explicit raw X12 boundary around the
 ordinary typed mapping. The default envelope profile contains one interchange,
 functional group and transaction. An explicit grouped profile admits declared
-functional-group and transaction collections inside one interchange. Source and
+functional-group and transaction collections inside one interchange. An
+explicit MapForce profile admits repeated interchanges in the shape of
+MapForce's standard X12 `Envelope.Config`. Source and
 target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
@@ -24,7 +26,9 @@ The flag defaults to false, requires C#, and conflicts with `--csv-output` and
 `codegen_csharp::emit_with_x12`, using a `codegen::X12BoundaryPolicy` with
 explicit source and target choices. At least one side must select X12.
 
-The fixed ISA12 and GS08 schema values select an exact version pair:
+For the single and grouped profiles, the fixed ISA12 and GS08 schema values
+select an exact version pair; MapForce interchanges select it from the retained
+interchange version instead:
 
 | ISA12 | GS08 and descriptor version | ISA11 |
 | --- | --- | --- |
@@ -36,8 +40,9 @@ Each selected side retains its own pair. A saved `x12_interchange_version`
 must agree with its fixed ISA12. Missing, noncanonical or conflicting declarations
 fail generation; the adapter does not derive a GS08 implementation convention
 or convert envelope versions. An explicit mapping can construct another
-supported target pair; the graph must supply its headers. ST has exactly two
-fields, so an implementation reference in ST03 is outside these profiles.
+supported target pair; the graph must supply its headers. In the single and
+grouped profiles ST has exactly two fields, so an implementation reference in
+ST03 is outside them.
 
 Rust callers constructing `X12BoundaryOptions` can supply the optional
 `interchange_version` constraint or use `..Default::default()` when none was
@@ -126,6 +131,104 @@ source tree. An existing destination is not replaced. Ordinary generation
 retains its artifact set and typed/JSON APIs. The companion adds
 `GeneratedMapping.X12.cs` and package-free `Runtime/X12` sources to the standalone
 .NET 10 project.
+
+### MapForce interchange envelopes
+
+`X12EnvelopeProfile::MapForceInterchanges` admits the ownership that MapForce's
+standard X12 `Envelope.Config` produces when Ferrule imports a design. Select it
+explicitly on each intended X12 endpoint, with the CLI value
+`mapforce-interchanges` for either envelope flag or through
+`cli::generate_project_with_x12_envelope_profiles`. The descriptor writes
+`"envelope_profile":"mapforce_interchanges"`. The shape is never inferred from
+a schema or retained options. Static-document and CSV routes apply the same
+selection to their own X12 endpoints.
+
+```text
+Envelope                 singular root
+└─ Interchange           repeating container
+   ├─ ISA                repeating segment
+   ├─ Group              repeating container
+   │  ├─ GS              repeating segment
+   │  ├─ Message_<type>  repeating container: ST, body, SE
+   │  └─ GE              repeating segment
+   └─ IEA                repeating segment
+```
+
+The importer represents MapForce's optional (`minOccurs="0"`) segments as
+repeating, so ISA, GS, GE and IEA must be repeating; singular variants are
+refused. Admission requires:
+
+- A singular root whose only child is a repeating non-segment interchange
+  container.
+- An interchange of exactly ISA, one repeating non-segment functional-group
+  container and IEA. A group has exactly GS, one repeating non-segment message
+  container and GE.
+- A message with singular ST first and singular SE last. Its body contains no
+  envelope segment.
+- ISA with 16 elements, GS with 8, ST with 2 or 3 (a String ST03), and SE, GE
+  and IEA with 2. ISA13, GS06, SE01, GE01, GE02, IEA01 and IEA02 may be String,
+  Int or Float, as in MapForce's numeric data elements. Every other envelope
+  element is String, and no envelope element repeats.
+- A retained `interchange_version` of `00401`, `00501` or `00604`, which
+  selects `004010`, `005010` or `006040`. ISA12 and GS08 need not be fixed; a
+  fixed value must agree with the selection. The existing ISA11/ISA16 fixed
+  syntax rules apply.
+
+`ParserErrors_*` acknowledgment branches, any other extra child in the
+envelope grammar, more than one message container per group, implied decimals
+on envelope elements and release separators are refused. Each refusal is an
+`X12BoundaryPolicyError::Schema` with its owner path and reason.
+
+Input validates the physical segments as `(ISA (GS (ST … SE)+ GE)+ IEA)+`
+before typed reading. Every interchange needs at least one functional group and
+every group at least one transaction. Every ISA must carry the selected ISA12
+(`UnsupportedProfile`) and repeat the discovered ISA11 and ISA16 syntax
+(`Syntax`); under `00401`, ISA11 is `U`. GS08 is ordinary data: it is never
+compared with the version or filled. Numeric wire controls are ASCII digits:
+ISA13 has exactly nine, while GS06, GE02, IEA02 and the counts have one through
+nine. SE01 counts ST through SE inclusive; GE01 and IEA01 count their owner's
+transactions and groups. Counts, ISA13/IEA02 and GS06/GE02 compare by numeric
+value; ST02 (four to nine digits) and SE02 compare as exact text. Identities,
+dates, times and indicators keep the single-profile checks. `Envelope` errors
+carry the physical segment index and declared owner path with occurrence
+indices, such as `Interchange[1]/Group[0]/Message_945[0]/SE`. Typed reading then
+uses occurrence-indexed paths, as in the grouped profile. Int and Float controls
+read as native does, so `000000321` becomes 321.
+
+Output mirrors the native writer:
+
+1. Selected lexical formats produce the private output view.
+2. One document-order traversal writes the segments. Typed values become wire
+   text; an Int or Float envelope control must be a non-negative integer
+   (`Value`), and a Float uses its shortest integral text. Fixed, length and
+   constraint checks apply to supplied values; with completion selected, an
+   empty completion-owned envelope field defers to completion. Each
+   interchange occurrence has exactly one ISA and at most one IEA, and each
+   group occurrence exactly one GS and at most one GE (`Envelope`). A missing
+   SE is created only when completion is selected. An empty ISA12 takes the
+   selected version, an empty ISA16 the component separator and, for
+   `005010`/`006040`, an empty ISA11 the repetition separator.
+3. Selected completion runs over the written segments as native completion
+   does: ISA defaults, an ISA13 default of `000000000` zero-padded to nine
+   digits, document-global GS06 and ST02 ordinals, SE01/GE01/IEA01 counts per
+   owner, SE02/GE02/IEA02 copied from their headers, and SE, GE or IEA created
+   when absent. Nonempty supplied values remain for final validation.
+4. Every ISA receives its fixed-width encoding, and an all-digit IEA02 shorter
+   than nine digits is zero-padded to nine, as the native writer does.
+5. The input envelope validation runs on the final segments before
+   serialization.
+
+Without completion, a Float ISA13 must already have nine digits: 100000123
+writes, while 123 fails as an ISA width error, as natively. Completion writes
+123 as `000000123`.
+
+Native reading, writing or completion can accept documents that this profile
+refuses: later interchanges with another version or syntax, missing trailers
+without completion, empty interchanges or groups, more than one GE or IEA per
+owner, a missing ISA or GS occurrence, mismatched counts or controls, an
+undeclared ST03, and negative or fractional numeric controls. Source
+acknowledgment extras, several message alternatives per group and release
+separators remain outside the profile.
 
 ## Public generated methods
 
@@ -351,7 +454,8 @@ native reader, an absent trailing element has no occurrences, while a present
 element, even an empty one, has one occurrence per delimited part: `REF*ZZ**7~`
 reads one Null `REF02` occurrence, and `N9*X~` reads no `N902` occurrences.
 Every occurrence counts toward the repeated-instance limit. Occurrence paths are
-indexed only under the grouped envelope profile, matching loop paths.
+indexed only under the grouped and MapForce envelope profiles, matching loop
+paths.
 
 A segment ID with no declared repeating element refuses repetition syntax during
 tokenization, before envelope, schema or mapping validation. That includes
@@ -476,6 +580,9 @@ formatting and completion metadata, with strict and inactive-option controls.
 Repeated-element fixtures compare native values and bytes with compiled `005010`
 and `006040` libraries, including empty and absent occurrences, per-occurrence
 options, custom separators and typed admission, input and output refusals.
+MapForce interchange fixtures compare native values, bytes and completion with
+compiled `004010`, `005010` and `006040` libraries, and record each document
+that native accepts while the generated profile refuses it.
 
 The ordinary integration run includes native and descriptor checks plus the
 freshly generated saved-profile public-host cohort. It requires `dotnet` on

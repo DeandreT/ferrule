@@ -137,7 +137,10 @@ write ordered occurrences.
 The envelope defaults to one functional group and transaction. Explicit
 `--x12-source-envelope-profile grouped-transactions` or
 `--x12-target-envelope-profile grouped-transactions` selects declared repeated
-GS/GE and ST/SE owners within one interchange on that X12 side. Each selected
+GS/GE and ST/SE owners within one interchange on that X12 side. The value
+`mapforce-interchanges` selects MapForce's standard X12 `Envelope.Config`
+ownership: repeated interchanges, functional groups and messages, with the
+version taken from the retained interchange version. Each selected
 side has its own schema/version agreement, counts and controls. Both flags
 require `--x12-adapters`; an explicit selection on JSON refuses. The additive
 `generate_project_with_x12_envelope_profiles` writer accepts the two optional
