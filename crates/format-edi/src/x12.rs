@@ -486,7 +486,7 @@ fn to_string_with_syntax_inner(
     let mut out = if autocomplete.is_some() {
         write_segments(schema, instance, &options)?
     } else {
-        write_segments_with_encoding(schema, instance, &options, Some(encode_complete_isa))?
+        write_segments_with_encoding(schema, instance, &options, Some(encode_envelope_controls))?
     };
     if let Some(autocomplete) = autocomplete {
         let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
@@ -496,19 +496,49 @@ fn to_string_with_syntax_inner(
             autocomplete.request_acknowledgement,
             autocomplete.transaction_set,
         )?;
-        out = serialize_segments_with_encoding(&completed, &options, Some(encode_complete_isa))?;
+        out =
+            serialize_segments_with_encoding(&completed, &options, Some(encode_envelope_controls))?;
     }
     Ok(out)
+}
+
+/// Encodes fixed-width interchange controls immediately before a segment is
+/// written: the complete ISA and the IEA02 copy of its nine-digit ISA13.
+fn encode_envelope_controls(
+    segment: &str,
+    elements: &mut [String],
+    syntax: &WriteOptions,
+) -> Result<(), EdiFormatError> {
+    match segment {
+        "ISA" => encode_complete_isa(elements, syntax),
+        "IEA" => {
+            pad_interchange_trailer_control(elements);
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// IEA02 repeats the fixed nine-digit ISA13 control. A numeric control,
+/// including a typed number whose leading zeros were not retained, is
+/// zero-padded to nine digits exactly as completion pads ISA13. Other text
+/// remains supplied data.
+fn pad_interchange_trailer_control(elements: &mut [String]) {
+    if let Some(control) = elements.get_mut(1)
+        && (1..9).contains(&control.len())
+        && control.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        *control = format!("{control:0>9}");
+    }
 }
 
 /// Encodes a complete ISA's fixed ASCII positions. Partial schemas retain
 /// their existing positional serialization; controls are never synthesized.
 fn encode_complete_isa(
-    segment: &str,
     elements: &mut [String],
     syntax: &WriteOptions,
 ) -> Result<(), EdiFormatError> {
-    if segment != "ISA" || elements.len() != 16 {
+    if elements.len() != 16 {
         return Ok(());
     }
     if !syntax.element.is_ascii()
