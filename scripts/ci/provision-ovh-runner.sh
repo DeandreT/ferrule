@@ -31,7 +31,7 @@ extract_runner_archive() {
   runuser -u "$runner_user" -- /usr/bin/tar -xzf "$1" -C "$runner_dir" --no-same-owner
 }
 
-for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py reclaim-build-cache.py; do
+for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py job-evidence.py reclaim-build-cache.py; do
   if [[ ! -f $script_dir/$helper ]]; then
     printf 'Copy %s alongside this provisioning script.\n' "$helper" >&2
     exit 1
@@ -129,7 +129,7 @@ install -o "$runner_user" -g "$runner_user" -m 755 \
 printf '%s\n' "$service" > "$runner_dir/.service"
 chown "$runner_user:$runner_user" "$runner_dir/.service"
 install -d -o root -g root -m 755 /opt/ferrule-runner-tools
-for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py reclaim-build-cache.py; do
+for helper in guard-ovh-job.sh prepare-ovh-job.py compact-job-evidence.py job-evidence.py reclaim-build-cache.py; do
   install -o root -g root -m 755 "$script_dir/$helper" "/opt/ferrule-runner-tools/$helper"
 done
 if [[ ! -x /opt/ferrule-runner-tools/sccache ]]; then
