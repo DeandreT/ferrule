@@ -1,8 +1,10 @@
+mod clock;
 mod serialization;
 
 pub(crate) use serialization::render_payload;
 use serialization::{Limits, RenderedArtifact, render_target};
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -90,6 +92,7 @@ pub struct PayloadRunOptions<'a> {
     output_path: Option<&'a Path>,
     target: Option<engine::TargetSelection<'a>>,
     runtime_parameters: Option<&'a engine::RuntimeParameters>,
+    current_datetime: Option<&'a str>,
     execution_purpose: engine::ExecutionPurpose,
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn engine::DebugHook>,
@@ -103,6 +106,7 @@ impl<'a> PayloadRunOptions<'a> {
             output_path: None,
             target: None,
             runtime_parameters: None,
+            current_datetime: None,
             execution_purpose: engine::ExecutionPurpose::Run,
             trace_sink: None,
             debug_hook: None,
@@ -127,6 +131,24 @@ impl<'a> PayloadRunOptions<'a> {
     pub fn with_runtime_parameters(mut self, parameters: &'a engine::RuntimeParameters) -> Self {
         self.runtime_parameters = Some(parameters);
         self
+    }
+
+    /// Supplies one stable clock value for evaluation and output serialization.
+    ///
+    /// Accepts exactly `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`:
+    /// ASCII, at most 35 bytes, a valid Gregorian year 0001–9999 and date,
+    /// hours 00–23, minutes/seconds 00–59, an optional 1–9 digit fraction,
+    /// and an explicit offset no greater than ±14:00. Leap seconds,
+    /// whitespace, missing offsets and trailing data are rejected.
+    ///
+    /// The admitted spelling is preserved, including its offset and fraction;
+    /// validation does not normalize to UTC. Invalid values return an error
+    /// here and never fall back to ambient time. Repeated successful calls
+    /// replace the override. Omission retains one lazy ambient clock sample.
+    pub fn with_current_datetime(mut self, current_datetime: &'a str) -> anyhow::Result<Self> {
+        clock::validate_current_datetime(current_datetime)?;
+        self.current_datetime = Some(current_datetime);
+        Ok(self)
     }
 
     /// Enables design-time preview inputs explicitly. Ordinary payload runs
@@ -219,9 +241,14 @@ pub fn run_project_value_payloads(
     )?;
 
     let runtime_project_path = absolute_mapping_path(project_path)?;
-    let current_datetime = jiff::Zoned::now()
-        .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
-        .to_string();
+    let current_datetime = match options.current_datetime {
+        Some(value) => Cow::Borrowed(value),
+        None => Cow::Owned(
+            jiff::Zoned::now()
+                .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
+                .to_string(),
+        ),
+    };
     let dynamic_loader = PayloadDynamicSourceLoader {
         sources: loaded_sources.dynamic,
     };

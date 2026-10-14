@@ -149,6 +149,17 @@ Payload hosts can explicitly select design-time inputs with
 `.with_execution_purpose(engine::ExecutionPurpose::Preview)`; the default is a
 normal run.
 
+Payload hosts can record a run's clock and replay it with
+`.with_current_datetime("2026-10-13T07:08:09.123456789-07:00")?`.
+This accepts an ASCII `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`
+value of at most 35 bytes: a valid Gregorian year 0001–9999 and date,
+hours 00–23, minutes/seconds 00–59, an optional 1–9 digit fraction, and an
+explicit offset within ±14:00. It rejects invalid values at the builder and
+preserves accepted spelling exactly, without UTC normalization. Evaluation and
+every selected output serializer share that value. Omitting the option keeps
+the existing single ambient clock sample; clock injection does not make random
+or GUID generation deterministic.
+
 Pipelines also support an [in-memory preview](docs/mapping-pipelines.md#in-memory-preview)
 that returns every stage's outputs, with stage-qualified tracing and debug
 controls. The GUI's Run Pipeline dialog keeps preview format paths separate
