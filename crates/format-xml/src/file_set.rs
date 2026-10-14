@@ -85,7 +85,7 @@ pub enum LocalFileSetError {
     MemberXml {
         path: PathBuf,
         #[source]
-        source: XmlFormatError,
+        source: Box<XmlFormatError>,
     },
 }
 
@@ -187,7 +187,7 @@ pub fn read_local_file_set(
         })?;
         let value = from_str(text, schema).map_err(|source| LocalFileSetError::MemberXml {
             path: path.clone(),
-            source,
+            source: Box::new(source),
         })?;
         let relative =
             path.strip_prefix(&canonical_base)
@@ -396,6 +396,27 @@ mod tests {
             read_local_file_set(&directory.0, Path::new("item-*.xml"), &schema(), one_byte),
             Err(LocalFileSetError::TooManyBytes { limit: 1 })
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn reports_member_parse_failures_with_their_path() -> Result<(), Box<dyn Error>> {
+        let directory = TempDir::new()?;
+        std::fs::write(directory.0.join("item-a.xml"), "<root><value>a</value>")?;
+
+        let Err(LocalFileSetError::MemberXml { path, source }) = read_local_file_set(
+            &directory.0,
+            Path::new("item-*.xml"),
+            &schema(),
+            LocalFileSetLimits::default(),
+        ) else {
+            return Err("malformed member was not reported as an XML failure".into());
+        };
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("item-a.xml")
+        );
+        assert!(matches!(*source, XmlFormatError::Parse(_)));
         Ok(())
     }
 }
