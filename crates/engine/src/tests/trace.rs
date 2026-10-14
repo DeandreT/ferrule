@@ -2443,7 +2443,7 @@ mod owned_trace_producer {
             assert!(std::ptr::eq(view.roots[0].input.unwrap(), roots.primary));
             assert!(std::ptr::eq(view.roots[1].input.unwrap(), first));
             assert!(std::ptr::eq(view.roots[2].input.unwrap(), second));
-            for index in 0..2 {
+            for (index, position) in positions.iter().enumerate() {
                 let crate::TraceOwnedOwnerRef::Named {
                     declaration_index,
                     name,
@@ -2464,9 +2464,9 @@ mod owned_trace_producer {
                 );
                 assert_eq!(
                     view.positions[index].collection.as_ptr(),
-                    positions[index].collection.as_ptr()
+                    position.collection.as_ptr()
                 );
-                assert_eq!(view.positions[index].index, positions[index].index);
+                assert_eq!(view.positions[index].index, position.index);
             }
             assert!(std::ptr::eq(view.origins[0].item, owned.origins[0].item));
             assert_eq!(
@@ -3661,7 +3661,7 @@ mod owned_output_trace_producer {
             assert!(std::ptr::eq(view.roots[2].input.unwrap(), second));
             assert_eq!(view.phase, TraceOwnedPhase::Output);
             assert!(view.owned_ancestry);
-            for index in 0..2 {
+            for (index, position) in positions.iter().enumerate() {
                 let TraceOwnedOwnerRef::Named {
                     declaration_index,
                     name,
@@ -3682,9 +3682,9 @@ mod owned_output_trace_producer {
                 assert_eq!(view.frames[index].position_slot, index);
                 assert_eq!(
                     view.positions[index].collection,
-                    positions[index].collection.as_slice()
+                    position.collection.as_slice()
                 );
-                assert_eq!(view.positions[index].index, positions[index].index);
+                assert_eq!(view.positions[index].index, position.index);
             }
             assert!(std::ptr::eq(view.origins[0].item, first));
             assert_eq!(view.origins[0].path, owned.origins[0].path.as_slice());
