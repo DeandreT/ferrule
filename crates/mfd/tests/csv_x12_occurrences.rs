@@ -416,9 +416,18 @@ fn csv_single_row_native_wire_and_default_classic_descriptor_are_separate() {
     let imported = mfd::import(&fixture("literal-direct.mfd")).unwrap();
     let (output, _) = mapped_notes(&imported.project, "Key,Optional\na,A\n");
     let wire = format_edi::x12::to_string(&imported.project.target, &output).unwrap();
-    assert!(
-        wire.contains("~ST*940*0011~NTE*GEN*a~NTE*ALT*A~SE*4*0011~GE*1*0007~IEA*1*000000007~"),
-        "{wire}"
+    assert_eq!(
+        wire,
+        concat!(
+            "ISA*00*          *00*          *ZZ*AUTHOR-SENDER  *ZZ*AUTHOR-RECEIVER*260102*0304*U*00401*000000007*0*T*:~\n",
+            "GS*OW*AUTHOR-SENDER*AUTHOR-RECEIVER*20260102*0304*0007*X*004010~\n",
+            "ST*940*0011~\n",
+            "NTE*GEN*a~\n",
+            "NTE*ALT*A~\n",
+            "SE*4*0011~\n",
+            "GE*1*0007~\n",
+            "IEA*1*000000007~\n",
+        )
     );
     let policy = codegen::CsvX12BoundaryPolicy {
         source: codegen::CsvInputPolicy::from_format_options(&imported.project.source_options)

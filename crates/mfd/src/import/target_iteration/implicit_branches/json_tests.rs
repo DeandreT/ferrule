@@ -19,6 +19,22 @@ fn with_world(
         &Bindings,
     ),
 ) {
+    with_world_expecting_frame(true, edit_source, edit_functions, run);
+}
+
+fn with_world_expecting_frame(
+    expect_frame: bool,
+    edit_source: impl FnOnce(&mut SchemaComponent),
+    edit_functions: impl FnOnce(&mut Vec<crate::import::function::FnComponent>),
+    run: impl FnOnce(
+        &mut GraphBuilder<'_>,
+        &mut ScopeBuilder,
+        &mut DeclaredBranches,
+        &mut BTreeSet<usize>,
+        &mut SchemaComponent,
+        &Bindings,
+    ),
+) {
     let text = include_str!("../../../../tests/fixtures/json-enclosing-frame-clones/implicit.mfd");
     let document = roxmltree::Document::parse(text).unwrap();
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -159,7 +175,13 @@ fn with_world(
         &mut scopes,
         &mut skipped,
     );
-    assert!(skipped.is_empty());
+    if expect_frame {
+        assert!(skipped.is_empty(), "{skipped:?}");
+    } else {
+        assert_eq!(skipped, vec![path(&["Batches"])]);
+        assert!(scopes.root.children.is_empty());
+        assert!(scopes.anchors.is_empty());
+    }
     let mut declared = DeclaredBranches::default();
     let mut claimed = BTreeSet::new();
     run(
@@ -586,7 +608,8 @@ fn json_implicit_duplicate_assignments_and_competing_producer_declarations_refus
         },
     );
     for feed in [10, 11, 101] {
-        with_world(
+        with_world_expecting_frame(
+            feed != 10,
             |_| {},
             |functions| {
                 let text = format!(
@@ -596,8 +619,27 @@ fn json_implicit_duplicate_assignments_and_competing_producer_declarations_refus
                 functions.push(crate::import::function::read(&document.root_element()));
             },
             |builder, scopes, declared, claimed, target, bindings| {
+                if feed == 10 {
+                    // The shared physical/constant output is refused while
+                    // installing the enclosing array frame, before clone proof.
+                    assert_eq!(
+                        builder.warnings,
+                        vec![
+                            "iteration into `Batches` has unproved or competing declared output producers for key 10; skipped",
+                            "iteration into `Batches` comes from an unsupported feed; skipped",
+                        ]
+                    );
+                } else {
+                    assert!(builder.warnings.is_empty(), "{:?}", builder.warnings);
+                }
+                let before = super::tests::state(builder, scopes, declared, claimed);
                 assert!(
                     plans(target, bindings, builder, scopes, declared, claimed).is_none(),
+                    "{feed}"
+                );
+                assert_eq!(
+                    super::tests::state(builder, scopes, declared, claimed),
+                    before,
                     "{feed}"
                 );
             },

@@ -110,16 +110,23 @@ mod tests {
     fn repairs_each_uniquely_matched_component() -> Result<(), Box<dyn Error>> {
         let temp = TempDir::new()?;
         let mapping = temp.mapping();
-        let data = mapping
-            .parent()
-            .ok_or("mapping path has no parent")?
-            .join("Data");
+        let base = mapping.parent().ok_or("mapping path has no parent")?;
+        let data = base.join("Data");
         std::fs::create_dir_all(&data)?;
-        std::fs::write(data.join("Orders-Custom.EDI"), b"UNB")?;
+        let input = data.join("Orders-Custom.EDI");
+        std::fs::write(&input, b"UNB")?;
 
+        let stored = "data/orders-custom.edi";
+        let resolved = resolve_static_input(&mapping, stored);
+        if base.join(stored).is_file() {
+            // Native case-insensitive lookup already resolves the stored path.
+            assert_eq!(resolved, stored);
+        } else {
+            assert_eq!(resolved, "Data/Orders-Custom.EDI");
+        }
         assert_eq!(
-            resolve_static_input(&mapping, "data/orders-custom.edi"),
-            "Data/Orders-Custom.EDI"
+            std::fs::canonicalize(base.join(&resolved))?,
+            std::fs::canonicalize(input)?
         );
         Ok(())
     }
@@ -129,14 +136,23 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         let temp = TempDir::new()?;
         let mapping = temp.mapping();
-        std::fs::create_dir_all(mapping.parent().ok_or("mapping path has no parent")?)?;
+        let base = mapping.parent().ok_or("mapping path has no parent")?;
+        std::fs::create_dir_all(base)?;
         let data = temp.0.join("Data");
         std::fs::create_dir_all(&data)?;
-        std::fs::write(data.join("Orders.EDI"), b"UNB")?;
+        let input = data.join("Orders.EDI");
+        std::fs::write(&input, b"UNB")?;
 
+        let stored = "..\\data\\orders.edi";
+        let resolved = resolve_static_input(&mapping, stored);
+        if base.join(stored.replace('\\', "/")).is_file() {
+            assert_eq!(resolved, stored);
+        } else {
+            assert_eq!(resolved, "../Data/Orders.EDI");
+        }
         assert_eq!(
-            resolve_static_input(&mapping, "..\\data\\orders.edi"),
-            "../Data/Orders.EDI"
+            std::fs::canonicalize(base.join(resolved.replace('\\', "/")))?,
+            std::fs::canonicalize(input)?
         );
         Ok(())
     }
@@ -184,13 +200,21 @@ mod tests {
     fn does_not_search_outside_the_declared_relative_path() -> Result<(), Box<dyn Error>> {
         let temp = TempDir::new()?;
         let mapping = temp.mapping();
-        std::fs::create_dir_all(mapping.parent().ok_or("mapping path has no parent")?)?;
-        std::fs::write(temp.0.join("Orders.EDI"), b"UNB")?;
+        let base = mapping.parent().ok_or("mapping path has no parent")?;
+        std::fs::create_dir_all(base)?;
+        let input = temp.0.join("Orders.EDI");
+        std::fs::write(&input, b"UNB")?;
 
         assert_eq!(resolve_static_input(&mapping, "orders.edi"), "orders.edi");
+        let resolved = resolve_static_input(&mapping, "../orders.edi");
+        if base.join("../orders.edi").is_file() {
+            assert_eq!(resolved, "../orders.edi");
+        } else {
+            assert_eq!(resolved, "../Orders.EDI");
+        }
         assert_eq!(
-            resolve_static_input(&mapping, "../orders.edi"),
-            "../Orders.EDI"
+            std::fs::canonicalize(base.join(&resolved))?,
+            std::fs::canonicalize(input)?
         );
         Ok(())
     }
@@ -245,11 +269,29 @@ mod tests {
         )?;
 
         let imported = super::super::import(&mapping)?;
-        assert_eq!(imported.project.source_path.as_deref(), Some("Primary.XML"));
+        let primary = if base.join("primary.xml").is_file() {
+            "primary.xml"
+        } else {
+            "Primary.XML"
+        };
+        assert_eq!(imported.project.source_path.as_deref(), Some(primary));
         let [named] = imported.project.extra_sources.as_slice() else {
             return Err("fixture must import one named source".into());
         };
-        assert_eq!(named.path, "Catalog.XML");
+        let catalog = if base.join("catalog.xml").is_file() {
+            "catalog.xml"
+        } else {
+            "Catalog.XML"
+        };
+        assert_eq!(named.path, catalog);
+        assert_eq!(
+            std::fs::canonicalize(base.join(primary))?,
+            std::fs::canonicalize(base.join("Primary.XML"))?
+        );
+        assert_eq!(
+            std::fs::canonicalize(base.join(&named.path))?,
+            std::fs::canonicalize(base.join("Catalog.XML"))?
+        );
         assert!(named.dynamic_path.is_none());
         assert_eq!(imported.project.target_path.as_deref(), Some("result.xml"));
         Ok(())

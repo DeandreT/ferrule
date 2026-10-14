@@ -65,9 +65,12 @@ fn with_world_at_row(
     let mut warnings = Vec::new();
     let mut source =
         crate::import::schema::read_csv_component(&source_node, &mut warnings).unwrap();
-    let mut target =
-        crate::import::schema::read_schema_component(&target_node, &fixture, &mut warnings)
-            .unwrap();
+    let mut target = crate::import::schema::read_edi_component(
+        &target_node,
+        &crate::resource::ResourceResolver::new(&fixture, None).unwrap(),
+        &mut warnings,
+    )
+    .unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     edit_source(&mut source);
     let sources = [&source];
