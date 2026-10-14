@@ -4419,12 +4419,12 @@ fn basic_alias680_named_root_repetition_and_singleton_identity_use_actual_paths(
         single[0].context().owned.frames.len(),
         current.owned.frames.len()
     );
-    // This fresh owner has no active frame: its singleton is a plain terminal.
+    // A fresh named empty-root singleton keeps the authentic parent legacy view.
     assert!(std::ptr::eq(
         single[0].context().legacy.frames.last().unwrap().instance,
-        &singleton
+        current.legacy.frames.last().unwrap().instance
     ));
-    assert!(
+    assert_eq!(
         single[0]
             .context()
             .legacy
@@ -4432,11 +4432,18 @@ fn basic_alias680_named_root_repetition_and_singleton_identity_use_actual_paths(
             .last()
             .unwrap()
             .collection
-            .is_none()
+            .as_ref()
+            .unwrap()
+            .index(),
+        2
     );
     assert_eq!(
         single[0].context().legacy.frames.len(),
-        current.legacy.frames.len() + 1
+        current.legacy.frames.len()
+    );
+    assert_eq!(
+        single[0].context().captured_legacy_field(&["Value"], None),
+        Ok(string("N2"))
     );
     let inherited = &single[0].context().legacy.frames[current.legacy.frames.len() - 1];
     assert!(std::ptr::eq(
@@ -5373,5 +5380,647 @@ fn sort668_empty_rejected_and_lazy_scalar_keys_do_not_create_output_or_repeat_wo
     assert_eq!(
         raw,
         vec![(string("two"), 1, Some(4)), (string("one"), 2, Some(2))]
+    );
+}
+
+// These controls distinguish borrowed ownership from the ordinary legacy view.
+fn singleton693_projection_matches_parent(
+    parent: &BasicScopeContext<'_>,
+    context: &BasicScopeContext<'_>,
+) {
+    assert!(std::ptr::eq(
+        context.legacy.primary_source,
+        parent.legacy.primary_source
+    ));
+    assert!(std::ptr::eq(
+        context.legacy.named_inputs,
+        parent.legacy.named_inputs
+    ));
+    assert!(std::ptr::eq(context.bindings, parent.bindings));
+    assert_eq!(context.projection_bytes, parent.projection_bytes);
+    assert!(Arc::ptr_eq(&context.owned.registry, &parent.owned.registry));
+    assert_eq!(context.legacy.frames.len(), parent.legacy.frames.len());
+    for (actual, expected) in context.legacy.frames.iter().zip(&parent.legacy.frames) {
+        assert!(std::ptr::eq(actual.instance, expected.instance));
+        assert_eq!(
+            actual
+                .collection
+                .as_ref()
+                .map(|c| (c.path().to_vec(), c.index())),
+            expected
+                .collection
+                .as_ref()
+                .map(|c| (c.path().to_vec(), c.index()))
+        );
+        assert!(actual.document_path.is_none() && expected.document_path.is_none());
+        assert!(actual.join.is_none() && expected.join.is_none());
+        assert!(actual.join_position.is_none() && expected.join_position.is_none());
+    }
+    assert_eq!(context.owned.frames.len(), parent.owned.frames.len());
+    for (actual, expected) in context.owned.frames.iter().zip(&parent.owned.frames) {
+        assert!(std::ptr::eq(actual.instance, expected.instance));
+        assert_eq!(
+            (actual.owner, &actual.collection, actual.index),
+            (expected.owner, &expected.collection, expected.index)
+        );
+    }
+    assert_eq!(
+        context
+            .origins
+            .iter()
+            .map(|o| (o.owner, o.path.clone(), o.owned_frame, o.raw_index))
+            .collect::<Vec<_>>(),
+        parent
+            .origins
+            .iter()
+            .map(|o| (o.owner, o.path.clone(), o.owned_frame, o.raw_index))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn basic_singleton693_fresh_named_empty_root_keeps_raw_and_compact_parent_views() {
+    let primary = common();
+    let singleton = row("S");
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&singleton),
+    }];
+    let r = roots(&primary, &declarations);
+    let root = r.captured_root_context();
+    let rows = root.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    for (index, expected) in [(1, "P2"), (2, "P3")] {
+        for compact in [false, true] {
+            let parent = if compact {
+                rows[index].captured_phase_position(index)
+            } else {
+                rows[index].captured_phase_position(index + 1)
+            };
+            let c = parent.context();
+            let fresh = c.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &[]);
+            raw_rows("SINGLETON693_C05", &fresh);
+            assert_eq!(fresh.len(), 1);
+            let child = fresh[0].context();
+            let position = if compact { index } else { index + 1 };
+            let actual = (
+                child.captured_legacy_field(&["Value"], None),
+                child.captured_owned_field(SourceOwnerRef::Named("Ref"), &["Value"], None),
+                child.captured_owned_field(SourceOwnerRef::Primary, &["Rows", "Value"], None),
+                child.captured_owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+                child.legacy_position(&[]),
+            );
+            eprintln!("RAW SINGLETON693_C05 index={index} compact={compact} actual={actual:?}");
+            assert_eq!(
+                actual,
+                (
+                    Ok(string(expected)),
+                    Ok(string("S")),
+                    Ok(string(expected)),
+                    Ok(position),
+                    position
+                )
+            );
+            singleton693_projection_matches_parent(c, child);
+            assert!(fresh[0].cursor.is_none());
+            assert_eq!(fresh[0].raw_source_ordinal(), None);
+            assert_eq!(fresh[0].ordinal, 0);
+            assert!(Arc::ptr_eq(&fresh[0].cohort.parent, &c.identity));
+            assert!(std::ptr::eq(
+                child.owned.registry.named[0].instance.unwrap(),
+                &singleton
+            ));
+            assert_eq!(child.origins.last().unwrap().raw_index, Some(index + 1));
+            let error = child.captured_owned_position(SourceOwnerRef::Named("Ref"), Some(&[]));
+            assert_eq!(
+                error,
+                Err(OwnedSourceError::InactiveSourceFrame {
+                    owner: OwnedSourceIdentity::Named("Ref".into()),
+                    collection: Some(Vec::new())
+                }
+                .into())
+            );
+        }
+    }
+    assert_eq!(rows[1].raw_source_ordinal(), Some(2));
+    assert_eq!(rows[2].raw_source_ordinal(), Some(3));
+}
+
+#[test]
+fn basic_singleton693_root_without_collection_keeps_primary_broadcast_and_exact_names() {
+    let primary = common();
+    let singleton = row("S");
+    for name in ["Ref", "ref", " Ref 雪 ", "primary"] {
+        let declarations = [DeclaredNamedSourceRoot {
+            name,
+            instance: Some(&singleton),
+        }];
+        let r = roots(&primary, &declarations);
+        let parent = r.captured_root_context();
+        let fresh = parent.captured_walk_owned_source(SourceOwnerRef::Named(name), &[]);
+        raw_rows("SINGLETON693_ROOT", &fresh);
+        assert_eq!(fresh.len(), 1);
+        let child = fresh[0].context();
+        let actual = (
+            child.captured_legacy_field(&["Value"], None),
+            child.captured_owned_field(SourceOwnerRef::Named(name), &["Value"], None),
+            child.captured_owned_field(SourceOwnerRef::Primary, &["Ref", "Value"], None),
+            child.legacy_position(&[]),
+            child.legacy_position(&[name]),
+        );
+        eprintln!("RAW SINGLETON693_ROOT name={name:?} actual={actual:?}");
+        assert_eq!(
+            actual,
+            (
+                Ok(string("P.root")),
+                Ok(string("S")),
+                Ok(string("P.Ref")),
+                1,
+                1
+            )
+        );
+        singleton693_projection_matches_parent(&parent, child);
+        assert_eq!(
+            (
+                child.legacy.frames.len(),
+                child.origins.len(),
+                child.owned.frames.len()
+            ),
+            (1, 1, 0)
+        );
+        assert!(std::ptr::eq(child.legacy.frames[0].instance, &primary));
+        assert!(std::ptr::eq(
+            child.owned.registry.named[0].instance.unwrap(),
+            &singleton
+        ));
+        assert!(fresh[0].cursor.is_none());
+        assert_eq!(fresh[0].raw_source_ordinal(), None);
+        let error = child.captured_owned_position(SourceOwnerRef::Named(name), None);
+        assert_eq!(
+            error,
+            Err(OwnedSourceError::InactiveSourceFrame {
+                owner: OwnedSourceIdentity::Named(name.into()),
+                collection: None
+            }
+            .into())
+        );
+    }
+}
+
+#[test]
+fn basic_singleton693_primary_repetition_identity_nonempty_and_scalar_boundaries_stay_exact() {
+    let primary = common();
+    let nested = group([
+        field("Value", scalar(string("named.root"))),
+        field("Inner", row("inner")),
+    ]);
+    let scalar_root = scalar(string("scalar"));
+    let repeated_root = repeated([row("N1"), scalar(Value::Null), row("N3")]);
+    let declarations = [
+        DeclaredNamedSourceRoot {
+            name: "Ref",
+            instance: Some(&nested),
+        },
+        DeclaredNamedSourceRoot {
+            name: "scalar",
+            instance: Some(&scalar_root),
+        },
+        DeclaredNamedSourceRoot {
+            name: "rows",
+            instance: Some(&repeated_root),
+        },
+    ];
+    let r = roots(&primary, &declarations);
+    let root = r.captured_root_context();
+    let primary_rows = root.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    let parent = primary_rows[1].context();
+    let primary_empty = parent.captured_walk_owned_source(SourceOwnerRef::Primary, &[]);
+    assert_eq!(primary_empty.len(), 1);
+    assert_eq!(
+        primary_empty[0].context().legacy.frames.len(),
+        parent.legacy.frames.len() + 1
+    );
+    assert!(std::ptr::eq(
+        primary_empty[0]
+            .context()
+            .legacy
+            .frames
+            .last()
+            .unwrap()
+            .instance,
+        &primary
+    ));
+    assert_eq!(
+        primary_empty[0]
+            .context()
+            .captured_legacy_field(&["Value"], None),
+        Ok(string("P.root"))
+    );
+    let nonempty = parent.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &["Inner"]);
+    assert_eq!(nonempty.len(), 1);
+    assert_eq!(
+        nonempty[0].context().legacy.frames.len(),
+        parent.legacy.frames.len() + 1
+    );
+    assert!(std::ptr::eq(
+        nonempty[0].context().legacy.frames.last().unwrap().instance,
+        nested.field("Inner").unwrap()
+    ));
+    assert!(
+        nonempty[0]
+            .context()
+            .legacy
+            .frames
+            .last()
+            .unwrap()
+            .collection
+            .is_none()
+    );
+    assert_eq!(
+        nonempty[0]
+            .context()
+            .captured_legacy_field(&["Value"], None),
+        Ok(string("inner"))
+    );
+    assert_eq!(
+        nonempty[0].context().captured_owned_field(
+            SourceOwnerRef::Named("Ref"),
+            &["Inner", "Value"],
+            None
+        ),
+        Ok(string("inner"))
+    );
+    assert_eq!(nonempty[0].context().legacy_position(&["Rows"]), 2);
+    let scalar_rows = parent.captured_walk_owned_source(SourceOwnerRef::Named("scalar"), &[]);
+    assert_eq!(scalar_rows.len(), 1);
+    assert!(std::ptr::eq(
+        scalar_rows[0]
+            .context()
+            .legacy
+            .frames
+            .last()
+            .unwrap()
+            .instance,
+        &scalar_root
+    ));
+    assert_eq!(
+        scalar_rows[0].context().legacy.frames.len(),
+        parent.legacy.frames.len() + 1
+    );
+    assert_eq!(
+        scalar_rows[0].context().captured_legacy_field(&[], None),
+        Ok(string("scalar"))
+    );
+    let actual_rows = parent.captured_walk_owned_source(SourceOwnerRef::Named("rows"), &[]);
+    raw_rows("SINGLETON693_REPEATED", &actual_rows);
+    assert_eq!(actual_rows.len(), 2);
+    assert_eq!(
+        actual_rows
+            .iter()
+            .map(BasicSourceCandidate::raw_source_ordinal)
+            .collect::<Vec<_>>(),
+        vec![Some(1), Some(3)]
+    );
+    assert_eq!(values(&actual_rows), vec![string("N1"), string("N3")]);
+    let active = actual_rows[1].context();
+    assert!(active.legacy.frames.last().unwrap().collection.is_some());
+    assert_eq!(
+        active.captured_owned_position(SourceOwnerRef::Named("rows"), Some(&[])),
+        Ok(3)
+    );
+    let identity = active.captured_walk_owned_source(SourceOwnerRef::Named("rows"), &[]);
+    assert_eq!(identity.len(), 1);
+    singleton693_projection_matches_parent(active, identity[0].context());
+    assert!(identity[0].cursor.is_none());
+    assert_eq!(
+        identity[0]
+            .context()
+            .captured_legacy_field(&["Value"], None),
+        Ok(string("N3"))
+    );
+    assert_eq!(
+        identity[0].context().captured_owned_field(
+            SourceOwnerRef::Named("rows"),
+            &["Value"],
+            Some(&[])
+        ),
+        Ok(string("N3"))
+    );
+    assert_eq!(
+        identity[0]
+            .context()
+            .captured_owned_position(SourceOwnerRef::Named("rows"), Some(&[])),
+        Ok(3)
+    );
+}
+
+#[test]
+fn basic_singleton693_phase_filter_and_sort_keep_parent_frames_and_no_introduced_cursor() {
+    let primary = common();
+    let singleton = row("S");
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&singleton),
+    }];
+    let r = roots(&primary, &declarations);
+    let root = r.captured_root_context();
+    let rows = root.captured_walk_owned_source(SourceOwnerRef::Primary, &["Rows"]);
+    let parent = rows[1].context();
+    let original = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Named("Ref"), &[])
+        .unwrap();
+    raw_rows("SINGLETON693_PHASE_ORIGINAL", &original.candidates);
+    assert_eq!(original.len(), 1);
+    let phase = original.candidates[0].captured_phase_position(17);
+    singleton693_projection_matches_parent(parent, phase.context());
+    assert!(phase.cursor.is_none());
+    assert_eq!(phase.context().legacy_position(&["Rows"]), 2);
+    assert_eq!(
+        phase
+            .context()
+            .captured_owned_position(SourceOwnerRef::Primary, Some(&["Rows"])),
+        Ok(2)
+    );
+    let indexed = parent.captured_reindex_phase(&[&original.candidates[0]]);
+    assert_eq!(indexed.len(), 1);
+    singleton693_projection_matches_parent(parent, indexed[0].context());
+    assert!(Arc::ptr_eq(&indexed[0].cohort, &original.witness));
+    let mut filtered = Vec::new();
+    let filter: Result<usize, RuntimeError> = parent.visit_filtered_source_cohort(
+        &original,
+        |context| {
+            singleton693_projection_matches_parent(parent, context);
+            Ok(true)
+        },
+        |context| {
+            singleton693_projection_matches_parent(parent, context);
+            filtered.push((
+                context.legacy_field(&["Value"], None)?,
+                context.owned_field(SourceOwnerRef::Named("Ref"), &["Value"], None)?,
+                context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+            ));
+            Ok(())
+        },
+    );
+    eprintln!("RAW SINGLETON693_FILTER result={filter:?} outputs={filtered:?}");
+    assert_eq!(filter, Ok(1));
+    assert_eq!(filtered, vec![(string("P2"), string("S"), 2)]);
+    for before in [true, false] {
+        let events = std::cell::RefCell::new(Vec::new());
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [crate::SortDirection::Ascending],
+            before,
+            |context| {
+                singleton693_projection_matches_parent(parent, context);
+                events.borrow_mut().push((
+                    "predicate",
+                    context.legacy_field(&["Value"], None)?,
+                    context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+                ));
+                Ok(true)
+            },
+            |context| {
+                singleton693_projection_matches_parent(parent, context);
+                events.borrow_mut().push((
+                    "key",
+                    context.legacy_field(&["Value"], None)?,
+                    context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+                ));
+                Ok([integer(1)])
+            },
+            |context| {
+                singleton693_projection_matches_parent(parent, context);
+                assert_eq!(
+                    context.owned_field(SourceOwnerRef::Named("Ref"), &["Value"], None)?,
+                    string("S")
+                );
+                events.borrow_mut().push((
+                    "output",
+                    context.legacy_field(&["Value"], None)?,
+                    context.owned_position(SourceOwnerRef::Primary, Some(&["Rows"]))?,
+                ));
+                Ok(())
+            },
+        );
+        eprintln!(
+            "RAW SINGLETON693_SORT before={before} result={result:?} events={:?}",
+            events.borrow()
+        );
+        assert_eq!(result, Ok(1));
+        assert_eq!(
+            *events.borrow(),
+            if before {
+                vec![
+                    ("predicate", string("P2"), 2),
+                    ("key", string("P2"), 2),
+                    ("output", string("P2"), 2),
+                ]
+            } else {
+                vec![
+                    ("key", string("P2"), 2),
+                    ("predicate", string("P2"), 2),
+                    ("output", string("P2"), 2),
+                ]
+            }
+        );
+    }
+    assert!(original.candidates[0].cursor.is_none());
+    assert_eq!(original.candidates[0].ordinal, 0);
+    assert!(Arc::ptr_eq(
+        &original.candidates[0].cohort,
+        &original.witness
+    ));
+    assert!(Arc::ptr_eq(&original.witness.parent, &parent.identity));
+    singleton693_projection_matches_parent(parent, original.candidates[0].context());
+}
+
+#[test]
+fn basic_singleton693_publication_copy_cost_limits_and_typed_errors_remain_authentic() {
+    let primary = row("P.root");
+    let singleton = row("S");
+    let declarations = [
+        DeclaredNamedSourceRoot {
+            name: "Ref",
+            instance: Some(&singleton),
+        },
+        DeclaredNamedSourceRoot {
+            name: "absent",
+            instance: None,
+        },
+    ];
+    let r = roots(&primary, &declarations);
+    let parent = r.captured_root_context();
+    let original = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Named("Ref"), &[])
+        .unwrap();
+    for maximum in [3, 7] {
+        let mut observer = BasicOwnedObserver {
+            parent: &parent,
+            budget: PairedBudget {
+                slots: 0,
+                maximum,
+                bytes: 0,
+                byte_maximum: 0,
+            },
+            bounds: paired_bounds(limits()).unwrap(),
+            cohort: Arc::clone(&original.witness),
+            key: OwnedOwnerKey::Primary,
+            produced: 0,
+        };
+        assert_eq!(
+            observer.selected(OwnedOwnerKey::Named(0), &singleton, false),
+            Ok(true)
+        );
+        let owned = OwnedScopeContext {
+            registry: Arc::clone(&parent.owned.registry),
+            frames: Vec::new(),
+        };
+        let result = observer.publish(owned, &singleton, &[], false);
+        eprintln!(
+            "RAW SINGLETON693_COPY maximum={maximum} result={:?} slots={} bytes={} produced={}",
+            result.as_ref().map(|c| (c.ordinal, c.cursor.is_none())),
+            observer.budget.slots,
+            observer.budget.bytes,
+            observer.produced
+        );
+        if maximum == 3 {
+            let Err(error) = result else {
+                panic!("copy limit must fail before publication")
+            };
+            raw_error("SINGLETON693_COPY_FAILURE", &error);
+            assert_eq!(
+                error,
+                BasicSourceBridgeError::PairedMetadataLimit {
+                    component: "MetadataSlots",
+                    used: 3,
+                    requested: 1,
+                    maximum: 3
+                }
+                .into()
+            );
+            assert_eq!(
+                (
+                    observer.budget.slots,
+                    observer.budget.bytes,
+                    observer.produced
+                ),
+                (3, 0, 0)
+            );
+        } else {
+            let Ok(candidate) = result else {
+                panic!("four actual parent metadata cells fit the retained ledger")
+            };
+            raw_rows(
+                "SINGLETON693_COPY_SUCCESS",
+                std::slice::from_ref(&candidate),
+            );
+            singleton693_projection_matches_parent(&parent, candidate.context());
+            assert_eq!(
+                (
+                    observer.budget.slots,
+                    observer.budget.bytes,
+                    observer.produced
+                ),
+                (4, 0, 1)
+            );
+            let owned = OwnedScopeContext {
+                registry: Arc::clone(&parent.owned.registry),
+                frames: Vec::new(),
+            };
+            let second = observer.publish(owned, &singleton, &[], false);
+            let Err(error) = second else {
+                panic!("retained publication ledger must not reset")
+            };
+            raw_error("SINGLETON693_COPY_CUMULATIVE", &error);
+            assert_eq!(
+                error,
+                BasicSourceBridgeError::PairedMetadataLimit {
+                    component: "MetadataSlots",
+                    used: 7,
+                    requested: 1,
+                    maximum: 7
+                }
+                .into()
+            );
+            assert_eq!(
+                (
+                    observer.budget.slots,
+                    observer.budget.bytes,
+                    observer.produced
+                ),
+                (7, 0, 1)
+            );
+        }
+    }
+    let unknown = parent.captured_owned_walk_error(SourceOwnerRef::Named("missing"), &[]);
+    let unavailable = parent.captured_owned_walk_error(SourceOwnerRef::Named("absent"), &[]);
+    assert_eq!(
+        unknown,
+        OwnedSourceError::UnknownOwner {
+            name: "missing".into()
+        }
+        .into()
+    );
+    assert_eq!(
+        unavailable,
+        OwnedSourceError::SourceUnavailable {
+            name: "absent".into()
+        }
+        .into()
+    );
+    let mut l = limits();
+    l.max_roots = 2;
+    l.max_active_frames = 0;
+    l.max_path_segments = 0;
+    l.max_walk_contexts = 1;
+    let one_declaration = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&singleton),
+    }];
+    let bounded_roots = admit_with_limits(&primary, &one_declaration, l);
+    let mut bounded = bounded_roots.captured_root_context();
+    for _ in 0..3 {
+        bounded = bounded.captured_walk_source(&[]).remove(0).into_context();
+    }
+    assert_eq!((bounded.legacy.frames.len(), bounded.origins.len()), (4, 4));
+    let fresh = bounded.captured_walk_owned_source(SourceOwnerRef::Named("Ref"), &[]);
+    assert_eq!(fresh.len(), 1);
+    singleton693_projection_matches_parent(&bounded, fresh[0].context());
+    assert!(std::ptr::eq(
+        fresh[0].context().legacy.frames.last().unwrap().instance,
+        &primary
+    ));
+    assert_eq!(
+        fresh[0].context().captured_legacy_field(&["Value"], None),
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::PathSegments,
+            used: 0,
+            requested: 1,
+            max: 0
+        }
+        .into())
+    );
+    assert_eq!(
+        fresh[0]
+            .context()
+            .captured_owned_field(SourceOwnerRef::Named("Ref"), &["Value"], None),
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::PathSegments,
+            used: 0,
+            requested: 1,
+            max: 0
+        }
+        .into())
+    );
+    let primary_error = bounded.captured_owned_walk_error(SourceOwnerRef::Primary, &[]);
+    assert_eq!(
+        primary_error,
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "legacy frames",
+            used: 4,
+            requested: 1,
+            maximum: 4
+        }
+        .into()
     );
 }
