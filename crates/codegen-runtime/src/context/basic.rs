@@ -39,6 +39,9 @@ pub enum BasicSourceBridgeError {
     InvalidCohortWitness {
         input_ordinal: usize,
     },
+    InvalidSortKeyCount {
+        count: usize,
+    },
     DuplicatePhaseCandidate {
         input_ordinal: usize,
         candidate_ordinal: usize,
@@ -861,6 +864,120 @@ impl<'ctx> BasicScopeContext<'ctx> {
         Ok(accepted)
     }
 
+    /// Admits one complete static Basic sorting operation before callbacks.
+    /// Original contexts feed keys and FilterThenSort predicates. SortThenFilter
+    /// predicates receive sorted positions; accepted output runs immediately with
+    /// only the newest repeated cursor compacted. All phase copies, cached keys,
+    /// ID/sort scratch and output cells share the existing cumulative ledger.
+    pub fn visit_sorted_source_cohort<const N: usize, E, P, K, O>(
+        &self,
+        original: &RetainedSourceCohort<'ctx>,
+        directions: [crate::SortDirection; N],
+        filter_before_sort: bool,
+        mut predicate: P,
+        mut keys: K,
+        mut output: O,
+    ) -> Result<usize, E>
+    where
+        E: From<RuntimeError>,
+        P: FnMut(&BasicScopeContext<'ctx>) -> Result<bool, E>,
+        K: FnMut(&BasicScopeContext<'ctx>) -> Result<[Value; N], E>,
+        O: FnMut(&BasicScopeContext<'ctx>) -> Result<(), E>,
+    {
+        let count = original.len();
+        let (mut budget, mut prepayment) = (|| -> Result<_, RuntimeError> {
+            phase_count(count, self.owned.registry.limits.max_walk_contexts)?;
+            let (mut budget, ordinary) = self.budget(SourceOwnerRef::Primary, &[], None, false)?;
+            let bounds = retained_phase_bounds(self.owned.registry.limits)?;
+            budget.maximum = bounds.total;
+            budget.phase_slots(
+                bounds
+                    .core
+                    .checked_sub(ordinary.core)
+                    .ok_or_else(phase_overflow)?,
+            )?;
+            validate_sort_original(self, original)?;
+            if N == 0 {
+                return Err(BasicSourceBridgeError::InvalidSortKeyCount { count: N }.into());
+            }
+            paired_capacity::<crate::SortDirection>(N)?;
+            paired_capacity::<(usize, [Value; N])>(count)?;
+            paired_capacity::<usize>(count)?;
+            paired_capacity::<Instance>(count)?;
+            // Original IDs, sorted IDs, outputs, cached tuples and a conservative
+            // complete stable-sort scratch backing coexist. Nothing is released
+            // or reset per row; directions and the prepayment holder are charged.
+            budget.phase_slots(6)?;
+            budget.phase_slots(N)?;
+            let cells = N
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(5))
+                .and_then(|n| n.checked_mul(count))
+                .ok_or_else(phase_overflow)?;
+            budget.phase_slots(cells)?;
+            for candidate in &original.candidates {
+                candidate.context.seed_phase_metadata(&mut budget)?;
+            }
+            let copies = if filter_before_sort { 1 } else { 2 };
+            let remaining = count.checked_mul(copies).ok_or_else(phase_overflow)?;
+            for candidate in &original.candidates {
+                for _ in 0..copies {
+                    candidate.reserve_sort_phase_copy(&mut budget)?;
+                }
+            }
+            Ok((budget, SortPhasePrepayment { remaining }))
+        })()
+        .map_err(E::from)?;
+        let mut selected = Vec::with_capacity(count);
+        for (index, candidate) in original.candidates.iter().enumerate() {
+            if !filter_before_sort || predicate(candidate.context())? {
+                selected.push(index);
+            }
+        }
+        // Predicates are complete before keys in FilterThenSort. Every key tuple
+        // is candidate-major and left to right; these are original raw contexts.
+        let mut keyed = Vec::with_capacity(selected.len());
+        for index in selected {
+            let values = keys(original.candidates[index].context())?;
+            for value in &values {
+                if let Value::String(text) = value {
+                    budget.bytes(text.len()).map_err(E::from)?;
+                }
+            }
+            keyed.push((index, values));
+        }
+        let ordered = crate::sort_candidates(keyed, directions);
+        let mut accepted = 0usize;
+        for (rank, index) in ordered.into_iter().enumerate() {
+            let candidate = &original.candidates[index];
+            let sorted = if filter_before_sort {
+                None
+            } else {
+                Some(
+                    candidate
+                        .sort_phase_prepaid(rank + 1, &mut prepayment)
+                        .map_err(E::from)?,
+                )
+            };
+            let predicate_context = sorted
+                .as_ref()
+                .map_or(candidate.context(), |current| current.context());
+            if !filter_before_sort && !predicate(predicate_context)? {
+                continue;
+            }
+            let next = accepted
+                .checked_add(1)
+                .ok_or_else(phase_overflow)
+                .map_err(E::from)?;
+            let current = candidate
+                .sort_phase_prepaid(next, &mut prepayment)
+                .map_err(E::from)?;
+            output(current.context())?;
+            accepted = next;
+        }
+        Ok(accepted)
+    }
+
     /// One boundary covers the parent, complete original, complete current and
     /// new output metadata. Additional caller-retained phase sets are outside it.
     /// An empty selection still validates and charges both complete input sets.
@@ -1016,6 +1133,62 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             .budget(SourceOwnerRef::Primary, &[], None, true)?;
         self.phase_under(one_based, &mut budget)
     }
+    // Reservation mirrors the existing phase_under -> clone_under copy order.
+    // This sort-only operation prepays every possible copy before effects.
+    fn reserve_sort_phase_copy(&self, budget: &mut PairedBudget) -> Result<(), RuntimeError> {
+        budget.slots(2)?;
+        self.context.charge_legacy_frames(budget)?;
+        owned_frames_bytes(&self.context.owned.frames, budget)?;
+        budget.slots(self.context.origins.len())?;
+        for origin in &self.context.origins {
+            budget.slots(origin.path.len())?;
+            budget.strings(&origin.path)?;
+        }
+        budget.slots(1)?;
+        Ok(())
+    }
+    fn sort_phase_prepaid(
+        &self,
+        one_based: usize,
+        prepayment: &mut SortPhasePrepayment,
+    ) -> Result<Self, RuntimeError> {
+        if one_based == 0 {
+            return Err(OwnedSourceError::InvalidPosition { index: 0 }.into());
+        }
+        prepayment.remaining = prepayment
+            .remaining
+            .checked_sub(1)
+            .ok_or_else(phase_overflow)?;
+        #[cfg(test)]
+        PHASE_CLONES.with(|n| n.set(n.get() + 1));
+        // Metadata-only clones use exactly the allocations reserved above; no
+        // Instance or scalar tree is copied and no second budget is created.
+        let mut context = BasicScopeContext {
+            legacy: self.context.legacy.clone(),
+            owned: OwnedScopeContext {
+                registry: Arc::clone(&self.context.owned.registry),
+                frames: self.context.owned.frames.clone(),
+            },
+            origins: self.context.origins.clone(),
+            bindings: self.context.bindings,
+            projection_bytes: self.context.projection_bytes,
+            identity: Arc::new(()),
+        };
+        if let Some(cursor) = self.cursor {
+            context.legacy.frames[cursor.legacy]
+                .collection
+                .as_mut()
+                .expect("witnessed repeated legacy frame")
+                .set_index(one_based);
+            context.owned.frames[cursor.owned].index = one_based;
+        }
+        Ok(Self {
+            context,
+            cohort: Arc::clone(&self.cohort),
+            ordinal: self.ordinal,
+            cursor: self.cursor,
+        })
+    }
     fn phase_under(
         &self,
         one_based: usize,
@@ -1040,6 +1213,12 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             cursor: self.cursor,
         })
     }
+}
+
+// A private, consumed count of whole-operation reservations, never a public
+// phase factory or per-row budget. Internal sorted IDs are unique original IDs.
+struct SortPhasePrepayment {
+    remaining: usize,
 }
 
 /// Immutable complete original storage, minted only by an actual paired walk.
@@ -1193,6 +1372,52 @@ impl PairedBudget {
         Ok(())
     }
 }
+fn validate_sort_original(
+    parent: &BasicScopeContext<'_>,
+    original: &RetainedSourceCohort<'_>,
+) -> Result<(), RuntimeError> {
+    #[cfg(test)]
+    PHASE_CHECKS.with(|n| n.set(n.get() + 1));
+    if !Arc::ptr_eq(&parent.owned.registry, &original.witness.registry) {
+        return Err(BasicSourceBridgeError::RegistryMismatch.into());
+    }
+    if !Arc::ptr_eq(&parent.identity, &original.witness.parent) {
+        return Err(BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into());
+    }
+    let expected = original
+        .witness
+        .original_count
+        .get()
+        .copied()
+        .ok_or(BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 })?;
+    for (input_ordinal, candidate) in original.candidates.iter().enumerate() {
+        if !Arc::ptr_eq(&candidate.cohort, &original.witness)
+            || !Arc::ptr_eq(&candidate.context.owned.registry, &parent.owned.registry)
+        {
+            return Err(BasicSourceBridgeError::InvalidCohortWitness { input_ordinal }.into());
+        }
+        // Prior accepted original IDs are precisely 0..input_ordinal. This is
+        // equivalent to the old prefix duplicate scan, in the same error order.
+        if candidate.ordinal < input_ordinal {
+            return Err(BasicSourceBridgeError::DuplicatePhaseCandidate {
+                input_ordinal,
+                candidate_ordinal: candidate.ordinal,
+            }
+            .into());
+        }
+        if candidate.ordinal != input_ordinal {
+            return Err(BasicSourceBridgeError::InvalidCohortWitness { input_ordinal }.into());
+        }
+    }
+    if original.len() != expected {
+        return Err(BasicSourceBridgeError::InvalidCohortWitness {
+            input_ordinal: original.len(),
+        }
+        .into());
+    }
+    Ok(())
+}
+
 fn validate_retained_phase(
     parent: &BasicScopeContext<'_>,
     original: &RetainedSourceCohort<'_>,
