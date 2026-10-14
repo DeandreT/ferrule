@@ -77,10 +77,7 @@ pub(super) enum FileRunEvent {
     PausedFailure(Box<engine::PendingNodeFailure>),
     PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
     ReadyToPublish,
-    Finished(
-        Result<cli::RunOutcome, FileRunError>,
-        crate::run_report::TraceReport,
-    ),
+    Finished(Box<FileRunCompletion>),
 }
 
 #[derive(Debug)]
@@ -288,8 +285,8 @@ impl FileRunCore {
             let mut exhausted = true;
             for _ in 0..EVENT_BATCH {
                 match self.receiver.try_recv() {
-                    Ok(FileRunEvent::Finished(result, trace)) => {
-                        self.completed = Some((result, trace));
+                    Ok(FileRunEvent::Finished(completion)) => {
+                        self.completed = Some(*completion);
                         exhausted = false;
                         break;
                     }
@@ -1067,7 +1064,7 @@ impl FerruleApp {
                     FileRunError::Failed(format!("{error:#}"))
                 }
             });
-            let _ = events.send(FileRunEvent::Finished(result, trace.finish()));
+            let _ = events.send(FileRunEvent::Finished(Box::new((result, trace.finish()))));
         }));
         // Preserve the existing report clock's start after worker creation.
         core.started = Instant::now();
@@ -1103,10 +1100,10 @@ impl FerruleApp {
             let worker_finished = pending.worker.as_ref().is_some_and(JoinHandle::is_finished);
             let event = match pending.receiver.try_recv() {
                 Ok(event) => event,
-                Err(TryRecvError::Empty) if worker_finished => FileRunEvent::Finished(
+                Err(TryRecvError::Empty) if worker_finished => FileRunEvent::Finished(Box::new((
                     Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
                     crate::run_report::TraceReport::default(),
-                ),
+                ))),
                 Err(TryRecvError::Empty) => {
                     if !matches!(
                         pending.phase,
@@ -1127,10 +1124,10 @@ impl FerruleApp {
                         pending.cancelled.store(true, Ordering::Release);
                         let _ = pending.commands.send(FileRunCommand::Cancel);
                     }
-                    FileRunEvent::Finished(
+                    FileRunEvent::Finished(Box::new((
                         Err(FileRunError::Worker(FileRunWorkerFailure::Unreported)),
                         crate::run_report::TraceReport::default(),
-                    )
+                    )))
                 }
             };
             match event {
@@ -1224,8 +1221,8 @@ impl FerruleApp {
                     }
                     ctx.request_repaint();
                 }
-                FileRunEvent::Finished(result, trace) => {
-                    pending.completed = Some((result, trace));
+                FileRunEvent::Finished(completion) => {
+                    pending.completed = Some(*completion);
                 }
             }
         }

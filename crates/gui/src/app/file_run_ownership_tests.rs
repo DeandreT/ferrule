@@ -51,9 +51,12 @@ fn held_result(
     let (release, released) = mpsc::channel();
     let worker = std::thread::spawn(move || {
         let sent = events
-            .send(FileRunEvent::Finished(result, trace))
+            .send(FileRunEvent::Finished(Box::new((result, trace))))
             .map_err(|failure| match failure.0 {
-                FileRunEvent::Finished(result, trace) => format!("{result:#?} {trace:#?}"),
+                FileRunEvent::Finished(completion) => {
+                    let (result, trace) = *completion;
+                    format!("{result:#?} {trace:#?}")
+                }
                 _ => unreachable!("fixture sends only a complete result"),
             });
         eprintln!("held file worker complete send, retaining any returned result: {sent:?}");
@@ -384,12 +387,15 @@ fn queued_publication_event_does_not_discard_the_following_result() {
     let worker = std::thread::spawn(move || {
         let ready = events.send(FileRunEvent::ReadyToPublish).is_ok();
         let finished = events
-            .send(FileRunEvent::Finished(
+            .send(FileRunEvent::Finished(Box::new((
                 Err(FileRunError::Cancelled),
                 crate::run_report::TraceReport::default(),
-            ))
+            ))))
             .map_err(|failure| match failure.0 {
-                FileRunEvent::Finished(result, trace) => format!("{result:#?} {trace:#?}"),
+                FileRunEvent::Finished(completion) => {
+                    let (result, trace) = *completion;
+                    format!("{result:#?} {trace:#?}")
+                }
                 _ => unreachable!("fixture sends only a complete result"),
             });
         eprintln!("queued file worker sends: {ready:?} {finished:?}");

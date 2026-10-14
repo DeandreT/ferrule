@@ -7,6 +7,7 @@
 //! a readback cannot prevent arbitrary concurrent foreign policy changes.
 
 use std::fmt;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 use std::io;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -17,11 +18,17 @@ use pdf_worker::host::CancellationFlag;
 enum SignalFailure {
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
     UnsupportedHost,
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     AlreadyActive,
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     WrongThread,
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     ForeignDisposition(i32),
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     CompetingDisposition(i32),
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     MissingSavedDisposition(i32),
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     Io {
         operation: &'static str,
         signal: Option<i32>,
@@ -34,20 +41,26 @@ impl fmt::Display for SignalFailure {
         match self {
             #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
             Self::UnsupportedHost => f.write_str("PDF worker signals require Linux x86_64 GNU"),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::AlreadyActive => f.write_str("another PDF signal guard still owns the policy"),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::WrongThread => f.write_str("PDF signal restoration requires the launch thread"),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::ForeignDisposition(signal) => {
                 write!(f, "signal {signal} does not have its default disposition")
             }
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::CompetingDisposition(signal) => {
                 write!(
                     f,
                     "signal {signal} no longer has this guard's installed policy"
                 )
             }
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::MissingSavedDisposition(signal) => {
                 write!(f, "signal {signal} has no retained original disposition")
             }
+            #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
             Self::Io {
                 operation,
                 signal,
@@ -75,6 +88,7 @@ fn display_failures(f: &mut fmt::Formatter<'_>, failures: &[SignalFailure]) -> f
 
 fn first_io_error(failures: &[SignalFailure]) -> Option<&(dyn std::error::Error + 'static)> {
     failures.iter().find_map(|failure| match failure {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
         SignalFailure::Io { error, .. } => Some(error as &(dyn std::error::Error + 'static)),
         _ => None,
     })
