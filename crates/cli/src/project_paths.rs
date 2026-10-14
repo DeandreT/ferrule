@@ -1,6 +1,6 @@
 //! Portable rebasing for project-owned static instance paths.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf, Prefix};
 
 /// Rebases every static local instance path when a project document moves.
@@ -122,7 +122,7 @@ fn absolute_parent(document: &Path) -> std::io::Result<PathBuf> {
 }
 
 fn normalize_absolute(path: &Path) -> Option<PathBuf> {
-    if !path.is_absolute() {
+    if !path.is_absolute() || !verbatim_has_ordinary_spelling(path) {
         return None;
     }
     let mut normalized = PathBuf::new();
@@ -141,11 +141,67 @@ fn normalize_absolute(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
+/// Removing a verbatim prefix also enables ordinary Windows normalization.
+/// Refuse names whose identity would change, rather than store a relative path
+/// to a different file. Ordinary paths keep their existing interpretation.
+fn verbatim_has_ordinary_spelling(path: &Path) -> bool {
+    let mut components = path.components();
+    match components.next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::VerbatimDisk(_) => {}
+            Prefix::VerbatimUNC(server, share) => {
+                if !ordinary_component_spelling(server) || !ordinary_component_spelling(share) {
+                    return false;
+                }
+            }
+            _ => return true,
+        },
+        _ => return true,
+    }
+    components.all(|component| match component {
+        Component::RootDir => true,
+        Component::Normal(name) => ordinary_component_spelling(name) && !dos_device_name(name),
+        Component::CurDir | Component::ParentDir | Component::Prefix(_) => false,
+    })
+}
+
+fn ordinary_component_spelling(name: &OsStr) -> bool {
+    // The encoded representation preserves native non-Unicode names; ASCII
+    // punctuation can be checked without a lossy conversion or allocation.
+    let bytes = name.as_encoded_bytes();
+    !bytes.is_empty()
+        && !bytes.ends_with(b".")
+        && !bytes.ends_with(b" ")
+        && !bytes.iter().any(|&byte| {
+            byte < 32
+                || matches!(byte, b'<' | b'>' | b':' | b'"' | b'/' | b'\\' | b'|' | b'?' | b'*')
+        })
+}
+
+fn dos_device_name(name: &OsStr) -> bool {
+    let stem = name
+        .as_encoded_bytes()
+        .split(|&byte| byte == b'.')
+        .next()
+        .unwrap_or_default();
+    let stem = stem.trim_ascii_end();
+    if [b"CON".as_slice(), b"PRN", b"AUX", b"NUL", b"CONIN$", b"CONOUT$"]
+        .iter()
+        .any(|device| stem.eq_ignore_ascii_case(device))
+    {
+        return true;
+    }
+    let numbered = stem.get(..3).is_some_and(|prefix| {
+        prefix.eq_ignore_ascii_case(b"COM") || prefix.eq_ignore_ascii_case(b"LPT")
+    });
+    numbered && matches!(&stem[3..], [b'1'..=b'9'] | [0xc2, 0xb9 | 0xb2 | 0xb3])
+}
+
 /// Spells a verbatim disk or UNC prefix in its ordinary form.
 ///
 /// Canonical Windows paths are verbatim (`\\?\C:\...`) while user-supplied
-/// paths usually are not; both name the same volume, so relative paths must be
-/// computed between equal prefixes.
+/// paths usually are not. After checking component equivalence, relative paths
+/// can be computed between equal prefixes for the same volume.
 fn ordinary_prefix(prefix: Prefix<'_>) -> OsString {
     match prefix {
         Prefix::VerbatimDisk(drive) | Prefix::Disk(drive) => {
@@ -371,6 +427,117 @@ mod tests {
             )
             .unwrap(),
             "../maps/design.mfd"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refuses_verbatim_file_names_without_an_ordinary_identity() {
+        let pipeline = Path::new(r"C:\package\pipelines\pipeline.json");
+        for name in [
+            "hidden.",
+            "hidden ",
+            ".",
+            "..",
+            "CON",
+            "prn.txt",
+            "AUX",
+            "NUL.dat",
+            "COM1",
+            "LPT9.log",
+            "COM¹",
+            "lpt².txt",
+            "COM³",
+            "CONIN$",
+            "conout$.txt",
+            "NUL .txt",
+            "folder/child",
+            "stream:part",
+            "bad?name",
+        ] {
+            for root in [r"\\?\C:\package", r"\\?\UNC\server\share\package"] {
+                let mapping = PathBuf::from(format!(r"{root}\{name}\design.mfd"));
+                let error = mapping_identity_relative_to(&mapping, pipeline)
+                    .expect_err("verbatim-only names must not acquire an ordinary identity");
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+                assert!(normalize_absolute(&mapping).is_none());
+            }
+        }
+        let mapping = Path::new(r"\\?\C:\package\maps\design.mfd.");
+        assert!(mapping_identity_relative_to(mapping, pipeline).is_err());
+        let pipeline = Path::new(r"\\?\C:\package\hidden.\pipeline.json");
+        assert!(mapping_identity_relative_to(Path::new(r"C:\package\design.mfd"), pipeline).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refuses_verbatim_unc_prefix_names_that_change_spelling() {
+        for path in [
+            r"\\?\UNC\server.\share\maps\design.mfd",
+            r"\\?\UNC\server\share \maps\design.mfd",
+            r"\\?\UNC\server\..\maps\design.mfd",
+            r"\\?\UNC\server/name\share\maps\design.mfd",
+        ] {
+            assert!(normalize_absolute(Path::new(path)).is_none());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn keeps_safe_reverse_prefixes_wildcards_and_volume_boundaries() {
+        for (from, to) in [
+            (r"C:\package\maps", r"\\?\c:\package\projects"),
+            (
+                r"\\server\share\package\maps",
+                r"\\?\UNC\server\share\package\projects",
+            ),
+        ] {
+            let from = normalize_absolute(Path::new(from)).unwrap();
+            let to = normalize_absolute(Path::new(to)).unwrap();
+            assert_eq!(
+                rebase_path(r"data\*.xml", &from, &to).unwrap().as_deref(),
+                Some("../maps/data/*.xml")
+            );
+        }
+        for path in [
+            r"\\?\C:\package\.config\COM10\design.mfd",
+            r"\\?\C:\package\COM0\LPT10\console.txt",
+        ] {
+            assert!(normalize_absolute(Path::new(path)).is_some());
+        }
+        for (mapping, pipeline) in [
+            (r"\\?\C:\package\design.mfd", r"D:\package\pipeline.json"),
+            (
+                r"\\?\UNC\server\share\design.mfd",
+                r"\\server\other\pipeline.json",
+            ),
+            (
+                r"\\?\UNC\server\share\design.mfd",
+                r"\\other\share\pipeline.json",
+            ),
+        ] {
+            let error = mapping_identity_relative_to(Path::new(mapping), Path::new(pipeline))
+                .expect_err("different volumes must remain unrepresentable");
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        }
+        // The new guard applies only when removing a verbatim prefix.
+        assert!(normalize_absolute(Path::new(r"C:\package\hidden.\NUL.txt")).is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn preserves_native_non_unicode_unc_prefixes_without_lossy_conversion() {
+        use std::os::windows::ffi::OsStringExt as _;
+
+        let mut verbatim = OsString::from(r"\\?\UNC\server");
+        verbatim.push(OsString::from_wide(&[0xd800]));
+        verbatim.push(r"\share\maps");
+        let mut ordinary = OsString::from(r"\\server");
+        ordinary.push(OsString::from_wide(&[0xd800]));
+        ordinary.push(r"\share\maps");
+        assert_eq!(
+            normalize_absolute(Path::new(&verbatim)).unwrap(),
+            PathBuf::from(ordinary)
         );
     }
 
