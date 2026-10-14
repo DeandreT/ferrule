@@ -146,6 +146,15 @@ fn expected_instance(root: &Path, reference: &str) -> Instance {
     serde_json::from_slice(&frozen_bytes(root, reference)).unwrap()
 }
 
+/// Expands the catalog's `@ROOT@/<relative>` as the loader's `root.join(<relative>)`, so the
+/// separator after the root is the platform's own (`\` on Windows).
+fn expand_root(text: &str, root: &Path) -> String {
+    text.replace(
+        "@ROOT@/",
+        &format!("{}{}", root.to_str().unwrap(), std::path::MAIN_SEPARATOR),
+    )
+}
+
 fn fresh_evidence_root() -> PathBuf {
     let base = match std::env::var_os("FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT") {
         Some(root) => {
@@ -339,10 +348,7 @@ fn frozen_c13_c16_private_borrowed_dynamic_loader_controls() {
         );
         for (actual, expected) in actual_requests.iter().zip(script) {
             assert_eq!(actual["method"], expected["method"], "{id} method");
-            let path = expected["path"]
-                .as_str()
-                .unwrap()
-                .replace("@ROOT@", work.to_str().unwrap());
+            let path = expand_root(expected["path"].as_str().unwrap(), &work);
             assert_eq!(actual["path"], path, "{id} exact request path");
             let layout: Value = serde_json::from_slice(&frozen_bytes(
                 &fixtures,
@@ -385,10 +391,7 @@ fn frozen_c13_c16_private_borrowed_dynamic_loader_controls() {
                 assert_eq!(actual.as_ref(), &expected, "{id} entire returned Instance");
                 assert_unknown_origins(actual);
             } else {
-                let error = expected["Err"]
-                    .as_str()
-                    .unwrap()
-                    .replace("@ROOT@", work.to_str().unwrap());
+                let error = expand_root(expected["Err"].as_str().unwrap(), &work);
                 assert_eq!(
                     actual.as_ref().unwrap_err(),
                     &error,
