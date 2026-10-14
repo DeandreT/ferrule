@@ -95,6 +95,19 @@ pub fn emit_with_basic_owned_filters(program: &Program) -> Result<ArtifactSet, E
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic sorting with optional filtering and explicit caller limits.
+///
+/// Both filter orders preserve source identity and native phase positions under
+/// one bounded operation. Existing emitter families keep their admission.
+pub fn emit_with_basic_owned_sort(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sort(program)?;
+    codegen::validate_basic_owned_sort_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_sort_mapping(program)?;
+    // Complete static Basic inventory excludes DynamicDocuments in every target.
+    // Its static artifact assembly therefore requires no default XML classifier.
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

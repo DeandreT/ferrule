@@ -2436,7 +2436,24 @@ pub(super) fn render_basic_scopes<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if let Some(filter) = iteration.filter() {
+            if let Some(sort) = iteration.sort() {
+                output.push_str(&format!(");\n        var sort_keys_{index} = new global::Ferrule.Runtime.FerruleSortKey<global::Ferrule.Runtime.FerruleBasicScopeContext>[]\n        {{\n"));
+                for key in sort.keys() {
+                    output.push_str(&format!(
+                        "            new(candidate => Node_{}(candidate), {}),\n",
+                        key.expression,
+                        if key.descending { "true" } else { "false" }
+                    ));
+                }
+                let filter_before_sort = sort.filter_order() == SortFilterOrder::FilterThenSort;
+                output.push_str(&format!("        }};\n        var items_{index} = context.SortRetainedSource(\n            cohort_{index}, sort_keys_{index}, {},\n            ", if filter_before_sort { "true" } else { "false" }));
+                if let Some(filter) = iteration.filter() {
+                    output.push_str(&format!("candidate => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{filter}(candidate), {filter}U),\n"));
+                } else {
+                    output.push_str("null,\n");
+                }
+                output.push_str(&format!("            candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{index});\n"));
+            } else if let Some(filter) = iteration.filter() {
                 output.push_str(&format!(");\n        var phase_{index} = context.BeginRetainedFilterPhase(cohort_{index});\n        var items_{index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n        for (var input_{index} = 0; input_{index} < cohort_{index}.Count; input_{index}++)\n        {{\n            var candidate_{index} = cohort_{index}[input_{index}];\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{filter}(candidate_{index}.Context), {filter}U)) continue;\n            var produced_{index} = phase_{index}.Produce((nuint)input_{index});\n            items_{index}.Add(ScopeItem_{index}(produced_{index}.Context));\n        }}\n        global::System.GC.KeepAlive(cohort_{index});\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{index});\n"));
             } else {
                 output.push_str(&format!(");\n        var items_{index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>(cohort_{index}.Count);\n        foreach (var candidate_{index} in cohort_{index})\n        {{\n            items_{index}.Add(ScopeItem_{index}(candidate_{index}.Context));\n        }}\n        global::System.GC.KeepAlive(cohort_{index});\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{index});\n"));
