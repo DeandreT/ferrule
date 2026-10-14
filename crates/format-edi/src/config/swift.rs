@@ -770,7 +770,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "ferrule_swift_config_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).unwrap();
@@ -822,7 +822,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "ferrule_swift_config_parent_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         let _ = std::fs::remove_dir_all(&directory);
         let configs = directory.join("configs");
@@ -869,7 +869,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!(
             "ferrule_swift_config_escape_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         let _ = std::fs::remove_dir_all(&directory);
         let package = directory.join("package");

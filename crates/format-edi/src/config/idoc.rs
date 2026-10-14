@@ -438,7 +438,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "ferrule_idoc_config_{}_{}.txt",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         std::fs::write(
             &path,
