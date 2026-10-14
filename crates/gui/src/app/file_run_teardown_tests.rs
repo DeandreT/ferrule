@@ -166,10 +166,11 @@ fn fixture(mut options: Options) -> Fixture {
         (None, Some(command_receiver))
     };
     core.worker = Some(std::thread::spawn(move || {
-        if let Some((result, trace)) = options.held.take()
-            && let Err(error) = events.send(FileRunEvent::Finished(result, trace))
-            && let FileRunEvent::Finished(result, trace) = error.0
+        if let Some(completion) = options.held.take()
+            && let Err(error) = events.send(FileRunEvent::Finished(Box::new(completion)))
+            && let FileRunEvent::Finished(completion) = error.0
         {
+            let (result, trace) = *completion;
             eprintln!("372 undelivered held original: {result:#?} {trace:#?}");
         }
         let mut events = Some(events);
@@ -190,11 +191,12 @@ fn fixture(mut options: Options) -> Fixture {
         let _ = ready.send(());
         let released = released.recv_timeout(RELEASE);
         eprintln!("372 release original before terminal action: {released:?}");
-        if let Some((result, trace)) = options.terminal.take()
+        if let Some(completion) = options.terminal.take()
             && let Some(sender) = events
-            && let Err(error) = sender.send(FileRunEvent::Finished(result, trace))
-            && let FileRunEvent::Finished(result, trace) = error.0
+            && let Err(error) = sender.send(FileRunEvent::Finished(Box::new(completion)))
+            && let FileRunEvent::Finished(completion) = error.0
         {
+            let (result, trace) = *completion;
             eprintln!("372 undelivered terminal original: {result:#?} {trace:#?}");
         }
         if options.panic {
