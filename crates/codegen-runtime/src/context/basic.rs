@@ -1873,7 +1873,15 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
         TERMINALS.with(|n| n.set(n.get() + 1));
         let start = self.parent.owned.frames.len();
         let new_frames = &owned.frames[start..];
+        // A fresh named Group root has no actual occurrence. Its explicit owned
+        // reads use the registry root while ordinary fields keep the parent view.
+        let fresh_named_root = !identity
+            && matches!(self.key, OwnedOwnerKey::Named(_))
+            && path.is_empty()
+            && new_frames.is_empty()
+            && matches!(terminal, Instance::Group(_));
         let plain = !identity
+            && !fresh_named_root
             && new_frames
                 .last()
                 .is_none_or(|frame| frame.collection.len() != path.len());
