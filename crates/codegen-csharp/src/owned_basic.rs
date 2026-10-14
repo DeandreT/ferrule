@@ -16,21 +16,24 @@ use codegen::{
 use std::collections::BTreeSet;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false, false)
+    render_basic_owned_mapping_profile(program, false, false, false)
 }
 
 fn render_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
     allow_filters: bool,
+    allow_sort: bool,
 ) -> Result<String, EmitError> {
-    if allow_filters {
+    if allow_sort {
+        codegen::validate_program_with_basic_owned_sort(program)?;
+    } else if allow_filters {
         codegen::validate_program_with_basic_owned_filters(program)?;
     } else {
         codegen::validate_program(program)?;
     }
     let retained = retained_expressions(program);
-    validate_private_inventory(program, &retained, allow_filters)?;
+    validate_private_inventory(program, &retained, allow_filters, allow_sort)?;
     let mut body = String::new();
     let (primary, extras) = mapping::render_basic_scopes(program, &mut body)?;
     let mut output = String::from(
@@ -172,6 +175,7 @@ fn check_scope(
     scope: &TargetScope,
     route: SourceScopeLocation,
     allow_filters: bool,
+    allow_sort: bool,
 ) -> Result<(), EmitError> {
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
@@ -185,7 +189,7 @@ fn check_scope(
             return Err(scope_error(scope, route, reason));
         }
         if (!allow_filters && iteration.filter().is_some())
-            || iteration.sort().is_some()
+            || (!allow_sort && iteration.sort().is_some())
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
             || !iteration.windows().is_empty()
@@ -220,6 +224,7 @@ fn check_scope(
             child,
             route.clone().descendant(SourceScopeStep::Child(index)),
             allow_filters,
+            allow_sort,
         )?;
     }
     Ok(())
@@ -249,6 +254,9 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {
             pending.extend(iteration.filter());
+            if let Some(sort) = iteration.sort() {
+                pending.extend(sort.keys().map(|key| key.expression));
+            }
         }
         for child in &scope.children {
             roots(child, pending);
@@ -351,6 +359,7 @@ fn validate_private_inventory(
     program: &Program,
     retained: &BTreeSet<NodeId>,
     allow_filters: bool,
+    allow_sort: bool,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     check_scope(
@@ -358,6 +367,7 @@ fn validate_private_inventory(
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
         allow_filters,
+        allow_sort,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         check_scope(
@@ -368,6 +378,7 @@ fn validate_private_inventory(
                 name: target.name.clone(),
             }),
             allow_filters,
+            allow_sort,
         )?;
     }
     validate_basic_failures(program)?;
@@ -690,20 +701,23 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false, false)
+    render_checked_basic_owned_mapping_profile(program, false, false, false)
 }
 
 fn render_checked_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
     allow_filters: bool,
+    allow_sort: bool,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
-        render_basic_owned_mapping_profile(program, true, allow_filters)?
+        render_basic_owned_mapping_profile(program, true, allow_filters, allow_sort)?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if allow_filters {
+    let plan = if allow_sort {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?
+    } else if allow_filters {
         codegen::legacy_named_input_admission_plan_with_basic_owned_filters(program)?
     } else {
         codegen::legacy_named_input_admission_plan(program)?
@@ -848,7 +862,7 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -856,7 +870,15 @@ pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<Str
 pub(crate) fn render_public_basic_owned_filter_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, false)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_sort_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }

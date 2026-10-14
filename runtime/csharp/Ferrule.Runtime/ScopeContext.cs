@@ -2600,6 +2600,39 @@ public sealed class FerruleBasicScopeContext
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
+    internal BasicSortCopyCost SortCopyCost(bool hasCursor, string? ownerName)
+    {
+        var slots = BasicSourceAccounting.Add(Roots.OwnedRoots.AmbiguityReservationCount, 2);
+        var ownerBytes = ownerName is null ? (nuint)0 : OwnedSourceAccounting.Text(ownerName);
+        var bytes = OwnedSourceAccounting.Add(ownerBytes, ownerBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+        slots = BasicSourceAccounting.Add(slots, (nuint)_owned.FrameCount + 1);
+        for (var i = 0; i < _owned.FrameCount; i++)
+        {
+            var path = _owned.FrameAt(i).Path;
+            slots = BasicSourceAccounting.Add(slots, (nuint)path.Count);
+            bytes = OwnedSourceAccounting.Add(bytes, OwnedSourceAccounting.PathText(path), FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        slots = BasicSourceAccounting.Add(slots, (nuint)LegacyView.Frames.Count);
+        slots = BasicSourceAccounting.Add(slots, (nuint)LegacyView.BasicCollectionCount + 3 + (hasCursor ? (nuint)1 : 0));
+        for (var i = 0; i < LegacyView.BasicCollectionCount; i++)
+            bytes = OwnedSourceAccounting.Add(bytes, OwnedSourceAccounting.PathText(LegacyView.BasicCollectionPath(i)), FerruleOwnedSourceLimitKind.MetadataBytes);
+        slots = BasicSourceAccounting.Add(slots, (nuint)_origins.Length + 1);
+        for (var i = 0; i < _origins.Length; i++)
+        {
+            slots = BasicSourceAccounting.Add(slots, (nuint)_origins[i].Canonical.Count);
+            bytes = OwnedSourceAccounting.Add(bytes, OwnedSourceAccounting.PathText(_origins[i].Canonical), FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        return new(BasicSourceAccounting.Add(slots, 1), bytes); // the copied candidate
+    }
+    /// <summary>Sorts one authentic original cohort under one bounded operation.</summary>
+    public IReadOnlyList<FerruleInstance> SortRetainedSource(FerruleRetainedSourceCohort original,
+        IReadOnlyList<FerruleSortKey<FerruleBasicScopeContext>> keys, bool filterBeforeSort,
+        Func<FerruleBasicScopeContext, bool>? predicate, Func<FerruleBasicScopeContext, FerruleInstance> target)
+    {
+        try { return FerruleBasicSortOperation.Run(this, original, keys, filterBeforeSort, predicate, target); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
     public FerruleCompletePhaseCohort ReindexRetainedPhase(FerruleRetainedSourceCohort original,
         FerrulePhaseSelection selection)
     {
@@ -2946,6 +2979,11 @@ public sealed class FerruleBasicSourceCandidate
         budget.Charge(1);
         return new FerruleBasicSourceCandidate(context, SourceWitness, SourceId, _cursor);
     }
+    internal BasicSortCopyCost SortCopyCost()
+    {
+        var name = _cursor.HasValue && _cursor.Value.OwnerKey != 0 ? Context.Roots.OwnedRoots.Name(_cursor.Value.OwnerKey) : null;
+        return Context.SortCopyCost(_cursor.HasValue, name);
+    }
     /// <summary>
     /// Copies this explicitly supplied candidate and its parent. This legacy
     /// convenience does not account for source or prior cohorts retained elsewhere.
@@ -3266,4 +3304,129 @@ public readonly record struct FerruleNamedSourceInput(string? Name, FerruleInsta
 public interface IFerruleNamedSourceInputAccessor<T>
 {
     FerruleNamedSourceInput Read(T item);
+}
+
+
+internal readonly record struct BasicSortCopyCost(nuint Slots, nuint Bytes);
+
+// Sort owns all tickets; none escape or transfer admission to another row.
+internal sealed class FerruleBasicSortOperation
+{
+    private readonly FerruleRetainedSourceCohort _original;
+    private readonly BasicSourceBudget _budget;
+    private readonly byte[] _copies;
+    private FerruleBasicSortOperation(FerruleRetainedSourceCohort original, BasicSourceBudget budget, byte copies)
+    {
+        _original = original; _budget = budget; _copies = new byte[original.Count];
+        for (var i = 0; i < _copies.Length; i++) _copies[i] = copies;
+    }
+    private FerruleBasicSourceCandidate Copy(int originalId, nuint position)
+    {
+        if ((uint)originalId >= (uint)_copies.Length || _copies[originalId] == 0)
+            throw BasicPhaseAdmission.Invalid((nuint)originalId);
+        var original = _original[originalId]; var cost = original.SortCopyCost();
+        _copies[originalId]--;
+        var beforeSlots = _budget.Slots.Used; var beforeBytes = _budget.Bytes.Used;
+        // Consume only this exact prepaid copy. Normal Copy keeps all its guards
+        // and charges the same counters before any predicate or target resumes.
+        _budget.Slots.Release(cost.Slots); _budget.Bytes.Release(cost.Bytes);
+        var result = original.Copy(_budget, position);
+        if (_budget.Slots.Used != beforeSlots || _budget.Bytes.Used != beforeBytes)
+            throw BasicPhaseAdmission.Invalid((nuint)originalId);
+        return result;
+    }
+    internal static void ValidateOriginalIds(int originalCount, BasicSourceIds original)
+    {
+        for (var i = 0; i < original.Count; i++)
+        {
+            var id = original.SourceIdAt(i);
+            if (id < (nuint)i) throw BasicPhaseAdmission.Duplicate((nuint)i, id);
+            if (id != (nuint)i || id >= (nuint)originalCount) throw BasicPhaseAdmission.Invalid((nuint)i);
+        }
+        if (original.Count != originalCount) throw BasicPhaseAdmission.Invalid((nuint)original.Count);
+    }
+    internal static IReadOnlyList<FerruleInstance> Run(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, IReadOnlyList<FerruleSortKey<FerruleBasicScopeContext>> keys,
+        bool filterBeforeSort, Func<FerruleBasicScopeContext, bool>? predicate,
+        Func<FerruleBasicScopeContext, FerruleInstance> target)
+    {
+        ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(target);
+        var witness = original.SourceWitness;
+        if (!ReferenceEquals(parent.Roots, witness.Parent.Roots))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch);
+        if (!ReferenceEquals(parent, witness.Parent) || !witness.IsComplete) throw BasicPhaseAdmission.Invalid(0);
+        var count = original.Count; var keyCount = keys.Count;
+        if (keyCount < 0) throw BasicSourceAccounting.Overflow();
+        BasicSourceAccounting.Limit(0, (nuint)count, parent.Roots.Limits.MaxWalkContexts,
+            FerruleBasicSourceBridgeComponent.WalkContexts);
+        for (var i = 0; i < count; i++)
+            if (!ReferenceEquals(original[i].SourceWitness, witness) || !ReferenceEquals(original[i].Context.Roots, parent.Roots))
+                throw BasicPhaseAdmission.Invalid((nuint)i);
+        ValidateOriginalIds(witness.OriginalCount, original);
+        var budget = new BasicSourceBudget(parent.Roots.Limits, true);
+        parent.Roots.Seed(budget); parent.Seed(budget);
+        budget.Charge((nuint)count + 3); // complete original backing, holder, witness and operation
+        for (var i = 0; i < count; i++) { original[i].Context.Seed(budget); budget.Charge(1); }
+        var cells = BasicSourceAccounting.Multiply((nuint)count, (nuint)keyCount);
+        var keyCapacity = BasicSourceAccounting.ArrayLength(cells);
+        _ = BasicSourceAccounting.ArrayLength((nuint)count); _ = BasicSourceAccounting.ArrayLength((nuint)keyCount);
+        // Cache plus StableSort's duplicate key cells; bounded IDs/output/tickets,
+        // decorated records, backing, scratch, snapshots, closures and wrappers.
+        var workspace = BasicSourceAccounting.Add(BasicSourceAccounting.Multiply(2, cells),
+            BasicSourceAccounting.Add(BasicSourceAccounting.Multiply(12, (nuint)count),
+                BasicSourceAccounting.Add(BasicSourceAccounting.Multiply(10, (nuint)keyCount), 16)));
+        budget.Charge(workspace);
+        var copies = filterBeforeSort ? (byte)1 : (byte)2;
+        for (var i = 0; i < count; i++)
+        {
+            var cost = original[i].SortCopyCost();
+            for (var j = 0; j < copies; j++) { budget.Charge(cost.Slots); budget.Text(cost.Bytes); }
+        }
+        // Caller key collection is read only once before any callback can mutate it.
+        var snapshot = new FerruleSortKey<FerruleBasicScopeContext>[keyCount];
+        for (var i = 0; i < snapshot.Length; i++)
+        {
+            snapshot[i] = keys[i]; ArgumentNullException.ThrowIfNull(snapshot[i].Selector);
+        }
+        var cached = new FerruleValue[keyCapacity];
+        var acceptedIds = new List<int>(count);
+        var operation = new FerruleBasicSortOperation(original, budget, copies);
+        var output = new List<FerruleInstance>(count);
+        if (filterBeforeSort)
+        {
+            // This whole predicate pass must precede every key and target.
+            for (var i = 0; i < count; i++)
+                if (predicate is null || predicate(original[i].Context)) acceptedIds.Add(i);
+        }
+        else
+            for (var i = 0; i < count; i++) acceptedIds.Add(i);
+        for (var row = 0; row < acceptedIds.Count; row++)
+        {
+            var id = acceptedIds[row];
+            for (var key = 0; key < snapshot.Length; key++)
+            {
+                var value = snapshot[key].Selector(original[id].Context);
+                if (value.Kind == FerruleValueKind.String) budget.Text(OwnedSourceAccounting.Text(value.StringValue));
+                cached[checked(id * keyCount + key)] = value;
+            }
+        }
+        var cachedKeys = new FerruleSortKey<int>[keyCount];
+        for (var key = 0; key < cachedKeys.Length; key++)
+        {
+            var capturedKey = key; // each selector owns this immutable key index
+            cachedKeys[key] = new(id => cached[checked(id * keyCount + capturedKey)], snapshot[key].Descending);
+        }
+        var sortedIds = FerruleSequences.StableSort(acceptedIds, cachedKeys);
+        for (var rank = 0; rank < sortedIds.Count; rank++)
+        {
+            var id = sortedIds[rank];
+            var sorted = operation.Copy(id, (nuint)rank + 1);
+            if (!filterBeforeSort && predicate is not null && !predicate(sorted.Context)) continue;
+            var produced = filterBeforeSort ? sorted : operation.Copy(id, (nuint)output.Count + 1);
+            output.Add(target(produced.Context)); // complete before the next predicate
+        }
+        GC.KeepAlive(original);
+        return output;
+    }
 }

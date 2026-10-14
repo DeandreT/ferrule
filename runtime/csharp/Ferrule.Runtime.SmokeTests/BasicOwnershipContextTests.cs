@@ -310,6 +310,7 @@ internal static partial class Program
         BasicOwnedError("B489-C18.empty", FerruleOwnedSourceErrorKind.InvalidNamedOwner,
             () => BasicReached("F03.subject.43", () => literals.ResolveOwnedField(OwnedNamedOwner(""), new[] { "Value" })));
         BasicNamedOwnedLegacyProjectionNativePaths();
+        BasicBoundedOwnedSortControls();
     }
 
     private static void BasicNamedOwnedLegacyProjectionNativePaths()
@@ -1256,4 +1257,448 @@ internal static partial class Program
         GC.KeepAlive(original); GC.KeepAlive(boundedOriginal); GC.KeepAlive(exactOriginal);
         GC.KeepAlive(parents); GC.KeepAlive(children); GC.KeepAlive(identity);
     }
+    private sealed class BasicSortKeyProbe(int count) : IReadOnlyList<FerruleSortKey<FerruleBasicScopeContext>>
+    {
+        internal int Reads { get; private set; }
+        public int Count => count;
+        public FerruleSortKey<FerruleBasicScopeContext> this[int index]
+        {
+            get { Reads++; throw new InvalidOperationException("An inadmissible key getter was reached."); }
+        }
+        public IEnumerator<FerruleSortKey<FerruleBasicScopeContext>> GetEnumerator() =>
+            throw new InvalidOperationException("Sort must snapshot keys by index.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private static void BasicBoundedOwnedSortControls()
+    {
+        var primaryOwner = OwnedPrimaryOwner;
+        var rowsPath = new[] { "Rows" };
+        var emptyPath = Array.Empty<string>();
+        var expectedErrors = new List<Exception>();
+        object Input(FerruleBasicScopeContext parent) => new
+        {
+            parent = BasicContextSnapshot(parent),
+            declarations = Enumerable.Range(0, (int)parent.Roots.OwnedRoots.RegistryCount).Select(i => new
+            { key = i, name = parent.Roots.OwnedRoots.Name(i), source = BasicInstanceSnapshot(parent.Roots.OwnedRoots.Instance(i)) }).ToArray(),
+            limits = new { roots = (ulong)parent.Roots.Limits.MaxRoots, frames = (ulong)parent.Roots.Limits.MaxActiveFrames,
+                segments = (ulong)parent.Roots.Limits.MaxPathSegments, bytes = (ulong)parent.Roots.Limits.MaxMetadataBytes,
+                contexts = (ulong)parent.Roots.Limits.MaxWalkContexts },
+        };
+        FerruleInstance Item(FerruleBasicScopeContext context) => context.LegacyView.Frames[^1];
+        long Number(FerruleBasicScopeContext context) => context.ResolveLegacyField(new[] { "Value" }).Int64Value;
+        object Rows(FerruleRetainedSourceCohort original) => original.Select(BasicCandidateSnapshot).ToArray();
+        void Record(string id, object input, FerruleRetainedSourceCohort original,
+            IReadOnlyList<FerruleInstance> result, object actualFacts) => OwnedRaw(id, new
+            { classification = "complete_sort_input_and_reached_result_before_asserts", input, original = Rows(original),
+                result = result.Select(BasicInstanceSnapshot).ToArray(), actualFacts });
+        Exception Refusal(string id, Action subject, Func<object> actualFacts)
+        {
+            try { subject(); }
+            catch (Exception error)
+            { BasicErrorRaw(id, error, new { facts = actualFacts(), expectedErrorIdentity = expectedErrors.Select((expected, index) =>
+                new { index, sameOuter = ReferenceEquals(expected, error) }).ToArray() }); return error; }
+            throw new InvalidOperationException("Expected a bounded sort refusal.");
+        }
+        FerruleBasicSourceBridgeException Bridge(Exception error, FerruleBasicSourceBridgeErrorKind kind)
+        {
+            var outer = error as FerruleRuntimeException;
+            var cause = error as FerruleBasicSourceBridgeException ?? outer?.BasicSourceBridgeFailure;
+            Equal(true, cause is not null); Equal(kind, cause!.Error);
+            if (outer is not null)
+            { Equal(FerruleRuntimeError.BasicSourceBridge, outer.Error); Equal(true, ReferenceEquals(cause, outer.InnerException)); Equal<uint?>(null, outer.Node); }
+            return cause;
+        }
+        void PointerOrder(IReadOnlyList<FerruleInstance> actual, FerruleInstance[] expected)
+        {
+            Equal(expected.Length, actual.Count);
+            for (var i = 0; i < expected.Length; i++) Equal(true, ReferenceEquals(expected[i], actual[i]));
+        }
+        var row30 = Group(Field("Value", Scalar(FerruleValue.FromInt64(30))));
+        var row10 = Group(Field("Value", Scalar(FerruleValue.FromInt64(10))));
+        var row20 = Group(Field("Value", Scalar(FerruleValue.FromInt64(20))));
+        var root = BasicRoot(Group(Field("Rows", Repeated(row30, row10, row20))));
+        var original = root.WalkOwnedSourceCohort(primaryOwner, rowsPath);
+        var phaseInput = Input(root);
+        OwnedRaw("N669.phase.input", new { input = phaseInput, original = Rows(original),
+            rejectedPhasePosition = 2, directions = new[] { false }, originalValues = new[] { 30, 10, 20 } });
+        foreach (var filterBeforeSort in new[] { true, false })
+        {
+            var events = new List<string>(); var contexts = new List<object>();
+            void Trace(string stage, FerruleBasicScopeContext context)
+            {
+                var value = Number(context); var position = context.OwnedPosition(primaryOwner, rowsPath);
+                events.Add($"{stage}{value}@{position}");
+                contexts.Add(new { stage, value, position = (ulong)position, legacy = context.LegacyPosition(rowsPath),
+                    sameInputItem = ReferenceEquals(Item(context), value == 30 ? row30 : value == 10 ? row10 : row20),
+                    context = BasicContextSnapshot(context) });
+            }
+            var keys = new FerruleSortKey<FerruleBasicScopeContext>[]
+            { new(context => { Trace("k", context); return FerruleValue.FromInt64(Number(context)); }) };
+            var result = root.SortRetainedSource(original, keys, filterBeforeSort,
+                context => { Trace("p", context); return context.OwnedPosition(primaryOwner, rowsPath) != 2; },
+                context => { Trace("t", context); return Item(context); });
+            if (filterBeforeSort)
+            {
+                Record("N669.phase.fts", phaseInput, original, result, new { events, contexts });
+                Equal("p30@1,p10@2,p20@3,k30@1,k20@3,t20@1,t30@2", string.Join(',', events));
+                PointerOrder(result, new FerruleInstance[] { row20, row30 });
+            }
+            else
+            {
+                Record("N669.phase.stf", phaseInput, original, result, new { events, contexts });
+                Equal("k30@1,k10@2,k20@3,p10@1,t10@1,p20@2,p30@3,t30@2", string.Join(',', events));
+                PointerOrder(result, new FerruleInstance[] { row10, row30 });
+            }
+            foreach (var context in original)
+                Equal<nuint>(context.RawSourceOrdinal!.Value, context.Context.OwnedPosition(primaryOwner, rowsPath));
+        }
+
+        var gapRoot = BasicRoot(Group(Field("Rows", Repeated(Scalar(FerruleValue.Null), row30,
+            Scalar(FerruleValue.JsonNull), row10, row20))));
+        var gapOriginal = gapRoot.WalkOwnedSourceCohort(primaryOwner, rowsPath); var gapInput = Input(gapRoot);
+        var gapEvents = new List<string>(); var gapContexts = new List<object>(); var gapProducedRaw = new List<ulong?>();
+        var gapResult = gapRoot.SortRetainedSource(gapOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context =>
+            { if (Number(context) == 30) throw new InvalidOperationException("A rejected row key was evaluated.");
+                var position = context.OwnedPosition(primaryOwner, rowsPath); gapEvents.Add($"k{Number(context)}@{position}");
+                return FerruleValue.FromInt64(-(long)position); }) }, true,
+            context => Number(context) != 30, context =>
+            { gapEvents.Add($"t{Number(context)}@{context.OwnedPosition(primaryOwner, rowsPath)}");
+                gapContexts.Add(BasicContextSnapshot(context)); gapProducedRaw.Add((ulong?)context.OriginAt(context.OriginCount - 1).RawOrdinal); return Item(context); });
+        Record("N669.gaps", gapInput, gapOriginal, gapResult, new { gapEvents, gapContexts, gapProducedRaw,
+            raw = gapOriginal.Select(c => (ulong?)c.RawSourceOrdinal).ToArray(),
+            sameOutputItems = new[] { ReferenceEquals(row20, gapResult[0]), ReferenceEquals(row10, gapResult[1]) } });
+        Equal("k10@4,k20@5,t20@1,t10@2", string.Join(',', gapEvents)); Equal("5,4", string.Join(',', gapProducedRaw));
+        PointerOrder(gapResult, new FerruleInstance[] { row20, row10 });
+        Equal<nuint?>(2, gapOriginal[0].RawSourceOrdinal); Equal<nuint?>(4, gapOriginal[1].RawSourceOrdinal); Equal<nuint?>(5, gapOriginal[2].RawSourceOrdinal);
+
+        FerruleGroup KeyRow(string id, FerruleValue key, FerruleValue secondary) =>
+            Group(Field("Id", Scalar(Text(id))), Field("Key", Scalar(key)), Field("Secondary", Scalar(secondary)));
+        var a = KeyRow("a", FerruleValue.FromInt64(1), FerruleValue.FromInt64(2));
+        var b = KeyRow("b", FerruleValue.FromInt64(1), FerruleValue.FromInt64(1));
+        var c = KeyRow("c", FerruleValue.FromInt64(1), FerruleValue.FromInt64(1));
+        var d = KeyRow("d", FerruleValue.FromInt64(2), FerruleValue.FromInt64(0));
+        var secondaryRoot = BasicRoot(Repeated(a, b, c, d)); var secondaryOriginal = secondaryRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath);
+        var secondaryInput = Input(secondaryRoot); var secondaryEvents = new List<string>();
+        FerruleValue Key(FerruleBasicScopeContext context, string name)
+        { secondaryEvents.Add(context.ResolveLegacyField(new[] { "Id" }).StringValue + ":" + name); return context.ResolveLegacyField(new[] { name }); }
+        var secondaryResult = secondaryRoot.SortRetainedSource(secondaryOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => Key(context, "Key")), new(context => Key(context, "Secondary"), true) },
+            true, null, Item);
+        var descendingResult = secondaryRoot.SortRetainedSource(secondaryOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => context.ResolveLegacyField(new[] { "Key" }), true),
+                new(context => context.ResolveLegacyField(new[] { "Secondary" })) }, true, null, Item);
+        Record("N669.secondary", secondaryInput, secondaryOriginal, secondaryResult, new
+        { secondaryEvents, descending = descendingResult.Select(BasicInstanceSnapshot).ToArray(),
+            stableTieSameItems = ReferenceEquals(secondaryResult[1], b) && ReferenceEquals(secondaryResult[2], c) });
+        Equal("a:Key,a:Secondary,b:Key,b:Secondary,c:Key,c:Secondary,d:Key,d:Secondary", string.Join(',', secondaryEvents));
+        PointerOrder(secondaryResult, new FerruleInstance[] { a, b, c, d }); PointerOrder(descendingResult, new FerruleInstance[] { d, b, c, a });
+
+        void ScalarOrder(string id, FerruleValue[] values, int[] expectedOrder)
+        {
+            var items = values.Select((value, index) => KeyRow(index.ToString(System.Globalization.CultureInfo.InvariantCulture), value, FerruleValue.Null)).ToArray();
+            var scalarRoot = BasicRoot(Repeated(items)); var scalarOriginal = scalarRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath);
+            var input = Input(scalarRoot);
+            var result = scalarRoot.SortRetainedSource(scalarOriginal,
+                new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => context.ResolveLegacyField(new[] { "Key" })) }, true, null, Item);
+            Record(id, input, scalarOriginal, result, new
+            { inputKeys = values.Select(BasicValueSnapshot).ToArray(), actualOrder = result.Select(item => Array.FindIndex(items, originalItem => ReferenceEquals(originalItem, item))).ToArray() });
+            PointerOrder(result, expectedOrder.Select(index => (FerruleInstance)items[index]).ToArray());
+        }
+        ScalarOrder("N669.numeric", new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromDouble(9_223_372_036_854_775_808d),
+            FerruleValue.FromInt64(9_007_199_254_740_993), FerruleValue.FromDouble(9_007_199_254_740_992d), FerruleValue.FromInt64(long.MinValue),
+            FerruleValue.FromDouble(double.NegativeInfinity), FerruleValue.FromDouble(double.PositiveInfinity), FerruleValue.FromDouble(double.NaN),
+            FerruleValue.FromInt64(9_007_199_254_740_992), FerruleValue.FromDouble(double.NaN) }, new[] { 5, 4, 3, 8, 2, 0, 1, 6, 7, 9 });
+        ScalarOrder("N669.unicode", new[] { Text("\U00010000"), Text("\uE000"), Text("a"), Text("a") }, new[] { 2, 3, 1, 0 });
+        ScalarOrder("N669.null-ties", new[] { FerruleValue.Null, FerruleValue.JsonNull, FerruleValue.FromBoolean(false),
+            FerruleValue.FromBoolean(true), FerruleValue.XmlNil, FerruleValue.Null }, new[] { 0, 1, 5, 2, 3, 4 });
+
+        FerruleRuntimeException Marker(string label)
+        { var error = new FerruleRuntimeException(FerruleRuntimeError.MappingFailure, label, node: 17, failureRule: 3, mappingFailureMessage: label);
+            expectedErrors.Add(error); return error; }
+        var predicateMarker = Marker("later predicate"); var keyMarker = Marker("survivor key"); var targetMarker = Marker("earlier target");
+        var priorityEvents = new List<string>();
+        var predicateError = Refusal("N669.fts.predicate-error", () => root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => { priorityEvents.Add("k"); throw keyMarker; }) }, true,
+            context => { priorityEvents.Add("p" + Number(context)); if (Number(context) == 20) throw predicateMarker; return true; },
+            context => { priorityEvents.Add("t"); throw targetMarker; }),
+            () => new { input = phaseInput, original = Rows(original), priorityEvents, expected = BasicErrorSnapshot(predicateMarker) });
+        Equal(true, ReferenceEquals(predicateMarker, predicateError)); Equal("p30,p10,p20", string.Join(',', priorityEvents));
+
+        priorityEvents.Clear(); var secondaryMarker = Marker("first row secondary"); var nextPrimaryMarker = Marker("second row primary");
+        var secondaryError = Refusal("N669.fts.key-error", () => root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[]
+            { new(context => { priorityEvents.Add("k0:" + Number(context)); if (Number(context) == 10) throw nextPrimaryMarker; return FerruleValue.FromInt64(Number(context)); }),
+                new(context => { priorityEvents.Add("k1:" + Number(context)); throw secondaryMarker; }) }, true,
+            context => { priorityEvents.Add("p" + Number(context)); return true; }, context => { priorityEvents.Add("t"); throw targetMarker; }),
+            () => new { input = phaseInput, original = Rows(original), priorityEvents, expected = BasicErrorSnapshot(secondaryMarker) });
+        Equal(true, ReferenceEquals(secondaryMarker, secondaryError)); Equal("p30,p10,p20,k0:30,k1:30", string.Join(',', priorityEvents));
+
+        priorityEvents.Clear();
+        var laterKeyError = Refusal("N669.stf.key-error", () => root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => { priorityEvents.Add("k" + Number(context));
+                if (Number(context) == 20) throw keyMarker; return FerruleValue.FromInt64(Number(context)); }) }, false,
+            context => { priorityEvents.Add("p"); return true; }, context => { priorityEvents.Add("t"); throw targetMarker; }),
+            () => new { input = phaseInput, original = Rows(original), priorityEvents, expected = BasicErrorSnapshot(keyMarker) });
+        Equal(true, ReferenceEquals(keyMarker, laterKeyError)); Equal("k30,k10,k20", string.Join(',', priorityEvents));
+
+        priorityEvents.Clear();
+        var earlierTargetError = Refusal("N669.stf.target-error", () => root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => { priorityEvents.Add("k" + Number(context)); return FerruleValue.FromInt64(Number(context)); }) }, false,
+            context => { priorityEvents.Add("p" + Number(context)); if (Number(context) == 20) throw predicateMarker; return true; },
+            context => { priorityEvents.Add("t" + Number(context)); throw targetMarker; }),
+            () => new { input = phaseInput, original = Rows(original), priorityEvents, expected = BasicErrorSnapshot(targetMarker) });
+        Equal(true, ReferenceEquals(targetMarker, earlierTargetError)); Equal("k30,k10,k20,p10,t10", string.Join(',', priorityEvents));
+
+        priorityEvents.Clear(); var completedTargets = new List<FerruleInstance>();
+        var laterPredicateError = Refusal("N669.stf.predicate-error", () => root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => { priorityEvents.Add("k" + Number(context)); return FerruleValue.FromInt64(Number(context)); }) }, false,
+            context => { priorityEvents.Add("p" + Number(context)); if (Number(context) == 20) throw predicateMarker; return true; },
+            context => { priorityEvents.Add("t" + Number(context)); completedTargets.Add(Item(context)); return Item(context); }),
+            () => new { input = phaseInput, original = Rows(original), priorityEvents,
+                completedTargets = completedTargets.Select(BasicInstanceSnapshot).ToArray(), expected = BasicErrorSnapshot(predicateMarker) });
+        Equal(true, ReferenceEquals(predicateMarker, laterPredicateError)); Equal("k30,k10,k20,p10,t10,p20", string.Join(',', priorityEvents));
+        PointerOrder(completedTargets, new FerruleInstance[] { row10 });
+
+        var zeroPredicates = 0; var lazyCalls = 0;
+        var zeroResult = root.SortRetainedSource(original,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(_ => throw keyMarker) }, true,
+            context => { zeroPredicates++; var accepted = false;
+                return accepted && ++lazyCalls != 0 && context.OwnedPosition(OwnedNamedOwner("unavailable"), emptyPath) != 0; },
+            _ => throw targetMarker);
+        Record("N669.zero", phaseInput, original, zeroResult, new { zeroPredicates, lazyCalls });
+        Equal(3, zeroPredicates); Equal(0, lazyCalls); Equal(0, zeroResult.Count);
+        var emptyRoot = BasicRoot(Repeated()); var emptyOriginal = emptyRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath); var emptyInput = Input(emptyRoot);
+        var emptyCalls = 0; var emptyResult = emptyRoot.SortRetainedSource(emptyOriginal, Array.Empty<FerruleSortKey<FerruleBasicScopeContext>>(), false,
+            _ => { emptyCalls++; return true; }, _ => { emptyCalls++; throw targetMarker; });
+        Record("N669.empty", emptyInput, emptyOriginal, emptyResult, new { emptyCalls }); Equal(0, emptyCalls); Equal(0, emptyResult.Count);
+
+        var namedOwner = OwnedNamedOwner("Ref");
+        var outer1 = BasicValue("outer1"); var outer2 = BasicValue("outer2");
+        var namedSource = Group(Field("Rows", Repeated(row30, row10, row20)));
+        var outerSource = Group(Field("Ref", Group(Field("Rows", Repeated(outer1, outer2)))));
+        var namedRoot = BasicRoot(outerSource, new FerruleDeclaredNamedSourceRoot("Ref", namedSource));
+        var outerRows = namedRoot.WalkOwnedSourceCohort(primaryOwner, new[] { "Ref", "Rows" });
+        var namedParent = outerRows[1].Context; var namedOriginal = namedParent.WalkOwnedSourceCohort(namedOwner, rowsPath); var namedInput = Input(namedParent);
+        var namedContexts = new List<FerruleBasicScopeContext>();
+        var namedResult = namedParent.SortRetainedSource(namedOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => FerruleValue.FromInt64(Number(context))) }, false, null,
+            context => { namedContexts.Add(context); return Item(context); });
+        Record("N669.named.outer", namedInput, namedOriginal, namedResult, new
+        { outer = Rows(outerRows), contexts = namedContexts.Select(BasicContextSnapshot).ToArray(),
+            sameOuterItems = namedContexts.Select(context => ReferenceEquals(outer2, context.OwnedView.FrameAt(0).Item)).ToArray(),
+            sameInnerItems = namedContexts.Select((context, index) => ReferenceEquals(namedResult[index], context.OwnedView.FrameAt(1).Item)).ToArray() });
+        PointerOrder(namedResult, new FerruleInstance[] { row10, row20, row30 });
+        for (var i = 0; i < namedContexts.Count; i++)
+        { Equal<nuint>(2, namedContexts[i].OwnedPosition(primaryOwner, new[] { "Ref", "Rows" }));
+            Equal<nuint>((nuint)i + 1, namedContexts[i].OwnedPosition(namedOwner, rowsPath));
+            Equal(2L, namedContexts[i].LegacyPosition(new[] { "Ref", "Rows" })); Equal((long)i + 1, namedContexts[i].LegacyPosition(rowsPath));
+            Equal(true, ReferenceEquals(outer2, namedContexts[i].OwnedView.FrameAt(0).Item));
+            Equal(true, ReferenceEquals(namedResult[i], namedContexts[i].OwnedView.FrameAt(1).Item));
+            Equal<nuint?>(new nuint[] { 2, 3, 1 }[i], namedContexts[i].OriginAt(3).RawOrdinal); }
+        var aliasRoot = BasicRoot(BasicValue("primary"), new FerruleDeclaredNamedSourceRoot("Ref", namedSource));
+        var aliasOriginal = aliasRoot.WalkSourceCohort(new[] { "Ref", "Rows" }); var aliasInput = Input(aliasRoot); var aliasContexts = new List<FerruleBasicScopeContext>();
+        var aliasResult = aliasRoot.SortRetainedSource(aliasOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => FerruleValue.FromInt64(Number(context))) }, true, null,
+            context => { aliasContexts.Add(context); return Item(context); });
+        Record("N669.named.alias", aliasInput, aliasOriginal, aliasResult, new { contexts = aliasContexts.Select(BasicContextSnapshot).ToArray(),
+            sameItems = aliasContexts.Select((context, index) => ReferenceEquals(aliasResult[index], context.OwnedView.FrameAt(0).Item)).ToArray() });
+        PointerOrder(aliasResult, new FerruleInstance[] { row10, row20, row30 });
+        for (var i = 0; i < aliasContexts.Count; i++)
+        { Equal((long)i + 1, aliasContexts[i].LegacyPosition(new[] { "Ref", "Rows" })); Equal<nuint>((nuint)i + 1, aliasContexts[i].OwnedPosition(namedOwner, rowsPath));
+            Equal(true, aliasContexts[i].LegacyView.BasicCollectionPath(0).SequenceEqual(new[] { "Ref", "Rows" }));
+            Equal(true, ReferenceEquals(aliasResult[i], aliasContexts[i].OwnedView.FrameAt(0).Item));
+            Equal<nuint?>(new nuint[] { 2, 3, 1 }[i], aliasContexts[i].OriginAt(2).RawOrdinal); }
+
+        var nestedOuter = Group(Field("Value", Scalar(Text("parent2"))), Field("Kids", Repeated(row30, row10, row20)));
+        var nestedRoot = BasicRoot(Group(Field("Rows", Repeated(BasicValue("parent1"), nestedOuter))));
+        var parents = nestedRoot.WalkOwnedSourceCohort(primaryOwner, rowsPath);
+        var compactParent = nestedRoot.BeginRetainedFilterPhase(parents).Produce(1).Context;
+        var kidsPath = new[] { "Rows", "Kids" }; var kids = compactParent.WalkOwnedSourceCohort(primaryOwner, kidsPath); var kidsInput = Input(compactParent);
+        var kidsContexts = new List<FerruleBasicScopeContext>();
+        var kidsResult = compactParent.SortRetainedSource(kids,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => FerruleValue.FromInt64(Number(context))) }, false, null,
+            context => { kidsContexts.Add(context); return Item(context); });
+        Record("N669.primary.nested", kidsInput, kids, kidsResult, new { parents = Rows(parents), contexts = kidsContexts.Select(BasicContextSnapshot).ToArray(),
+            sameOuterItems = kidsContexts.Select(context => ReferenceEquals(nestedOuter, context.OwnedView.FrameAt(0).Item)).ToArray(),
+            sameChildItems = kidsContexts.Select((context, index) => ReferenceEquals(kidsResult[index], context.OwnedView.FrameAt(1).Item)).ToArray() });
+        PointerOrder(kidsResult, new FerruleInstance[] { row10, row20, row30 });
+        for (var i = 0; i < kidsContexts.Count; i++)
+        { Equal<nuint>(1, kidsContexts[i].OwnedPosition(primaryOwner, rowsPath)); Equal<nuint>((nuint)i + 1, kidsContexts[i].OwnedPosition(primaryOwner, kidsPath));
+            Equal<nuint?>(2, kidsContexts[i].OriginAt(2).RawOrdinal); Equal(true, ReferenceEquals(nestedOuter, kidsContexts[i].OwnedView.FrameAt(0).Item));
+            Equal(true, ReferenceEquals(kidsResult[i], kidsContexts[i].OwnedView.FrameAt(1).Item));
+            Equal<nuint?>(new nuint[] { 2, 3, 1 }[i], kidsContexts[i].OriginAt(3).RawOrdinal); }
+        var identity = compactParent.WalkOwnedSourceCohort(primaryOwner, rowsPath); var identityInput = Input(compactParent); FerruleBasicScopeContext? identityContext = null;
+        var identityResult = compactParent.SortRetainedSource(identity, Array.Empty<FerruleSortKey<FerruleBasicScopeContext>>(), false,
+            context => context.OwnedPosition(primaryOwner, rowsPath) == 1,
+            context => { identityContext = context; return Item(context); });
+        Record("N669.identity", identityInput, identity, identityResult, new { context = BasicContextSnapshot(identityContext!),
+            cursor = identity[0].HasNewCursor, raw = (ulong?)identity[0].RawSourceOrdinal,
+            sameItem = ReferenceEquals(nestedOuter, Item(identityContext!)), sameOwnedItem = ReferenceEquals(nestedOuter, identityContext!.OwnedView.FrameAt(0).Item) });
+        Equal(false, identity[0].HasNewCursor); Equal<nuint?>(null, identity[0].RawSourceOrdinal); Equal<nuint>(1, identityContext!.OwnedPosition(primaryOwner, rowsPath));
+        PointerOrder(identityResult, new FerruleInstance[] { nestedOuter }); Equal(true, ReferenceEquals(nestedOuter, identityContext.OwnedView.FrameAt(0).Item));
+
+        var plainScalar = Scalar(FerruleValue.FromInt64(42)); var plainRoot = BasicRoot(Group(Field("Details", plainScalar)));
+        var plainOriginal = plainRoot.WalkSourceCohort(new[] { "Details" }); var plainInput = Input(plainRoot); FerruleBasicScopeContext? plainContext = null;
+        var plainResult = plainRoot.SortRetainedSource(plainOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => context.ResolveLegacyField(emptyPath)) }, false, null,
+            context => { plainContext = context; return Item(context); });
+        Record("N669.plain", plainInput, plainOriginal, plainResult, new { context = BasicContextSnapshot(plainContext!),
+            sameItem = ReferenceEquals(plainScalar, Item(plainContext!)), cursor = plainOriginal[0].HasNewCursor, raw = (ulong?)plainOriginal[0].RawSourceOrdinal });
+        Equal(false, plainOriginal[0].HasNewCursor); Equal<nuint?>(null, plainOriginal[0].RawSourceOrdinal); Equal(0, plainContext!.OwnedView.FrameCount);
+        Equal(0, plainContext.LegacyView.BasicCollectionCount); Equal(1L, plainContext.LegacyPosition(emptyPath)); PointerOrder(plainResult, new FerruleInstance[] { plainScalar });
+        var scalarRoot = BasicRoot(plainScalar); var scalarOriginal = scalarRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath); var scalarInput = Input(scalarRoot);
+        FerruleBasicScopeContext? scalarContext = null;
+        var scalarResult = scalarRoot.SortRetainedSource(scalarOriginal,
+            new FerruleSortKey<FerruleBasicScopeContext>[] { new(context => context.ResolveOwnedField(primaryOwner, emptyPath)) }, true, null,
+            context => { scalarContext = context; return Scalar(context.ResolveOwnedField(primaryOwner, emptyPath)); });
+        Record("N669.scalar", scalarInput, scalarOriginal, scalarResult, new { context = BasicContextSnapshot(scalarContext!),
+            sameInputScalar = ReferenceEquals(plainScalar, Item(scalarContext!)), cursor = scalarOriginal[0].HasNewCursor, raw = (ulong?)scalarOriginal[0].RawSourceOrdinal });
+        Equal(false, scalarOriginal[0].HasNewCursor); Equal<nuint?>(null, scalarOriginal[0].RawSourceOrdinal); Equal(0, scalarContext!.OwnedView.FrameCount);
+        Equal(FerruleValue.FromInt64(42), ((FerruleScalar)scalarResult[0]).Value); Equal(true, ReferenceEquals(plainScalar, Item(scalarContext)));
+
+        var authCalls = 0; var authKeys = new BasicSortKeyProbe(1);
+        var foreignParent = BasicRoot(Group(Field("Rows", Repeated(row30, row10, row20))));
+        var registryError = Refusal("N669.registry", () => foreignParent.SortRetainedSource(original, authKeys, true,
+            _ => { authCalls++; return true; }, _ => { authCalls++; return row30; }),
+            () => new { input = Input(foreignParent), original = Rows(original), authCalls, keyReads = authKeys.Reads });
+        Bridge(registryError, FerruleBasicSourceBridgeErrorKind.RegistryMismatch); Equal(0, authCalls); Equal(0, authKeys.Reads);
+        var sameRegistryParent = root.CloneView();
+        var parentError = Refusal("N669.parent", () => sameRegistryParent.SortRetainedSource(original, authKeys, false,
+            _ => { authCalls++; return true; }, _ => { authCalls++; return row30; }),
+            () => new { input = Input(sameRegistryParent), original = Rows(original), authCalls, keyReads = authKeys.Reads,
+                sameRegistry = ReferenceEquals(root.Roots, sameRegistryParent.Roots), differentParent = !ReferenceEquals(root, sameRegistryParent) });
+        Equal<nuint?>(0, Bridge(parentError, FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness).InputOrdinal); Equal(0, authCalls); Equal(0, authKeys.Reads);
+        var wrongCount = root.WalkOwnedSourceCohort(primaryOwner, rowsPath); wrongCount.SourceWitness.Seal(4);
+        var countError = Refusal("N669.count", () => root.SortRetainedSource(wrongCount, authKeys, true,
+            _ => { authCalls++; return true; }, _ => { authCalls++; return row30; }),
+            () => new { input = phaseInput, original = Rows(wrongCount), claimedCompleteCount = wrongCount.SourceWitness.OriginalCount,
+                completed = wrongCount.SourceWitness.IsComplete, authCalls, keyReads = authKeys.Reads });
+        Equal<nuint?>(3, Bridge(countError, FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness).InputOrdinal); Equal(0, authCalls); Equal(0, authKeys.Reads);
+        var duplicateIds = new nuint[] { 0, 0, 2 };
+        var duplicateError = Refusal("N669.ids.duplicate", () => FerruleBasicSortOperation.ValidateOriginalIds(3, new BasicIdRecipe(duplicateIds)),
+            () => new { expectedCount = 3, ids = duplicateIds.Select(i => (ulong)i).ToArray() });
+        var duplicateCause = Bridge(duplicateError, FerruleBasicSourceBridgeErrorKind.DuplicatePhaseCandidate);
+        Equal<nuint?>(1, duplicateCause.InputOrdinal); Equal<nuint?>(0, duplicateCause.CandidateOrdinal);
+        var skippedIds = new nuint[] { 0, 2, 2 };
+        var skippedError = Refusal("N669.ids.skipped", () => FerruleBasicSortOperation.ValidateOriginalIds(3, new BasicIdRecipe(skippedIds)),
+            () => new { expectedCount = 3, ids = skippedIds.Select(i => (ulong)i).ToArray() });
+        Equal<nuint?>(1, Bridge(skippedError, FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness).InputOrdinal);
+        var truncatedIds = new nuint[] { 0, 1 };
+        var truncatedError = Refusal("N669.ids.truncated", () => FerruleBasicSortOperation.ValidateOriginalIds(3, new BasicIdRecipe(truncatedIds)),
+            () => new { expectedCount = 3, ids = truncatedIds.Select(i => (ulong)i).ToArray() });
+        Equal<nuint?>(2, Bridge(truncatedError, FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness).InputOrdinal);
+        FerruleBasicSortOperation.ValidateOriginalIds(0, new BasicIdRecipe(Array.Empty<nuint>()));
+        OwnedRaw("N669.ids.empty", new { expectedCount = 0, ids = Array.Empty<ulong>(), completed = true });
+
+        var tinyPolicy = new FerruleOwnedSourceLimits(1, 1, 0, 1024, 3);
+        var tinyRoot = FerruleBasicSourceRoots.Create(Repeated(Scalar(FerruleValue.FromInt64(30)), Scalar(FerruleValue.FromInt64(10)), Scalar(FerruleValue.FromInt64(20))),
+            Array.Empty<FerruleDeclaredNamedSourceRoot>(), tinyPolicy).RootContext();
+        var tinyOriginal = tinyRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath); var tinyInput = Input(tinyRoot);
+        var setupCalls = 0; var capacityKeys = new BasicSortKeyProbe(int.MaxValue);
+        var capacityError = Refusal("N669.capacity", () => tinyRoot.SortRetainedSource(tinyOriginal, capacityKeys, true,
+            _ => { setupCalls++; return false; }, _ => { setupCalls++; return row30; }),
+            () => new { input = tinyInput, original = Rows(tinyOriginal), keyCount = capacityKeys.Count, keyReads = capacityKeys.Reads, setupCalls,
+                requestedCells = (ulong)tinyOriginal.Count * (ulong)capacityKeys.Count, arrayMaximum = Array.MaxLength });
+        Bridge(capacityError, FerruleBasicSourceBridgeErrorKind.PairedMetadataArithmeticOverflow); Equal(0, capacityKeys.Reads); Equal(0, setupCalls);
+        var slotKeys = new BasicSortKeyProbe(500);
+        var slotError = Refusal("N669.slots", () => tinyRoot.SortRetainedSource(tinyOriginal, slotKeys, false,
+            _ => { setupCalls++; return false; }, _ => { setupCalls++; return row30; }),
+            () => new { input = tinyInput, original = Rows(tinyOriginal), keyCount = slotKeys.Count, keyReads = slotKeys.Reads, setupCalls,
+                fullPhaseMaximum = (ulong)BasicSourceAccounting.Maximum(tinyPolicy, true) });
+        var slotCause = Bridge(slotError, FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit);
+        Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataSlots, slotCause.Component);
+        Equal<nuint?>(64, slotCause.Used); Equal<nuint?>(8052, slotCause.Requested); Equal<nuint?>(832, slotCause.Maximum);
+        Equal(0, slotKeys.Reads); Equal(0, setupCalls);
+
+        foreach (var filterBeforeSort in new[] { true, false })
+        {
+            var bytePolicy = new FerruleOwnedSourceLimits(1, 1, 0, 6, 3);
+            var strings = new[] { Scalar(Text("雪")), Scalar(Text("é")), Scalar(Text("a")) };
+            var byteRoot = FerruleBasicSourceRoots.Create(Repeated(strings), Array.Empty<FerruleDeclaredNamedSourceRoot>(), bytePolicy).RootContext();
+            var byteOriginal = byteRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath); var byteInput = Input(byteRoot);
+            var byteEvents = new List<string>();
+            FerruleValue StringKey(FerruleBasicScopeContext context)
+            { var value = context.ResolveOwnedField(primaryOwner, emptyPath); byteEvents.Add(value.StringValue); return value; }
+            var byteResult = byteRoot.SortRetainedSource(byteOriginal,
+                new FerruleSortKey<FerruleBasicScopeContext>[] { new(StringKey) }, filterBeforeSort, null, Item);
+            if (filterBeforeSort) Record("N669.bytes.fts.exact", byteInput, byteOriginal, byteResult, new { byteEvents, cumulativeKeyBytes = 6 });
+            else Record("N669.bytes.stf.exact", byteInput, byteOriginal, byteResult, new { byteEvents, cumulativeKeyBytes = 6 });
+            PointerOrder(byteResult, new FerruleInstance[] { strings[2], strings[1], strings[0] }); Equal("雪,é,a", string.Join(',', byteEvents));
+            var shortRoot = FerruleBasicSourceRoots.Create(Repeated(strings), Array.Empty<FerruleDeclaredNamedSourceRoot>(), bytePolicy with { MaxMetadataBytes = 5 }).RootContext();
+            var shortOriginal = shortRoot.WalkOwnedSourceCohort(primaryOwner, emptyPath); var shortInput = Input(shortRoot);
+            var shortEvents = new List<string>(); var shortTargets = 0;
+            Action shortSubject = () => shortRoot.SortRetainedSource(shortOriginal,
+                new FerruleSortKey<FerruleBasicScopeContext>[] { new(context =>
+                { var value = context.ResolveOwnedField(primaryOwner, emptyPath); shortEvents.Add(value.StringValue); return value; }) },
+                filterBeforeSort, null, context => { shortTargets++; return Item(context); });
+            Exception shortError;
+            if (filterBeforeSort) shortError = Refusal("N669.bytes.fts.short", shortSubject,
+                () => new { input = shortInput, original = Rows(shortOriginal), shortEvents, shortTargets });
+            else shortError = Refusal("N669.bytes.stf.short", shortSubject,
+                () => new { input = shortInput, original = Rows(shortOriginal), shortEvents, shortTargets });
+            var shortCause = Bridge(shortError, FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit);
+            Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataBytes, shortCause.Component);
+            Equal<nuint?>(5, shortCause.Used); Equal<nuint?>(1, shortCause.Requested); Equal<nuint?>(5, shortCause.Maximum);
+            Equal("雪,é,a", string.Join(',', shortEvents)); Equal(0, shortTargets);
+        }
+
+        void Leaf(string id, string stage, uint node)
+        {
+            FerruleRuntimeException leaf;
+            try { root.OwnedPosition(primaryOwner, emptyPath); throw new InvalidOperationException("Expected a typed position leaf."); }
+            catch (FerruleRuntimeException error) { leaf = error.WithOwnedSourceNode(node); }
+            var marker = new object(); leaf.Data["sort-leaf"] = marker; leaf.HelpLink = "https://example.invalid/sort-leaf";
+            var cause = leaf.OwnedSourceFailure; var nestedCause = leaf.InnerException?.InnerException; var calls = new List<string>();
+            Exception? reached = null;
+            try
+            {
+                root.SortRetainedSource(original,
+                    new FerruleSortKey<FerruleBasicScopeContext>[] { new(context =>
+                    { calls.Add("key"); if (stage == "key") throw leaf; return FerruleValue.FromInt64(Number(context)); }) },
+                    stage == "predicate", context => { calls.Add("predicate"); if (stage == "predicate") throw leaf; return true; },
+                    context => { calls.Add("target"); throw leaf; });
+            }
+            catch (Exception error) { reached = error; }
+            if (reached is null) throw new InvalidOperationException("Expected leaf propagation through sort.");
+            var outer = reached as FerruleRuntimeException;
+            BasicErrorRaw(id, reached, new { input = phaseInput, original = Rows(original), stage, calls,
+                sameOuter = ReferenceEquals(leaf, reached), sameCause = ReferenceEquals(cause, outer?.OwnedSourceFailure),
+                sameInner = ReferenceEquals(cause, reached.InnerException), sameNestedCause = ReferenceEquals(nestedCause, reached.InnerException?.InnerException),
+                sameData = ReferenceEquals(marker, reached.Data["sort-leaf"]), reached.HelpLink,
+                sameAfterEnclosingAnnotation = ReferenceEquals(leaf, outer?.WithOwnedSourceNode(node == 0 ? uint.MaxValue : 0)) });
+            Equal(true, ReferenceEquals(leaf, reached)); Equal<uint?>(node, outer!.Node);
+            Equal(true, ReferenceEquals(cause, outer.OwnedSourceFailure)); Equal(true, ReferenceEquals(cause, outer.InnerException));
+            Equal(true, ReferenceEquals(nestedCause, outer.InnerException?.InnerException)); Equal(true, ReferenceEquals(marker, reached.Data["sort-leaf"]));
+            Equal("https://example.invalid/sort-leaf", reached.HelpLink); Equal<uint?>(node, outer.WithOwnedSourceNode(node == 0 ? uint.MaxValue : 0).Node);
+            Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, cause!.Error); Equal<bool?>(true, cause.Owner?.IsPrimary); OwnedPath(emptyPath, cause.Collection);
+            Equal(stage == "key" ? "key" : stage == "predicate" ? "predicate" : "key,key,key,predicate,target", string.Join(',', calls));
+        }
+        Leaf("N669.leaf.key-zero", "key", 0); Leaf("N669.leaf.predicate-max", "predicate", uint.MaxValue); Leaf("N669.leaf.target-zero", "target", 0);
+
+        foreach (var filterBeforeSort in new[] { true, false })
+        {
+            var maximum = filterBeforeSort ? (nuint)71 : 107; var prepayRoot = BasicABC(maximum);
+            var prepayOriginal = prepayRoot.WalkOwnedSourceCohort(primaryOwner, rowsPath); var prepayInput = Input(prepayRoot);
+            var prepayCalls = 0; var prepayKeys = new BasicSortKeyProbe(1);
+            Action subject = () => prepayRoot.SortRetainedSource(prepayOriginal, prepayKeys, filterBeforeSort,
+                _ => { prepayCalls++; return false; }, _ => { prepayCalls++; return row30; });
+            Exception prepayError;
+            if (filterBeforeSort) prepayError = Refusal("N669.phase.prereserve.fts", subject,
+                () => new { input = prepayInput, original = Rows(prepayOriginal), prepayCalls, keyReads = prepayKeys.Reads, possibleCopiesPerRow = 1 });
+            else prepayError = Refusal("N669.phase.prereserve.stf", subject,
+                () => new { input = prepayInput, original = Rows(prepayOriginal), prepayCalls, keyReads = prepayKeys.Reads, possibleCopiesPerRow = 2 });
+            var prepayCause = Bridge(prepayError, FerruleBasicSourceBridgeErrorKind.PairedMetadataLimit);
+            Equal<FerruleBasicSourceBridgeComponent?>(FerruleBasicSourceBridgeComponent.MetadataBytes, prepayCause.Component);
+            Equal<nuint?>(filterBeforeSort ? (nuint)60 : 96, prepayCause.Used); Equal<nuint?>(12, prepayCause.Requested); Equal<nuint?>(maximum, prepayCause.Maximum);
+            Equal(0, prepayCalls); Equal(0, prepayKeys.Reads);
+        }
+        OwnedRaw("N669.setup.no-node", new { capacity = BasicErrorSnapshot(capacityError), slots = BasicErrorSnapshot(slotError),
+            nodes = new[] { ((FerruleRuntimeException)capacityError).Node, ((FerruleRuntimeException)slotError).Node } });
+        Equal<uint?>(null, ((FerruleRuntimeException)capacityError).Node); Equal<uint?>(null, ((FerruleRuntimeException)slotError).Node);
+        GC.KeepAlive(original); GC.KeepAlive(gapOriginal); GC.KeepAlive(secondaryOriginal); GC.KeepAlive(namedOriginal); GC.KeepAlive(aliasOriginal);
+        GC.KeepAlive(kids); GC.KeepAlive(identity); GC.KeepAlive(plainOriginal); GC.KeepAlive(scalarOriginal); GC.KeepAlive(tinyOriginal);
+    }
+
 }
