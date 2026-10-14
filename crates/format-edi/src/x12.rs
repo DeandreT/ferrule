@@ -189,14 +189,11 @@ fn tokenize_with_component_separator(
     }
 
     let mut segments = Vec::new();
-    for (index, raw) in split_unescaped(
+    for raw in split_unescaped(
         text,
         segment_terminator,
         configured.and_then(|syntax| syntax.release),
-    )?
-    .into_iter()
-    .enumerate()
-    {
+    )? {
         // Only whitespace between a terminator and the next segment is
         // formatting. Spaces before the terminator belong to the final
         // element and must survive tokenization.
@@ -212,8 +209,10 @@ fn tokenize_with_component_separator(
         .into_iter();
         let id = parts.next().unwrap_or_default().to_string();
         // The ISA segment's own elements ARE the separator characters
-        // (ISA11, ISA16), so splitting them would corrupt the envelope.
-        let is_isa = index == 0;
+        // (ISA11, ISA16), so splitting them would corrupt the envelope. This
+        // applies to every interchange header in the stream, not only the
+        // first.
+        let is_isa = id == "ISA";
         let elements = parts
             .map(|element| {
                 if is_isa {
@@ -902,6 +901,24 @@ IEA+1+000000001'
         let without_rep = "ISA*00*          *00*          *ZZ*S              *ZZ*R              *260702*1200*U*00401*000000001*0*P*:~EB*1**1^33^35~";
         let segments = tokenize(without_rep).unwrap();
         assert_eq!(segments[1].elements[2], vec![vec!["1^33^35"]]);
+    }
+
+    #[test]
+    fn tokenize_keeps_every_interchange_header_unsplit() {
+        let isa = "ISA*00*          *00*          *ZZ*S              *ZZ*R              *110530*1549*^*00501*000000001*1*P*:~";
+        let text = format!("{isa}EB*1**1^33^35~IEA*0*000000001~{isa}EB*2**4^5~");
+        let segments = tokenize(&text).unwrap();
+        let headers = segments
+            .iter()
+            .filter(|segment| segment.id == "ISA")
+            .collect::<Vec<_>>();
+        assert_eq!(headers.len(), 2);
+        for header in headers {
+            assert_eq!(header.elements.len(), 16);
+            assert_eq!(header.elements[10], vec![vec!["^"]]);
+            assert_eq!(header.elements[15], vec![vec![":"]]);
+        }
+        assert_eq!(segments[4].elements[2], vec![vec!["4"], vec!["5"]]);
     }
 
     #[test]
