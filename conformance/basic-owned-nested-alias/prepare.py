@@ -44,7 +44,143 @@ def qualification(path, digest):
     actual = json.loads(body)
     if actual.get("qualified") is not True or actual.get("normal_owner_closed") is not True or actual.get("failures"):
         raise ValueError("Qualified normal owned closure required: " + str(path))
+    results = actual.get("results")
+    if not results or any(row.get("reached") is not True or row.get("returncode") != 0 for row in results):
+        raise ValueError("Complete reached positive qualification commands required: " + str(path))
     return actual, pin
+
+
+def pinned_json(descriptor):
+    body, pin = read(descriptor["path"], descriptor["sha256"])
+    if pin != descriptor:
+        raise ValueError("Immutable qualification descriptor differs: " + descriptor["path"])
+    return json.loads(body), pin
+
+
+def same_body(left, right):
+    return all(left.get(key) == right.get(key) for key in ("bytes", "sha256")) and left.get("complete_EOF") is True and right.get("complete_EOF") is True
+
+
+def resolve_source(role, metadata, source_root):
+    relative = Path(role)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Repository-relative source role required: " + role)
+    destination = Path(source_root) / relative
+    for mount in reversed(metadata["source_mounts"]):
+        target = Path(mount["destination"])
+        if destination != target and target not in destination.parents:
+            continue
+        if mount.get("read_only") is not True:
+            raise ValueError("Runtime source mount must be readonly: " + role)
+        tail = destination.relative_to(target)
+        if "overlay_sources" in mount:
+            for source in reversed(mount["overlay_sources"]):
+                candidate = Path(source) / tail
+                if candidate.is_file():
+                    return candidate
+            raise ValueError("Runtime source is absent from its readonly overlay: " + role)
+        candidate = Path(mount["source"]) / tail
+        if not candidate.is_file():
+            raise ValueError("Runtime source is absent from its last readonly binding: " + role)
+        return candidate
+    raise ValueError("Runtime source has no metadata binding: " + role)
+
+
+def current_rows(rows, metadata, source_root):
+    if not isinstance(rows, dict) or not rows:
+        raise ValueError("Complete nonempty source role map required")
+    for role, descriptor in rows.items():
+        _, pin = read(descriptor["path"], descriptor["sha256"])
+        if pin != descriptor:
+            raise ValueError("Qualified source descriptor differs: " + role)
+        current = metadata["complete_main_roles"].get(role)
+        if current is None or not same_body(descriptor, current):
+            raise ValueError("Qualified source differs from current main: " + role)
+        _, current_pin = read(current["path"], current["sha256"])
+        if current_pin != current:
+            raise ValueError("Current source descriptor differs: " + role)
+        _, mounted = read(resolve_source(role, metadata, source_root))
+        if not same_body(mounted, descriptor):
+            raise ValueError("Last mounted source differs from qualified current source: " + role)
+
+
+def runtime_binding(metadata, source_root, rust_runtime, rust_actual, rust_pin, csharp_actual, csharp_pin, runtime_actual, runtime_pin, dll_pin):
+    if Path(source_root) != Path(metadata["main_source_root"]) or Path(rust_runtime) != Path(source_root) / "crates/codegen-runtime":
+        raise ValueError("Runtime execution must use the assembled current source root/package")
+    profiles = metadata["qualified_baseline_profiles"]
+    selectors = {}
+    for backend, pin in (("Rust", rust_pin), ("CSharp", csharp_pin)):
+        for capability in ("filter", "sort"):
+            key = "current_" + backend + "_" + capability + "_runtime_profile"
+            name = metadata[key]
+            if profiles[name]["source_actual"] != pin:
+                raise ValueError("Selected current " + backend + " " + capability + " source actual differs")
+            selectors[key] = name
+    rust = profiles[selectors["current_Rust_filter_runtime_profile"]]
+    csharp = profiles[selectors["current_CSharp_filter_runtime_profile"]]
+    if rust_actual["source_preparation"] != rust["source_preparation"] or csharp_actual["source_preparation"] != csharp["source_preparation"]:
+        raise ValueError("Current backend source preparation differs")
+    if rust["backend_three_posts"] != rust_actual["unchanged_codegen_backend_source3"] or csharp["feature_six_posts"] != csharp_actual["current_six_compiled_source_closure"]:
+        raise ValueError("Current backend role maps differ from their qualified source ACTUAL closures")
+    current_rows(rust["backend_three_posts"], metadata, source_root)
+    current_rows(csharp["feature_six_posts"], metadata, source_root)
+
+    runtime_roles = {row["role"]: row["descriptor"] for row in metadata["current_source_sets"]["runtime239"] if row["role"].startswith("crates/codegen-runtime/")}
+    runtime69 = profiles["RustRuntime69"]
+    if runtime69["source_actual"] != rust_pin or runtime69["after"] != rust_actual["runtime69_after"]:
+        raise ValueError("Current Rust runtime source qualification differs")
+    after, after_pin = pinned_json(runtime69["after"])
+    rows69 = after["logical_runtime69"]
+    if after.get("qualified") is not True or set(rows69) != set(runtime_roles):
+        raise ValueError("Complete qualified current Rust runtime source closure required")
+    current_rows(rows69, metadata, source_root)
+    current_rows(runtime_roles, metadata, source_root)
+    projection69, projection69_pin = pinned_json(runtime69["current_source_projection"])
+    if projection69.get("qualified") is not True or projection69["source_actual"] != rust_pin or projection69["after"] != after_pin:
+        raise ValueError("Current Rust source projection linkage differs")
+    projected69 = {}
+    for row in projection69["rows69"]:
+        role = row["role"]
+        if role in projected69 or row["qualified"] != rows69.get(role) or not same_body(row["current"], row["qualified"]):
+            raise ValueError("Rust projection row differs: " + role)
+        projected69[role] = row["current"]
+    if set(projected69) != set(rows69):
+        raise ValueError("Complete unique Rust source projection required")
+    current_rows(projected69, metadata, source_root)
+
+    runtime95 = profiles["Runtime95"]
+    if runtime_pin != runtime95["parent_actual"] or runtime_pin != metadata["pins"]["runtime_ACTUAL"] or runtime_pin != csharp["Runtime95_actual"]:
+        raise ValueError("Current Runtime95 qualification differs")
+    if runtime_actual["source_actual"] != csharp_pin or runtime_actual["source_preparation"] != csharp_actual["source_preparation"]:
+        raise ValueError("Runtime95 compilation uses a different backend source qualification")
+    if runtime_actual.get("production95_recompiled_once") is not True:
+        raise ValueError("Runtime95 must have a genuine current production compilation")
+    if dll_pin != runtime95["DLL"] or dll_pin != metadata["pins"]["runtime_DLL"] or dll_pin != runtime_actual["current_Runtime95_DLL"] or dll_pin != csharp["current_Runtime95_DLL"]:
+        raise ValueError("Exact current compiled Runtime95 DLL required")
+    projection95, projection95_pin = pinned_json(runtime95["source_projection"])
+    if projection95_pin != runtime_actual["Runtime95_source_projection"] or projection95_pin != csharp["current_source95_and_smoke72_compile_projection"]:
+        raise ValueError("Current Runtime95 compiled source projection differs")
+    if projection95["source_preparation"] != runtime_actual["source_preparation"] or projection95.get("explicit_compile_items_current_W") is not True or projection95.get("old_Runtime95_DLL_substitution_forbidden") is not True:
+        raise ValueError("Explicit current Runtime95 compilation source custody required")
+    csharp_roles = {row["role"]: row["descriptor"] for row in metadata["current_source_sets"]["CSharp170"]}
+    production_roles = {role for role in csharp_roles if role.startswith("runtime/csharp/Ferrule.Runtime/") and role.endswith(".cs")}
+    smoke_roles = {role for role in csharp_roles if role.startswith("runtime/csharp/Ferrule.Runtime.SmokeTests/") and role.endswith(".cs")}
+    if set(projection95["current_cs95"]) != production_roles or set(projection95["current_smoke72"]) != smoke_roles:
+        raise ValueError("Complete current runtime/smoke compile source maps required")
+    current_rows(projection95["current_cs95"], metadata, source_root)
+    current_rows(projection95["current_smoke72"], metadata, source_root)
+    if runtime95["current_source170_projection"] != csharp["current_CSharp170_source_projection"]:
+        raise ValueError("Current CSharp source projection differs from selected profile")
+    source170, source170_pin = pinned_json(runtime95["current_source170_projection"])
+    if source170.get("qualified") is not True or source170.get("source170_complete_current_main_byte_correspondence") is not True or set(source170["rows170"]) != set(csharp_roles):
+        raise ValueError("Complete current CSharp source projection required")
+    if source170["production95_and_Smoke72_compiled_actual"] != runtime_pin or source170["new_Runtime95_DLL"] != dll_pin or source170["current_cs95"] != projection95["current_cs95"] or source170["current_smoke72"] != projection95["current_smoke72"]:
+        raise ValueError("Current CSharp compiled source/DLL linkage differs")
+    current_rows(source170["rows170"], metadata, source_root)
+    current_rows(csharp_roles, metadata, source_root)
+    return {"profile_selectors": selectors, "qualified_current_Rust_runtime69": after_pin,
+            "current_Rust69_source_projection": projection69_pin, "compiled_current95_projection": projection95_pin,
+            "current_CSharp170_source_projection": source170_pin, "no_historical_DLL_or_source_substitution": True}
 
 
 def main():
@@ -73,7 +209,7 @@ def main():
             raise ValueError("Absolute fixture source proposal required")
         proposal_body, proposal_pin = read(args.fixture_source_proposal, args.fixture_source_proposal_sha256)
         proposal = json.loads(proposal_body)
-        if proposal["issue"] != 688 or proposal["qualified"] is not False:
+        if proposal.get("fixture_issue", proposal["issue"]) != 688 or proposal["qualified"] is not False:
             raise ValueError("Exact source-only nested/identity fixture proposal required")
         posts = proposal["postimages"]
         if set(posts) != {"conformance/basic-owned-nested-alias/" + name for name in ROLES}:
@@ -111,18 +247,9 @@ def main():
     rust_actual, rust_pin = qualification(args.Rust_filter_actual, args.Rust_filter_actual_sha256)
     csharp_actual, csharp_pin = qualification(args.CSharp_filter_actual, args.CSharp_filter_actual_sha256)
     runtime_actual, runtime_pin = qualification(args.CSharp_runtime_actual, args.CSharp_runtime_actual_sha256)
-    if rust_actual.get("issue") != 680 or csharp_actual.get("issue") != 681 or runtime_actual.get("issue") != 681:
-        raise ValueError("Exact current qualified post-fix filter prerequisites required")
-    profiles = metadata["qualified_baseline_profiles"]
-    rust_profile = profiles["Rust_explicit_basic_filters_current_after680"]
-    csharp_profile = profiles["CSharp_explicit_basic_filters_current_after681"]
-    if rust_pin != rust_profile["source_actual"] or csharp_pin != csharp_profile["source_actual"]:
-        raise ValueError("Current published post-fix source profile differs")
-    if runtime_pin != metadata["pins"]["runtime_ACTUAL"] or runtime_pin != profiles["Runtime95"]["parent_actual"]:
-        raise ValueError("Current post-fix fresh Runtime95 actual differs")
     _, dll_pin = read(args.runtime_dll, args.runtime_dll_sha256)
-    if dll_pin != metadata["pins"]["runtime_DLL"]:
-        raise ValueError("Exact current qualified Runtime DLL required")
+    current_binding = runtime_binding(metadata, args.source_root, args.rust_runtime, rust_actual, rust_pin,
+                                      csharp_actual, csharp_pin, runtime_actual, runtime_pin, dll_pin)
     out = Path(args.out)
     out.mkdir(exist_ok=False)
     materialized = {name: write_new(out / "fixture" / name, body) for name, (body, _) in sources.items()}
@@ -176,14 +303,14 @@ def main():
     plan = {
         "status": "PREPARED_UNRUN_SIXTEEN_STEP_COMMAND_PLAN", "issue": 688,
         "pins": {"current_metadata": metadata_pin, "qualified_Rust_filter": rust_pin, "qualified_CSharp_filter": csharp_pin,
-                 "qualified_CSharp_runtime": runtime_pin, "current_Runtime95_DLL": dll_pin, "fixture_source_proposal": proposal_pin},
+                 "qualified_CSharp_runtime": runtime_pin, "current_Runtime95_DLL": dll_pin, "fixture_source_proposal": proposal_pin, "current_runtime_binding": current_binding},
         "main_commit": metadata["main_commit"], "main_tree": metadata["main_tree"],
         "fixture_source_mode": source_mode,
         "original_source_inputs": {name: pin for name, (_, pin) in sources.items()}, "materialized_fixture_inputs": materialized,
         "steps": steps, "exact_call_ids": ids,
         "counts": {"commands": 16, "models": 6, "backend_emissions": 12, "native_calls": 6, "Rust_calls": 6, "CSharp_calls": 6, "total": 18, "typed_failure_calls": 0, "typed_failure_credit": False},
         "Root_execution_requirements": [
-            "Require published current_after680/current_after681 profiles and exact fresh qualified runtime69/Runtime95 closures against current complete source mapping before actors. Historical644/645 profiles cannot qualify changed roles; this preparer copies no source world.",
+            "Require the metadata-selected current Rust/CSharp filter/sort profiles and exact qualified runtime source closures against current main and last readonly mounts before actors. Historical source/DLL profiles cannot qualify changed roles; this preparer copies no source world.",
             "Require qualified Runtime95 source/DLL correspondence and immutable SDK, then compare every emitted runtime artifact digest to that same current readonly source before CSharp compilation.",
             "Use the existing guarded Root owner and sole shared Cargo target lease, offline jobs1/incremental0, inherited approved bounded profiles/RUSTFLAGS and writable task IO only. Bind DOTNET_ROOT/PATH/DOTNET_CLI_HOME/NUGET_PACKAGES/TMPDIR to the immutable SDK and bounded Root task directories.",
             "Retain all reached complete stdout/stderr/COMMAND/input/Project/Program/artifact/results and normal owner closure before comparisons. Stop on the first failed command, retain failures/unreached phases, never replay or read nonexistent outputs.",
