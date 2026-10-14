@@ -4,12 +4,27 @@ use ir::{ItemCountRange, StringLengthRange, Value};
 
 type SchemaMutation = Box<dyn Fn(&mut SchemaNode)>;
 
+/// Keeps retained evidence directory names valid on Windows.
+fn evidence_label(label: &str) -> String {
+    label
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"<>:"/\|?*"#.contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 fn retained_capture(
     label: &str,
     options: &FormatOptions,
 ) -> Result<X12BoundaryOptions, X12BoundaryPolicyError> {
     let root = std::env::temp_dir().join(format!(
-        "ferrule-x12-capture-{label}-{}-{}",
+        "ferrule-x12-capture-{}-{}-{}",
+        evidence_label(label),
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -31,7 +46,8 @@ fn retained_profile(
     side: X12BoundarySide,
 ) -> Result<String, X12BoundaryPolicyError> {
     let root = std::env::temp_dir().join(format!(
-        "ferrule-x12-profile-{label}-{}-{}",
+        "ferrule-x12-profile-{}-{}-{}",
+        evidence_label(label),
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1111,7 +1127,10 @@ fn autocomplete_identity_uses_the_transaction_segment_not_body_element_names() {
                         ..Default::default()
                     };
                     let result = retained_profile(
-                        &format!("body-name-{name}-{composite}-{transaction:?}-{side:?}"),
+                        &format!(
+                            "body-name-{name}-{composite}-{}-{side:?}",
+                            transaction.unwrap_or("none")
+                        ),
                         &candidate,
                         &options,
                         side,
