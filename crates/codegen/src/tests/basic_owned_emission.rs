@@ -2606,3 +2606,816 @@ fn basic_sort_profile_preserves_named_scope_routes_and_dynamic_owner_requests() 
         expected
     );
 }
+
+// Window capability is explicit; these checks use complete public results.
+mod window_profile {
+    use super::*;
+
+    fn windows_program(
+        owner: Option<SourceOwner>,
+        filtered: bool,
+        sort: Option<crate::SortFilterOrder>,
+        windows: Vec<crate::SequenceWindow>,
+        output: IterationOutput,
+    ) -> Program {
+        let mut p = filter_program(owner);
+        p.expressions.extend([
+            node(
+                3,
+                Expression::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            node(
+                4,
+                Expression::Const {
+                    value: Value::Int(5),
+                },
+            ),
+        ]);
+        let input = p.root.iteration.as_ref().unwrap().input().clone();
+        p.root.iteration = Some(IterationPlan::new(
+            input,
+            filtered.then_some(2),
+            sort.map(|order| {
+                crate::SortPlan::new(
+                    crate::SortKey {
+                        expression: 1,
+                        descending: true,
+                    },
+                    vec![crate::SortKey {
+                        expression: 3,
+                        descending: false,
+                    }],
+                    order,
+                )
+            }),
+            windows,
+            output,
+        ));
+        if output == IterationOutput::First {
+            p.target.repeating = false;
+            p.root.repeating = false;
+        }
+        p
+    }
+
+    fn windows_observed(label: &str, p: &Program) -> Result<(), ProgramValidationError> {
+        eprintln!("INPUT W698 {label} complete Program={p:#?}");
+        let basic = crate::validate_basic_owned_window_emission(p);
+        let complete = crate::validate_program_with_basic_owned_windows(p);
+        eprintln!("RAW W698 {label} complete Basic={basic:#?} Program={complete:#?}");
+        assert_eq!(complete, basic);
+        basic
+    }
+
+    #[test]
+    fn basic_window_profile_requires_opt_in_for_all_operators_and_first() {
+        let controls = [
+            (
+                vec![crate::SequenceWindow::SkipFirst { count: 3 }],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![crate::SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![crate::SequenceWindow::From { position: 3 }],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![crate::SequenceWindow::FromTo { first: 3, last: 4 }],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![crate::SequenceWindow::Last { count: 3 }],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![
+                    crate::SequenceWindow::SkipFirst { count: 3 },
+                    crate::SequenceWindow::First { count: 4 },
+                ],
+                IterationOutput::Repeated,
+            ),
+            (
+                vec![
+                    crate::SequenceWindow::First { count: 4 },
+                    crate::SequenceWindow::SkipFirst { count: 3 },
+                ],
+                IterationOutput::First,
+            ),
+            (Vec::new(), IterationOutput::First),
+        ];
+        for owner in [
+            Some(SourceOwner::Primary),
+            Some(SourceOwner::Named { name: "Ref".into() }),
+            None,
+        ] {
+            for order in [
+                crate::SortFilterOrder::SortThenFilter,
+                crate::SortFilterOrder::FilterThenSort,
+            ] {
+                for (windows, output) in &controls {
+                    let p =
+                        windows_program(owner.clone(), true, Some(order), windows.clone(), *output);
+                    let before = p.clone();
+                    let old = filter_scope_error(
+                        owner.as_ref().map(Owner::from),
+                        primary(),
+                        Reason::ScopeControl,
+                    );
+                    assert_eq!(validate_basic_owned_emission(&p), old);
+                    assert_eq!(crate::validate_basic_owned_filter_emission(&p), old);
+                    assert_eq!(crate::validate_basic_owned_sort_emission(&p), old);
+                    if owner.is_some() {
+                        assert_eq!(validate_program(&p), old);
+                        assert_eq!(validate_owned_emission(&p), old);
+                    }
+                    assert_eq!(
+                        windows_observed("operators/ordered composition/First/owners/orders", &p),
+                        Ok(())
+                    );
+                    assert_eq!(p, before);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn basic_window_profile_lowering_preserves_the_complete_ordered_program() {
+        for order in [
+            mapping::SortFilterOrder::SortThenFilter,
+            mapping::SortFilterOrder::FilterThenSort,
+        ] {
+            let mut project = crate::tests::supported_project();
+            project.source = input_schema();
+            project.target = SchemaNode::group(
+                "Output",
+                vec![SchemaNode::scalar("Value", ScalarType::String)],
+            );
+            let owned_field = OwnedSourceField {
+                source: OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Rows", "Value"]),
+                },
+                frame: Some(path(&["Rows"])),
+            };
+            let position = OwnedPosition {
+                owner: SourceOwner::Primary,
+                collection: Some(path(&["Rows"])),
+            };
+            project.graph.nodes = std::collections::BTreeMap::from([
+                (1, mapping::Node::OwnedSourceField(owned_field.clone())),
+                (
+                    2,
+                    mapping::Node::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                (3, mapping::Node::OwnedPosition(position.clone())),
+                (
+                    4,
+                    mapping::Node::Const {
+                        value: Value::Int(2),
+                    },
+                ),
+                (
+                    5,
+                    mapping::Node::Const {
+                        value: Value::Int(5),
+                    },
+                ),
+                (
+                    99,
+                    mapping::Node::Const {
+                        value: Value::String("unused".into()),
+                    },
+                ),
+            ]);
+            project.root = mapping::Scope {
+                iteration: mapping::ScopeIteration::OwnedSource {
+                    source: OwnedSourceRef {
+                        owner: SourceOwner::Primary,
+                        path: path(&["Rows"]),
+                    },
+                    output_path: None,
+                },
+                iteration_output: mapping::IterationOutput::First,
+                filter: Some(2),
+                sort_by: Some(1),
+                sort_descending: true,
+                sort_then_by: vec![mapping::SortKey {
+                    node: 3,
+                    descending: false,
+                }],
+                sort_filter_order: order,
+                windows: vec![
+                    mapping::SequenceWindow::SkipFirst { count: 4 },
+                    mapping::SequenceWindow::First { count: 5 },
+                    mapping::SequenceWindow::From { position: 4 },
+                    mapping::SequenceWindow::FromTo { first: 4, last: 5 },
+                    mapping::SequenceWindow::Last { count: 4 },
+                ],
+                bindings: vec![mapping::Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }],
+                ..Default::default()
+            };
+            let before = format!("{project:#?}");
+            let Err(ProgramValidationError::OwnedSource { diagnostic }) =
+                filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl)
+            else {
+                unreachable!()
+            };
+            let closed = Err(crate::LowerError::new(vec![
+                crate::Diagnostic::OwnedSource { diagnostic },
+            ]));
+            let ordinary = crate::lower(&project);
+            let filtered = crate::lower_with_basic_owned_filters(&project);
+            let sorted = crate::lower_with_basic_owned_sort(&project);
+            let actual = crate::lower_with_basic_owned_windows(&project);
+            eprintln!(
+                "INPUT W698 genuine Project={project:#?} RAW default={ordinary:#?} filter={filtered:#?} sort={sorted:#?} windows={actual:#?}"
+            );
+            assert_eq!(ordinary, closed);
+            assert_eq!(filtered, closed);
+            assert_eq!(sorted, closed);
+            let mut expected = program(false);
+            expected.extra_sources.clear();
+            expected.expressions = vec![
+                node(1, Expression::OwnedSourceField(owned_field)),
+                node(
+                    2,
+                    Expression::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                node(3, Expression::OwnedPosition(position)),
+                node(
+                    4,
+                    Expression::Const {
+                        value: Value::Int(2),
+                    },
+                ),
+                node(
+                    5,
+                    Expression::Const {
+                        value: Value::Int(5),
+                    },
+                ),
+            ];
+            expected.root.iteration = Some(IterationPlan::new(
+                crate::OwnedSourceIteration::new(OwnedSourceRef {
+                    owner: SourceOwner::Primary,
+                    path: path(&["Rows"]),
+                }),
+                Some(2),
+                Some(crate::SortPlan::new(
+                    crate::SortKey {
+                        expression: 1,
+                        descending: true,
+                    },
+                    vec![crate::SortKey {
+                        expression: 3,
+                        descending: false,
+                    }],
+                    order.into(),
+                )),
+                vec![
+                    crate::SequenceWindow::SkipFirst { count: 4 },
+                    crate::SequenceWindow::First { count: 5 },
+                    crate::SequenceWindow::From { position: 4 },
+                    crate::SequenceWindow::FromTo { first: 4, last: 5 },
+                    crate::SequenceWindow::Last { count: 4 },
+                ],
+                IterationOutput::First,
+            ));
+            assert_eq!(actual, Ok(expected.clone()));
+            assert_eq!(windows_observed("whole lowered Program", &expected), Ok(()));
+            assert_eq!(format!("{project:#?}"), before);
+        }
+    }
+
+    #[test]
+    fn basic_window_profile_preserves_structural_error_precedence() {
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            vec![crate::SequenceWindow::FromTo { first: 3, last: 99 }],
+            IterationOutput::Repeated,
+        );
+        let missing = Err(ProgramValidationError::MissingWindowExpression {
+            target_path: Vec::new(),
+            window: 0,
+            bound: 1,
+            expression: 99,
+        });
+        assert_eq!(windows_observed("missing second endpoint", &p), missing);
+        assert_eq!(validate_program(&p), missing);
+        p.expressions.push(node(
+            3,
+            Expression::Const {
+                value: Value::Int(1),
+            },
+        ));
+        let duplicate = Err(ProgramValidationError::DuplicateExpression { node: 3 });
+        assert_eq!(
+            windows_observed("duplicate precedes missing endpoint/capability", &p),
+            duplicate
+        );
+        assert_eq!(validate_program(&p), duplicate);
+
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        p.expressions[2].expression = field(
+            SourceOwner::Named {
+                name: "Absent".into(),
+            },
+            &["Value"],
+            Some(Vec::new()),
+        );
+        let unknown = Err(ProgramValidationError::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Structure {
+                location: Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 3,
+                    scope: None,
+                },
+                request: Request::Field {
+                    owner: Owner::Named {
+                        name: "Absent".into(),
+                    },
+                    path: path(&["Value"]),
+                    frame: Some(Vec::new()),
+                },
+                reason: Structure::UnknownOwner,
+            }),
+        });
+        assert_eq!(
+            windows_observed("stored bound owner structure before capability", &p),
+            unknown
+        );
+        assert_eq!(validate_basic_owned_emission(&p), unknown);
+    }
+
+    #[test]
+    fn basic_window_profile_limits_scalar_permission_and_preserves_inherited_special_context() {
+        for implicit in [false, true] {
+            let mut p = windows_program(
+                Some(SourceOwner::Primary),
+                false,
+                None,
+                vec![crate::SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            );
+            p.target = SchemaNode::scalar("Output", ScalarType::String).repeating();
+            p.root.bindings.clear();
+            p.root.construction = TargetConstruction::Scalar {
+                expression: 1,
+                target_domain: ScalarTargetDomain::Single(ScalarType::String),
+            };
+            assert_eq!(windows_observed("windowed Scalar own marker", &p), Ok(()));
+            let input = p.root.iteration.as_ref().unwrap().input().clone();
+            if implicit {
+                p.target.repeating = false;
+                p.root.repeating = false;
+                p.root.iteration = Some(IterationPlan::new(
+                    input,
+                    None,
+                    None,
+                    Vec::new(),
+                    IterationOutput::First,
+                ));
+                assert_eq!(
+                    windows_observed("Scalar First remains structurally invalid", &p),
+                    Err(ProgramValidationError::InvalidIterationOutput {
+                        target_path: Vec::new(),
+                        output: IterationOutput::First
+                    })
+                );
+            } else {
+                p.root.iteration = Some(IterationPlan::new(
+                    input,
+                    None,
+                    None,
+                    Vec::new(),
+                    IterationOutput::Repeated,
+                ));
+                let old = filter_scope_error(
+                    Some(Owner::Primary),
+                    primary(),
+                    Reason::SpecialConstruction,
+                );
+                assert_eq!(
+                    windows_observed("unsorted unwindowed Scalar own marker unchanged", &p),
+                    old
+                );
+                assert_eq!(crate::validate_basic_owned_sort_emission(&p), old);
+            }
+        }
+        for generated in [false, true] {
+            let mut p = windows_program(
+                Some(SourceOwner::Primary),
+                false,
+                None,
+                vec![crate::SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            );
+            let mut child = p.root.clone();
+            child.target_field = "Child".into();
+            child.bindings.clear();
+            child.construction = TargetConstruction::Scalar {
+                expression: 1,
+                target_domain: ScalarTargetDomain::Single(ScalarType::String),
+            };
+            p.target = SchemaNode::group(
+                "Output",
+                vec![SchemaNode::scalar("Child", ScalarType::String).repeating()],
+            )
+            .repeating();
+            p.root.bindings.clear();
+            p.root.children = vec![child];
+            let input: crate::IterationSource = if generated {
+                p.expressions.push(node(
+                    5,
+                    Expression::SourceField {
+                        path: Vec::new(),
+                        frame: None,
+                    },
+                ));
+                GeneratedSequence::Range {
+                    from: None,
+                    to: 3,
+                    item: 5,
+                }
+                .into()
+            } else {
+                SourceIteration::new(path(&["Rows"])).into()
+            };
+            let mut parent =
+                IterationPlan::new(input, None, None, Vec::new(), IterationOutput::Repeated);
+            if !generated {
+                parent = parent.with_grouping(crate::GroupingPlan::By { key: 3 });
+            }
+            p.root.iteration = Some(parent);
+            let route = primary().descendant(mapping::SourceScopeStep::Child(0));
+            let expected = capability(
+                Location::Iteration { scope: route },
+                Some(Request::Iteration {
+                    owner: Owner::Primary,
+                    path: path(&["Rows"]),
+                }),
+                if generated {
+                    Reason::GeneratedItem
+                } else {
+                    Reason::Grouping
+                },
+                Origin::Scope { scope: primary() },
+            );
+            assert_eq!(
+                windows_observed(
+                    "child Scalar window does not erase inherited closed parent",
+                    &p
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn basic_window_profile_distinguishes_parent_bounds_from_the_same_item_key() {
+        for key in [false, true] {
+            let mut p = windows_program(
+                Some(SourceOwner::Primary),
+                false,
+                None,
+                vec![crate::SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            );
+            p.expressions[2].expression = Expression::SourceDocumentPath;
+            if key {
+                let input = p.root.iteration.as_ref().unwrap().input().clone();
+                p.root.iteration = Some(IterationPlan::new(
+                    input,
+                    None,
+                    Some(crate::SortPlan::new(
+                        crate::SortKey {
+                            expression: 3,
+                            descending: false,
+                        },
+                        Vec::new(),
+                        crate::SortFilterOrder::SortThenFilter,
+                    )),
+                    vec![crate::SequenceWindow::First { count: 3 }],
+                    IterationOutput::Repeated,
+                ));
+            }
+            let expected = if key {
+                capability(
+                    Location::Expression {
+                        namespace: Namespace::Main,
+                        node: 3,
+                        scope: Some(primary()),
+                    },
+                    None,
+                    Reason::XmlOperator,
+                    Origin::Expression {
+                        namespace: Namespace::Main,
+                        node: 3,
+                    },
+                )
+            } else {
+                retained(3, Reason::Document)
+            };
+            assert_eq!(
+                windows_observed("same node bound-only versus bound-plus-item-key", &p),
+                expected
+            );
+        }
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        );
+        let mut child = p.root.clone();
+        child.target_field = "Child".into();
+        child.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Named { name: "Ref".into() },
+                path: path(&["Rows"]),
+            }),
+            None,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        ));
+        p.expressions[2].expression = Expression::SourceDocumentPath;
+        p.target = SchemaNode::group(
+            "Output",
+            vec![
+                SchemaNode::group(
+                    "Child",
+                    vec![SchemaNode::scalar("Value", ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        )
+        .repeating();
+        p.root.bindings.clear();
+        p.root.children = vec![child];
+        let route = primary().descendant(mapping::SourceScopeStep::Child(0));
+        assert_eq!(
+            windows_observed(
+                "bound inherits outer owned frame but not new inner frame",
+                &p
+            ),
+            capability(
+                Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 3,
+                    scope: Some(route)
+                },
+                None,
+                Reason::XmlOperator,
+                Origin::Expression {
+                    namespace: Namespace::Main,
+                    node: 3
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn basic_window_profile_retains_all_potential_bound_edges_and_exact_frame_pins() {
+        for kind in 0..4 {
+            for frame in [None, Some(path(&["D"])), Some(Vec::new())] {
+                for reached in [false, true] {
+                    let mut p = windows_program(
+                        Some(SourceOwner::Primary),
+                        false,
+                        None,
+                        vec![crate::SequenceWindow::First {
+                            count: if reached { 3 } else { 4 },
+                        }],
+                        IterationOutput::Repeated,
+                    );
+                    dynamic(&mut p);
+                    p.expressions[1].expression = Expression::Const {
+                        value: Value::Bool(false),
+                    };
+                    p.expressions.push(node(
+                        99,
+                        Expression::SourceField {
+                            path: path(&["D", "Flag"]),
+                            frame: frame.clone(),
+                        },
+                    ));
+                    p.expressions[2].expression = match kind {
+                        0 => Expression::If {
+                            condition: 2,
+                            then: 99,
+                            else_: 4,
+                        },
+                        1 => Expression::RuntimeParameterDefault {
+                            name: "count".into(),
+                            ty: ScalarType::Int,
+                            default: 99,
+                        },
+                        2 => Expression::Raise { message: Some(99) },
+                        _ => Expression::ValueMap {
+                            input: 99,
+                            input_type: Some(ScalarType::Bool),
+                            table: vec![(Value::Bool(false), Value::Int(2))],
+                            default: Some(Value::Int(0)),
+                        },
+                    };
+                    let before = p.clone();
+                    assert_eq!(
+                        windows_observed(
+                            "potential inactive/default/Raise/ValueMap bound dependencies",
+                            &p
+                        ),
+                        if reached && frame.as_ref().is_none_or(|frame| !frame.is_empty()) {
+                            retained(99, Reason::UnsupportedBasicContext)
+                        } else {
+                            Ok(())
+                        }
+                    );
+                    assert_eq!(p, before);
+                }
+            }
+        }
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        dynamic(&mut p);
+        p.expressions[2].expression = field(
+            SourceOwner::Named { name: "D".into() },
+            &["Rows", "Flag"],
+            Some(path(&["Rows"])),
+        );
+        assert_eq!(
+            windows_observed("parent bound preserves exact dynamic owned request", &p),
+            capability(
+                Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 3,
+                    scope: Some(primary())
+                },
+                Some(Request::Field {
+                    owner: Owner::Named { name: "D".into() },
+                    path: path(&["Rows", "Flag"]),
+                    frame: Some(path(&["Rows"]))
+                }),
+                Reason::DynamicOwner,
+                Origin::DynamicSource {
+                    index: 4,
+                    name: "D".into()
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn basic_window_profile_preserves_older_supported_results_and_closed_domains() {
+        for p in [
+            program(false),
+            program(true),
+            filter_program(Some(SourceOwner::Primary)),
+            sort_program(
+                Some(SourceOwner::Primary),
+                true,
+                crate::SortFilterOrder::FilterThenSort,
+            ),
+        ] {
+            let old = crate::validate_basic_owned_sort_emission(&p);
+            assert_eq!(
+                windows_observed("older supported complete Program", &p),
+                old
+            );
+        }
+        let project = crate::tests::supported_project();
+        let old = crate::lower_with_basic_owned_sort(&project);
+        let actual = crate::lower_with_basic_owned_windows(&project);
+        eprintln!(
+            "INPUT W698 unchanged complete Project={project:#?} RAW sort={old:#?} windows={actual:#?}"
+        );
+        assert_eq!(actual, old);
+        assert!(actual.is_ok());
+
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        p.root.iteration = Some(
+            p.root
+                .iteration
+                .take()
+                .unwrap()
+                .with_grouping(crate::GroupingPlan::By { key: 3 }),
+        );
+        assert_eq!(
+            windows_observed("grouping stays closed", &p),
+            filter_scope_error(Some(Owner::Primary), primary(), Reason::Grouping)
+        );
+        let mut p = windows_program(
+            None,
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        p.expressions.push(node(
+            5,
+            Expression::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ));
+        p.root.iteration = Some(IterationPlan::new(
+            GeneratedSequence::Range {
+                from: None,
+                to: 3,
+                item: 5,
+            },
+            None,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        ));
+        assert_eq!(
+            windows_observed("generated window input stays closed", &p),
+            filter_scope_error(None, primary(), Reason::GeneratedItem)
+        );
+        let mut p = windows_program(
+            None,
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        unused_function(&mut p);
+        assert_eq!(
+            windows_observed("stored function remains isolated", &p),
+            capability(
+                Location::Expression {
+                    namespace: Namespace::Function(FunctionId::new(7)),
+                    node: 0,
+                    scope: None
+                },
+                None,
+                Reason::IsolatedFunction,
+                Origin::FunctionBody {
+                    function: FunctionId::new(7)
+                },
+            )
+        );
+        let mut p = windows_program(
+            Some(SourceOwner::Primary),
+            false,
+            None,
+            vec![crate::SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        p.failure_rules.push(FailureRule {
+            iteration: FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+            selection: FailureSelection::All,
+            message: Some(1),
+        });
+        assert_eq!(
+            windows_observed("failure ownership remains closed", &p),
+            capability(
+                Location::Expression {
+                    namespace: Namespace::Main,
+                    node: 1,
+                    scope: None
+                },
+                Some(Request::Field {
+                    owner: Owner::Primary,
+                    path: path(&["Rows", "Value"]),
+                    frame: Some(path(&["Rows"]))
+                }),
+                Reason::FailureRule,
+                Origin::Failure { index: 0 },
+            )
+        );
+    }
+}

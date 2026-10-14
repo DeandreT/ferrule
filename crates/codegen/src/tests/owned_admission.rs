@@ -2126,3 +2126,706 @@ mod sort_admission {
         );
     }
 }
+
+mod window_admission {
+    use super::*;
+    use crate::{
+        IterationOutput, NamedInputCatalogue, NamedTargetInputCatalogue,
+        OwnedSourceCapabilityOrigin as Origin, OwnedSourceCapabilityReason as Reason,
+        OwnedSourceDiagnostic as Diagnostic, OwnedSourceDiagnosticLocation as Location,
+        OwnedSourceDiagnosticOwner as Owner, OwnedSourceDiagnosticRequest as Request,
+        OwnedSourceNamespace as Namespace, OwnedSourceStructureReason as Structure,
+        ProgramValidationError as Error, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
+        legacy_named_input_admission_plan_with_basic_owned_filters,
+        legacy_named_input_admission_plan_with_basic_owned_sort,
+        legacy_named_input_admission_plan_with_basic_owned_windows,
+        validate_program_with_basic_owned_windows,
+    };
+    use mapping::{SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
+
+    fn primary() -> SourceScopeLocation {
+        SourceScopeLocation::root(SourceScopeTarget::Primary)
+    }
+    fn row_query(owner: SourceOwner) -> Expression {
+        Expression::OwnedSourceField(OwnedSourceField {
+            source: OwnedSourceRef {
+                owner,
+                path: path(&["Rows", "Value"]),
+            },
+            frame: Some(path(&["Rows"])),
+        })
+    }
+    fn fixture(owner: Option<SourceOwner>) -> crate::Program {
+        let mut p = input(
+            vec![
+                constant(0),
+                constant(1),
+                node(
+                    2,
+                    Expression::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                node(
+                    3,
+                    Expression::Const {
+                        value: Value::Int(2),
+                    },
+                ),
+                node(
+                    4,
+                    Expression::Const {
+                        value: Value::Int(3),
+                    },
+                ),
+                constant(u32::MAX),
+            ],
+            scope(vec![binding("Value", 1)]),
+        );
+        let source: crate::IterationSource = match owner {
+            Some(owner) => {
+                p.expressions[1].expression = row_query(owner.clone());
+                crate::OwnedSourceIteration::new(OwnedSourceRef {
+                    owner,
+                    path: path(&["Rows"]),
+                })
+                .into()
+            }
+            None => SourceIteration::new(path(&["Ref", "Rows"])).into(),
+        };
+        p.root.iteration = Some(IterationPlan::new(
+            source,
+            None,
+            None,
+            vec![],
+            IterationOutput::Repeated,
+        ));
+        configure(&mut p, None, None, vec![], IterationOutput::Repeated);
+        p
+    }
+    fn configure(
+        p: &mut crate::Program,
+        predicate: Option<u32>,
+        sort: Option<SortPlan>,
+        windows: Vec<SequenceWindow>,
+        output: IterationOutput,
+    ) {
+        let source = p.root.iteration.as_ref().unwrap().input().clone();
+        p.root.iteration = Some(IterationPlan::new(source, predicate, sort, windows, output));
+        p.root.repeating = output == IterationOutput::Repeated;
+        p.target = match &p.root.construction {
+            TargetConstruction::Scalar { .. } => {
+                let target = typed_scalar("Output", ScalarType::String);
+                if p.root.repeating {
+                    target.repeating()
+                } else {
+                    target
+                }
+            }
+            _ => target_schema(&p.root, "Output"),
+        };
+    }
+    fn sort(key: u32, secondary: &[u32], order: SortFilterOrder) -> SortPlan {
+        SortPlan::new(
+            SortKey {
+                expression: key,
+                descending: false,
+            },
+            secondary
+                .iter()
+                .map(|expression| SortKey {
+                    expression: *expression,
+                    descending: true,
+                })
+                .collect(),
+            order,
+        )
+    }
+    fn catalogue<'a>(p: &'a crate::Program, required: &[usize]) -> NamedInputCatalogue<'a> {
+        NamedInputCatalogue {
+            entries: p
+                .extra_sources
+                .iter()
+                .enumerate()
+                .map(|(index, source)| crate::NamedInputAdmission {
+                    declaration_index: index,
+                    name: &source.name,
+                    availability: if source.dynamic.is_some() {
+                        A::ReservedUnavailable
+                    } else if required.contains(&index) {
+                        A::RequiredLegacy
+                    } else {
+                        A::Optional
+                    },
+                })
+                .collect(),
+        }
+    }
+    fn expected<'a>(
+        p: &'a crate::Program,
+        primary_required: &[usize],
+        all_required: &[usize],
+        named: &[(usize, &[usize])],
+    ) -> NamedInputAdmissionPlan<'a> {
+        NamedInputAdmissionPlan {
+            all_outputs: catalogue(p, all_required),
+            primary: catalogue(p, primary_required),
+            named_targets: named
+                .iter()
+                .map(|(index, required)| NamedTargetInputCatalogue {
+                    target_index: *index,
+                    name: &p.extra_targets[*index].name,
+                    catalogue: catalogue(p, required),
+                })
+                .collect(),
+        }
+    }
+    fn observed<'a>(
+        label: &str,
+        p: &'a crate::Program,
+    ) -> Result<NamedInputAdmissionPlan<'a>, Error> {
+        let before = format!("{p:#?}");
+        let actual = legacy_named_input_admission_plan_with_basic_owned_windows(p);
+        eprintln!("{label} complete Program={p:#?} complete window admission Result={actual:#?}");
+        assert_eq!(format!("{p:#?}"), before);
+        actual
+    }
+    fn traced(
+        label: &str,
+        p: &crate::Program,
+    ) -> Result<Vec<(Option<FunctionId>, usize, u32)>, Error> {
+        let before = format!("{p:#?}");
+        let actual = crate::owned_admission::primary_visits_for_test_with_basic_owned_windows(p);
+        eprintln!(
+            "{label} complete Program={p:#?} complete window namespace/context/node visits={actual:#?}"
+        );
+        assert_eq!(format!("{p:#?}"), before);
+        actual
+    }
+    fn borrowed(p: &crate::Program, plan: &NamedInputAdmissionPlan<'_>) {
+        for entries in std::iter::once(&plan.all_outputs)
+            .chain(std::iter::once(&plan.primary))
+            .chain(plan.named_targets.iter().map(|target| &target.catalogue))
+        {
+            assert_eq!(entries.entries.len(), p.extra_sources.len());
+            for (index, entry) in entries.entries.iter().enumerate() {
+                assert_eq!(
+                    (entry.declaration_index, entry.name),
+                    (index, p.extra_sources[index].name.as_str())
+                );
+                assert!(std::ptr::eq(
+                    entry.name.as_ptr(),
+                    p.extra_sources[index].name.as_ptr()
+                ));
+            }
+        }
+        for (index, entry) in plan.named_targets.iter().enumerate() {
+            assert_eq!(entry.target_index, index);
+            assert_eq!(entry.name, p.extra_targets[index].name.as_str());
+            assert!(std::ptr::eq(
+                entry.name.as_ptr(),
+                p.extra_targets[index].name.as_ptr()
+            ));
+        }
+    }
+    fn scope_error(p: &crate::Program, reason: Reason) -> Error {
+        Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Iteration { scope: primary() },
+                request: p
+                    .root
+                    .iteration
+                    .as_ref()
+                    .and_then(IterationPlan::owned_source_iteration)
+                    .map(|source| Request::Iteration {
+                        owner: (&source.source().owner).into(),
+                        path: source.source().path.clone(),
+                    }),
+                reason,
+                origin: Origin::Scope { scope: primary() },
+            }),
+        }
+    }
+
+    #[test]
+    fn window_operators_first_scalar_and_frame_pins_keep_complete_borrowed_catalogues() {
+        for order in [
+            SortFilterOrder::SortThenFilter,
+            SortFilterOrder::FilterThenSort,
+        ] {
+            for owner in [
+                None,
+                Some(SourceOwner::Primary),
+                Some(SourceOwner::Named { name: "Ref".into() }),
+                Some(SourceOwner::Named {
+                    name: " Ref 雪 ".into(),
+                }),
+            ] {
+                let legacy_source = owner.is_none();
+                for control in 0..8 {
+                    let mut p = fixture(owner.clone());
+                    p.expressions[3].expression = legacy(&["Guard", "Value"], None);
+                    let windows = match control {
+                        0 => vec![SequenceWindow::SkipFirst { count: 3 }],
+                        1 => vec![SequenceWindow::First { count: 3 }],
+                        2 => vec![SequenceWindow::From { position: 3 }],
+                        3 => vec![SequenceWindow::FromTo { first: 3, last: 4 }],
+                        4 => vec![SequenceWindow::Last { count: 3 }],
+                        5 | 7 => vec![
+                            SequenceWindow::Last { count: 3 },
+                            SequenceWindow::From { position: 4 },
+                        ],
+                        _ => vec![],
+                    };
+                    let first = control == 6 || control == 7;
+                    if control == 5 {
+                        p.root.bindings.clear();
+                        p.root.construction = TargetConstruction::Scalar {
+                            expression: 1,
+                            target_domain: ScalarType::String.into(),
+                        };
+                    }
+                    configure(
+                        &mut p,
+                        Some(2),
+                        Some(sort(0, &[4], order)),
+                        windows,
+                        if first {
+                            IterationOutput::First
+                        } else {
+                            IterationOutput::Repeated
+                        },
+                    );
+                    let required: &[usize] = match (legacy_source, control == 6) {
+                        (true, true) => &[1],
+                        (true, false) => &[1, 3],
+                        (false, true) => &[],
+                        (false, false) => &[3],
+                    };
+                    let actual = observed("N698-A01 ordered operators and output shape", &p);
+                    assert_eq!(actual, Ok(expected(&p, required, required, &[])));
+                    borrowed(&p, actual.as_ref().unwrap());
+                    if !legacy_source {
+                        let error = scope_error(&p, Reason::ScopeControl);
+                        assert_eq!(legacy_named_input_admission_plan(&p), Err(error.clone()));
+                        assert_eq!(
+                            legacy_named_input_admission_plan_with_basic_owned_filters(&p),
+                            Err(error.clone())
+                        );
+                        assert_eq!(
+                            legacy_named_input_admission_plan_with_basic_owned_sort(&p),
+                            Err(error)
+                        );
+                    }
+                }
+            }
+        }
+        for (frame, required) in [
+            (None, vec![3]),
+            (Some(&["Other", "Rows"][..]), vec![2]),
+            (Some(&[][..]), vec![]),
+        ] {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions[3].expression = legacy(&["Guard", "Value"], frame);
+            configure(
+                &mut p,
+                None,
+                None,
+                vec![SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            );
+            let actual = observed("N698-A01 parent bound explicit frame pin", &p);
+            assert_eq!(actual, Ok(expected(&p, &required, &required, &[])));
+            borrowed(&p, actual.as_ref().unwrap());
+        }
+        let mut p = fixture(Some(SourceOwner::Primary));
+        p.expressions[3].expression = owned("Guard");
+        configure(
+            &mut p,
+            None,
+            None,
+            vec![SequenceWindow::First { count: 3 }],
+            IterationOutput::Repeated,
+        );
+        let actual = observed("N698-A01 explicit owned bound remains demand-driven", &p);
+        assert_eq!(actual, Ok(expected(&p, &[], &[], &[])));
+        borrowed(&p, actual.as_ref().unwrap());
+        let mut p = input(
+            vec![node(1, owned("Ref")), constant(40)],
+            scope(vec![binding("Value", 1)]),
+        );
+        p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
+            path: 40,
+            driver: SourceIteration::new(vec![]),
+        });
+        let actual = observed("N698-A01 old control-free reserved slot", &p);
+        assert_eq!(actual, Ok(expected(&p, &[], &[], &[])));
+        assert_eq!(actual, legacy_named_input_admission_plan(&p));
+        assert_eq!(
+            actual,
+            legacy_named_input_admission_plan_with_basic_owned_filters(&p)
+        );
+        assert_eq!(
+            actual,
+            legacy_named_input_admission_plan_with_basic_owned_sort(&p)
+        );
+        borrowed(&p, actual.as_ref().unwrap());
+    }
+
+    #[test]
+    fn window_bounds_parent_and_item_dual_visits_preserve_outer_environments() {
+        for order in [
+            SortFilterOrder::SortThenFilter,
+            SortFilterOrder::FilterThenSort,
+        ] {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions[2].expression = Expression::Call {
+                function: crate::ScalarFunction::Exists,
+                args: vec![4],
+            };
+            p.expressions[3].expression = legacy(&["Ref", "Value"], None);
+            p.expressions[4].expression = legacy(&["Guard", "Value"], None);
+            p.expressions.push(node(5, owned("Other")));
+            configure(
+                &mut p,
+                Some(2),
+                Some(sort(3, &[5], order)),
+                vec![
+                    SequenceWindow::FromTo { first: 3, last: 3 },
+                    SequenceWindow::Last { count: 5 },
+                ],
+                IterationOutput::Repeated,
+            );
+            assert_eq!(
+                observed("N698-A02 shared key and bound dependencies", &p),
+                Ok(expected(&p, &[1, 3], &[1, 3], &[]))
+            );
+            assert_eq!(
+                traced("N698-A02 top-level complete dual-environment trace", &p),
+                Ok(vec![
+                    (None, 0, 3),
+                    (None, 0, 5),
+                    (None, 1, 1),
+                    (None, 1, 2),
+                    (None, 1, 3),
+                    (None, 1, 4),
+                    (None, 1, 5),
+                ])
+            );
+
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.root.bindings = vec![binding("Value", 0)];
+            p.expressions[3].expression = legacy(&["Ref", "Value"], None);
+            p.expressions[4].expression = legacy(&["Guard", "Value"], None);
+            p.expressions.extend([
+                node(5, owned("Other")),
+                node(
+                    6,
+                    row_query(SourceOwner::Named {
+                        name: "Other".into(),
+                    }),
+                ),
+            ]);
+            configure(
+                &mut p,
+                Some(2),
+                Some(sort(4, &[], order)),
+                vec![SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            );
+            let mut child = scope(vec![binding("Value", 6)]);
+            child.target_field = "Child".into();
+            child.repeating = true;
+            child.iteration = Some(IterationPlan::new(
+                crate::OwnedSourceIteration::new(OwnedSourceRef {
+                    owner: SourceOwner::Named {
+                        name: "Other".into(),
+                    },
+                    path: path(&["Rows"]),
+                }),
+                Some(2),
+                Some(sort(3, &[], order)),
+                vec![SequenceWindow::FromTo { first: 3, last: 5 }],
+                IterationOutput::Repeated,
+            ));
+            p.root.children.push(child);
+            refresh(&mut p);
+            let actual = observed("N698-A02 nested bounds retain outer source ancestry", &p);
+            assert_eq!(actual, Ok(expected(&p, &[1, 3], &[1, 3], &[])));
+            borrowed(&p, actual.as_ref().unwrap());
+            assert_eq!(
+                traced("N698-A02 nested complete parent/item trace", &p),
+                Ok(vec![
+                    (None, 0, 3),
+                    (None, 1, 0),
+                    (None, 1, 2),
+                    (None, 1, 4),
+                    (None, 2, 3),
+                    (None, 2, 5),
+                    (None, 3, 2),
+                    (None, 3, 3),
+                    (None, 3, 6),
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn window_potential_branches_defaults_value_maps_targets_and_failures_keep_complete_plans() {
+        for order in [
+            SortFilterOrder::SortThenFilter,
+            SortFilterOrder::FilterThenSort,
+        ] {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            p.expressions[2].expression = Expression::Const {
+                value: Value::Bool(false),
+            };
+            p.expressions[3].expression = legacy(&["Ref", "Value"], None);
+            p.expressions[4].expression = legacy(&["Path", "Value"], None);
+            p.expressions.extend([
+                node(
+                    5,
+                    Expression::RuntimeParameterDefault {
+                        name: "count".into(),
+                        ty: ScalarType::String,
+                        default: 7,
+                    },
+                ),
+                node(
+                    6,
+                    Expression::ValueMap {
+                        input: 4,
+                        input_type: Some(ScalarType::String),
+                        table: vec![(Value::String("3".into()), Value::String("2".into()))],
+                        default: Some(Value::String("0".into())),
+                    },
+                ),
+                node(7, legacy(&[" Ref 雪 ", "Value"], None)),
+                node(
+                    8,
+                    Expression::If {
+                        condition: 2,
+                        then: 3,
+                        else_: 5,
+                    },
+                ),
+                node(9, legacy(&["Driver", "Value"], None)),
+                node(11, legacy(&["Other", "Value"], None)),
+            ]);
+            p.expressions
+                .iter_mut()
+                .find(|entry| entry.id == u32::MAX)
+                .unwrap()
+                .expression = legacy(&["Unused", "Value"], None);
+            configure(
+                &mut p,
+                Some(2),
+                Some(sort(8, &[6], order)),
+                vec![
+                    SequenceWindow::First { count: 6 },
+                    SequenceWindow::Last { count: 8 },
+                ],
+                IterationOutput::Repeated,
+            );
+            let mut named = scope(vec![binding("Value", 0)]);
+            named.repeating = true;
+            named.iteration = Some(IterationPlan::new(
+                crate::OwnedSourceIteration::new(OwnedSourceRef {
+                    owner: SourceOwner::Named { name: "Ref".into() },
+                    path: path(&["Rows"]),
+                }),
+                None,
+                Some(sort(9, &[], order)),
+                vec![SequenceWindow::From { position: 5 }],
+                IterationOutput::Repeated,
+            ));
+            p.extra_targets.push(NamedTargetProgram {
+                name: " Window Target 雪 ".into(),
+                target: target_schema(&named, "Named"),
+                root: named,
+            });
+            let passive = scope(vec![binding("Value", 0)]);
+            p.extra_targets.push(NamedTargetProgram {
+                name: " passive ".into(),
+                target: target_schema(&passive, "Passive"),
+                root: passive,
+            });
+            p.failure_rules.push(crate::FailureRule {
+                iteration: crate::FailureIteration::Source(SourceIteration::new(path(&[
+                    "Guard", "Rows",
+                ]))),
+                selection: crate::FailureSelection::WhenTrue(2),
+                message: Some(11),
+            });
+            let actual = observed(
+                "N698-A03 all potential bound and selected-target requirements",
+                &p,
+            );
+            assert_eq!(
+                actual,
+                Ok(expected(
+                    &p,
+                    &[1, 2, 3, 4, 7],
+                    &[1, 2, 3, 4, 5, 7],
+                    &[(0, &[2, 3, 5, 7]), (1, &[2, 3])]
+                ))
+            );
+            borrowed(&p, actual.as_ref().unwrap());
+        }
+    }
+
+    #[test]
+    fn window_planner_forwards_full_structural_errors_and_inherited_grouping_closure() {
+        for malformed in 0..4 {
+            let mut p = fixture(Some(SourceOwner::Primary));
+            configure(
+                &mut p,
+                Some(2),
+                Some(sort(0, &[], SortFilterOrder::SortThenFilter)),
+                vec![
+                    SequenceWindow::SkipFirst { count: 3 },
+                    SequenceWindow::FromTo { first: 3, last: 4 },
+                ],
+                IterationOutput::Repeated,
+            );
+            let error = match malformed {
+                0 => {
+                    configure(
+                        &mut p,
+                        Some(2),
+                        Some(sort(0, &[], SortFilterOrder::SortThenFilter)),
+                        vec![
+                            SequenceWindow::SkipFirst { count: 3 },
+                            SequenceWindow::FromTo { first: 3, last: 99 },
+                        ],
+                        IterationOutput::Repeated,
+                    );
+                    Error::MissingWindowExpression {
+                        target_path: vec![],
+                        window: 1,
+                        bound: 1,
+                        expression: 99,
+                    }
+                }
+                1 => {
+                    p.expressions.push(node(
+                        3,
+                        Expression::Const {
+                            value: Value::Int(0),
+                        },
+                    ));
+                    Error::DuplicateExpression { node: 3 }
+                }
+                2 => {
+                    p.expressions[3].expression = owned("Absent");
+                    Error::OwnedSource {
+                        diagnostic: Box::new(Diagnostic::Structure {
+                            location: Location::Expression {
+                                namespace: Namespace::Main,
+                                node: 3,
+                                scope: None,
+                            },
+                            request: Request::Field {
+                                owner: Owner::Named {
+                                    name: "Absent".into(),
+                                },
+                                path: path(&["Value"]),
+                                frame: None,
+                            },
+                            reason: Structure::UnknownOwner,
+                        }),
+                    }
+                }
+                _ => {
+                    p.root.bindings.clear();
+                    p.root.construction = TargetConstruction::Scalar {
+                        expression: 1,
+                        target_domain: ScalarType::String.into(),
+                    };
+                    configure(
+                        &mut p,
+                        Some(2),
+                        None,
+                        vec![SequenceWindow::First { count: 3 }],
+                        IterationOutput::First,
+                    );
+                    Error::InvalidIterationOutput {
+                        target_path: vec![],
+                        output: IterationOutput::First,
+                    }
+                }
+            };
+            assert_eq!(
+                validate_program_with_basic_owned_windows(&p),
+                Err(error.clone())
+            );
+            assert_eq!(
+                observed("N698-A04 complete forwarded first validation error", &p),
+                Err(error.clone())
+            );
+            assert_eq!(
+                traced("N698-A04 trace retains exact validator refusal", &p),
+                Err(error.clone())
+            );
+            assert_eq!(legacy_named_input_admission_plan(&p).unwrap_err(), error);
+        }
+        let mut p = fixture(None);
+        p.root.bindings = vec![binding("Value", 0)];
+        p.root.iteration = Some(
+            IterationPlan::new(
+                SourceIteration::new(path(&["Rows"])),
+                None,
+                None,
+                vec![SequenceWindow::First { count: 3 }],
+                IterationOutput::Repeated,
+            )
+            .with_grouping(crate::GroupingPlan::By { key: 0 }),
+        );
+        let mut child = scope(vec![binding("Value", 1)]);
+        child.target_field = "Child".into();
+        child.repeating = true;
+        child.iteration = Some(IterationPlan::new(
+            crate::OwnedSourceIteration::new(OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "Other".into(),
+                },
+                path: path(&["Rows"]),
+            }),
+            None,
+            None,
+            vec![SequenceWindow::Last { count: 4 }],
+            IterationOutput::Repeated,
+        ));
+        p.expressions[1].expression = row_query(SourceOwner::Named {
+            name: "Other".into(),
+        });
+        p.root.children.push(child);
+        refresh(&mut p);
+        let error = Error::OwnedSource {
+            diagnostic: Box::new(Diagnostic::Capability {
+                location: Location::Iteration {
+                    scope: primary().descendant(SourceScopeStep::Child(0)),
+                },
+                request: Some(Request::Iteration {
+                    owner: Owner::Named {
+                        name: "Other".into(),
+                    },
+                    path: path(&["Rows"]),
+                }),
+                reason: Reason::Grouping,
+                origin: Origin::Scope { scope: primary() },
+            }),
+        };
+        assert_eq!(
+            validate_program_with_basic_owned_windows(&p),
+            Err(error.clone())
+        );
+        assert_eq!(
+            observed(
+                "N698-A04 inherited grouping remains closed around owned windows",
+                &p
+            ),
+            Err(error)
+        );
+    }
+}

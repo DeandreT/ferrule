@@ -70,6 +70,14 @@ pub fn validate_program_with_basic_owned_sort(
     owned_sources::validate_basic_owned_sort_emission(program)
 }
 
+/// Validates explicit static Basic windows and implicit First, with optional
+/// filtering and sorting, through the same complete structural pipeline.
+pub fn validate_program_with_basic_owned_windows(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_window_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -1316,7 +1324,7 @@ fn validate_scope(
 
 pub use owned_sources::{
     validate_basic_owned_emission, validate_basic_owned_filter_emission,
-    validate_basic_owned_sort_emission,
+    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
 };
 
 #[cfg(test)]
