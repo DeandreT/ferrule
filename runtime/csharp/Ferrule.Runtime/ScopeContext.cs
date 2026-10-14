@@ -2914,14 +2914,19 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
         void FerruleOwnedScopeContext.BasicOwnedWalkObserver.Published(FerruleOwnedScopeContext actual,
             FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity)
         {
-            var legacy = Parent.LegacyView.ProjectBasicOwned(actual, _inheritedOwned, terminal, canonical, identity, _budget);
             var extraOwned = actual.FrameCount - _inheritedOwned;
-            var plain = !identity && (extraOwned == 0 || actual.FrameAt(actual.FrameCount - 1).Path.Count != canonical.Count);
-            var origins = identity ? CopyOrigins(0, actual, false, canonical) :
+            // A fresh named singleton root does not introduce a legacy traversal
+            // frame. Its owned root stays authentic; relative reads retain the parent.
+            var suppressFreshNamedRoot = !identity && _owner != 0 && canonical.Count == 0 &&
+                extraOwned == 0 && terminal is FerruleGroup;
+            var legacyProjectionIdentity = identity || suppressFreshNamedRoot;
+            var legacy = Parent.LegacyView.ProjectBasicOwned(actual, _inheritedOwned, terminal, canonical, legacyProjectionIdentity, _budget);
+            var plain = !legacyProjectionIdentity && (extraOwned == 0 || actual.FrameAt(actual.FrameCount - 1).Path.Count != canonical.Count);
+            var origins = legacyProjectionIdentity ? CopyOrigins(0, actual, false, canonical) :
                 CopyOrigins(extraOwned + (plain ? 1 : 0), actual, plain, canonical);
             _budget.Charge(1);
             var paired = FerruleBasicScopeContext.Create(Parent.Roots, legacy, actual, origins,
-                identity ? Parent.LegacyContainerCost : 2);
+                legacyProjectionIdentity ? Parent.LegacyContainerCost : 2);
             BasicOccurrenceCursor? cursor = identity || extraOwned == 0 ? null : new(
                 actual.FrameCount - 1, legacy.BasicCollectionCount - 1, _owner,
                 actual.FrameAt(actual.FrameCount - 1).Path, actual.FrameAt(actual.FrameCount - 1).Index);
