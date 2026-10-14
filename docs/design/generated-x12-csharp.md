@@ -232,9 +232,11 @@ The X12 schema is an ordered group tree with segments, optional or repeated
 loops, and positional elements. Segment names use their uppercase two- or
 three-character X12 identifier, optionally with the supported `MF_` prefix or
 numeric suffix. Elements are String, Int or finite Float scalars, or a single
-flat composite group containing those scalars. Elements and composite
-components cannot repeat. Duplicate sibling names, nested composites and
-other scalar kinds are refused.
+flat composite group containing those scalars. Under `00501` and `00604`, a body
+element may repeat as described in
+[Repeated element values](#repeated-element-values). Composite components,
+envelope elements and `004010` elements cannot repeat. Duplicate sibling names,
+nested composites and other scalar kinds are refused.
 
 String values retain their source text, and length constraints count Unicode
 scalar characters. Empty elements project to Null after their fixed, length and
@@ -318,9 +320,8 @@ is distinct visible ASCII punctuation. It is inactive under 00401: ISA11 remains
 discovers it from ISA11 and verifies an explicitly configured repetition character.
 A configured input separator set with no repetition character permits discovery.
 The active delimiter differs from the element, component and segment delimiters.
-Repeated element content is refused before mapping, including in a segment that
-lenient input would otherwise skip. The native reader has a broader repeated-value
-projection; these scalar-element generated profiles do not discard later values.
+It is admitted only in declared repeating elements, and the generated reader
+never keeps just the first occurrence of a non-repeating element.
 Formatting whitespace is allowed between completed segments; control characters inside a
 segment fail. Data containing an unrepresentable separator cannot be escaped
 or substituted by this adapter.
@@ -335,6 +336,36 @@ fails modern admission; a fixed syntax value is one punctuation character.
 Conflicting fixed values fail admission whenever the selected syntax is known.
 Ordinary values containing the active repetition delimiter cannot be represented
 and fail output validation.
+
+### Repeated element values
+
+A repeating body element in a `00501` or `00604` schema is a String, Int or
+Float scalar or a flat composite. It carries no fixed value or item cardinality,
+and its components carry no fixed values, because qualifier matching and fixed
+materialization address one occurrence. Constraint, implied-decimal and
+lexical-format paths through a repeating element apply to every occurrence.
+
+Input splits a declared repeating element on the active repetition delimiter
+and reads each occurrence with the ordinary scalar or composite rules. As in the
+native reader, an absent trailing element has no occurrences, while a present
+element, even an empty one, has one occurrence per delimited part: `REF*ZZ**7~`
+reads one Null `REF02` occurrence, and `N9*X~` reads no `N902` occurrences.
+Every occurrence counts toward the repeated-instance limit. Occurrence paths are
+indexed only under the grouped envelope profile, matching loop paths.
+
+A segment ID with no declared repeating element refuses repetition syntax during
+tokenization, before envelope, schema or mapping validation. That includes
+envelope segments and unknown segments that lenient input would otherwise skip.
+In a segment ID that declares a repeating element, a non-repeating element
+containing the delimiter fails with the same `UnsupportedProfile` error at its
+segment index.
+
+Output requires an ordered collection for a repeating element; a missing or Null
+value has no occurrences. Each occurrence is written with the ordinary scalar or
+composite rules, and occurrences are joined with the selected repetition
+delimiter. No occurrences write an empty element. A single Null occurrence also
+writes an empty element, so at a trailing position it is trimmed and reads back
+with no occurrences, as in the native writer.
 
 Generated LF input and output use the existing terminator contract. Native
 read discovery can consume LF, while its explicit syntax/writer API refuses LF;
@@ -401,7 +432,7 @@ contracts; the generated final-constraint ordering has its own error precedence.
 | Schema nodes, at generation and runtime | 10,000 |
 | Elements or components in one positional collection | 1,024 |
 | Segments | 100,000 |
-| Repeated loop/segment instances, shared across collections within each stage | 100,000 |
+| Repeated loop, segment and element instances, shared across collections within each stage | 100,000 |
 | Runtime traversal nodes per stage | 1,000,000 |
 
 Limits bound admission and traversal. Parsing and serialization still materialize
@@ -442,6 +473,9 @@ Saved-profile fixtures compare complete values and scalar types, literal wire
 bytes, typed failures and failure ordering for native helpers and generated
 public APIs separately. They cover selected reading, numeric scaling,
 formatting and completion metadata, with strict and inactive-option controls.
+Repeated-element fixtures compare native values and bytes with compiled `005010`
+and `006040` libraries, including empty and absent occurrences, per-occurrence
+options, custom separators and typed admission, input and output refusals.
 
 The ordinary integration run includes native and descriptor checks plus the
 freshly generated saved-profile public-host cohort. It requires `dotnet` on
