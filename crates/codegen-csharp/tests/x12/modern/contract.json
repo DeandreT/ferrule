@@ -210,7 +210,6 @@
     "noncanonical-group": { "variant": "Schema", "side": "Target", "path": [], "reason": "ISA12 and GS08 require an exact supported fixed version pair" },
     "missing-schema-version": { "variant": "Schema", "side": "Target", "path": [], "reason": "ISA12 and GS08 require an exact supported fixed version pair" },
     "st03": { "variant": "Schema", "side": "Target", "path": ["ST"], "reason": "envelope elements require their exact width and String type" },
-    "repeating-element": { "variant": "Schema", "side": "Target", "path": ["W05", "W0502"], "reason": "004010 elements and components cannot repeat" },
     "fixed-isa11-conflict": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA11 must agree with the distinct selected repetition separator" },
     "fixed-isa11-empty": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA11 must agree with the distinct selected repetition separator" },
     "fixed-isa16-conflict": { "variant": "Schema", "side": "Target", "path": ["ISA"], "reason": "modern fixed ISA16 must agree with the selected component separator" },

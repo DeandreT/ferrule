@@ -78,9 +78,21 @@ public static partial class FerruleX12
             if (segment.Elements.Length > node.Children.Length) throw Failure(FerruleX12Error.Schema, "X12 segment contains undeclared elements.", cursor.Position);
             var fields = new List<FerruleField>();
             for (int index = 0; index < node.Children.Length; index++)
-                fields.Add(new(node.Children[index].Name, ReadElement(node.Children[index],
-                    index < segment.Elements.Length ? segment.Elements[index] : "", cursor, [.. path, node.Children[index].Name], depth + 1,
+            {
+                Node element = node.Children[index];
+                string? raw = index < segment.Elements.Length ? segment.Elements[index] : null;
+                string[] elementPath = [.. path, element.Name];
+                if (element.Repeating)
+                {
+                    fields.Add(new(element.Name, ReadRepeatedElement(element, raw, cursor, elementPath, depth + 1)));
+                    continue;
+                }
+                if (raw is not null && segment.Id != "ISA" && cursor.Syntax.Repetition is { } repetition && raw.Contains(repetition))
+                    throw Failure(FerruleX12Error.UnsupportedProfile,
+                        "Repeated X12 element values are outside the selected profile.", cursor.Position);
+                fields.Add(new(element.Name, ReadElement(element, raw ?? "", cursor, elementPath, depth + 1,
                     segment.Id == "ISA" && index == 15)));
+            }
             cursor.Position++;
             return new FerruleGroup(fields);
         }
@@ -122,6 +134,25 @@ public static partial class FerruleX12
             }
         }
         return new FerruleGroup(children);
+    }
+
+    // Mirrors native reading: an absent position has no occurrences, while a
+    // present element, even when empty, has one occurrence per repetition part.
+    private static FerruleRepeated ReadRepeatedElement(Node node, string? raw, Cursor cursor, string[] path, int depth)
+    {
+        cursor.Budget.Visit(depth);
+        var items = new List<FerruleInstance>();
+        if (raw is null) return new FerruleRepeated(items);
+        string[] parts = raw.Split(cursor.Syntax.Repetition
+            ?? throw Failure(FerruleX12Error.UnsupportedProfile, "Repeated X12 element values are outside the selected profile.", cursor.Position));
+        foreach (string part in parts)
+        {
+            if (++cursor.Loops > MaximumLoopInstances) throw Limit("X12 loop instance limit exceeded.");
+            string[] itemPath = cursor.Profile.Grouped is not null
+                ? [.. path[..^1], path[^1] + "[" + items.Count.ToString(CultureInfo.InvariantCulture) + "]"] : path;
+            items.Add(ReadElement(node, part, cursor, itemPath, depth + 1));
+        }
+        return new FerruleRepeated(items);
     }
 
     private static FerruleInstance ReadElement(Node node, string raw, Cursor cursor, string[] path, int depth, bool isaComponent = false)
