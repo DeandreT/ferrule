@@ -32,6 +32,14 @@ pub fn lower_with_basic_owned_sort(project: &Project) -> Result<Program, LowerEr
     lower_with_validator(project, crate::validate_program_with_basic_owned_sort)
 }
 
+/// Lowers explicit static Basic windows through the unchanged graph lowering.
+///
+/// Stored windows and implicit First retain their original order. Default,
+/// filter-only and sort-only lowering preserve their capability policies.
+pub fn lower_with_basic_owned_windows(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, crate::validate_program_with_basic_owned_windows)
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,

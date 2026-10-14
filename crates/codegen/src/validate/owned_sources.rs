@@ -355,6 +355,7 @@ pub(super) enum BasicOwnedProfile {
     ControlFree,
     FilterOnly,
     SortAndFilter,
+    WindowsAndSortAndFilter,
 }
 impl BasicOwnedProfile {
     fn permits_filter(self, scope: &TargetScope) -> bool {
@@ -377,6 +378,13 @@ impl BasicOwnedProfile {
             })
             || self == Self::SortAndFilter
                 && (Self::FilterOnly.permits_filter(scope) || self.permits_sort(scope))
+            || self == Self::WindowsAndSortAndFilter
+                && (Self::SortAndFilter.permits_filter(scope)
+                    || self.permits_windows(scope)
+                        && scope
+                            .iteration
+                            .as_ref()
+                            .is_some_and(|iteration| iteration.filter().is_some()))
     }
     fn permits_sort(self, scope: &TargetScope) -> bool {
         self == Self::SortAndFilter
@@ -394,6 +402,32 @@ impl BasicOwnedProfile {
                     && iteration.post_group_filter().is_none()
                     && iteration.windows().is_empty()
                     && iteration.output() == IterationOutput::Repeated
+            })
+            || self == Self::WindowsAndSortAndFilter
+                && (Self::SortAndFilter.permits_sort(scope)
+                    || self.permits_windows(scope)
+                        && scope
+                            .iteration
+                            .as_ref()
+                            .is_some_and(|iteration| iteration.sort().is_some()))
+    }
+    fn permits_windows(self, scope: &TargetScope) -> bool {
+        self == Self::WindowsAndSortAndFilter
+            && matches!(
+                scope.construction,
+                TargetConstruction::Group | TargetConstruction::Scalar { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
+                    && matches!(
+                        iteration.input(),
+                        IterationSource::Source(_) | IterationSource::OwnedSource(_)
+                    )
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+                    && (iteration.output() == IterationOutput::Repeated
+                        || iteration.output() == IterationOutput::First
+                            && matches!(scope.construction, TargetConstruction::Group))
             })
     }
 }
@@ -526,6 +560,12 @@ impl<'a> Admission<'a> {
         mut ancestry: Vec<Ancestor<'a>>,
         inherited: Option<Closed>,
     ) -> Result<(), ProgramValidationError> {
+        // Bounds use the incoming parent, before this scope introduces an item.
+        // Keep the complete Visit key when a bound is also a key or target root.
+        let window_parent = self
+            .profile
+            .permits_windows(scope)
+            .then(|| (ancestry.clone(), inherited.clone()));
         let mut closed = inherited;
         if let Some(iteration) = &scope.iteration {
             let reason =
@@ -533,10 +573,12 @@ impl<'a> Admission<'a> {
                     Some(Capability::Grouping)
                 } else if iteration.filter().is_some() && !self.profile.permits_filter(scope)
                     || iteration.sort().is_some() && !self.profile.permits_sort(scope)
-                    || !iteration.windows().is_empty()
+                    || !iteration.windows().is_empty() && !self.profile.permits_windows(scope)
                 {
                     Some(Capability::ScopeControl)
-                } else if iteration.output() != IterationOutput::Repeated {
+                } else if iteration.output() != IterationOutput::Repeated
+                    && !self.profile.permits_windows(scope)
+                {
                     Some(Capability::Document)
                 } else {
                     match iteration.input() {
@@ -593,7 +635,11 @@ impl<'a> Admission<'a> {
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
             | TargetConstruction::AdjacencyTree { .. } => Some(Capability::TreeOperator),
-            TargetConstruction::Scalar { .. } if self.profile.permits_sort(scope) => None,
+            TargetConstruction::Scalar { .. }
+                if self.profile.permits_sort(scope) || self.profile.permits_windows(scope) =>
+            {
+                None
+            }
             TargetConstruction::CopyCurrentSource | TargetConstruction::Scalar { .. } => {
                 Some(Capability::SpecialConstruction)
             }
@@ -625,7 +671,33 @@ impl<'a> Admission<'a> {
             .map(|binding| binding.expression)
             .collect::<Vec<_>>();
         if let Some(iteration) = &scope.iteration {
-            roots.extend(iteration.roots());
+            if let Some((parent_ancestry, parent_closed)) = &window_parent {
+                for node in iteration
+                    .windows()
+                    .iter()
+                    .copied()
+                    .flat_map(crate::SequenceWindow::nodes)
+                {
+                    self.expression(Visit {
+                        namespace: Namespace::Main,
+                        closed: parent_closed.clone(),
+                        scope: Some(route.clone()),
+                        ancestry: parent_ancestry.clone(),
+                        node,
+                    })?;
+                }
+                // The admitted window scope is a static Source/OwnedSource with
+                // no grouping or dynamic output. Its other roots use the item.
+                roots.extend(iteration.filter());
+                roots.extend(
+                    iteration
+                        .sort()
+                        .iter()
+                        .flat_map(|sort| sort.keys().map(|key| key.expression)),
+                );
+            } else {
+                roots.extend(iteration.roots());
+            }
         }
         match &scope.construction {
             TargetConstruction::Scalar { expression, .. } => roots.push(*expression),
@@ -881,6 +953,16 @@ pub fn validate_basic_owned_sort_emission(program: &Program) -> Result<(), Progr
     validate_basic_owned_with_profile(program, BasicOwnedProfile::SortAndFilter)
 }
 
+/// Explicitly admits ordinary static Basic windows and implicit First.
+///
+/// Optional filtering and sorting retain both stored orders. Existing entry
+/// points and all grouping, specialized, dynamic and function gates stay closed.
+pub fn validate_basic_owned_window_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_profile(program, BasicOwnedProfile::WindowsAndSortAndFilter)
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -1025,8 +1107,8 @@ fn basic_scope(
             || iteration.sort().is_some() && !profile.permits_sort(scope)
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
-            || !iteration.windows().is_empty()
-            || iteration.output() != IterationOutput::Repeated
+            || !iteration.windows().is_empty() && !profile.permits_windows(scope)
+            || iteration.output() != IterationOutput::Repeated && !profile.permits_windows(scope)
         {
             return Err(basic_scope_refusal(scope, route, Capability::ScopeControl));
         }
@@ -1127,6 +1209,19 @@ fn basic_target_expressions(
             // Every stored key retains its potential scalar dependencies;
             // static admission does not skip secondary or inactive key edges.
             output.extend(sort.keys().map(|key| key.expression));
+        }
+        if profile.permits_windows(scope)
+            && let Some(iteration) = &scope.iteration
+        {
+            // Count bounds retain all potential scalar edges even when the
+            // source is empty or a preceding window would discard every row.
+            output.extend(
+                iteration
+                    .windows()
+                    .iter()
+                    .copied()
+                    .flat_map(crate::SequenceWindow::nodes),
+            );
         }
         for child in &scope.children {
             roots(child, profile, output);

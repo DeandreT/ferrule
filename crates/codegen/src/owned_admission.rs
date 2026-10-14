@@ -1,12 +1,12 @@
 //! Generation-time legacy eager-input metadata, never a runtime input table.
 //! Owned requests are demand-driven and do not make a declaration eager.
 //! Existing public emission capability checks remain separate and unchanged.
-use crate::validate_program_with_basic_owned_sort;
 use crate::{
     Expression, FailureIteration, GeneratedSequence, InnerJoin, IterationPlan, IterationSource,
     Program, ProgramValidationError, TargetConstruction, TargetScope, UserFunctionProgram,
     validate_program, validate_program_with_basic_owned_filters,
 };
+use crate::{validate_program_with_basic_owned_sort, validate_program_with_basic_owned_windows};
 use mapping::{FunctionId, NodeId, OwnedSourceRef};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -71,6 +71,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_sort(
     program: &Program,
 ) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
     validate_program_with_basic_owned_sort(program)?;
+    Ok(admission_plan(program))
+}
+
+/// Validate explicit Basic windows, then use the unchanged declaration analyzer.
+/// Window endpoints retain their parent environment and potential dependencies;
+/// this companion does not evaluate bounds, select targets or acquire inputs.
+pub fn legacy_named_input_admission_plan_with_basic_owned_windows(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    validate_program_with_basic_owned_windows(program)?;
     Ok(admission_plan(program))
 }
 
@@ -570,6 +580,32 @@ pub(crate) fn primary_visits_for_test(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
     validate_program(program)?;
+    let analysis = analyze(program, &program.root, Root::Primary);
+    eprintln!(
+        "Complete admission trace input={program:#?} environments={:#?} visits={:#?} required={:#?} inspected_dynamic={:#?}",
+        analysis.environments, analysis.visited, analysis.required, analysis.inspected_dynamic
+    );
+    Ok(analysis
+        .visited
+        .iter()
+        .map(|(namespace, context, node)| {
+            (
+                match namespace {
+                    Namespace::Main => None,
+                    Namespace::Function(index) => Some(analysis.functions[*index].id),
+                },
+                *context,
+                *node,
+            )
+        })
+        .collect())
+}
+
+#[cfg(test)]
+pub(crate) fn primary_visits_for_test_with_basic_owned_windows(
+    program: &Program,
+) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
+    validate_program_with_basic_owned_windows(program)?;
     let analysis = analyze(program, &program.root, Root::Primary);
     eprintln!(
         "Complete admission trace input={program:#?} environments={:#?} visits={:#?} required={:#?} inspected_dynamic={:#?}",
