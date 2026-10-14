@@ -174,7 +174,10 @@ fn ordinary_component_spelling(name: &OsStr) -> bool {
         && !bytes.ends_with(b" ")
         && !bytes.iter().any(|&byte| {
             byte < 32
-                || matches!(byte, b'<' | b'>' | b':' | b'"' | b'/' | b'\\' | b'|' | b'?' | b'*')
+                || matches!(
+                    byte,
+                    b'<' | b'>' | b':' | b'"' | b'/' | b'\\' | b'|' | b'?' | b'*'
+                )
         })
 }
 
@@ -185,9 +188,16 @@ fn dos_device_name(name: &OsStr) -> bool {
         .next()
         .unwrap_or_default();
     let stem = stem.trim_ascii_end();
-    if [b"CON".as_slice(), b"PRN", b"AUX", b"NUL", b"CONIN$", b"CONOUT$"]
-        .iter()
-        .any(|device| stem.eq_ignore_ascii_case(device))
+    if [
+        b"CON".as_slice(),
+        b"PRN",
+        b"AUX",
+        b"NUL",
+        b"CONIN$",
+        b"CONOUT$",
+    ]
+    .iter()
+    .any(|device| stem.eq_ignore_ascii_case(device))
     {
         return true;
     }
@@ -466,7 +476,9 @@ mod tests {
         let mapping = Path::new(r"\\?\C:\package\maps\design.mfd.");
         assert!(mapping_identity_relative_to(mapping, pipeline).is_err());
         let pipeline = Path::new(r"\\?\C:\package\hidden.\pipeline.json");
-        assert!(mapping_identity_relative_to(Path::new(r"C:\package\design.mfd"), pipeline).is_err());
+        assert!(
+            mapping_identity_relative_to(Path::new(r"C:\package\design.mfd"), pipeline).is_err()
+        );
     }
 
     #[cfg(windows)]
