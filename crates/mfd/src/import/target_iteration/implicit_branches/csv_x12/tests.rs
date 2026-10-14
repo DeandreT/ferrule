@@ -2,11 +2,20 @@ use super::*;
 use mapping::{Graph, Scope};
 
 type Bindings = Vec<(TargetLeaf, u32, u32)>;
-const DESIGN: &str = include_str!("../../../../../tests/fixtures/csv-x12-occurrences/literal-direct.mfd");
+const DESIGN: &str =
+    include_str!("../../../../../tests/fixtures/csv-x12-occurrences/literal-direct.mfd");
 
-fn path(parts: &[&str]) -> Vec<String> { parts.iter().map(|part| (*part).into()).collect() }
-fn row_path() -> Vec<String> { path(&["Interchange", "Group", "Message_940", "Rows"]) }
-fn clone_path() -> Vec<String> { let mut result = row_path(); result.push("NTE".into()); result }
+fn path(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|part| (*part).into()).collect()
+}
+fn row_path() -> Vec<String> {
+    path(&["Interchange", "Group", "Message_940", "Rows"])
+}
+fn clone_path() -> Vec<String> {
+    let mut result = row_path();
+    result.push("NTE".into());
+    result
+}
 
 fn with_world_at_row(
     install_row: bool,
@@ -23,21 +32,36 @@ fn with_world_at_row(
     ),
 ) {
     let document = roxmltree::Document::parse(text).unwrap();
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/csv-x12-occurrences/literal-direct.mfd");
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/csv-x12-occurrences/literal-direct.mfd");
     let mapping = document.root_element();
     assert_eq!(mapping.tag_name().name(), "mapping");
-    let wrapper = mapping.children().find(|node| node.is_element()
-        && node.tag_name().name() == "component").unwrap();
-    let structure = wrapper.children().find(|node| node.is_element()
-        && node.tag_name().name() == "structure").unwrap();
-    let children = structure.children().find(|node| node.is_element()
-        && node.tag_name().name() == "children").unwrap();
-    let components = children.children().filter(|node| node.is_element()
-        && node.tag_name().name() == "component").collect::<Vec<_>>();
-    let source_node = components.iter().copied()
-        .find(|node| node.attribute("name") == Some("source")).unwrap();
-    let target_node = components.iter().copied()
-        .find(|node| node.attribute("name") == Some("report")).unwrap();
+    let wrapper = mapping
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "component")
+        .unwrap();
+    let structure = wrapper
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "structure")
+        .unwrap();
+    let children = structure
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "children")
+        .unwrap();
+    let components = children
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "component")
+        .collect::<Vec<_>>();
+    let source_node = components
+        .iter()
+        .copied()
+        .find(|node| node.attribute("name") == Some("source"))
+        .unwrap();
+    let target_node = components
+        .iter()
+        .copied()
+        .find(|node| node.attribute("name") == Some("report"))
+        .unwrap();
     let mut warnings = Vec::new();
     let mut source =
         crate::import::schema::read_csv_component(&source_node, &mut warnings).unwrap();
@@ -59,12 +83,13 @@ fn with_world_at_row(
     let mut fn_components = components
         .iter()
         .filter(|node| node.has_tag_name("component") && node.attribute("library") == Some("core"))
-        .map(|node| crate::import::function::read(&node))
+        .map(crate::import::function::read)
         .collect::<Vec<_>>();
     edit_functions(&mut fn_components);
     let udf_calls = [];
     let udf_registry = crate::import::udf::Registry::default();
-    let edge_inputs = crate::import::graph::read_edge_inputs(&structure, structure.parent().as_ref());
+    let edge_inputs =
+        crate::import::graph::read_edge_inputs(&structure, structure.parent().as_ref());
     let raw_authority = edge_inputs.complete && raw_authority(&structure, &edge_inputs.feeds);
     let edge_from = edge_inputs.feeds;
     let initial_warnings = edge_inputs.conflicts;
@@ -179,25 +204,50 @@ fn with_world(
     text: &str,
     edit_source: impl FnOnce(&mut SchemaComponent),
     edit_functions: impl FnOnce(&mut Vec<crate::import::function::FnComponent>),
-    run: impl FnOnce(&mut GraphBuilder<'_>, &mut ScopeBuilder,
-        &mut DeclaredBranches, &mut BTreeSet<usize>, &mut SchemaComponent, &Bindings),
+    run: impl FnOnce(
+        &mut GraphBuilder<'_>,
+        &mut ScopeBuilder,
+        &mut DeclaredBranches,
+        &mut BTreeSet<usize>,
+        &mut SchemaComponent,
+        &Bindings,
+    ),
 ) {
     with_world_at_row(true, text, edit_source, edit_functions, run);
 }
 
 fn plans(
-    target: &SchemaComponent, bindings: &Bindings, builder: &GraphBuilder<'_>,
-    scopes: &ScopeBuilder, declared: &DeclaredBranches, claimed: &BTreeSet<usize>,
+    target: &SchemaComponent,
+    bindings: &Bindings,
+    builder: &GraphBuilder<'_>,
+    scopes: &ScopeBuilder,
+    declared: &DeclaredBranches,
+    claimed: &BTreeSet<usize>,
 ) -> Option<Vec<BranchPlan>> {
     let target_path = clone_path();
-    let markers = target.input_branch_paths.iter().filter(|(_, field)| field == &target_path)
-        .map(|(marker, _)| *marker).collect::<Vec<_>>();
+    let markers = target
+        .input_branch_paths
+        .iter()
+        .filter(|(_, field)| field == &target_path)
+        .map(|(marker, _)| *marker)
+        .collect::<Vec<_>>();
     assert_eq!(markers.len(), 2);
-    plan(&target_path, &markers, target, bindings, builder, scopes, claimed, declared)
+    plan(
+        &target_path,
+        &markers,
+        target,
+        bindings,
+        builder,
+        scopes,
+        claimed,
+        declared,
+    )
 }
 
 fn state(
-    builder: &GraphBuilder<'_>, scopes: &ScopeBuilder, declared: &DeclaredBranches,
+    builder: &GraphBuilder<'_>,
+    scopes: &ScopeBuilder,
+    declared: &DeclaredBranches,
     claimed: &BTreeSet<usize>,
 ) -> Vec<(&'static str, String)> {
     super::super::tests::state(builder, scopes, declared, claimed)
@@ -205,64 +255,143 @@ fn state(
 
 #[test]
 fn csv_row_proof_preserves_real_repeated_ancestors_and_unframed_cells() {
-    with_world(DESIGN, |_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-        assert!(builder.csv_occurrence_raw_authority);
-        assert!(schema_node_at(&target.schema, &path(&["Interchange", "Group", "Message_940"])).unwrap().repeating);
-        assert!(matches!(&scopes.scope(&row_path()).unwrap().iteration, ScopeIteration::Source(path) if path.is_empty()));
-        let branches = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
-        assert_eq!(branches.iter().map(|branch| branch.csv_scalars.len()).sum::<usize>(), 4);
-        let candidate = lowering::prepare(&clone_path(), branches, target, bindings, builder, scopes, claimed, declared).unwrap();
-        assert_eq!(candidate.2.len(), 4);
-        assert_eq!(candidate.3.layouts[&clone_path()].len(), 2);
-        let key = candidate.0.source_fields[&(None, path(&["Key"]))];
-        assert!(ScalarProof::Field(path(&["Key"])).matches_lowered(key, &candidate.0));
-        assert!(!ScalarProof::Field(path(&["Optional"])).matches_lowered(key, &candidate.0));
-        assert!(matches!(candidate.1.scope(&clone_path()).unwrap().iteration, ScopeIteration::Concatenate(_)));
-    });
+    with_world(
+        DESIGN,
+        |_| {},
+        |_| {},
+        |builder, scopes, declared, claimed, target, bindings| {
+            assert!(builder.csv_occurrence_raw_authority);
+            assert!(
+                schema_node_at(
+                    &target.schema,
+                    &path(&["Interchange", "Group", "Message_940"])
+                )
+                .unwrap()
+                .repeating
+            );
+            assert!(
+                matches!(&scopes.scope(&row_path()).unwrap().iteration, ScopeIteration::Source(path) if path.is_empty())
+            );
+            let branches = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
+            assert_eq!(
+                branches
+                    .iter()
+                    .map(|branch| branch.csv_scalars.len())
+                    .sum::<usize>(),
+                4
+            );
+            let candidate = lowering::prepare(
+                &clone_path(),
+                branches,
+                target,
+                bindings,
+                builder,
+                scopes,
+                claimed,
+                declared,
+            )
+            .unwrap();
+            assert_eq!(candidate.2.len(), 4);
+            assert_eq!(candidate.3.layouts[&clone_path()].len(), 2);
+            let key = candidate.0.source_fields[&(None, path(&["Key"]))];
+            assert!(ScalarProof::Field(path(&["Key"])).matches_lowered(key, &candidate.0));
+            assert!(!ScalarProof::Field(path(&["Optional"])).matches_lowered(key, &candidate.0));
+            assert!(matches!(
+                candidate.1.scope(&clone_path()).unwrap().iteration,
+                ScopeIteration::Concatenate(_)
+            ));
+        },
+    );
 }
 
 #[test]
 fn csv_optional_annotation_is_never_a_required_presence_witness() {
     for mode in 0..5 {
-        with_world(DESIGN, |source| {
-            match mode {
+        with_world(
+            DESIGN,
+            |source| match mode {
                 0 => source.schema.repeating = true,
                 1 => source.schema.nullable = true,
                 2 => source.is_variable = true,
                 3 => source.options.xml_document = true,
                 _ => {
-                    let SchemaKind::Group { children, .. } = &mut source.schema.kind else { panic!("row"); };
+                    let SchemaKind::Group { children, .. } = &mut source.schema.kind else {
+                        panic!("row");
+                    };
                     children[0].nullable = true;
                 }
-            }
-        }, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-            assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
-        });
+            },
+            |_| {},
+            |builder, scopes, declared, claimed, target, bindings| {
+                assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
+            },
+        );
     }
 }
 
 #[test]
 fn csv_raw_edge_authority_covers_conflicts_hidden_parents_and_idempotent_records() {
-    let idempotent = DESIGN.replace("</connections>", r#"<edge from="11" to="52"/></connections>"#);
-    let conflict = DESIGN.replace("</connections>", r#"<edge from="12" to="52"/></connections>"#);
-    let hidden = DESIGN.replace("</structure></component>", r#"</structure><connections><edge from="11" to="999"/></connections></component>"#);
-    let malformed = DESIGN.replace("</connections>", r#"<edge from="bad" to="52"/></connections>"#);
-    let parent_same = DESIGN.replace("</structure></component>", r#"</structure><connections><edge from="11" to="52"/></connections></component>"#);
+    let idempotent = DESIGN.replace(
+        "</connections>",
+        r#"<edge from="11" to="52"/></connections>"#,
+    );
+    let conflict = DESIGN.replace(
+        "</connections>",
+        r#"<edge from="12" to="52"/></connections>"#,
+    );
+    let hidden = DESIGN.replace(
+        "</structure></component>",
+        r#"</structure><connections><edge from="11" to="999"/></connections></component>"#,
+    );
+    let malformed = DESIGN.replace(
+        "</connections>",
+        r#"<edge from="bad" to="52"/></connections>"#,
+    );
+    let parent_same = DESIGN.replace(
+        "</structure></component>",
+        r#"</structure><connections><edge from="11" to="52"/></connections></component>"#,
+    );
     let modern_same = DESIGN.replace("</structure>", r#"<graph><vertices><vertex vertexkey="11"><edges><edge vertexkey="52"/></edges></vertex></vertices></graph></structure>"#);
-    let omitted_parent_binding = DESIGN.replace(r#"<edge from="12" to="62"/>"#, "")
-        .replace("</structure></component>", r#"</structure><connections><edge from="12" to="62"/></connections></component>"#);
-    let unrelated_conflict = DESIGN.replace("</connections>", r#"<edge from="2001" to="1000"/></connections>"#);
-    for (text, accepted) in [(DESIGN.to_string(), true), (idempotent, true), (conflict, false), (hidden, false), (malformed, false), (parent_same, true), (modern_same, true), (omitted_parent_binding, false), (unrelated_conflict, false)] {
+    let omitted_parent_binding = DESIGN.replace(r#"<edge from="12" to="62"/>"#, "").replace(
+        "</structure></component>",
+        r#"</structure><connections><edge from="12" to="62"/></connections></component>"#,
+    );
+    let unrelated_conflict = DESIGN.replace(
+        "</connections>",
+        r#"<edge from="2001" to="1000"/></connections>"#,
+    );
+    for (text, accepted) in [
+        (DESIGN.to_string(), true),
+        (idempotent, true),
+        (conflict, false),
+        (hidden, false),
+        (malformed, false),
+        (parent_same, true),
+        (modern_same, true),
+        (omitted_parent_binding, false),
+        (unrelated_conflict, false),
+    ] {
         let document = roxmltree::Document::parse(&text).unwrap();
-        let structure = document.descendants().find(|node| node.has_tag_name("structure")).unwrap();
+        let structure = document
+            .descendants()
+            .find(|node| node.has_tag_name("structure"))
+            .unwrap();
         let edges = crate::import::graph::read_edge_inputs(&structure, structure.parent().as_ref());
-        assert_eq!(edges.complete && raw_authority(&structure, &edges.feeds), accepted);
+        assert_eq!(
+            edges.complete && raw_authority(&structure, &edges.feeds),
+            accepted
+        );
         if !accepted {
-            with_world(&text, |_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-                let before = state(builder, scopes, declared, claimed);
-                build(target, bindings, &[], builder, scopes, claimed, declared);
-                assert_eq!(state(builder, scopes, declared, claimed), before);
-            });
+            with_world(
+                &text,
+                |_| {},
+                |_| {},
+                |builder, scopes, declared, claimed, target, bindings| {
+                    let before = state(builder, scopes, declared, claimed);
+                    build(target, bindings, &[], builder, scopes, claimed, declared);
+                    assert_eq!(state(builder, scopes, declared, claimed), before);
+                },
+            );
         }
     }
 }
@@ -270,15 +399,36 @@ fn csv_raw_edge_authority_covers_conflicts_hidden_parents_and_idempotent_records
 #[test]
 fn csv_raw_source_and_owner_census_reject_hidden_or_noncanonical_declarations() {
     for text in [
-        DESIGN.replace(r#"<entry name="Key" outkey="11"/>"#, r#"<entry name="Key" outkey="11" required="true"/>"#),
-        DESIGN.replace(r#"<entry name="Optional" outkey="12"/>"#, r#"<entry name="Optional" outkey="11"/>"#),
-        DESIGN.replace(r#"<field1 name="Optional" type="string"/>"#, r#"<field1 name="Optional" type="string"/><field2 name="Hidden" type="string"/>"#),
-        DESIGN.replace(r#"<entry name="Optional" outkey="12"/>"#, r#"<entry name="Optional" outkey="12"><entry name="nested" outkey="13"/></entry>"#),
-        DESIGN.replace("</children>", r#"<component name="other" library="core" kind="5"/></children>"#),
-        DESIGN.replace(r#"<datapoint key="2101"/>"#, r#"<datapoint key="2101"/><datapoint key="11"/>"#),
+        DESIGN.replace(
+            r#"<entry name="Key" outkey="11"/>"#,
+            r#"<entry name="Key" outkey="11" required="true"/>"#,
+        ),
+        DESIGN.replace(
+            r#"<entry name="Optional" outkey="12"/>"#,
+            r#"<entry name="Optional" outkey="11"/>"#,
+        ),
+        DESIGN.replace(
+            r#"<field1 name="Optional" type="string"/>"#,
+            r#"<field1 name="Optional" type="string"/><field2 name="Hidden" type="string"/>"#,
+        ),
+        DESIGN.replace(
+            r#"<entry name="Optional" outkey="12"/>"#,
+            r#"<entry name="Optional" outkey="12"><entry name="nested" outkey="13"/></entry>"#,
+        ),
+        DESIGN.replace(
+            "</children>",
+            r#"<component name="other" library="core" kind="5"/></children>"#,
+        ),
+        DESIGN.replace(
+            r#"<datapoint key="2101"/>"#,
+            r#"<datapoint key="2101"/><datapoint key="11"/>"#,
+        ),
     ] {
         let document = roxmltree::Document::parse(&text).unwrap();
-        let structure = document.descendants().find(|node| node.has_tag_name("structure")).unwrap();
+        let structure = document
+            .descendants()
+            .find(|node| node.has_tag_name("structure"))
+            .unwrap();
         let edges = crate::import::graph::read_edge_inputs(&structure, structure.parent().as_ref());
         assert!(!raw_authority(&structure, &edges.feeds));
     }
@@ -287,56 +437,88 @@ fn csv_raw_source_and_owner_census_reject_hidden_or_noncanonical_declarations() 
 #[test]
 fn csv_refusal_retains_all_trial_state_and_prior_fallback_diagnostics() {
     for mode in 0..10 {
-        with_world(DESIGN, |_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-            match mode {
-                0 => builder.csv_occurrence_raw_authority = false,
-                1 => scopes.anchors.clear(),
-                2 => scopes.ensure_scope(&row_path()).iteration = ScopeIteration::Source(path(&["foreign"])),
-                3 => scopes.root.iteration = ScopeIteration::Source(Vec::new()),
-                4 => scopes.ensure_scope(&row_path()).construction = mapping::ScopeConstruction::CopyCurrentSource,
-                5 => target.schema.repeating = true,
-                6 => { claimed.insert(0); },
-                7 => {
-                    // Raw planning is valid, but a stale cache returns the wrong
-                    // lowered node. Preparation must discard every trial write.
-                    let bad = builder.alloc(mapping::Node::Const { value: ir::Value::Null });
-                    builder.source_fields.insert((None, path(&["Key"])), bad);
+        with_world(
+            DESIGN,
+            |_| {},
+            |_| {},
+            |builder, scopes, declared, claimed, target, bindings| {
+                match mode {
+                    0 => builder.csv_occurrence_raw_authority = false,
+                    1 => scopes.anchors.clear(),
+                    2 => {
+                        scopes.ensure_scope(&row_path()).iteration =
+                            ScopeIteration::Source(path(&["foreign"]))
+                    }
+                    3 => scopes.root.iteration = ScopeIteration::Source(Vec::new()),
+                    4 => {
+                        scopes.ensure_scope(&row_path()).construction =
+                            mapping::ScopeConstruction::CopyCurrentSource
+                    }
+                    5 => target.schema.repeating = true,
+                    6 => {
+                        claimed.insert(0);
+                    }
+                    7 => {
+                        // Raw planning is valid, but a stale cache returns the wrong
+                        // lowered node. Preparation must discard every trial write.
+                        let bad = builder.alloc(mapping::Node::Const {
+                            value: ir::Value::Null,
+                        });
+                        builder.source_fields.insert((None, path(&["Key"])), bad);
+                    }
+                    8 => target.has_target_node_controls = true,
+                    _ => scopes
+                        .ensure_scope(&clone_path())
+                        .bindings
+                        .push(mapping::Binding {
+                            target_field: "NTE02".into(),
+                            node: 0,
+                        }),
                 }
-                8 => target.has_target_node_controls = true,
-                _ => scopes.ensure_scope(&clone_path()).bindings.push(mapping::Binding { target_field: "NTE02".into(), node: 0 }),
-            }
-            let before = state(builder, scopes, declared, claimed);
-            build(target, bindings, &[], builder, scopes, claimed, declared);
-            assert_eq!(state(builder, scopes, declared, claimed), before, "mode {mode}");
-        });
+                let before = state(builder, scopes, declared, claimed);
+                build(target, bindings, &[], builder, scopes, claimed, declared);
+                assert_eq!(
+                    state(builder, scopes, declared, claimed),
+                    before,
+                    "mode {mode}"
+                );
+            },
+        );
     }
 }
 
 #[test]
 fn csv_all_raw_scalar_bindings_and_nonempty_literal_presence_are_mandatory() {
     for mode in 0..4 {
-        with_world(DESIGN, |_| {}, |functions| {
-            let index = functions.len() - 2;
-            match mode {
-                0 => functions[index].raw_literal_valid = false,
-                1 => functions[index].constant = Some((String::new(), "string".into())),
-                2 => functions[index].raw_single_output_valid = false,
-                _ => functions[index].bounded_scalar_pins_valid = false,
-            }
-        }, |builder, scopes, declared, claimed, target, bindings| {
-            let before = state(builder, scopes, declared, claimed);
-            assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
-            build(target, bindings, &[], builder, scopes, claimed, declared);
-            assert_eq!(state(builder, scopes, declared, claimed), before);
-        });
+        with_world(
+            DESIGN,
+            |_| {},
+            |functions| {
+                let index = functions.len() - 2;
+                match mode {
+                    0 => functions[index].raw_literal_valid = false,
+                    1 => functions[index].constant = Some((String::new(), "string".into())),
+                    2 => functions[index].raw_single_output_valid = false,
+                    _ => functions[index].bounded_scalar_pins_valid = false,
+                }
+            },
+            |builder, scopes, declared, claimed, target, bindings| {
+                let before = state(builder, scopes, declared, claimed);
+                assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
+                build(target, bindings, &[], builder, scopes, claimed, declared);
+                assert_eq!(state(builder, scopes, declared, claimed), before);
+            },
+        );
     }
 }
 
 // These snapshots contain only state actually exposed by the real dispatcher.
 // Its internal claimed/declared values are not caller-visible observations.
-fn exposed_dispatch_state(builder: &GraphBuilder<'_>, scopes: &ScopeBuilder)
-    -> Vec<(&'static str, String)> {
-vec![
+fn exposed_dispatch_state(
+    builder: &GraphBuilder<'_>,
+    scopes: &ScopeBuilder,
+) -> Vec<(&'static str, String)> {
+    vec![
         ("graph", format!("{:?}", builder.graph)),
         (
             "native_decimal_input_names",
@@ -441,10 +623,12 @@ vec![
             serde_json::to_string(&scopes.root).unwrap(),
         ),
         ("all_anchors", format!("{:?}", scopes.anchors)),
-        ("csv_occurrence_raw_authority", builder.csv_occurrence_raw_authority.to_string()),
+        (
+            "csv_occurrence_raw_authority",
+            builder.csv_occurrence_raw_authority.to_string(),
+        ),
     ]
 }
-
 
 fn hidden_membership_designs() -> Vec<String> {
     [
@@ -457,11 +641,21 @@ fn hidden_membership_designs() -> Vec<String> {
 #[test]
 fn csv_whole_raw_membership_retains_saved_grammars_and_rejects_hidden_documents() {
     for name in ["literal-direct.mfd", "preserve-empty.mfd", "semicolon.mfd"] {
-        let text = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/csv-x12-occurrences").join(name)).unwrap();
+        let text = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/csv-x12-occurrences")
+                .join(name),
+        )
+        .unwrap();
         let doc = roxmltree::Document::parse(&text).unwrap();
-        let structure = doc.root_element().children().find(|n| n.has_tag_name("component"))
-            .unwrap().children().find(|n| n.has_tag_name("structure")).unwrap();
+        let structure = doc
+            .root_element()
+            .children()
+            .find(|n| n.has_tag_name("component"))
+            .unwrap()
+            .children()
+            .find(|n| n.has_tag_name("structure"))
+            .unwrap();
         assert!(whole_raw_membership(structure), "{name}");
     }
     let mut refused = hidden_membership_designs();
@@ -477,15 +671,26 @@ fn csv_whole_raw_membership_retains_saved_grammars_and_rejects_hidden_documents(
     ]);
     // Both raw budgets are tested using recognized element positions, rather
     // than relying on an unknown extension to refuse first.
-    let deep = format!("{}{}", "<entry name=\"deep\">".repeat(65), "</entry>".repeat(65));
+    let deep = format!(
+        "{}{}",
+        "<entry name=\"deep\">".repeat(65),
+        "</entry>".repeat(65)
+    );
     refused.push(DESIGN.replacen("<root>", &format!("<root>{deep}"), 1));
-    let wide = (0..16_385).map(|i| format!("<datapoint key=\"{i}\"/>"))
+    let wide = (0..16_385)
+        .map(|i| format!("<datapoint key=\"{i}\"/>"))
         .collect::<String>();
     refused.push(DESIGN.replacen("<targets>", &format!("<targets>{wide}"), 1));
     for (index, text) in refused.iter().enumerate() {
         let doc = roxmltree::Document::parse(text).unwrap();
-        let structure = doc.root_element().children().find(|n| n.has_tag_name("component"))
-            .unwrap().children().find(|n| n.has_tag_name("structure")).unwrap();
+        let structure = doc
+            .root_element()
+            .children()
+            .find(|n| n.has_tag_name("component"))
+            .unwrap()
+            .children()
+            .find(|n| n.has_tag_name("structure"))
+            .unwrap();
         assert!(!whole_raw_membership(structure), "refusal {index}");
     }
 }
@@ -493,22 +698,31 @@ fn csv_whole_raw_membership_retains_saved_grammars_and_rejects_hidden_documents(
 #[test]
 fn csv_hidden_raw_membership_refusals_preserve_all_direct_trial_state() {
     for text in hidden_membership_designs() {
-        with_world(&text, |_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-            assert!(!builder.csv_occurrence_raw_authority);
-            // Hidden components are not normalized into the selected graph.
-            assert_eq!(builder.fn_components.len(), 34);
-            let before = state(builder, scopes, declared, claimed);
-            assert_eq!(before.len(), 38);
-            build(target, bindings, &[], builder, scopes, claimed, declared);
-            assert_eq!(state(builder, scopes, declared, claimed), before);
-        });
+        with_world(
+            &text,
+            |_| {},
+            |_| {},
+            |builder, scopes, declared, claimed, target, bindings| {
+                assert!(!builder.csv_occurrence_raw_authority);
+                // Hidden components are not normalized into the selected graph.
+                assert_eq!(builder.fn_components.len(), 34);
+                let before = state(builder, scopes, declared, claimed);
+                assert_eq!(before.len(), 38);
+                build(target, bindings, &[], builder, scopes, claimed, declared);
+                assert_eq!(state(builder, scopes, declared, claimed), before);
+            },
+        );
     }
 }
 
 #[test]
 fn csv_hidden_raw_membership_preserves_real_dispatch_exposed_state_and_outputs() {
     for text in hidden_membership_designs() {
-        with_world_at_row(false, &text, |_| {}, |_| {},
+        with_world_at_row(
+            false,
+            &text,
+            |_| {},
+            |_| {},
             |builder, scopes, _declared, _claimed, target, bindings| {
                 assert!(!builder.csv_occurrence_raw_authority);
                 assert!(scopes.root.children.is_empty() && scopes.anchors.is_empty());
@@ -518,27 +732,51 @@ fn csv_hidden_raw_membership_preserves_real_dispatch_exposed_state_and_outputs()
                 let mut actual_bindings = bindings.clone();
                 let mut control_bindings = bindings.clone();
                 let iteration = TargetIteration {
-                    target_path: row_path(), feed: 10, target_port: Some(40),
-                    additional_feeds: Vec::new(), output: IterationOutput::Repeated,
-                    projects_whole_group: false, join: None,
+                    target_path: row_path(),
+                    feed: 10,
+                    target_port: Some(40),
+                    additional_feeds: Vec::new(),
+                    output: IterationOutput::Repeated,
+                    projects_whole_group: false,
+                    join: None,
                 };
                 control_builder.csv_occurrence_raw_authority = false;
                 let control_skipped = crate::import::target_iteration::build(
-                    vec![iteration.clone()], target, &mut control_bindings,
-                    &mut control_builder, &mut control_scopes);
+                    vec![iteration.clone()],
+                    target,
+                    &mut control_bindings,
+                    &mut control_builder,
+                    &mut control_scopes,
+                );
                 // The baseline alone disables this one feature-authority bit.
                 // No dispatcher-owned internal values or other fields change.
                 control_builder.csv_occurrence_raw_authority = initial_authority;
                 let actual_skipped = crate::import::target_iteration::build(
-                    vec![iteration], target, &mut actual_bindings, builder, scopes);
+                    vec![iteration],
+                    target,
+                    &mut actual_bindings,
+                    builder,
+                    scopes,
+                );
                 assert_eq!(builder.csv_occurrence_raw_authority, initial_authority);
                 let actual = exposed_dispatch_state(builder, scopes);
                 assert_eq!(actual.len(), 36);
-                assert_eq!(actual, exposed_dispatch_state(&control_builder, &control_scopes));
-                let project_bindings = |values: &Bindings| values.iter()
-                    .map(|(leaf, feed, port)| (leaf.path(), *feed, *port)).collect::<Vec<_>>();
-                assert_eq!(project_bindings(&actual_bindings), project_bindings(&control_bindings));
+                assert_eq!(
+                    actual,
+                    exposed_dispatch_state(&control_builder, &control_scopes)
+                );
+                let project_bindings = |values: &Bindings| {
+                    values
+                        .iter()
+                        .map(|(leaf, feed, port)| (leaf.path(), *feed, *port))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    project_bindings(&actual_bindings),
+                    project_bindings(&control_bindings)
+                );
                 assert_eq!(actual_skipped, control_skipped);
-            });
+            },
+        );
     }
 }

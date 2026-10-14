@@ -718,10 +718,7 @@ fn run_generated_boundary_cases_json_with_harnesses(
         ),
     )?;
     std::fs::write(rust_output.join("cases.json"), &fixtures)?;
-    std::fs::write(
-        rust_output.join("src/main.rs"),
-        rust_harness,
-    )?;
+    std::fs::write(rust_output.join("src/main.rs"), rust_harness)?;
     let target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
         Some(path) => {
             let path = PathBuf::from(path);
@@ -766,10 +763,7 @@ fn run_generated_boundary_cases_json_with_harnesses(
 </Project>
 "#,
     )?;
-    std::fs::write(
-        harness.join("Program.cs"),
-        csharp_harness,
-    )?;
+    std::fs::write(harness.join("Program.cs"), csharp_harness)?;
     let mut csharp_command = dotnet_command(&csharp_output);
     csharp_command
         .args([

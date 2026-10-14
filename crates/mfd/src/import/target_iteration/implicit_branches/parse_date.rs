@@ -9,11 +9,17 @@ pub(super) struct ParseDateProof {
 }
 
 impl ParseDateProof {
-    pub(super) fn matches_lowered(&self, node: mapping::NodeId, builder: &GraphBuilder<'_>) -> bool {
+    pub(super) fn matches_lowered(
+        &self,
+        node: mapping::NodeId,
+        builder: &GraphBuilder<'_>,
+    ) -> bool {
         let Some(mapping::Node::Call { function, args }) = builder.graph.nodes.get(&node) else {
             return false;
         };
-        let [input, picture] = args.as_slice() else { return false; };
+        let [input, picture] = args.as_slice() else {
+            return false;
+        };
         function == "parse_date"
             && matches!(builder.graph.nodes.get(input), Some(mapping::Node::SourceField { path, frame: Some(frame) })
                 if path == &self.field && frame == &self.frame)
@@ -31,11 +37,18 @@ pub(super) fn prove(
         || !builder.framed.contains(anchor)
         || anchor.is_empty()
         || target.repeating
-        || !matches!(target.kind, SchemaKind::Scalar { ty: ir::ScalarType::String })
+        || !matches!(
+            target.kind,
+            SchemaKind::Scalar {
+                ty: ir::ScalarType::String
+            }
+        )
     {
         return None;
     }
-    let component = builder.fn_components.get(*builder.fn_by_output.get(&feed)?)?;
+    let component = builder
+        .fn_components
+        .get(*builder.fn_by_output.get(&feed)?)?;
     let raw = component.parse_date_ownership.as_ref()?;
     if component.library != "core"
         || component.name != "parse-date"
@@ -49,22 +62,32 @@ pub(super) fn prove(
     {
         return None;
     }
-    let [Some(input), Some(picture)] = component.inputs.as_slice() else { return None; };
+    let [Some(input), Some(picture)] = component.inputs.as_slice() else {
+        return None;
+    };
     let input = *builder.edge_from.get(input)?;
     let picture = *builder.edge_from.get(picture)?;
     if input != raw.source || picture != raw.picture || !unique_producer(input, builder) {
         return None;
     }
     let primary = builder.sources.first()?;
-    if !ordinary_primary(primary, builder) || primary.output_keys != raw.primary_outputs { return None; }
+    if !ordinary_primary(primary, builder) || primary.output_keys != raw.primary_outputs {
+        return None;
+    }
     let absolute = physical_scalar(input, anchor, builder)?;
     if absolute.len() > MAX_DEPTH
         || anchor.len() > MAX_DEPTH
         || !guaranteed_scalar(absolute, anchor, &primary.schema)
-        || !matches!(schema_node_at(&primary.schema, absolute)?.kind, SchemaKind::Scalar { ty: ir::ScalarType::String })
+        || !matches!(
+            schema_node_at(&primary.schema, absolute)?.kind,
+            SchemaKind::Scalar {
+                ty: ir::ScalarType::String
+            }
+        )
         || (0..=absolute.len()).any(|length| {
             schema_node_at(&primary.schema, &absolute[..length]).is_none_or(|node| {
-                node.nullable || node.container_nullable
+                node.nullable
+                    || node.container_nullable
                     || nullable_object_item_frame(&primary.schema, &absolute[..length])
             })
         })
@@ -72,7 +95,9 @@ pub(super) fn prove(
         return None;
     }
     let picture = exact_literal(picture, builder)?;
-    if picture != ir::Value::String(raw.picture_value.clone()) { return None; }
+    if picture != ir::Value::String(raw.picture_value.clone()) {
+        return None;
+    }
     Some(ParseDateProof {
         frame: anchor.to_vec(),
         field: absolute.strip_prefix(anchor)?.to_vec(),
@@ -91,11 +116,20 @@ fn ordinary_primary(source: &SchemaComponent, builder: &GraphBuilder<'_>) -> boo
         && source.db_queries.is_empty()
         && source.db_xml_columns.is_empty()
         && !source.has_target_node_controls
-        && source.options == mapping::FormatOptions { json_document: true, ..Default::default() }
+        && source.options
+            == mapping::FormatOptions {
+                json_document: true,
+                ..Default::default()
+            }
         && source.input_instance.as_deref().is_none_or(|path| {
-            std::path::Path::new(path).extension().and_then(|extension| extension.to_str()).is_none_or(|extension| {
-                !["json5", "jsonl", "ndjson"].iter().any(|nonordinary| extension.eq_ignore_ascii_case(nonordinary))
-            })
+            std::path::Path::new(path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_none_or(|extension| {
+                    !["json5", "jsonl", "ndjson"]
+                        .iter()
+                        .any(|nonordinary| extension.eq_ignore_ascii_case(nonordinary))
+                })
         })
         && !source.schema.repeating
         && matches!(source.schema.kind, SchemaKind::Group { .. })
@@ -115,8 +149,16 @@ fn ordinary_schema(node: &SchemaNode, depth: usize) -> bool {
         && node.default.is_none()
         && node.value_generation.is_none()
         && match &node.kind {
-            SchemaKind::Group { children, .. } => children.iter().all(|child| ordinary_schema(child, depth + 1)),
-            SchemaKind::Scalar { ty } => matches!(ty, ir::ScalarType::String | ir::ScalarType::Bool | ir::ScalarType::Int | ir::ScalarType::Float),
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .all(|child| ordinary_schema(child, depth + 1)),
+            SchemaKind::Scalar { ty } => matches!(
+                ty,
+                ir::ScalarType::String
+                    | ir::ScalarType::Bool
+                    | ir::ScalarType::Int
+                    | ir::ScalarType::Float
+            ),
             _ => false,
         }
 }

@@ -305,11 +305,15 @@ impl SchemaComponent {
     }
 
     pub(super) fn json_scalar_port(&self, key: u32, ty: ScalarType) -> bool {
-        self.port_declarations.as_ref().is_some_and(|facts| facts.json_scalar(key, ty))
+        self.port_declarations
+            .as_ref()
+            .is_some_and(|facts| facts.json_scalar(key, ty))
     }
 
     pub(super) fn json_array_object_frame_port(&self, key: u32) -> bool {
-        self.port_declarations.as_ref().is_some_and(|facts| facts.json_array_object_frame(key))
+        self.port_declarations
+            .as_ref()
+            .is_some_and(|facts| facts.json_array_object_frame(key))
     }
 }
 
@@ -1320,30 +1324,48 @@ fn record_json_dynamic_source_ports(
 /// A bounded ordinary JSON reader must not derive authority from the general
 /// reader's first-data/root/json normalization or ignored boundary controls.
 fn ordinary_json_schema_declaration(component: &roxmltree::Node<'_, '_>) -> bool {
-    let data = component.children().filter(|node| node.has_tag_name("data")).collect::<Vec<_>>();
+    let data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect::<Vec<_>>();
     let [data] = data.as_slice() else {
         return false;
     };
-    let roots = data.children().filter(|node| node.has_tag_name("root")).collect::<Vec<_>>();
-    let json = data.children().filter(|node| node.has_tag_name("json")).collect::<Vec<_>>();
+    let roots = data
+        .children()
+        .filter(|node| node.has_tag_name("root"))
+        .collect::<Vec<_>>();
+    let json = data
+        .children()
+        .filter(|node| node.has_tag_name("json"))
+        .collect::<Vec<_>>();
     let ([_], [json]) = (roots.as_slice(), json.as_slice()) else {
         return false;
     };
     data.attributes().len() == 0
         && data.tag_name().namespace().is_none()
-        && data.children().filter(|node| node.is_element())
+        && data
+            .children()
+            .filter(|node| node.is_element())
             .all(|node| matches!(node.tag_name().name(), "root" | "json"))
-        && json.attribute("schema").is_some_and(|schema| !schema.is_empty())
+        && json
+            .attribute("schema")
+            .is_some_and(|schema| !schema.is_empty())
         && json.tag_name().namespace().is_none()
         && matches!(json.attribute("jsonlines"), None | Some("0"))
         && json.attributes().all(|attribute| {
             attribute.namespace().is_none()
-                && matches!(attribute.name(), "schema" | "inputinstance" | "outputinstance" | "jsonlines")
+                && matches!(
+                    attribute.name(),
+                    "schema" | "inputinstance" | "outputinstance" | "jsonlines"
+                )
         })
         && !json.children().any(|node| node.is_element())
         && !component.descendants().any(|node| {
             node.has_tag_name("entry")
-                && node.children().any(|child| child.has_tag_name("outputnodefunctions"))
+                && node
+                    .children()
+                    .any(|child| child.has_tag_name("outputnodefunctions"))
         })
 }
 

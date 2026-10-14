@@ -10,12 +10,38 @@ use std::collections::BTreeMap;
 
 pub fn composed_distinct() -> Project {
     let mut project = primitive::legacy_json(ScalarType::Int, true);
-    project.graph = Graph { nodes: BTreeMap::from([
-        (0, Node::SourceField { path: vec![], frame: Some(vec!["Rows".into()]) }),
-        (1, Node::SourceField { path: vec!["Key".into()], frame: Some(vec!["Rows".into()]) }),
-        (2, Node::Call { function: "exists".into(), args: vec![0] }),
-        (3, Node::SourceField { path: vec!["Name".into()], frame: Some(vec!["Rows".into()]) }),
-    ]) };
+    project.graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec![],
+                    frame: Some(vec!["Rows".into()]),
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["Key".into()],
+                    frame: Some(vec!["Rows".into()]),
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "exists".into(),
+                    args: vec![0],
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: vec!["Name".into()],
+                    frame: Some(vec!["Rows".into()]),
+                },
+            ),
+        ]),
+    };
     let group = &mut project.root.children[0];
     group.group_by = Some(1);
     group.filter = Some(2);

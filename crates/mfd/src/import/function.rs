@@ -7,10 +7,10 @@ use crate::canonical_function;
 
 use super::schema::parse_u32;
 
+mod parse_date;
 #[cfg(test)]
 #[path = "function/total_string_tests.rs"]
 mod total_string_tests;
-mod parse_date;
 pub(super) use parse_date::RawParseDateOwnership;
 mod group_by;
 pub(super) use group_by::RawGroupByOwnership;
@@ -516,8 +516,8 @@ fn exact_substitution_pins(
     count: usize,
 ) -> Option<Vec<u32>> {
     let keys = exact_pin_keys(component, tag, count)?;
-    if let Some(container) = component.children().find(|node| node.has_tag_name(tag)) {
-        if container.tag_name().namespace().is_some()
+    if let Some(container) = component.children().find(|node| node.has_tag_name(tag))
+        && (container.tag_name().namespace().is_some()
             || container.attributes().len() != 0
             || container.children().any(|node| {
                 node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
@@ -530,10 +530,9 @@ fn exact_substitution_pins(
                                 &["key"]
                             },
                         )
-            })
-        {
-            return None;
-        }
+            }))
+    {
+        return None;
     }
     Some(keys)
 }
@@ -694,8 +693,14 @@ fn exact_conditional_ownership(component: &roxmltree::Node) -> Option<RawConditi
     let inputs = exact_pin_keys(component, "sources", 3)?;
     let output = exact_pin_keys(component, "targets", 1)?[0];
     let siblings = component.parent()?;
-    let structure = siblings.parent().filter(|node| node.has_tag_name("structure"))?;
-    let owners = || siblings.children().filter(|node| node.has_tag_name("component"));
+    let structure = siblings
+        .parent()
+        .filter(|node| node.has_tag_name("structure"))?;
+    let owners = || {
+        siblings
+            .children()
+            .filter(|node| node.has_tag_name("component"))
+    };
     let count = |key| super::constructed_parser_scalar::declared_output_count(owners(), key);
     if count(output) != 1 {
         return None;
@@ -711,23 +716,29 @@ fn exact_conditional_ownership(component: &roxmltree::Node) -> Option<RawConditi
         return None;
     }
     let primary = owners().find(|owner| {
-        super::constructed_parser_scalar::declared_output_count(std::iter::once(*owner), sources[0]) == 1
+        super::constructed_parser_scalar::declared_output_count(std::iter::once(*owner), sources[0])
+            == 1
     })?;
     if primary.attribute("library") != Some("json") || primary.attribute("kind") != Some("31") {
         return None;
     }
-    let primary_outputs = primary.children().filter(|node| node.has_tag_name("data"))
+    let primary_outputs = primary
+        .children()
+        .filter(|node| node.has_tag_name("data"))
         .flat_map(|data| data.children().filter(|node| node.has_tag_name("root")))
         .flat_map(|root| root.descendants())
         .filter(|node| node.has_tag_name("entry"))
         .filter_map(|entry| parse_u32(entry.attribute("outkey")))
         .collect::<BTreeSet<_>>();
-    if !primary_outputs.contains(&sources[0])
-        || primary_outputs.iter().any(|key| count(*key) != 1)
+    if !primary_outputs.contains(&sources[0]) || primary_outputs.iter().any(|key| count(*key) != 1)
     {
         return None;
     }
-    Some(RawConditionalOwnership { output, sources, primary_outputs })
+    Some(RawConditionalOwnership {
+        output,
+        sources,
+        primary_outputs,
+    })
 }
 
 fn exact_single_value_map_pin(component: &roxmltree::Node, name: &str) -> bool {
@@ -1120,25 +1131,31 @@ fn exact_literal_data(component: &roxmltree::Node<'_, '_>) -> bool {
     let [data] = data.as_slice() else {
         return false;
     };
-    let children = data.children().filter(|node| node.is_element()).collect::<Vec<_>>();
+    let children = data
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
     let [literal] = children.as_slice() else {
         return false;
     };
     data.attributes().len() == 0
         && data.tag_name().namespace().is_none()
-        && data.children().all(|node| !node.is_text()
-            || node.text().is_none_or(|text| text.trim().is_empty()))
+        && data
+            .children()
+            .all(|node| !node.is_text() || node.text().is_none_or(|text| text.trim().is_empty()))
         && literal.has_tag_name("constant")
         && literal.tag_name().namespace().is_none()
         && literal.attribute("value").is_some()
-        && matches!(literal.attribute("datatype"),
-            Some("string" | "boolean" | "integer" | "int" | "long"))
+        && matches!(
+            literal.attribute("datatype"),
+            Some("string" | "boolean" | "integer" | "int" | "long")
+        )
         && literal.attributes().all(|attribute| {
             attribute.namespace().is_none() && matches!(attribute.name(), "value" | "datatype")
         })
-        && literal.children().all(|node| {
-            !node.is_element() && node.text().is_none_or(|text| text.trim().is_empty())
-        })
+        && literal
+            .children()
+            .all(|node| !node.is_element() && node.text().is_none_or(|text| text.trim().is_empty()))
 }
 
 pub(super) fn parse_constant(value: &str, datatype: &str) -> Value {

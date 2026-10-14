@@ -16,7 +16,11 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
     for label in ["implicit", "reversed", "wrapped", "literals"] {
         let fixture = fixture_root.join(format!("{label}.mfd"));
         let imported = mfd::import(&fixture)?;
-        assert!(imported.warnings.is_empty(), "{label}: {:?}", imported.warnings);
+        assert!(
+            imported.warnings.is_empty(),
+            "{label}: {:?}",
+            imported.warnings
+        );
         let expected_project = oracle::expected_project(label == "literals");
         assert_eq!(
             mapping::project_file::encode_pretty(&imported.project)?,
@@ -45,25 +49,46 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
                 let source = source?;
                 let saved_source = source.clone();
                 let output = engine::run(&imported.project, &source)?;
-                assert_eq!(source, saved_source, "{label}: caller source changed: {case}");
-                assert_eq!(output, oracle::expected_instance(&case["expected"]),
-                    "{label}: complete typed ordered value: {case}");
+                assert_eq!(
+                    source, saved_source,
+                    "{label}: caller source changed: {case}"
+                );
+                assert_eq!(
+                    output,
+                    oracle::expected_instance(&case["expected"]),
+                    "{label}: complete typed ordered value: {case}"
+                );
                 let text = format_json::to_string(&imported.project.target, &output)?;
-                assert_eq!(text.as_bytes(), case["expected_json"].as_str().unwrap().as_bytes(),
-                    "{label}: literal native text bytes: {case}");
-                assert_eq!(serde_json::from_str::<serde_json::Value>(&text)?, case["expected"],
-                    "{label}: complete output value: {case}");
+                assert_eq!(
+                    text.as_bytes(),
+                    case["expected_json"].as_str().unwrap().as_bytes(),
+                    "{label}: literal native text bytes: {case}"
+                );
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&text)?,
+                    case["expected"],
+                    "{label}: complete output value: {case}"
+                );
             } else {
                 let bytes: Vec<u8> = serde_json::from_value(case["bytes"].clone())?;
-                assert!(std::str::from_utf8(&bytes).is_err(), "{label}: UTF-8 refusal control");
+                assert!(
+                    std::str::from_utf8(&bytes).is_err(),
+                    "{label}: UTF-8 refusal control"
+                );
             }
         }
         for case in catalogue["target_rejections"].as_array().unwrap() {
-            assert!(format_json::from_str(case["input"].as_str().unwrap(),
-                &imported.project.target).is_err(), "{label}: target domain accepted {case}");
+            assert!(
+                format_json::from_str(case["input"].as_str().unwrap(), &imported.project.target)
+                    .is_err(),
+                "{label}: target domain accepted {case}"
+            );
         }
         let project_path = directory.0.join(format!("{label}.json"));
-        std::fs::write(&project_path, mapping::project_file::encode_pretty(&imported.project)?)?;
+        std::fs::write(
+            &project_path,
+            mapping::project_file::encode_pretty(&imported.project)?,
+        )?;
         let cases = serde_json::to_vec(cases)?;
         let rust_output = directory.0.join(format!("{label}-rust"));
         generate_project(
@@ -82,14 +107,23 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
         ))?;
         std::fs::write(rust_output.join("cases.json"), &cases)?;
         std::fs::write(rust_output.join("design.txt"), label)?;
-        std::fs::write(rust_output.join("src/main.rs"),
-            include_str!("fixtures/json_enclosing_frame_clones_rust.rs.txt"))?;
+        std::fs::write(
+            rust_output.join("src/main.rs"),
+            include_str!("fixtures/json_enclosing_frame_clones_rust.rs.txt"),
+        )?;
         let mut rust_command = Command::new("cargo");
-        rust_command.args(["run", "--quiet"]).current_dir(&rust_output)
-            .env_remove("CARGO_ENCODED_RUSTFLAGS").env("RUSTFLAGS", "-Dwarnings");
+        rust_command
+            .args(["run", "--quiet"])
+            .current_dir(&rust_output)
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env("RUSTFLAGS", "-Dwarnings");
         let rust = host_policy::recorded_output(&mut rust_command, &rust_output, "rust-run")?;
-        assert!(rust.status.success(), "{label}: generated Rust failed:\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&rust.stdout), String::from_utf8_lossy(&rust.stderr));
+        assert!(
+            rust.status.success(),
+            "{label}: generated Rust failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&rust.stdout),
+            String::from_utf8_lossy(&rust.stderr)
+        );
 
         let csharp_output = directory.0.join(format!("{label}-csharp"));
         generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
@@ -97,7 +131,9 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
         std::fs::write(csharp_output.join("design.txt"), label)?;
         let harness = csharp_output.join("Harness");
         std::fs::create_dir(&harness)?;
-        std::fs::write(harness.join("Harness.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk">
+        std::fs::write(
+            harness.join("Harness.csproj"),
+            r#"<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -108,15 +144,30 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup>
 </Project>
-"#)?;
-        std::fs::write(harness.join("Program.cs"),
-            include_str!("fixtures/json_enclosing_frame_clones_csharp.cs.txt"))?;
+"#,
+        )?;
+        std::fs::write(
+            harness.join("Program.cs"),
+            include_str!("fixtures/json_enclosing_frame_clones_csharp.cs.txt"),
+        )?;
         let mut csharp_command = dotnet_command(&csharp_output);
-        csharp_command.args(["run", "--project", "Harness/Harness.csproj",
-            "--configuration", "Release"]).current_dir(&csharp_output);
-        let csharp = host_policy::recorded_output(&mut csharp_command, &csharp_output, "csharp-run")?;
-        assert!(csharp.status.success(), "{label}: generated C# failed:\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&csharp.stdout), String::from_utf8_lossy(&csharp.stderr));
+        csharp_command
+            .args([
+                "run",
+                "--project",
+                "Harness/Harness.csproj",
+                "--configuration",
+                "Release",
+            ])
+            .current_dir(&csharp_output);
+        let csharp =
+            host_policy::recorded_output(&mut csharp_command, &csharp_output, "csharp-run")?;
+        assert!(
+            csharp.status.success(),
+            "{label}: generated C# failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&csharp.stdout),
+            String::from_utf8_lossy(&csharp.stderr)
+        );
     }
     Ok(())
 }

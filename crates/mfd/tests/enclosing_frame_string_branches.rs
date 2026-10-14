@@ -42,24 +42,28 @@ fn strict_string_branches_preserve_complete_projects_values_xml_and_bool_errors(
         assert!(!rows.nullable && !rows.container_nullable);
         assert_eq!(rows.json_object_item_nullable, None);
         assert!(!rows.json_single_container_nullable());
-        assert_eq!(rows.required_fields(), &["Then".to_string(), "Else".to_string()]);
+        assert_eq!(
+            rows.required_fields(),
+            &["Then".to_string(), "Else".to_string()]
+        );
         for case in cases.iter().filter(|case| case["design"] == design) {
-            let source = format_json::from_str(
-                case["input"].as_str().unwrap(),
-                &imported.project.source,
-            );
+            let source =
+                format_json::from_str(case["input"].as_str().unwrap(), &imported.project.source);
             if case["reject"] == true {
                 assert!(source.is_err(), "{case}");
                 continue;
             }
             let result = engine::run(&imported.project, &source.unwrap());
             if let Some(error) = case.get("boolean_error") {
-                assert!(matches!(
-                    result,
-                    Err(engine::EngineError::NotABool { node, found })
-                        if u64::from(node) == error["node"].as_u64().unwrap()
-                            && found == error["found"].as_str().unwrap()
-                ), "{case}");
+                assert!(
+                    matches!(
+                        result,
+                        Err(engine::EngineError::NotABool { node, found })
+                            if u64::from(node) == error["node"].as_u64().unwrap()
+                                && found == error["found"].as_str().unwrap()
+                    ),
+                    "{case}"
+                );
                 continue;
             }
             let output = result.unwrap();
@@ -79,7 +83,11 @@ fn strict_string_branches_preserve_complete_projects_values_xml_and_bool_errors(
                     },
                 )
                 .unwrap();
-                assert_eq!(actual.as_bytes(), xml.as_str().unwrap().as_bytes(), "{case}");
+                assert_eq!(
+                    actual.as_bytes(),
+                    xml.as_str().unwrap().as_bytes(),
+                    "{case}"
+                );
             }
         }
     }
@@ -122,23 +130,33 @@ fn unproved_string_branch_owners_schema_options_and_types_remain_refusals() {
     ];
     for (index, (label, design)) in controls.into_iter().enumerate() {
         let directory = std::env::temp_dir().join(format!(
-            "ferrule_string_branch_refusal_{}_{}", std::process::id(), index
+            "ferrule_string_branch_refusal_{}_{}",
+            std::process::id(),
+            index
         ));
         std::fs::create_dir(&directory).unwrap();
         let target = std::fs::read_to_string(fixture("target.xsd")).unwrap();
-        std::fs::write(directory.join("target.xsd"), if label == "nonstring target" {
-            target.replace("type=\"xs:string\"", "type=\"xs:integer\"")
-        } else {
-            target
-        }).unwrap();
+        std::fs::write(
+            directory.join("target.xsd"),
+            if label == "nonstring target" {
+                target.replace("type=\"xs:string\"", "type=\"xs:integer\"")
+            } else {
+                target
+            },
+        )
+        .unwrap();
         let mut source = schema.clone();
         let item = &mut source["properties"]["Rows"]["items"];
         match label {
             "optional branch" => item["required"] = serde_json::json!(["Else"]),
-            "nullable branch" => item["properties"]["Then"]["type"] = serde_json::json!(["string", "null"]),
+            "nullable branch" => {
+                item["properties"]["Then"]["type"] = serde_json::json!(["string", "null"])
+            }
             "nonstring branch" => item["properties"]["Then"]["type"] = serde_json::json!("integer"),
             "nullable item" => item["type"] = serde_json::json!(["object", "null"]),
-            "nullable container" => source["properties"]["Rows"]["type"] = serde_json::json!(["array", "null"]),
+            "nullable container" => {
+                source["properties"]["Rows"]["type"] = serde_json::json!(["array", "null"])
+            }
             "optional branch ancestor" => {
                 item["properties"].as_object_mut().unwrap().remove("Then");
                 item["required"] = serde_json::json!(["Else"]);
@@ -160,14 +178,17 @@ fn unproved_string_branch_owners_schema_options_and_types_remain_refusals() {
         assert!(imported.warnings.iter().any(|warning| warning ==
             "declared target clones in `Batch/Record` cannot prove complete enclosing-frame scalar occurrences; lowering skipped"
         ), "{label}: {:?}", imported.warnings);
-        assert!(matches!(
-            mfd::import_with_profile(
-                &mapping,
-                &mfd::ImportOptions::default(),
-                mfd::ImportProfile::Executable,
+        assert!(
+            matches!(
+                mfd::import_with_profile(
+                    &mapping,
+                    &mfd::ImportOptions::default(),
+                    mfd::ImportProfile::Executable,
+                ),
+                Err(mfd::MfdError::IncompatibleImport(_))
             ),
-            Err(mfd::MfdError::IncompatibleImport(_))
-        ), "{label}");
+            "{label}"
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

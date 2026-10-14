@@ -708,7 +708,9 @@ fn with_string_branches(
     ),
 ) {
     with_design_world(
-        include_str!("../../../../tests/fixtures/enclosing-frame-string-branches/physical-branches.mfd"),
+        include_str!(
+            "../../../../tests/fixtures/enclosing-frame-string-branches/physical-branches.mfd"
+        ),
         "tests/fixtures/enclosing-frame-string-branches/physical-branches.mfd",
         edit_source,
         |_| {},
@@ -722,7 +724,13 @@ fn string_conditional_trial_retains_exact_original_membership() {
         |_| {},
         |builder, scopes, declared, claimed, target, bindings| {
             let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
-            assert_eq!(plans.iter().map(|plan| plan.conditionals.len()).sum::<usize>(), 2);
+            assert_eq!(
+                plans
+                    .iter()
+                    .map(|plan| plan.conditionals.len())
+                    .sum::<usize>(),
+                2
+            );
             let before = state(builder, scopes, declared, claimed);
             let candidate = lowering::prepare(
                 &path(&["Batch", "Record"]),
@@ -740,7 +748,9 @@ fn string_conditional_trial_retains_exact_original_membership() {
             let owners = &candidate.3.layouts[&path(&["Batch", "Record"])];
             assert_eq!(owners.len(), 2);
             assert_eq!(
-                owners.iter().flat_map(|owner| owner.bindings.values().flatten().copied())
+                owners
+                    .iter()
+                    .flat_map(|owner| owner.bindings.values().flatten().copied())
                     .collect::<BTreeSet<_>>(),
                 candidate.2,
             );
@@ -762,10 +772,19 @@ fn string_conditional_requires_ordinary_primary_options_and_source_roles() {
                 6 => source.options.json_document = false,
                 7 => source.options.xml_document = true,
                 8 => source.options.json5 = true,
-                9 => { source.input_keys.insert(111); }
-                _ => source.options.external_source = Some(mapping::ExternalSourceOptions::user_function(
-                    "captured", "external value", mapping::ExternalPayloadFormat::Json,
-                ).unwrap()),
+                9 => {
+                    source.input_keys.insert(111);
+                }
+                _ => {
+                    source.options.external_source = Some(
+                        mapping::ExternalSourceOptions::user_function(
+                            "captured",
+                            "external value",
+                            mapping::ExternalPayloadFormat::Json,
+                        )
+                        .unwrap(),
+                    )
+                }
             },
             |builder, scopes, declared, claimed, target, bindings| {
                 assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
@@ -803,19 +822,27 @@ fn string_conditional_exact_lowered_operands_refuse_without_mutation() {
                     // The first trial branch must materialize a fresh conditional
                     // before the second branch's exact node proof refuses.
                     builder.fn_nodes.remove(&0);
-                    builder.graph.nodes.insert(4, mapping::Node::Const { value: ir::Value::Null });
+                    builder.graph.nodes.insert(
+                        4,
+                        mapping::Node::Const {
+                            value: ir::Value::Null,
+                        },
+                    );
                 }
                 let before = state(builder, scopes, declared, claimed);
-                assert!(lowering::prepare(
-                    &path(&["Batch", "Record"]),
-                    plans,
-                    target,
-                    bindings,
-                    builder,
-                    scopes,
-                    claimed,
-                    declared,
-                ).is_none());
+                assert!(
+                    lowering::prepare(
+                        &path(&["Batch", "Record"]),
+                        plans,
+                        target,
+                        bindings,
+                        builder,
+                        scopes,
+                        claimed,
+                        declared,
+                    )
+                    .is_none()
+                );
                 assert_eq!(state(builder, scopes, declared, claimed), before);
             },
         );
@@ -825,12 +852,17 @@ fn string_conditional_exact_lowered_operands_refuse_without_mutation() {
 #[test]
 fn string_conditional_scalar_paths_use_existing_depth_bound() {
     for depth in [MAX_DEPTH, MAX_DEPTH + 1] {
-        let names = (0..depth).map(|index| format!("Field{index}")).collect::<Vec<_>>();
+        let names = (0..depth)
+            .map(|index| format!("Field{index}"))
+            .collect::<Vec<_>>();
         let mut node = SchemaNode::scalar(names.last().unwrap(), ir::ScalarType::String);
         for name in names[..depth - 1].iter().rev() {
             node = SchemaNode::group(name, vec![node]);
         }
         let source = SchemaNode::group("Source", vec![node]);
-        assert_eq!(ordinary_scalar_domain(&names, &names[..1], &source), depth == MAX_DEPTH);
+        assert_eq!(
+            ordinary_scalar_domain(&names, &names[..1], &source),
+            depth == MAX_DEPTH
+        );
     }
 }

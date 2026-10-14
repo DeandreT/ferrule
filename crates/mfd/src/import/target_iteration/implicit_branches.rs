@@ -11,16 +11,16 @@ use crate::import::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use crate::import::scope::{ScopeBuilder, TargetLeaf};
 
 mod csv_x12;
-mod json_implicit;
 mod edi_json;
+mod json_implicit;
+#[cfg(test)]
+mod json_tests;
 mod lowering;
 mod parse_date;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod parse_date_tests;
 #[cfg(test)]
-mod json_tests;
+mod tests;
 
 const MAX_BRANCHES: usize = 64;
 const MAX_BINDINGS: usize = 256;
@@ -193,7 +193,10 @@ struct StrictConditionalProof {
 
 enum ConditionalBranchProof {
     Literal(ir::Value),
-    PhysicalString { frame: Vec<String>, path: Vec<String> },
+    PhysicalString {
+        frame: Vec<String>,
+        path: Vec<String>,
+    },
 }
 
 impl ConditionalBranchProof {
@@ -428,16 +431,19 @@ pub(super) fn build(
     claimed: &mut BTreeSet<usize>,
     declared: &mut DeclaredBranches,
 ) {
-    csv_x12::build(target, bindings, iterations, builder, scopes, claimed, declared);
-    edi_json::build(target, bindings, iterations, builder, scopes, claimed, declared);
+    csv_x12::build(
+        target, bindings, iterations, builder, scopes, claimed, declared,
+    );
+    edi_json::build(
+        target, bindings, iterations, builder, scopes, claimed, declared,
+    );
     if !matches!(
         target.format,
         ComponentFormat::Xml | ComponentFormat::Edi | ComponentFormat::Json
-    )
-        || builder
-            .sources
-            .first()
-            .is_none_or(|source| source.format != ComponentFormat::Json)
+    ) || builder
+        .sources
+        .first()
+        .is_none_or(|source| source.format != ComponentFormat::Json)
     {
         return;
     }
@@ -526,7 +532,9 @@ fn plan(
         || target.format == ComponentFormat::Json
             && (!json_implicit::admit(target, builder)
                 || !json_implicit::plain_item(target_node)
-                || scopes.scope(path).is_some_and(|scope| !json_implicit::replaceable(scope)))
+                || scopes
+                    .scope(path)
+                    .is_some_and(|scope| !json_implicit::replaceable(scope)))
     {
         return None;
     }
@@ -602,7 +610,9 @@ fn plan(
         if !actual_json_frame(path, &enclosing, target, builder, scopes)
             || target.format == ComponentFormat::Json
                 && (!guaranteed_scalar(&enclosing, &[], &builder.sources.first()?.schema)
-                    || !json_implicit::actual_array_frame(path, &enclosing, target, builder, scopes))
+                    || !json_implicit::actual_array_frame(
+                        path, &enclosing, target, builder, scopes,
+                    ))
         {
             return None;
         }
@@ -635,7 +645,8 @@ fn plan(
                 return None;
             }
             let present = if target.format == ComponentFormat::Json {
-                let SchemaKind::Scalar { ty } = schema_node_at(&target.schema, &binding_path)?.kind else {
+                let SchemaKind::Scalar { ty } = schema_node_at(&target.schema, &binding_path)?.kind
+                else {
                     return None;
                 };
                 if target.ports.get(input) != Some(&binding_path)
@@ -656,7 +667,8 @@ fn plan(
                 && builder.fn_by_output.get(feed).is_some_and(|index| {
                     builder.fn_components[*index].output_pins.as_slice() == [Some(*feed)]
                         && builder.fn_components[*index].bounded_scalar_pins_valid
-                }) {
+                })
+            {
                 true
             } else if matches!(driver, BranchDriver::Implicit)
                 && let Some(proof) = strict_scalar_conditional(
@@ -702,7 +714,12 @@ fn plan(
         }
         if !groups.is_subset(&present_groups)
             || target.format == ComponentFormat::Json
-                && !json_implicit::required_assignments(target_node, path, &assigned, &present_groups)
+                && !json_implicit::required_assignments(
+                    target_node,
+                    path,
+                    &assigned,
+                    &present_groups,
+                )
         {
             return None;
         }
@@ -974,7 +991,8 @@ fn physical_frame_driver(
     target.ports.iter().any(|(input, path)| {
         if path != target_path
             || !target.unambiguous_declared_input(*input)
-            || target.format == ComponentFormat::Json && !target.json_array_object_frame_port(*input)
+            || target.format == ComponentFormat::Json
+                && !target.json_array_object_frame_port(*input)
             || target.ambiguous_branch_inputs.contains(input)
             || target.ambiguous_input_affects(*input, target_path)
         {

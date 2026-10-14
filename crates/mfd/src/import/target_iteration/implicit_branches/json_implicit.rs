@@ -73,22 +73,29 @@ pub(super) fn ordinary(component: &SchemaComponent, source: bool) -> bool {
 /// Comparing to a reconstructed plain node preserves required/repeating and
 /// explicit nonnull item facts without discarding any extra schema metadata.
 pub(super) fn plain_schema(node: &SchemaNode, depth: usize, remaining: &mut usize) -> bool {
-    if depth > MAX_DEPTH || *remaining == 0
-        || node.container_nullable || node.json_single_container_nullable()
+    if depth > MAX_DEPTH
+        || *remaining == 0
+        || node.container_nullable
+        || node.json_single_container_nullable()
     {
         return false;
     }
     *remaining -= 1;
     let mut expected = match &node.kind {
         SchemaKind::Scalar { ty }
-            if matches!(ty, ir::ScalarType::Bool | ir::ScalarType::Int | ir::ScalarType::String)
-                && !node.repeating =>
+            if matches!(
+                ty,
+                ir::ScalarType::Bool | ir::ScalarType::Int | ir::ScalarType::String
+            ) && !node.repeating =>
         {
             SchemaNode::scalar(node.name.clone(), *ty)
         }
         SchemaKind::Group {
             children, required, ..
-        } if children.iter().all(|child| plain_schema(child, depth + 1, remaining)) => {
+        } if children
+            .iter()
+            .all(|child| plain_schema(child, depth + 1, remaining)) =>
+        {
             let Some(group) = SchemaNode::group(node.name.clone(), children.clone())
                 .with_required_fields(required.clone())
             else {
@@ -134,16 +141,19 @@ pub(super) fn actual_array_frame(
         && (1..=anchor.len()).all(|source_length| {
             let source_prefix = &anchor[..source_length];
             schema_node_at(&primary.schema, source_prefix).is_some_and(|node| {
-                !node.repeating || (0..path.len()).any(|length| {
-                    let prefix = &path[..length];
-                    schema_node_at(&target.schema, prefix)
-                        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
-                        && scopes.scope(prefix).is_some_and(|scope| {
+                !node.repeating
+                    || (0..path.len()).any(|length| {
+                        let prefix = &path[..length];
+                        schema_node_at(&target.schema, prefix).is_some_and(|node| {
+                            node.repeating && matches!(node.kind, SchemaKind::Group { .. })
+                        }) && scopes.scope(prefix).is_some_and(|scope| {
                             matches!(scope.iteration, ScopeIteration::Source(_))
-                        })
-                        && scopes.anchors.get(prefix).is_some_and(|actual| actual == source_prefix)
-                        && physical_frame_driver(prefix, source_prefix, target, builder)
-                })
+                        }) && scopes
+                            .anchors
+                            .get(prefix)
+                            .is_some_and(|actual| actual == source_prefix)
+                            && physical_frame_driver(prefix, source_prefix, target, builder)
+                    })
             })
         })
 }
@@ -178,14 +188,18 @@ pub(super) fn scalar_proof(
     let SchemaKind::Scalar { ty } = target.kind else {
         return None;
     };
-    if !matches!(ty, ir::ScalarType::Bool | ir::ScalarType::Int | ir::ScalarType::String)
-        || target.repeating
+    if !matches!(
+        ty,
+        ir::ScalarType::Bool | ir::ScalarType::Int | ir::ScalarType::String
+    ) || target.repeating
         || !unique_producer(feed, builder)
     {
         return None;
     }
     if let Some(value) = exact_literal(feed, builder) {
-        let component = builder.fn_components.get(*builder.fn_by_output.get(&feed)?)?;
+        let component = builder
+            .fn_components
+            .get(*builder.fn_by_output.get(&feed)?)?;
         return (component.raw_literal_valid && constant_has_type(&value, ty))
             .then_some(ScalarProof::Literal(value));
     }
@@ -210,7 +224,10 @@ pub(super) fn required_assignments(
     assigned: &BTreeSet<Vec<String>>,
     present: &BTreeSet<Vec<String>>,
 ) -> bool {
-    let SchemaKind::Group { children, required, .. } = &node.kind else {
+    let SchemaKind::Group {
+        children, required, ..
+    } = &node.kind
+    else {
         return false;
     };
     children.iter().all(|child| {
@@ -254,8 +271,8 @@ pub(super) fn bindings_preserved(
     let expected = indices.iter().copied().collect::<BTreeSet<_>>();
     origins.len() == indices.len()
         && retained.len() == origins.len()
-        && origins.iter().all(|(binding, indices)| {
-            indices.len() == 1 && retained.get(binding) == Some(&1)
-        })
+        && origins
+            .iter()
+            .all(|(binding, indices)| indices.len() == 1 && retained.get(binding) == Some(&1))
         && origins.values().flatten().copied().collect::<BTreeSet<_>>() == expected
 }

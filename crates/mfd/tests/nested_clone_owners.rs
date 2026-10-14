@@ -96,7 +96,12 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
         assert!(validation.is_empty(), "{}: {validation:?}", case.name);
         if case.design == "same_source_owners.mfd" {
             let wanted = serde_json::to_value(same_source_expected_project::project())?;
-            assert_eq!(serde_json::to_value(&imported.project)?, wanted, "{}", case.name);
+            assert_eq!(
+                serde_json::to_value(&imported.project)?,
+                wanted,
+                "{}",
+                case.name
+            );
             let strict = mfd::import_with_profile(
                 &evidence.0.join("mapping.mfd"),
                 &mfd::ImportOptions::default(),
@@ -115,9 +120,20 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
                 serde_json::to_vec_pretty(&snapshot)?,
             )?;
             let strict = strict?;
-            assert_eq!(strict.report, mfd::ImportReport { executable: true, issues: Vec::new() });
+            assert_eq!(
+                strict.report,
+                mfd::ImportReport {
+                    executable: true,
+                    issues: Vec::new()
+                }
+            );
             assert!(strict.imported.warnings.is_empty(), "{}", case.name);
-            assert_eq!(serde_json::to_value(&strict.imported.project)?, wanted, "{}", case.name);
+            assert_eq!(
+                serde_json::to_value(&strict.imported.project)?,
+                wanted,
+                "{}",
+                case.name
+            );
         }
         let source = format_xml::from_str(&case.input_xml, &imported.project.source)?;
         let expected =
@@ -137,15 +153,14 @@ fn declared_nested_clone_owners_preserve_complete_ordered_values() -> Result<(),
 
 #[test]
 fn ambiguous_owners_and_distinct_singular_feeds_remain_refusals() -> Result<(), Box<dyn Error>> {
-    for (design, expected) in [
-        (
+    {
+        let (design, expected) = (
             "distinct_scalar_feeds.mfd",
             vec![(
                 "scope `Group/<segment 1>`",
                 "target field `Side` is bound more than once",
             )],
-        ),
-    ] {
+        );
         let evidence = Evidence::new(design)?;
         std::fs::copy(
             fixtures().join("refusals.json"),

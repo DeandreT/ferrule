@@ -22,11 +22,13 @@ pub fn expected(mixed: bool) -> Project {
     text.xml_optional = true;
     let target = SchemaNode::group(
         "Result",
-        vec![SchemaNode::group(
-            "Batch",
-            vec![SchemaNode::group("Record", vec![text]).repeating()],
-        )
-        .repeating()],
+        vec![
+            SchemaNode::group(
+                "Batch",
+                vec![SchemaNode::group("Record", vec![text]).repeating()],
+            )
+            .repeating(),
+        ],
     );
     let field = |name: &str| Node::SourceField {
         path: vec![name.into()],
@@ -34,23 +36,59 @@ pub fn expected(mixed: bool) -> Project {
     };
     let nodes = if mixed {
         BTreeMap::from([
-            (0, Node::Const { value: Value::String(String::new()) }),
-            (1, Node::If { condition: 2, then: 3, else_: 0 }),
+            (
+                0,
+                Node::Const {
+                    value: Value::String(String::new()),
+                },
+            ),
+            (
+                1,
+                Node::If {
+                    condition: 2,
+                    then: 3,
+                    else_: 0,
+                },
+            ),
             (2, field("Choose")),
             (3, field("Then")),
-            (4, Node::If { condition: 2, then: 0, else_: 3 }),
+            (
+                4,
+                Node::If {
+                    condition: 2,
+                    then: 0,
+                    else_: 3,
+                },
+            ),
         ])
     } else {
         BTreeMap::from([
-            (0, Node::If { condition: 1, then: 2, else_: 3 }),
+            (
+                0,
+                Node::If {
+                    condition: 1,
+                    then: 2,
+                    else_: 3,
+                },
+            ),
             (1, field("Choose")),
             (2, field("Then")),
             (3, field("Else")),
-            (4, Node::If { condition: 1, then: 3, else_: 2 }),
+            (
+                4,
+                Node::If {
+                    condition: 1,
+                    then: 3,
+                    else_: 2,
+                },
+            ),
         ])
     };
     let branch = |node| Scope {
-        bindings: vec![Binding { target_field: "Text".into(), node }],
+        bindings: vec![Binding {
+            target_field: "Text".into(),
+            node,
+        }],
         ..Default::default()
     };
     Project {
@@ -61,8 +99,14 @@ pub fn expected(mixed: bool) -> Project {
         target,
         source_path: Some("source.json".into()),
         target_path: Some("report.xml".into()),
-        source_options: FormatOptions { json_document: true, ..Default::default() },
-        target_options: FormatOptions { xml_document: true, ..Default::default() },
+        source_options: FormatOptions {
+            json_document: true,
+            ..Default::default()
+        },
+        target_options: FormatOptions {
+            xml_document: true,
+            ..Default::default()
+        },
         graph: Graph { nodes },
         root: Scope {
             children: vec![Scope {

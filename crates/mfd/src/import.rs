@@ -35,9 +35,9 @@ mod feed;
 mod first_presence;
 mod flextext_parser;
 mod function;
-mod group_by_key;
 mod generated_occurrence;
 mod graph;
+mod group_by_key;
 mod group_projection;
 mod instance_path;
 mod iteration;
@@ -1515,8 +1515,8 @@ fn import_resolved(
 
     let edges = read_edge_inputs(&structure, Some(&wrapper));
     let mut warnings = edges.conflicts.clone();
-    let csv_occurrence_raw_authority = edges.complete
-        && target_iteration::csv_raw_authority(&structure, &edges.feeds);
+    let csv_occurrence_raw_authority =
+        edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
     let mut json_serializers = Vec::new();

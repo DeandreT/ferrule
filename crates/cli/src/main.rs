@@ -1080,45 +1080,110 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_target_profile_is_explicit_required_and_value_checked() {
-        let base = ["ferrule", "generate", "--project", "absent.json", "--language", "csharp", "--out", "absent-output"];
+        let base = [
+            "ferrule",
+            "generate",
+            "--project",
+            "absent.json",
+            "--language",
+            "csharp",
+            "--out",
+            "absent-output",
+        ];
         for (value, wanted) in [
-            ("single-transaction", codegen::X12EnvelopeProfile::SingleTransaction),
-            ("grouped-transactions", codegen::X12EnvelopeProfile::GroupedTransactions),
+            (
+                "single-transaction",
+                codegen::X12EnvelopeProfile::SingleTransaction,
+            ),
+            (
+                "grouped-transactions",
+                codegen::X12EnvelopeProfile::GroupedTransactions,
+            ),
         ] {
             let mut missing = base.to_vec();
             missing.extend(["--csv-x12-target-envelope-profile", value]);
-            assert_eq!(Cli::try_parse_from(&missing).err().expect("required CSV companion").kind(), ErrorKind::MissingRequiredArgument);
+            assert_eq!(
+                Cli::try_parse_from(&missing)
+                    .err()
+                    .expect("required CSV companion")
+                    .kind(),
+                ErrorKind::MissingRequiredArgument
+            );
             let mut selected = base.to_vec();
-            selected.extend(["--csv-x12-adapters", "--csv-x12-target-envelope-profile", value]);
+            selected.extend([
+                "--csv-x12-adapters",
+                "--csv-x12-target-envelope-profile",
+                value,
+            ]);
             let parsed = Cli::try_parse_from(selected).unwrap();
-            let Command::Generate { csv_x12_target_envelope_profile, .. } = parsed.command else { panic!("generate"); };
-            assert_eq!(csv_x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from), Some(wanted));
+            let Command::Generate {
+                csv_x12_target_envelope_profile,
+                ..
+            } = parsed.command
+            else {
+                panic!("generate");
+            };
+            assert_eq!(
+                csv_x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from),
+                Some(wanted)
+            );
         }
         let mut absent = base.to_vec();
         absent.push("--csv-x12-adapters");
         let parsed = Cli::try_parse_from(absent).unwrap();
-        let Command::Generate { csv_x12_target_envelope_profile, .. } = parsed.command else { panic!("generate"); };
+        let Command::Generate {
+            csv_x12_target_envelope_profile,
+            ..
+        } = parsed.command
+        else {
+            panic!("generate");
+        };
         assert!(csv_x12_target_envelope_profile.is_none());
         let mut invalid = base.to_vec();
-        invalid.extend(["--csv-x12-adapters", "--csv-x12-target-envelope-profile", "automatic"]);
-        assert_eq!(Cli::try_parse_from(invalid).err().expect("invalid profile").kind(), ErrorKind::InvalidValue);
+        invalid.extend([
+            "--csv-x12-adapters",
+            "--csv-x12-target-envelope-profile",
+            "automatic",
+        ]);
+        assert_eq!(
+            Cli::try_parse_from(invalid)
+                .err()
+                .expect("invalid profile")
+                .kind(),
+            ErrorKind::InvalidValue
+        );
     }
 
     #[test]
     fn csv_x12_grouped_target_flag_keeps_early_backend_refusal() {
-        let root = std::env::temp_dir().join(format!("ferrule-csv-x12-explicit-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-csv-x12-explicit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
         let args = vec![
-            OsString::from("ferrule"), OsString::from("generate"),
-            OsString::from("--project"), root.join("absent-project.json").into_os_string(),
-            OsString::from("--language"), OsString::from("rust"),
-            OsString::from("--out"), output.clone().into_os_string(),
-            OsString::from("--csv-x12-adapters"), OsString::from("--csv-x12-target-envelope-profile"),
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            root.join("absent-project.json").into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--csv-x12-adapters"),
+            OsString::from("--csv-x12-target-envelope-profile"),
             OsString::from("grouped-transactions"),
         ];
         let result = execute(Cli::try_parse_from(args).unwrap());
-        assert_eq!(result.unwrap_err().to_string(), "--csv-x12-adapters requires --language csharp");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--csv-x12-adapters requires --language csharp"
+        );
         assert!(!output.parent().unwrap().exists());
     }
 

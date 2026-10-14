@@ -446,7 +446,6 @@ fn whole_table_ports_include_introspected_columns_missing_from_the_entry_tree() 
     ));
 }
 
-
 #[test]
 fn json_property_paths_preserve_all_legacy_marker_allocation_and_raw_ancestry() {
     let document = roxmltree::Document::parse(r#"<entry name="object">
@@ -461,8 +460,17 @@ fn json_property_paths_preserve_all_legacy_marker_allocation_and_raw_ancestry() 
     let json = super::input_port_ancestry_projected(&document.root_element(), &keys, true);
     assert_eq!(json.ancestors, legacy.ancestors);
     assert_eq!(json.ambiguous_inputs, legacy.ambiguous_inputs);
-    assert_eq!(json.branches, vec![(1, vec!["17:Records".into()]), (2, vec!["17:Records".into()])]);
-    assert_eq!(json.ancestors, BTreeMap::from([(u32::MAX - 1, vec![1]), (52, vec![2])]));
+    assert_eq!(
+        json.branches,
+        vec![
+            (1, vec!["17:Records".into()]),
+            (2, vec!["17:Records".into()])
+        ]
+    );
+    assert_eq!(
+        json.ancestors,
+        BTreeMap::from([(u32::MAX - 1, vec![1]), (52, vec![2])])
+    );
 }
 
 #[test]
@@ -472,10 +480,22 @@ fn json_branch_projection_refuses_alternative_and_ambiguous_wrappers_without_ren
         <entry name="object" clone="1"><entry name="Value" type="json-property"><entry name="string" inpkey="61"/></entry></entry>
     </entry></entry></entry></entry>"#;
     for (before, after) in [
-        (r#"<entry name="object" clone="1">"#, r#"<entry name="object" type="json-subtype" clone="1">"#),
-        (r#"<entry name="item" type="json-item">"#, r#"<entry name="item" type="json-item"><entry name="null"/>"#),
-        (r#"<entry name="array">"#, r#"<entry name="array"/><entry name="array">"#),
-        (r#"<entry name="item" type="json-item">"#, r#"<entry name="item" type="json-item"/><entry name="item" type="json-item">"#),
+        (
+            r#"<entry name="object" clone="1">"#,
+            r#"<entry name="object" type="json-subtype" clone="1">"#,
+        ),
+        (
+            r#"<entry name="item" type="json-item">"#,
+            r#"<entry name="item" type="json-item"><entry name="null"/>"#,
+        ),
+        (
+            r#"<entry name="array">"#,
+            r#"<entry name="array"/><entry name="array">"#,
+        ),
+        (
+            r#"<entry name="item" type="json-item">"#,
+            r#"<entry name="item" type="json-item"/><entry name="item" type="json-item">"#,
+        ),
     ] {
         let changed = text.replace(before, after);
         let document = roxmltree::Document::parse(&changed).unwrap();

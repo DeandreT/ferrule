@@ -28,10 +28,10 @@ mod csv_x12_adapters;
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]
 mod dynamic_properties;
-#[path = "code_generation/enclosing_frame_value_maps.rs"]
-mod enclosing_frame_value_maps;
 #[path = "code_generation/enclosing_frame_date_producers.rs"]
 mod enclosing_frame_date_producers;
+#[path = "code_generation/enclosing_frame_value_maps.rs"]
+mod enclosing_frame_value_maps;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]

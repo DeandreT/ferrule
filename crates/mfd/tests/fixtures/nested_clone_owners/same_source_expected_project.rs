@@ -57,14 +57,16 @@ pub fn project() -> Project {
         source: SchemaNode::group("Source", vec![batch("Left", true), batch("Right", true)]),
         target: SchemaNode::group(
             "Result",
-            vec![SchemaNode::group(
-                "Group",
-                vec![
-                    text("Side"),
-                    SchemaNode::group("Row", vec![text("Value")]).repeating(),
-                ],
-            )
-            .repeating()],
+            vec![
+                SchemaNode::group(
+                    "Group",
+                    vec![
+                        text("Side"),
+                        SchemaNode::group("Row", vec![text("Value")]).repeating(),
+                    ],
+                )
+                .repeating(),
+            ],
         ),
         source_path: Some("input.xml".into()),
         target_path: Some("output.xml".into()),
@@ -82,17 +84,45 @@ pub fn project() -> Project {
         user_functions: BTreeMap::new(),
         graph: Graph {
             nodes: BTreeMap::from([
-                (0, Node::Const { value: Value::String("left".into()) }),
-                (1, Node::Const { value: Value::String("right".into()) }),
-                (2, Node::Const { value: Value::String("left-fixed-one".into()) }),
-                (3, Node::Const { value: Value::String("left-fixed-two".into()) }),
-                (4, Node::Const { value: Value::String("right-fixed".into()) }),
+                (
+                    0,
+                    Node::Const {
+                        value: Value::String("left".into()),
+                    },
+                ),
+                (
+                    1,
+                    Node::Const {
+                        value: Value::String("right".into()),
+                    },
+                ),
+                (
+                    2,
+                    Node::Const {
+                        value: Value::String("left-fixed-one".into()),
+                    },
+                ),
+                (
+                    3,
+                    Node::Const {
+                        value: Value::String("left-fixed-two".into()),
+                    },
+                ),
+                (
+                    4,
+                    Node::Const {
+                        value: Value::String("right-fixed".into()),
+                    },
+                ),
                 // Group/Row anchors exist before the first scalar binding.
                 // Both declared Row lineages reuse the cached Left/Item Value read.
-                (5, Node::SourceField {
-                    frame: Some(vec!["Left".into(), "Item".into()]),
-                    path: vec!["Value".into()],
-                }),
+                (
+                    5,
+                    Node::SourceField {
+                        frame: Some(vec!["Left".into(), "Item".into()]),
+                        path: vec!["Value".into()],
+                    },
+                ),
             ]),
         },
         root: Scope {

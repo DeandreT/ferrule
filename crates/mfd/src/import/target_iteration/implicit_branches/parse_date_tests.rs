@@ -19,8 +19,9 @@ fn with_world(
         &Bindings,
     ),
 ) {
-    let text =
-        include_str!("../../../../tests/fixtures/enclosing-frame-date-producers/literal-picture.mfd");
+    let text = include_str!(
+        "../../../../tests/fixtures/enclosing-frame-date-producers/literal-picture.mfd"
+    );
     let document = roxmltree::Document::parse(text).unwrap();
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/enclosing-frame-date-producers/literal-picture.mfd");
@@ -320,65 +321,121 @@ fn state(
 
 #[test]
 fn parse_date_raw_and_lowered_contract_commits_exact_original_binding_owners() {
-    with_world(|_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-        let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
-        assert_eq!(plans.iter().map(|plan| plan.parse_dates.len()).sum::<usize>(), 2);
-        for (feed, node) in [(102, 1), (103, 3)] {
-            let proof = parse_date::prove(feed, &path(&["Rows"]), schema_node_at(&target.schema, &path(&["Batch", "Record", "Date"])).unwrap(), builder).unwrap();
-            assert!(proof.matches_lowered(node, builder));
-        }
-        let before = state(builder, scopes, declared, claimed);
-        let candidate = lowering::prepare(&path(&["Batch", "Record"]), plans, target, bindings, builder, scopes, claimed, declared).unwrap();
-        assert_eq!(state(builder, scopes, declared, claimed), before);
-        assert_eq!(candidate.2, BTreeSet::from([0, 1]));
-        let owners = &candidate.3.layouts[&path(&["Batch", "Record"])];
-        assert_eq!(owners.len(), 2);
-        assert_eq!(owners.iter().flat_map(|owner| owner.bindings.values().flatten().copied()).collect::<BTreeSet<_>>(), candidate.2);
-    });
+    with_world(
+        |_| {},
+        |_| {},
+        |builder, scopes, declared, claimed, target, bindings| {
+            let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
+            assert_eq!(
+                plans
+                    .iter()
+                    .map(|plan| plan.parse_dates.len())
+                    .sum::<usize>(),
+                2
+            );
+            for (feed, node) in [(102, 1), (103, 3)] {
+                let proof = parse_date::prove(
+                    feed,
+                    &path(&["Rows"]),
+                    schema_node_at(&target.schema, &path(&["Batch", "Record", "Date"])).unwrap(),
+                    builder,
+                )
+                .unwrap();
+                assert!(proof.matches_lowered(node, builder));
+            }
+            let before = state(builder, scopes, declared, claimed);
+            let candidate = lowering::prepare(
+                &path(&["Batch", "Record"]),
+                plans,
+                target,
+                bindings,
+                builder,
+                scopes,
+                claimed,
+                declared,
+            )
+            .unwrap();
+            assert_eq!(state(builder, scopes, declared, claimed), before);
+            assert_eq!(candidate.2, BTreeSet::from([0, 1]));
+            let owners = &candidate.3.layouts[&path(&["Batch", "Record"])];
+            assert_eq!(owners.len(), 2);
+            assert_eq!(
+                owners
+                    .iter()
+                    .flat_map(|owner| owner.bindings.values().flatten().copied())
+                    .collect::<BTreeSet<_>>(),
+                candidate.2
+            );
+        },
+    );
 }
 
 #[test]
 fn parse_date_optional_nullable_nonstring_and_nonordinary_source_contracts_refuse() {
     for mode in 0..14 {
-        with_world(|source| {
-            match mode {
+        with_world(
+            |source| match mode {
                 0 => source.is_variable = true,
                 1 => source.is_pass_through = true,
                 2 => source.compute_when_key = Some(999),
                 3 => source.options.json_lines = true,
                 4 => source.options.json5 = true,
-                5 => source.options.json_schema_unresolved_reference = Some("unresolved.schema.json".into()),
+                5 => {
+                    source.options.json_schema_unresolved_reference =
+                        Some("unresolved.schema.json".into())
+                }
                 6 => source.has_target_node_controls = true,
-                7 => { source.ports.insert(11, path(&["foreign", "RawA"])); }
+                7 => {
+                    source.ports.insert(11, path(&["foreign", "RawA"]));
+                }
                 _ => {
-                    let ir::SchemaKind::Group { children, .. } = &mut source.schema.kind else { panic!("group") };
+                    let ir::SchemaKind::Group { children, .. } = &mut source.schema.kind else {
+                        panic!("group")
+                    };
                     let rows = &mut children[0];
                     match mode {
-                        8 => *rows = rows.clone().with_required_fields(vec!["RawA".into()]).unwrap(),
+                        8 => {
+                            *rows = rows
+                                .clone()
+                                .with_required_fields(vec!["RawA".into()])
+                                .unwrap()
+                        }
                         9 => rows.container_nullable = true,
                         10 => rows.json_object_item_nullable = Some(true),
                         _ => {
-                            let ir::SchemaKind::Group { children, .. } = &mut rows.kind else { panic!("rows") };
+                            let ir::SchemaKind::Group { children, .. } = &mut rows.kind else {
+                                panic!("rows")
+                            };
                             match mode {
                                 11 => children[1].nullable = true,
-                                12 => children[1].kind = SchemaKind::Scalar { ty: ir::ScalarType::Int },
+                                12 => {
+                                    children[1].kind = SchemaKind::Scalar {
+                                        ty: ir::ScalarType::Int,
+                                    }
+                                }
                                 _ => children[1].json_any = true,
                             }
                         }
                     }
                 }
-            }
-        }, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-            assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none(), "mode {mode}");
-        });
+            },
+            |_| {},
+            |builder, scopes, declared, claimed, target, bindings| {
+                assert!(
+                    plans(target, bindings, builder, scopes, declared, claimed).is_none(),
+                    "mode {mode}"
+                );
+            },
+        );
     }
 }
 
 #[test]
 fn parse_date_raw_and_normalized_operand_ids_literal_and_output_must_agree() {
     for mode in 0..7 {
-        with_world(|_| {}, |functions| {
-            match mode {
+        with_world(
+            |_| {},
+            |functions| match mode {
                 0 => functions[2].inputs.swap(0, 1),
                 1 => functions[2].inputs[0] = Some(999),
                 2 => functions[2].outputs[0] = 999,
@@ -386,64 +443,131 @@ fn parse_date_raw_and_normalized_operand_ids_literal_and_output_must_agree() {
                 4 => functions[2].parse_date_ownership = None,
                 5 => functions[0].constant = Some(("changed".into(), "string".into())),
                 _ => functions[2].library = "xpath2".into(),
-            }
-        }, |builder, scopes, declared, claimed, target, bindings| {
-            assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none(), "mode {mode}");
-        });
+            },
+            |builder, scopes, declared, claimed, target, bindings| {
+                assert!(
+                    plans(target, bindings, builder, scopes, declared, claimed).is_none(),
+                    "mode {mode}"
+                );
+            },
+        );
     }
 }
 
 #[test]
 fn parse_date_lowered_call_function_order_literal_path_and_frame_are_atomic_refusals() {
     for mode in 0..5 {
-        with_world(|_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-            let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
-            match mode {
-                0 => {
-                    let mapping::Node::Call { function, .. } = builder.graph.nodes.get_mut(&3).unwrap() else { panic!("call") };
-                    *function = "parse_datetime".into();
+        with_world(
+            |_| {},
+            |_| {},
+            |builder, scopes, declared, claimed, target, bindings| {
+                let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
+                match mode {
+                    0 => {
+                        let mapping::Node::Call { function, .. } =
+                            builder.graph.nodes.get_mut(&3).unwrap()
+                        else {
+                            panic!("call")
+                        };
+                        *function = "parse_datetime".into();
+                    }
+                    1 => {
+                        let mapping::Node::Call { args, .. } =
+                            builder.graph.nodes.get_mut(&3).unwrap()
+                        else {
+                            panic!("call")
+                        };
+                        args.swap(0, 1);
+                    }
+                    2 => {
+                        let mapping::Node::Const { value } =
+                            builder.graph.nodes.get_mut(&0).unwrap()
+                        else {
+                            panic!("picture")
+                        };
+                        *value = ir::Value::String("different".into());
+                    }
+                    _ => {
+                        let mapping::Node::SourceField { path: field, frame } =
+                            builder.graph.nodes.get_mut(&4).unwrap()
+                        else {
+                            panic!("source")
+                        };
+                        if mode == 3 {
+                            *frame = None;
+                        } else {
+                            *field = path(&["RawA"]);
+                        }
+                    }
                 }
-                1 => {
-                    let mapping::Node::Call { args, .. } = builder.graph.nodes.get_mut(&3).unwrap() else { panic!("call") };
-                    args.swap(0, 1);
-                }
-                2 => {
-                    let mapping::Node::Const { value } = builder.graph.nodes.get_mut(&0).unwrap() else { panic!("picture") };
-                    *value = ir::Value::String("different".into());
-                }
-                _ => {
-                    let mapping::Node::SourceField { path: field, frame } = builder.graph.nodes.get_mut(&4).unwrap() else { panic!("source") };
-                    if mode == 3 { *frame = None; } else { *field = path(&["RawA"]); }
-                }
-            }
-            let before = state(builder, scopes, declared, claimed);
-            assert!(lowering::prepare(&path(&["Batch", "Record"]), plans, target, bindings, builder, scopes, claimed, declared).is_none());
-            assert_eq!(state(builder, scopes, declared, claimed), before);
-        });
+                let before = state(builder, scopes, declared, claimed);
+                assert!(
+                    lowering::prepare(
+                        &path(&["Batch", "Record"]),
+                        plans,
+                        target,
+                        bindings,
+                        builder,
+                        scopes,
+                        claimed,
+                        declared
+                    )
+                    .is_none()
+                );
+                assert_eq!(state(builder, scopes, declared, claimed), before);
+            },
+        );
     }
 }
 
 #[test]
 fn parse_date_late_trial_failure_retains_graph_caches_scopes_claims_and_declarations() {
-    with_world(|_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-        let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
-        builder.fn_nodes.remove(&1);
-        builder.graph.nodes.insert(3, mapping::Node::Const { value: ir::Value::Null });
-        let before = state(builder, scopes, declared, claimed);
-        assert!(lowering::prepare(&path(&["Batch", "Record"]), plans, target, bindings, builder, scopes, claimed, declared).is_none());
-        assert_eq!(state(builder, scopes, declared, claimed), before);
-    });
+    with_world(
+        |_| {},
+        |_| {},
+        |builder, scopes, declared, claimed, target, bindings| {
+            let plans = plans(target, bindings, builder, scopes, declared, claimed).unwrap();
+            builder.fn_nodes.remove(&1);
+            builder.graph.nodes.insert(
+                3,
+                mapping::Node::Const {
+                    value: ir::Value::Null,
+                },
+            );
+            let before = state(builder, scopes, declared, claimed);
+            assert!(
+                lowering::prepare(
+                    &path(&["Batch", "Record"]),
+                    plans,
+                    target,
+                    bindings,
+                    builder,
+                    scopes,
+                    claimed,
+                    declared
+                )
+                .is_none()
+            );
+            assert_eq!(state(builder, scopes, declared, claimed), before);
+        },
+    );
 }
 
 #[test]
 fn parse_date_requires_exact_string_target_and_unclaimed_original_bindings() {
-    with_world(|_| {}, |_| {}, |builder, scopes, declared, claimed, target, bindings| {
-        let mut scalar = SchemaNode::scalar("Date", ir::ScalarType::Int);
-        assert!(parse_date::prove(102, &path(&["Rows"]), &scalar, builder).is_none());
-        scalar.kind = SchemaKind::Scalar { ty: ir::ScalarType::String };
-        scalar.repeating = true;
-        assert!(parse_date::prove(102, &path(&["Rows"]), &scalar, builder).is_none());
-        claimed.insert(0);
-        assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
-    });
+    with_world(
+        |_| {},
+        |_| {},
+        |builder, scopes, declared, claimed, target, bindings| {
+            let mut scalar = SchemaNode::scalar("Date", ir::ScalarType::Int);
+            assert!(parse_date::prove(102, &path(&["Rows"]), &scalar, builder).is_none());
+            scalar.kind = SchemaKind::Scalar {
+                ty: ir::ScalarType::String,
+            };
+            scalar.repeating = true;
+            assert!(parse_date::prove(102, &path(&["Rows"]), &scalar, builder).is_none());
+            claimed.insert(0);
+            assert!(plans(target, bindings, builder, scopes, declared, claimed).is_none());
+        },
+    );
 }

@@ -254,7 +254,11 @@ pub(super) fn read_edge_inputs(
             ));
         }
     }
-    EdgeInputs { feeds, conflicts, complete }
+    EdgeInputs {
+        feeds,
+        conflicts,
+        complete,
+    }
 }
 
 pub(super) fn read_copy_all_targets(

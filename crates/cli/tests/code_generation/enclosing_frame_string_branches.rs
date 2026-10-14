@@ -4,7 +4,8 @@ use super::*;
 mod oracle;
 
 #[test]
-fn strict_string_branches_generated_complete_projects_values_xml_and_bool_errors() -> TestResult<()> {
+fn strict_string_branches_generated_complete_projects_values_xml_and_bool_errors() -> TestResult<()>
+{
     let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../mfd/tests/fixtures/enclosing-frame-string-branches/cases.json"
     ))?;
@@ -18,14 +19,20 @@ fn strict_string_branches_generated_complete_projects_values_xml_and_bool_errors
             mapping::project_file::encode_pretty(&oracle::expected(design == "mixed-branches"))?,
         );
         assert!(engine::validate(&imported.project).is_empty());
-        let selected = cases.iter().filter(|case| case["design"] == design)
-            .cloned().collect::<Vec<_>>();
+        let selected = cases
+            .iter()
+            .filter(|case| case["design"] == design)
+            .cloned()
+            .collect::<Vec<_>>();
         json_text_boundaries::run_generated_boundary_cases(
             &imported.project,
             &selected,
             &format!("conditional_strings_{design}"),
         )?;
-        let xml_case = selected.iter().find(|case| case.get("expected_xml").is_some()).unwrap();
+        let xml_case = selected
+            .iter()
+            .find(|case| case.get("expected_xml").is_some())
+            .unwrap();
         generated_xml(&imported.project, xml_case, design)?;
     }
     Ok(())
@@ -40,7 +47,10 @@ fn generated_xml(project: &Project, case: &serde_json::Value, name: &str) -> Tes
     let input_path = root.join("input.json");
     let source_path = root.join("source-schema.json");
     let target_path = root.join("target-schema.json");
-    std::fs::write(&project_path, mapping::project_file::encode_pretty(project)?)?;
+    std::fs::write(
+        &project_path,
+        mapping::project_file::encode_pretty(project)?,
+    )?;
     std::fs::write(&input_path, case["input"].as_str().unwrap())?;
     std::fs::write(&source_path, serde_json::to_vec(&project.source)?)?;
     std::fs::write(&target_path, serde_json::to_vec(&project.target)?)?;
@@ -54,7 +64,9 @@ fn generated_xml(project: &Project, case: &serde_json::Value, name: &str) -> Tes
             runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
         },
     )?;
-    std::fs::write(rust_output.join("src/main.rs"), r#"use codegen_runtime::{Value, parse_json, serialize_xml};
+    std::fs::write(
+        rust_output.join("src/main.rs"),
+        r#"use codegen_runtime::{Value, parse_json, serialize_xml};
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,7 +82,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print!("{xml}");
     Ok(())
 }
-"#)?;
+"#,
+    )?;
     let rust_target = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
         Some(path) => {
             let path = PathBuf::from(path);
@@ -79,19 +92,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => root.join("cargo-target"),
     };
-    let rust = Command::new("cargo").args(["run", "--quiet", "--"])
-        .arg(&input_path).arg(&source_path).arg(&target_path)
-        .current_dir(&rust_output).env("CARGO_TARGET_DIR", rust_target)
-        .env("RUSTFLAGS", "-Dwarnings").isolated_output()?;
-    assert!(rust.status.success(), "{name}: Rust XML failed: {}",
-        String::from_utf8_lossy(&rust.stderr));
+    let rust = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .arg(&input_path)
+        .arg(&source_path)
+        .arg(&target_path)
+        .current_dir(&rust_output)
+        .env("CARGO_TARGET_DIR", rust_target)
+        .env("RUSTFLAGS", "-Dwarnings")
+        .isolated_output()?;
+    assert!(
+        rust.status.success(),
+        "{name}: Rust XML failed: {}",
+        String::from_utf8_lossy(&rust.stderr)
+    );
     assert_eq!(rust.stdout, expected, "{name}: Rust XML bytes");
 
     let csharp_output = root.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
     let harness = csharp_output.join("Harness");
     std::fs::create_dir(&harness)?;
-    std::fs::write(harness.join("Harness.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk">
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -102,8 +125,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup>
 </Project>
-"#)?;
-    std::fs::write(harness.join("Program.cs"), r#"using Ferrule.Generated;
+"#,
+    )?;
+    std::fs::write(
+        harness.join("Program.cs"),
+        r#"using Ferrule.Generated;
 using Ferrule.Runtime;
 
 var input = File.ReadAllText(args[0]);
@@ -112,19 +138,43 @@ var targetSchema = File.ReadAllText(args[2]);
 var source = FerruleJson.Parse(sourceSchema, input);
 var output = GeneratedMapping.Execute(source);
 Console.Out.Write(FerruleXml.Serialize(0, targetSchema, output, false, false, null).StringValue);
-"#)?;
+"#,
+    )?;
     let build = dotnet_command(&csharp_output)
-        .args(["build", "--configuration", "Release", "Harness/Harness.csproj"])
-        .current_dir(&csharp_output).isolated_output()?;
-    assert!(build.status.success(), "{name}: C# XML build failed: {}",
-        String::from_utf8_lossy(&build.stderr));
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "Harness/Harness.csproj",
+        ])
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        build.status.success(),
+        "{name}: C# XML build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
     let csharp = dotnet_command(&csharp_output)
-        .args(["run", "--project", "Harness/Harness.csproj", "--configuration", "Release",
-            "--no-build", "--no-restore", "--"])
-        .arg(&input_path).arg(&source_path).arg(&target_path)
-        .current_dir(&csharp_output).isolated_output()?;
-    assert!(csharp.status.success(), "{name}: C# XML failed: {}",
-        String::from_utf8_lossy(&csharp.stderr));
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--no-build",
+            "--no-restore",
+            "--",
+        ])
+        .arg(&input_path)
+        .arg(&source_path)
+        .arg(&target_path)
+        .current_dir(&csharp_output)
+        .isolated_output()?;
+    assert!(
+        csharp.status.success(),
+        "{name}: C# XML failed: {}",
+        String::from_utf8_lossy(&csharp.stderr)
+    );
     assert_eq!(csharp.stdout, expected, "{name}: C# XML bytes");
     Ok(())
 }

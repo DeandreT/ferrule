@@ -26,7 +26,9 @@ impl PortDeclarations {
         self.complete_x12_config
     }
 
-    pub(in crate::import) fn occurrence(&self) -> Option<&super::occurrence_provenance::RawOccurrenceOwner> {
+    pub(in crate::import) fn occurrence(
+        &self,
+    ) -> Option<&super::occurrence_provenance::RawOccurrenceOwner> {
         self.occurrence.as_ref()
     }
 
@@ -108,9 +110,15 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
             };
             self.visited.insert((entry.range().start, direction));
             let role = json_port_role(entry);
-            self.facts.json_roles.entry(key).and_modify(|previous| {
-                if *previous != role { *previous = None; }
-            }).or_insert(role);
+            self.facts
+                .json_roles
+                .entry(key)
+                .and_modify(|previous| {
+                    if *previous != role {
+                        *previous = None;
+                    }
+                })
+                .or_insert(role);
             match direction {
                 Direction::Input => self.facts.inputs.insert(key),
                 Direction::Output => self.facts.outputs.insert(key),
@@ -148,7 +156,8 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
         mut self,
         root: roxmltree::Node<'doc, 'input>,
     ) -> PortDeclarations {
-        self.facts.occurrence = root.ancestors()
+        self.facts.occurrence = root
+            .ancestors()
             .find(|node| node.has_tag_name("component"))
             .and_then(super::occurrence_provenance::capture);
         for entry in root
@@ -176,26 +185,40 @@ impl<'doc, 'input> PortDeclarationCensus<'doc, 'input> {
 fn entry_children<'doc, 'input>(
     node: roxmltree::Node<'doc, 'input>,
 ) -> Vec<roxmltree::Node<'doc, 'input>> {
-    node.children().filter(|child| child.has_tag_name("entry")).collect()
+    node.children()
+        .filter(|child| child.has_tag_name("entry"))
+        .collect()
 }
 
 /// Keep raw wrapper evidence separate from the reader's transparent JSON path.
 /// A duplicate object view is an occurrence only within one ordinary array/item.
 pub(super) fn ordinary_json_object_item(object: roxmltree::Node<'_, '_>) -> bool {
-    if object.attribute("name") != Some("object") || object.attribute("type").is_some()
-        || object.ancestors().any(|node| node.attribute("type") == Some("json-subtype"))
+    if object.attribute("name") != Some("object")
+        || object.attribute("type").is_some()
+        || object
+            .ancestors()
+            .any(|node| node.attribute("type") == Some("json-subtype"))
     {
         return false;
     }
-    let Some(item) = object.parent() else { return false; };
-    let Some(array) = item.parent() else { return false; };
-    let Some(property) = array.parent() else { return false; };
-    item.has_tag_name("entry") && item.attribute("name") == Some("item")
+    let Some(item) = object.parent() else {
+        return false;
+    };
+    let Some(array) = item.parent() else {
+        return false;
+    };
+    let Some(property) = array.parent() else {
+        return false;
+    };
+    item.has_tag_name("entry")
+        && item.attribute("name") == Some("item")
         && item.attribute("type") == Some("json-item")
-        && array.has_tag_name("entry") && array.attribute("name") == Some("array")
+        && array.has_tag_name("entry")
+        && array.attribute("name") == Some("array")
         && array.attribute("type").is_none()
         && entry_children(array).as_slice() == [item]
-        && property.has_tag_name("entry") && property.attribute("type") == Some("json-property")
+        && property.has_tag_name("entry")
+        && property.attribute("type") == Some("json-property")
         && entry_children(property).as_slice() == [array]
         && entry_children(item).iter().all(|child| {
             child.attribute("name") == Some("object") && child.attribute("type").is_none()
@@ -204,7 +227,9 @@ pub(super) fn ordinary_json_object_item(object: roxmltree::Node<'_, '_>) -> bool
 
 fn json_port_role(entry: roxmltree::Node<'_, '_>) -> Option<JsonPortRole> {
     if entry.attribute("type").is_some()
-        || entry.ancestors().any(|node| node.attribute("type") == Some("json-subtype"))
+        || entry
+            .ancestors()
+            .any(|node| node.attribute("type") == Some("json-subtype"))
     {
         return None;
     }
@@ -219,13 +244,17 @@ fn json_port_role(entry: roxmltree::Node<'_, '_>) -> Option<JsonPortRole> {
         return (property.attribute("type") == Some("json-property")
             && entry_children(property).as_slice() == [entry]
             && entry_children(entry).is_empty())
-            .then_some(JsonPortRole::Scalar(ty));
+        .then_some(JsonPortRole::Scalar(ty));
     }
     let object = if entry.attribute("name") == Some("array") {
         let children = entry_children(entry);
-        let [item] = children.as_slice() else { return None; };
+        let [item] = children.as_slice() else {
+            return None;
+        };
         let objects = entry_children(*item);
-        let [object] = objects.as_slice() else { return None; };
+        let [object] = objects.as_slice() else {
+            return None;
+        };
         *object
     } else {
         entry
@@ -383,7 +412,10 @@ mod tests {
             };
             let document = roxmltree::Document::parse(&text).unwrap();
             let mut census = PortDeclarationCensus::default();
-            for entry in document.descendants().filter(|node| node.attribute("outkey") == Some("7")) {
+            for entry in document
+                .descendants()
+                .filter(|node| node.attribute("outkey") == Some("7"))
+            {
                 census.record(entry, &["Value".into()]);
             }
             let facts = census.finish(document.root_element());

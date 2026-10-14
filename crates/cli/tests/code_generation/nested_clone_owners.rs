@@ -123,9 +123,19 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
                 serde_json::to_vec_pretty(&snapshot)?,
             )?;
             let strict = strict?;
-            assert_eq!(strict.report, mfd::ImportReport { executable: true, issues: Vec::new() });
+            assert_eq!(
+                strict.report,
+                mfd::ImportReport {
+                    executable: true,
+                    issues: Vec::new()
+                }
+            );
             assert!(strict.imported.warnings.is_empty(), "{design}");
-            assert_eq!(serde_json::to_value(&strict.imported.project)?, wanted, "{design}");
+            assert_eq!(
+                serde_json::to_value(&strict.imported.project)?,
+                wanted,
+                "{design}"
+            );
         }
         let project = package.join("project.json");
         std::fs::write(
