@@ -180,6 +180,26 @@ pub fn emit_with_basic_owned_filters(
     .map_err(EmitError::from)
 }
 
+/// Emit static Basic repeated sorting with an optional filter under an explicit
+/// native policy. Ordinary, private, default and filter-only routes stay closed.
+pub fn emit_with_basic_owned_sort(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sort(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_sort_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_sort_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.

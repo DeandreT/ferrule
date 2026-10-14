@@ -4636,3 +4636,742 @@ fn basic_alias680_projection_validation_and_cumulative_limits_remain_typed() {
     );
     assert_eq!((observer.budget.slots, observer.budget.bytes), (2, 4));
 }
+
+fn sort668_no_callbacks<const N: usize>(
+    parent: &BasicScopeContext<'_>,
+    cohort: &RetainedSourceCohort<'_>,
+) -> RuntimeError {
+    let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+        cohort,
+        [crate::SortDirection::Ascending; N],
+        true,
+        |_| panic!("sort admission must precede predicates"),
+        |_| panic!("sort admission must precede keys"),
+        |_| panic!("sort admission must precede outputs"),
+    );
+    raw_error("SORT668_ADMISSION", result.as_ref().unwrap_err());
+    result.unwrap_err()
+}
+fn sort668_row(tag: &str, key: Value, other: &str) -> Instance {
+    group([
+        field("Tag", scalar(string(tag))),
+        field("Value", scalar(key)),
+        field("Other", scalar(string(other))),
+    ])
+}
+fn sort668_value(context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {
+    context.owned_field(SourceOwnerRef::Primary, &["Rows", "Value"], Some(&["Rows"]))
+}
+
+#[test]
+fn sort668_both_filter_orders_keep_complete_predicate_key_and_immediate_output_order() {
+    let input = phase();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    for before in [true, false] {
+        let events = std::cell::RefCell::new(Vec::new());
+        let mut values = Vec::new();
+        reset_phase();
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [crate::SortDirection::Ascending],
+            before,
+            |context| {
+                let value = sort668_value(context)?;
+                let position = context.owned_position(SourceOwnerRef::Primary, None)?;
+                events.borrow_mut().push(("predicate", value, position));
+                Ok(position > 1)
+            },
+            |context| {
+                let value = sort668_value(context)?;
+                let position = context.owned_position(SourceOwnerRef::Primary, None)?;
+                events.borrow_mut().push(("key", value.clone(), position));
+                Ok([value])
+            },
+            |context| {
+                let value = sort668_value(context)?;
+                let position = context.owned_position(SourceOwnerRef::Primary, None)?;
+                events
+                    .borrow_mut()
+                    .push(("output", value.clone(), position));
+                values.push((value, position));
+                Ok(())
+            },
+        );
+        eprintln!(
+            "RAW SORT668_ORDERS before={before} result={result:?} events={:?} values={values:?}",
+            events.borrow()
+        );
+        assert_eq!(result, Ok(2));
+        assert_eq!(
+            values,
+            if before {
+                vec![(integer(10), 1), (integer(20), 2)]
+            } else {
+                vec![(integer(20), 1), (integer(30), 2)]
+            }
+        );
+        assert_eq!(
+            *events.borrow(),
+            if before {
+                vec![
+                    ("predicate", integer(30), 1),
+                    ("predicate", integer(10), 2),
+                    ("predicate", integer(20), 3),
+                    ("key", integer(10), 2),
+                    ("key", integer(20), 3),
+                    ("output", integer(10), 1),
+                    ("output", integer(20), 2),
+                ]
+            } else {
+                vec![
+                    ("key", integer(30), 1),
+                    ("key", integer(10), 2),
+                    ("key", integer(20), 3),
+                    ("predicate", integer(10), 1),
+                    ("predicate", integer(20), 2),
+                    ("output", integer(20), 1),
+                    ("predicate", integer(30), 3),
+                    ("output", integer(30), 2),
+                ]
+            }
+        );
+        assert_eq!(
+            positions(&original.candidates),
+            vec![(1, 1), (2, 2), (3, 3)]
+        );
+        assert_eq!(phase_observations(), (if before { 2 } else { 5 }, 3, 1));
+    }
+}
+
+#[test]
+fn sort668_stable_secondary_directions_and_native_mixed_scalar_total_order_are_exact() {
+    let input = group([field(
+        "Rows",
+        repeated([
+            sort668_row("A", integer(2), "x"),
+            sort668_row("B", integer(1), "b"),
+            sort668_row("C", Value::Float(2.0), "x"),
+            sort668_row("D", Value::Float(2.0), "z"),
+            sort668_row("E", Value::Null, "a"),
+        ]),
+    )]);
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = self::original(&parent, &["Rows"]);
+    for (first, second, expected) in [
+        (
+            crate::SortDirection::Ascending,
+            crate::SortDirection::Ascending,
+            vec!["E", "B", "A", "C", "D"],
+        ),
+        (
+            crate::SortDirection::Ascending,
+            crate::SortDirection::Descending,
+            vec!["E", "B", "D", "A", "C"],
+        ),
+        (
+            crate::SortDirection::Descending,
+            crate::SortDirection::Ascending,
+            vec!["A", "C", "D", "B", "E"],
+        ),
+        (
+            crate::SortDirection::Descending,
+            crate::SortDirection::Descending,
+            vec!["D", "A", "C", "B", "E"],
+        ),
+    ] {
+        let mut output = Vec::new();
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [first, second],
+            true,
+            |_| Ok(true),
+            |context| {
+                let tag = context.owned_field(SourceOwnerRef::Primary, &["Rows", "Tag"], None)?;
+                let key = sort668_value(context)?;
+                calls.borrow_mut().push((tag.clone(), 0));
+                let other =
+                    context.owned_field(SourceOwnerRef::Primary, &["Rows", "Other"], None)?;
+                calls.borrow_mut().push((tag, 1));
+                Ok([key, other])
+            },
+            |context| {
+                output.push(context.owned_field(
+                    SourceOwnerRef::Primary,
+                    &["Rows", "Tag"],
+                    None,
+                )?);
+                Ok(())
+            },
+        );
+        eprintln!(
+            "RAW SORT668_KEYS directions={first:?}/{second:?} result={result:?} output={output:?} calls={:?}",
+            calls.borrow()
+        );
+        assert_eq!(result, Ok(5));
+        assert_eq!(output, expected.into_iter().map(string).collect::<Vec<_>>());
+        assert_eq!(calls.borrow().len(), 10);
+        for (index, pair) in calls.borrow().as_chunks::<2>().0.iter().enumerate() {
+            assert_eq!(pair[0].0, pair[1].0);
+            assert_eq!((pair[0].1, pair[1].1), (0, 1));
+            assert_eq!(pair[0].0, string(["A", "B", "C", "D", "E"][index]));
+        }
+    }
+    let rows = [
+        ("Null", Value::Null),
+        ("Json", Value::json_null()),
+        ("False", Value::Bool(false)),
+        ("True", Value::Bool(true)),
+        ("NegInf", Value::Float(f64::NEG_INFINITY)),
+        ("Zero", integer(0)),
+        ("MinusZero", Value::Float(-0.0)),
+        ("Float53", Value::Float(9_007_199_254_740_992.0)),
+        ("Int53Plus", integer(9_007_199_254_740_993)),
+        ("MaxInt", integer(i64::MAX)),
+        ("Float63", Value::Float(9_223_372_036_854_775_808.0)),
+        ("Inf", Value::Float(f64::INFINITY)),
+        ("NaN1", Value::Float(f64::NAN)),
+        ("NaN2", Value::Float(f64::from_bits(0x7ff8_0000_0000_0001))),
+        ("Decomposed", string("e\u{301}")),
+        ("Composed", string("é")),
+        ("Xml", Value::xml_nil()),
+    ];
+    let input = group([field(
+        "Rows",
+        repeated(
+            rows.into_iter()
+                .map(|(tag, key)| sort668_row(tag, key, "same")),
+        ),
+    )]);
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = self::original(&parent, &["Rows"]);
+    let mut output = Vec::new();
+    let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+        &original,
+        [crate::SortDirection::Ascending],
+        true,
+        |_| Ok(true),
+        |context| Ok([sort668_value(context)?]),
+        |context| {
+            output.push(context.owned_field(SourceOwnerRef::Primary, &["Rows", "Tag"], None)?);
+            Ok(())
+        },
+    );
+    eprintln!("RAW SORT668_TOTAL result={result:?} order={output:?}");
+    assert_eq!(result, Ok(17));
+    assert_eq!(
+        output,
+        [
+            "Null",
+            "Json",
+            "False",
+            "True",
+            "NegInf",
+            "Zero",
+            "MinusZero",
+            "Float53",
+            "Int53Plus",
+            "MaxInt",
+            "Float63",
+            "Inf",
+            "NaN1",
+            "NaN2",
+            "Decomposed",
+            "Composed",
+            "Xml"
+        ]
+        .into_iter()
+        .map(string)
+        .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn sort668_full_key_priority_and_sorted_target_before_later_predicate_are_preserved() {
+    let input = phase();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    for before in [true, false] {
+        let events = std::cell::RefCell::new(Vec::new());
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [
+                crate::SortDirection::Ascending,
+                crate::SortDirection::Ascending,
+            ],
+            before,
+            |context| {
+                let pos = context.owned_position(SourceOwnerRef::Primary, None)?;
+                events.borrow_mut().push(("predicate", pos));
+                if pos == 3 {
+                    return Err(RuntimeError::MappingException {
+                        node: 99,
+                        message: Some("later predicate".into()),
+                    });
+                }
+                Ok(true)
+            },
+            |context| {
+                let pos = context.owned_position(SourceOwnerRef::Primary, None)?;
+                events.borrow_mut().push(("key0", pos));
+                let value = sort668_value(context)?;
+                events.borrow_mut().push(("key1", pos));
+                Ok([value, integer(0)])
+            },
+            |context| {
+                events.borrow_mut().push((
+                    "output",
+                    context.owned_position(SourceOwnerRef::Primary, None)?,
+                ));
+                Err(RuntimeError::MappingException {
+                    node: 0,
+                    message: Some("first output".into()),
+                })
+            },
+        );
+        let expected = if before {
+            RuntimeError::MappingException {
+                node: 99,
+                message: Some("later predicate".into()),
+            }
+        } else {
+            RuntimeError::MappingException {
+                node: 0,
+                message: Some("first output".into()),
+            }
+        };
+        eprintln!(
+            "RAW SORT668_PRIORITY before={before} result={result:?} events={:?}",
+            events.borrow()
+        );
+        assert_eq!(result, Err(expected));
+        assert_eq!(
+            *events.borrow(),
+            if before {
+                vec![("predicate", 1), ("predicate", 2), ("predicate", 3)]
+            } else {
+                vec![
+                    ("key0", 1),
+                    ("key1", 1),
+                    ("key0", 2),
+                    ("key1", 2),
+                    ("key0", 3),
+                    ("key1", 3),
+                    ("predicate", 1),
+                    ("output", 1),
+                ]
+            }
+        );
+    }
+    for node in [0, u32::MAX] {
+        let mut output = 0;
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [crate::SortDirection::Ascending],
+            false,
+            |_| panic!("keys precede predicates"),
+            |context| {
+                context
+                    .owned_position(SourceOwnerRef::Named("Ref"), None)
+                    .map(|position| [integer(position as i64)])
+                    .map_err(|error| error.with_owned_source_node(node))
+            },
+            |_| {
+                output += 1;
+                Ok(())
+            },
+        );
+        raw_error("SORT668_LEAF", result.as_ref().unwrap_err());
+        assert_eq!(
+            result,
+            Err(RuntimeError::OwnedSourceAtNode {
+                node,
+                source: OwnedSourceError::UnknownOwner { name: "Ref".into() }
+            })
+        );
+        assert_eq!(output, 0);
+    }
+    let result: Result<usize, Filter644CallbackError> = parent.visit_sorted_source_cohort(
+        &original,
+        [crate::SortDirection::Ascending],
+        true,
+        |_| Err(Filter644CallbackError::Predicate),
+        |_| panic!("predicate precedes keys"),
+        |_| panic!("predicate precedes output"),
+    );
+    assert_eq!(result, Err(Filter644CallbackError::Predicate));
+}
+
+#[test]
+fn sort668_named_collision_nested_outer_and_plain_cursor_identity_survive_both_orders() {
+    let primary = group([field(
+        "Ref",
+        group([field("Rows", repeated([row("P1"), row("P2")]))]),
+    )]);
+    let named = named();
+    let declarations = [DeclaredNamedSourceRoot {
+        name: "Ref",
+        instance: Some(&named),
+    }];
+    let r = roots(&primary, &declarations);
+    let root = r.captured_root_context();
+    let outer = root.captured_walk_source(&["Ref", "Rows"]);
+    let parent = outer[1].context();
+    let original = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Named("Ref"), &["Rows"])
+        .unwrap();
+    let actual = named.field("Rows").unwrap().as_repeated().unwrap();
+    for before in [true, false] {
+        let mut output = Vec::new();
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [crate::SortDirection::Descending],
+            before,
+            |_| Ok(true),
+            |context| {
+                assert_eq!(
+                    context.owned_position(SourceOwnerRef::Primary, Some(&["Ref", "Rows"]))?,
+                    2
+                );
+                Ok(
+                    [context.owned_field(
+                        SourceOwnerRef::Named("Ref"),
+                        &["Rows", "Value"],
+                        None,
+                    )?],
+                )
+            },
+            |context| {
+                let value =
+                    context.owned_field(SourceOwnerRef::Named("Ref"), &["Rows", "Value"], None)?;
+                let position = context.owned_position(SourceOwnerRef::Named("Ref"), None)?;
+                let raw = context.origins.last().unwrap().raw_index.unwrap();
+                assert_eq!(context.legacy_position(&["Ref", "Rows"]), 2);
+                assert_eq!(context.legacy_position(&["Rows"]), position);
+                assert_eq!(
+                    context.owned_position(SourceOwnerRef::Primary, Some(&["Ref", "Rows"]))?,
+                    2
+                );
+                assert!(std::ptr::eq(
+                    context.owned.frames.last().unwrap().instance,
+                    &actual[raw - 1]
+                ));
+                assert_eq!(
+                    context.owned_field(
+                        SourceOwnerRef::Primary,
+                        &["Ref", "Rows", "Value"],
+                        None
+                    )?,
+                    string("P2")
+                );
+                output.push((value, position, raw));
+                Ok(())
+            },
+        );
+        assert_eq!(result, Ok(4));
+        assert_eq!(
+            output,
+            vec![
+                (string("N4"), 1, 4),
+                (string("N3"), 2, 3),
+                (string("N2"), 3, 2),
+                (string("N1"), 4, 1)
+            ]
+        );
+    }
+    let plain = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &[])
+        .unwrap();
+    let mut seen = 0;
+    let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+        &plain,
+        [crate::SortDirection::Ascending],
+        true,
+        |_| Ok(true),
+        |_| Ok([integer(0)]),
+        |context| {
+            seen += 1;
+            assert_eq!(
+                context.owned_position(SourceOwnerRef::Primary, Some(&["Ref", "Rows"]))?,
+                2
+            );
+            assert_eq!(context.legacy_position(&["Ref", "Rows"]), 2);
+            Ok(())
+        },
+    );
+    assert_eq!(result, Ok(1));
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn sort668_original_only_linear_authentication_retains_exact_first_refusal_precedence() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let mut duplicate = original(&parent, &["Rows"]);
+    duplicate.candidates[1].ordinal = 0;
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &duplicate),
+        BasicSourceBridgeError::DuplicatePhaseCandidate {
+            input_ordinal: 1,
+            candidate_ordinal: 0
+        }
+        .into()
+    );
+    let mut skipped = original(&parent, &["Rows"]);
+    skipped.candidates[1].ordinal = 2;
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &skipped),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 1 }.into()
+    );
+    let mut reordered = original(&parent, &["Rows"]);
+    reordered.candidates.swap(0, 1);
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &reordered),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into()
+    );
+    let mut missing = original(&parent, &["Rows"]);
+    missing.candidates.pop();
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &missing),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 2 }.into()
+    );
+    let original = original(&parent, &["Rows"]);
+    let other = r.captured_root_context();
+    assert_eq!(
+        sort668_no_callbacks::<1>(&other, &original),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into()
+    );
+    let r2 = roots(&input, &[]);
+    let other = r2.captured_root_context();
+    assert_eq!(
+        sort668_no_callbacks::<1>(&other, &original),
+        BasicSourceBridgeError::RegistryMismatch.into()
+    );
+    let foreign = original.candidates[0].captured_phase_position(1);
+    let mut bad = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    bad.candidates[0] = foreign;
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &bad),
+        BasicSourceBridgeError::InvalidCohortWitness { input_ordinal: 0 }.into()
+    );
+    for candidate in original.iter() {
+        assert_eq!(
+            candidate.source_candidate_id(),
+            candidate.raw_source_ordinal().unwrap() - 1
+        );
+    }
+}
+
+#[test]
+fn sort668_counts_capacities_and_all_phase_metadata_are_admitted_before_effects() {
+    let input = abc();
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    assert_eq!(
+        sort668_no_callbacks::<0>(&parent, &original),
+        BasicSourceBridgeError::InvalidSortKeyCount { count: 0 }.into()
+    );
+    let low = admit_with_limits(
+        &input,
+        &[],
+        OwnedSourceLimits {
+            max_walk_contexts: 2,
+            ..phase_limits()
+        },
+    );
+    let other = low.captured_root_context();
+    assert_eq!(
+        sort668_no_callbacks::<1>(&other, &original),
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "WalkContexts",
+            used: 0,
+            requested: 3,
+            maximum: 2
+        }
+        .into()
+    );
+    let bounded = admit_with_limits(&input, &[], phase_limits());
+    let bounded_parent = bounded.captured_root_context();
+    let bounded_original = bounded_parent
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    let (initial, ordinary) = bounded_parent
+        .budget(SourceOwnerRef::Primary, &[], None, false)
+        .unwrap();
+    let full = retained_phase_bounds(phase_limits()).unwrap();
+    let error = sort668_no_callbacks::<4096>(&bounded_parent, &bounded_original);
+    assert_eq!(
+        error,
+        BasicSourceBridgeError::PairedMetadataLimit {
+            component: "MetadataSlots",
+            used: initial.slots + full.core - ordinary.core + 6 + 4096,
+            requested: 3 * (2 * 4096 + 5),
+            maximum: full.total
+        }
+        .into()
+    );
+    assert!(paired_capacity::<Value>(usize::MAX).is_err());
+    let low = admit_with_limits(
+        &input,
+        &[],
+        OwnedSourceLimits {
+            max_metadata_bytes: 71,
+            ..phase_limits()
+        },
+    );
+    let parent = low.captured_root_context();
+    let original = parent
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    reset_phase();
+    assert_eq!(
+        sort668_no_callbacks::<1>(&parent, &original),
+        OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::MetadataBytes,
+            used: 68,
+            requested: 4,
+            max: 71
+        }
+        .into()
+    );
+    assert_eq!(phase_observations().0, 0);
+}
+
+#[test]
+fn sort668_key_payload_is_cumulative_and_phase_prepayment_is_consumed_once() {
+    let input = abc();
+    let r = admit_with_limits(
+        &input,
+        &[],
+        OwnedSourceLimits {
+            max_metadata_bytes: 170,
+            ..phase_limits()
+        },
+    );
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    let predicates = std::cell::Cell::new(0);
+    let keys = std::cell::Cell::new(0);
+    let outputs = std::cell::Cell::new(0);
+    let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+        &original,
+        [crate::SortDirection::Ascending],
+        true,
+        |_| {
+            predicates.set(predicates.get() + 1);
+            Ok(true)
+        },
+        |_| {
+            keys.set(keys.get() + 1);
+            Ok([string("k".repeat(40))])
+        },
+        |_| {
+            outputs.set(outputs.get() + 1);
+            Ok(())
+        },
+    );
+    raw_error("SORT668_CUMULATIVE_KEYS", result.as_ref().unwrap_err());
+    assert_eq!(
+        result,
+        Err(OwnedSourceError::MetadataLimit {
+            kind: OwnedSourceLimitKind::MetadataBytes,
+            used: 152,
+            requested: 40,
+            max: 170
+        }
+        .into())
+    );
+    assert_eq!((predicates.get(), keys.get(), outputs.get()), (3, 3, 0));
+    let candidate = original.get(0).unwrap();
+    let (mut paid, _) = parent
+        .budget(SourceOwnerRef::Primary, &[], None, false)
+        .unwrap();
+    candidate.reserve_sort_phase_copy(&mut paid).unwrap();
+    let mut prepaid = SortPhasePrepayment { remaining: 1 };
+    let copied = candidate.sort_phase_prepaid(1, &mut prepaid).unwrap();
+    assert_eq!(prepaid.remaining, 0);
+    assert_eq!(
+        copied.source_candidate_id(),
+        candidate.source_candidate_id()
+    );
+    assert_eq!(copied.raw_source_ordinal(), candidate.raw_source_ordinal());
+    assert!(candidate.sort_phase_prepaid(2, &mut prepaid).is_err());
+}
+
+#[test]
+fn sort668_empty_rejected_and_lazy_scalar_keys_do_not_create_output_or_repeat_work() {
+    for input in [group([field("Rows", repeated([]))]), abc()] {
+        let r = roots(&input, &[]);
+        let parent = r.captured_root_context();
+        let original = original(&parent, &["Rows"]);
+        let predicates = std::cell::Cell::new(0);
+        let keys = std::cell::Cell::new(0);
+        let outputs = std::cell::Cell::new(0);
+        reset_phase();
+        let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+            &original,
+            [crate::SortDirection::Ascending],
+            true,
+            |_| {
+                predicates.set(predicates.get() + 1);
+                Ok(false)
+            },
+            |_| {
+                keys.set(keys.get() + 1);
+                panic!("rejected keys remain lazy")
+            },
+            |_| {
+                outputs.set(outputs.get() + 1);
+                panic!("rejected outputs remain lazy")
+            },
+        );
+        assert_eq!(result, Ok(0));
+        assert_eq!(
+            (predicates.get(), keys.get(), outputs.get()),
+            (original.len(), 0, 0)
+        );
+        assert_eq!(phase_observations(), (0, original.len(), 1));
+    }
+    let input = group([field(
+        "Rows",
+        repeated([
+            scalar(Value::Null),
+            row("one"),
+            scalar(Value::json_null()),
+            row("two"),
+        ]),
+    )]);
+    let r = roots(&input, &[]);
+    let parent = r.captured_root_context();
+    let original = original(&parent, &["Rows"]);
+    let mut raw = Vec::new();
+    let result: Result<usize, RuntimeError> = parent.visit_sorted_source_cohort(
+        &original,
+        [crate::SortDirection::Descending],
+        true,
+        |_| Ok(true),
+        |context| Ok([sort668_value(context)?]),
+        |context| {
+            raw.push((
+                context.owned_field(SourceOwnerRef::Primary, &["Rows", "Value"], None)?,
+                context.owned_position(SourceOwnerRef::Primary, None)?,
+                context.origins.last().unwrap().raw_index,
+            ));
+            Ok(())
+        },
+    );
+    assert_eq!(result, Ok(2));
+    assert_eq!(
+        raw,
+        vec![(string("two"), 1, Some(4)), (string("one"), 2, Some(2))]
+    );
+}

@@ -758,3 +758,442 @@ pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
     );
     Ok(source)
 }
+
+// Sorting is a separate explicit capability: existing default/private/filter
+// renderers and their emitted bytes remain unchanged.
+fn render_basic_owned_sort_source(
+    program: &Program,
+    owned_leaf_nodes: bool,
+) -> Result<String, EmitError> {
+    codegen::validate_program_with_basic_owned_sort(program)?;
+    check_sort_inventory(program)?;
+    let mut scopes = Vec::new();
+    collect_scopes(&program.root, "scope_root".into(), &mut scopes);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
+    }
+    let retained = expression_usage(program, &scopes);
+    let functions = BTreeMap::new();
+    let mut source = String::from(
+        "// Private Basic prototype. Public emission remains closed.\n\
+         #[allow(unused_imports)]\n\
+         use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot,\n\
+             ExecutionContext, Instance, OwnedSourceLimits, RuntimeError, RuntimeValue,\n\
+             ScalarType, SourceOwnerRef, TargetSelection, Value, adapt_target_value,\n\
+             adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
+    );
+    if program.expressions.iter().any(|node| {
+        retained.contains(&node.id)
+            && matches!(&node.expression, Expression::OwnedSourceField(field)
+                if field.frame.as_ref().is_some_and(Vec::is_empty))
+    }) {
+        // Compile exact declaration metadata into the query; no registry flags
+        // or inferred wrapper owners are retained at runtime.
+        source.push_str("fn basic_declared_root_nonrepeating(owner: SourceOwnerRef<'_>) -> bool {\n    match owner {\n");
+        source.push_str(&format!(
+            "        SourceOwnerRef::Primary => {},\n",
+            !program.source.repeating,
+        ));
+        source.push_str("        SourceOwnerRef::Named(name) => match name {\n");
+        for input in &program.extra_sources {
+            source.push_str(&format!(
+                "            {} => {},\n",
+                rust_string(&input.name),
+                !input.source.repeating,
+            ));
+        }
+        source.push_str("            _ => false,\n        },\n    }\n}\n\n");
+    }
+    source.push_str(&render_entries(program));
+    for node in &program.expressions {
+        if retained.contains(&node.id) {
+            source.push_str(&render_expression_in_context(
+                node.id,
+                &node.expression,
+                "expression_",
+                None,
+                &functions,
+                ExpressionEmission {
+                    filter_map: false,
+                    owner_function: None,
+                    basic: true,
+                    owned_leaf_nodes,
+                },
+            )?);
+        }
+    }
+    if !program.failure_rules.is_empty() {
+        source.push_str(&failure::render_basic(program)?);
+    }
+    for (name, scope, children, _) in scopes {
+        source.push_str(&render_basic_sort_scope(&name, scope, &children));
+    }
+    Ok(source)
+}
+
+fn check_sort_scope(
+    program: &Program,
+    scope: &TargetScope,
+    route: SourceScopeLocation,
+    filter_only: bool,
+) -> Result<(), EmitError> {
+    if !matches!(
+        &scope.construction,
+        TargetConstruction::Group | TargetConstruction::Scalar { .. }
+    ) {
+        return Err(scope_refusal(
+            route,
+            Capability::SpecialConstruction,
+            iteration_request(scope),
+        ));
+    }
+    if let Some(iteration) = &scope.iteration {
+        if iteration.filter().is_some() && !filter_only
+            || iteration.grouping().is_some()
+            || iteration.post_group_filter().is_some()
+            || !iteration.windows().is_empty()
+            || iteration.output() != IterationOutput::Repeated
+        {
+            return Err(scope_refusal(
+                route,
+                Capability::ScopeControl,
+                iteration_request(scope),
+            ));
+        }
+        match iteration.input() {
+            IterationSource::Source(source) => {
+                if let Some(name) = source.path().first()
+                    && program
+                        .extra_sources
+                        .iter()
+                        .any(|s| s.name == *name && s.dynamic.is_some())
+                {
+                    return Err(scope_refusal(route, Capability::DynamicLoader, None));
+                }
+            }
+            IterationSource::OwnedSource(_) => {}
+            IterationSource::Generated(_) => {
+                return Err(scope_refusal(route, Capability::GeneratedItem, None));
+            }
+            IterationSource::InnerJoin(_) => {
+                return Err(scope_refusal(route, Capability::Join, None));
+            }
+            IterationSource::Concatenate(_) => {
+                return Err(scope_refusal(route, Capability::Concatenate, None));
+            }
+            IterationSource::DynamicDocuments(_) => {
+                return Err(scope_refusal(route, Capability::Document, None));
+            }
+        }
+    }
+    for (index, child) in scope.children.iter().enumerate() {
+        check_sort_scope(
+            program,
+            child,
+            route.descendant(SourceScopeStep::Child(index)),
+            filter_only,
+        )?;
+    }
+    Ok(())
+}
+
+fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
+    let primary = SourceScopeLocation::root(SourceScopeTarget::Primary);
+    check_sort_scope(program, &program.root, primary.clone(), true)?;
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        check_sort_scope(
+            program,
+            &target.root,
+            SourceScopeLocation::root(SourceScopeTarget::Named {
+                index,
+                name: target.name.clone(),
+            }),
+            true,
+        )?;
+    }
+    // Inspect ordered rules as iteration, predicate, then message. Dynamic
+    // leaves keep their exact node/rule envelope; other rejected failure
+    // domains use the complete per-rule refusal. ValueMap stays admitted.
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        match &rule.iteration {
+            codegen::FailureIteration::Generated(_) => {
+                return Err(failure_refusal(index, Capability::FailureRule));
+            }
+            codegen::FailureIteration::Source(source) => {
+                if dynamic_failure_path(program, source.path()) {
+                    return Err(failure_refusal(index, Capability::DynamicLoader));
+                }
+            }
+        }
+        for root in rule.selection.predicate().into_iter().chain(rule.message) {
+            let retained = failure_expression_nodes(program, root);
+            // Membership follows potential dependencies; priority follows the
+            // stored expression order, independently for predicate and message.
+            for node in &program.expressions {
+                if !retained.contains(&node.id) {
+                    continue;
+                }
+                let dynamic = match &node.expression {
+                    Expression::SourceField { path, frame } => {
+                        dynamic_failure_path(program, frame.as_ref().unwrap_or(path))
+                    }
+                    Expression::DynamicSourceField { .. } => true,
+                    _ => false,
+                };
+                if dynamic {
+                    return Err(ProgramValidationError::OwnedSource {
+                        diagnostic: Box::new(Diagnostic::Capability {
+                            location: Location::Expression {
+                                namespace: codegen::OwnedSourceNamespace::Main,
+                                node: node.id,
+                                scope: None,
+                            },
+                            request: None,
+                            reason: Capability::DynamicLoader,
+                            origin: Origin::Failure { index },
+                        }),
+                    }
+                    .into());
+                }
+                if !matches!(
+                    &node.expression,
+                    Expression::SourceField { .. }
+                        | Expression::Position { .. }
+                        | Expression::Const { .. }
+                        | Expression::Call { .. }
+                        | Expression::If { .. }
+                        | Expression::RuntimeValue { .. }
+                        | Expression::RuntimeParameter { .. }
+                        | Expression::RuntimeParameterDefault { .. }
+                        | Expression::Raise { .. }
+                        | Expression::ValueMap { .. }
+                ) {
+                    // Owned requests already receive upstream context checks.
+                    // Keep the bounded walker: ValueMap inputs and called-body
+                    // dependencies retain their existing general envelopes.
+                    return Err(failure_refusal(index, Capability::FailureRule));
+                }
+            }
+        }
+    }
+    let mut scopes = Vec::new();
+    collect_scopes(&program.root, "scope_root".into(), &mut scopes);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
+    }
+    let retained = expression_usage(program, &scopes);
+    for node in &program.expressions {
+        if !retained.contains(&node.id) {
+            continue;
+        }
+        if let Expression::UserFunctionCall { function, .. } = &node.expression {
+            let body = program
+                .user_functions
+                .iter()
+                .find(|body| body.id == *function)
+                .expect("validated function reference");
+            return Err(ProgramValidationError::OwnedSource {
+                diagnostic: Box::new(Diagnostic::Capability {
+                    location: Location::Expression {
+                        namespace: codegen::OwnedSourceNamespace::Function(*function),
+                        node: body.output,
+                        scope: None,
+                    },
+                    request: None,
+                    reason: Capability::IsolatedFunction,
+                    origin: Origin::FunctionBody {
+                        function: *function,
+                    },
+                }),
+            }
+            .into());
+        }
+        let supported = matches!(
+            &node.expression,
+            Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::SourceField { .. }
+                | Expression::Position { .. }
+                | Expression::Const { .. }
+                | Expression::RuntimeValue { .. }
+                | Expression::RuntimeParameter { .. }
+                | Expression::RuntimeParameterDefault { .. }
+                | Expression::Call { .. }
+                | Expression::If { .. }
+                | Expression::Raise { .. }
+                | Expression::ValueMap { .. }
+        );
+        let dynamic_legacy = matches!(&node.expression,
+            Expression::SourceField { path, frame } if frame.as_ref().unwrap_or(path).first()
+                .is_some_and(|name| program.extra_sources.iter().any(|s| s.name == *name && s.dynamic.is_some())));
+        if !supported || dynamic_legacy {
+            return Err(codegen::owned_expression_emission_error(
+                codegen::OwnedSourceNamespace::Main,
+                node.id,
+                &node.expression,
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn render_basic_sort_scope(name: &str, scope: &TargetScope, children: &[String]) -> String {
+    let Some(iteration) = &scope.iteration else {
+        return render_basic_scope(name, scope, children, true);
+    };
+    let Some(sort) = iteration.sort() else {
+        return render_basic_scope(name, scope, children, true);
+    };
+    let walk = match iteration.input() {
+        IterationSource::Source(input) => format!(
+            "context.walk_source_cohort(&[{}])?",
+            render_string_path(input.path())
+        ),
+        IterationSource::OwnedSource(input) => format!(
+            "context.walk_owned_source_cohort({}, &[{}])?",
+            owner_literal(&input.source().owner),
+            render_string_path(&input.source().path)
+        ),
+        _ => unreachable!("explicit Basic sorting inventory checked before rendering"),
+    };
+    let before =
+        iteration.filter().is_none() || sort.filter_order() == SortFilterOrder::FilterThenSort;
+    let keys = sort.keys().collect::<Vec<_>>();
+    let mut source = format!(
+        "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    let cohort = {walk};\n    let mut outputs = Vec::new();\n    context.visit_sorted_source_cohort(\n        &cohort,\n        ["
+    );
+    for key in &keys {
+        source.push_str(if key.descending {
+            "codegen_runtime::SortDirection::Descending,"
+        } else {
+            "codegen_runtime::SortDirection::Ascending,"
+        });
+    }
+    source.push_str(&format!(
+        "],\n        {before},\n        |predicate_context| -> Result<bool, RuntimeError> {{\n"
+    ));
+    if let Some(predicate) = iteration.filter() {
+        source.push_str(&format!("            let value = expression_{predicate}(predicate_context)?;\n            require_bool({predicate}, value)\n"));
+    } else {
+        source.push_str("            let _ = predicate_context;\n            Ok(true)\n");
+    }
+    source.push_str(&format!(
+        "        }},\n        |key_context| -> Result<[Value; {}], RuntimeError> {{\n",
+        keys.len()
+    ));
+    for (index, key) in keys.iter().enumerate() {
+        source.push_str(&format!(
+            "            let key_{index} = expression_{}(key_context)?;\n",
+            key.expression
+        ));
+    }
+    source.push_str("            Ok([");
+    for index in 0..keys.len() {
+        source.push_str(&format!("key_{index},"));
+    }
+    source.push_str("])\n        },\n        |item_context| -> Result<(), RuntimeError> {\n");
+    source.push_str(&render_scope_item(
+        scope,
+        children,
+        "            ",
+        "item_context",
+    ));
+    source.push_str("            if outputs.capacity() == 0 { outputs = Vec::with_capacity(cohort.len()); }\n            outputs.push(output);\n            Ok(())\n        },\n    )?;\n    Ok(repeated(outputs))\n}\n\n");
+    source
+}
+
+fn render_checked_basic_owned_sort_source(
+    program: &Program,
+    owned_leaf_nodes: bool,
+) -> Result<String, EmitError> {
+    let mut source = render_basic_owned_sort_source(program, owned_leaf_nodes)?;
+    let plan = codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?;
+    source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
+    source.push_str(&render_checked_catalogue(
+        "PRIVATE_CHECKED_ALL_INPUTS",
+        &plan.all_outputs,
+    ));
+    source.push_str(&render_checked_catalogue(
+        "PRIVATE_CHECKED_PRIMARY_INPUTS",
+        &plan.primary,
+    ));
+    for target in &plan.named_targets {
+        source.push_str(&render_checked_catalogue(
+            &format!("PRIVATE_CHECKED_NAMED_INPUTS_{}", target.target_index),
+            &target.catalogue,
+        ));
+    }
+    source.push_str(PRIVATE_CHECKED_REACH_COUNTERS);
+    source.push_str(&render_checked_entries(program));
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_sort_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let owned_leaf_nodes = program.expressions.iter().any(|node| {
+        matches!(
+            &node.expression,
+            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+        )
+    });
+    let mut source = render_checked_basic_owned_sort_source(program, owned_leaf_nodes)?;
+    source = source.replacen(
+        r#"// Private Basic prototype. Public emission remains closed.
+#[allow(unused_imports)]
+use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot,
+ExecutionContext, Instance, OwnedSourceLimits, RuntimeError, RuntimeValue,
+ScalarType, SourceOwnerRef, TargetSelection, Value, adapt_target_value,
+adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};
+
+"#,
+        r#"// Basic owned-source entry points require an explicit native policy per call.
+pub use codegen_runtime::{BasicNamedSourceInput, ExecutionContext, Instance,
+    OwnedSourceLimits, RuntimeError, TargetSelection};
+#[allow(unused_imports)]
+use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot,
+    RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,
+    adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};
+
+"#,
+        1,
+    );
+    source = source.replacen(
+        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n",
+        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
+        1,
+    );
+    source = source.replacen("pub(crate) struct NamedOutput", "pub struct NamedOutput", 1);
+    source = source.replacen(
+        "pub(crate) struct ExecutionOutputs",
+        "pub struct ExecutionOutputs",
+        1,
+    );
+    source = source.replacen(
+        "pub(crate) enum SelectedTargetOutput",
+        "pub enum SelectedTargetOutput",
+        1,
+    );
+    source.push_str(
+        r#"
+/// Execute all outputs using borrowed named inputs and the caller's five limits.
+pub fn execute_with_basic_owned_sources<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
+) -> Result<ExecutionOutputs, RuntimeError> {
+    execute_checked_private_owned_basic(source, supplied, execution, limits)
+}
+
+/// Validate the selected target before inspecting supplied inputs or policy.
+pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
+    source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
+    selection: TargetSelection<'_>,
+) -> Result<SelectedTargetOutput, RuntimeError> {
+    execute_selected_checked_private_owned_basic(source, supplied, execution, limits, selection)
+}
+"#,
+    );
+    Ok(source)
+}
