@@ -51,10 +51,15 @@ available. Nothing expires automatically. These are local copies with the same
 host durability as the originals; they do not establish external preservation
 or enable the separate evidence-retirement policy in #360.
 
-This compactor covers only the legacy flat test directories under `ci-tmp`.
-The newer per-job evidence roots created by `job-evidence.py` remain governed
-by their own provenance and retention checks. Their workflow observation and
-optional metadata-canary steps stay in place; this hook does not retire them.
+The compactor covers legacy flat test directories under `ci-tmp` and admitted
+per-job roots under `ci-tmp/jobs`. A per-job root must retain its immutable
+`UNARCHIVED.json` preparation receipt with matching repository, run, attempt,
+job, suite, nonce and directory identity. Both nonce and existing descriptive
+job IDs are supported. Unknown, unprepared or changed roots stay in place.
+The complete job tree and original receipts enter the verified archive; its
+manifest records the original `jobs/<job-id>` location. Workflow observation
+and optional metadata-canary steps remain separate from the compactor's
+producer-closure and archive checks.
 
 If compaction is insufficient, the hook reclaims only idle, reproducible Cargo
 profile caches. It refuses the job if the existing floor still cannot be met.
@@ -142,7 +147,7 @@ From a clean checkout with an authenticated GitHub CLI:
 scp scripts/ci/provision-ovh-runner.sh ovh:/tmp/ferrule-provision-runner.sh
 scp scripts/ci/guard-ovh-job.sh ovh:/tmp/guard-ovh-job.sh
 scp scripts/ci/prepare-ovh-job.py scripts/ci/compact-job-evidence.py \
-  scripts/ci/reclaim-build-cache.py ovh:/tmp/
+  scripts/ci/job-evidence.py scripts/ci/reclaim-build-cache.py ovh:/tmp/
 gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
   --jq .token | ssh ovh 'sudo -n bash /tmp/ferrule-provision-runner.sh'
 gh api repos/DeandreT/ferrule/actions/runners \

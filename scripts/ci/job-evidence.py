@@ -170,6 +170,46 @@ def begin(home, environment, *, nonce=None):
             "FERRULE_CI_EVIDENCE_CANARY": str(root / "receipts" / "evidence-canary.json")}
 
 
+def retained_job(directory, job_id):
+    """Admit an existing job for archival using its pinned preparation receipt.
+
+    This validates custody and identity only. Producer closure and archive
+    verification remain the responsibility of the pre-job compactor.
+    """
+    pin = directory_identity(directory)
+    require(stat.S_IMODE(os.fstat(directory).st_mode) == 0o700, "Unsafe job root")
+    receipts = os.open("receipts", DIRECTORY_FLAGS, dir_fd=directory)
+    try:
+        directory_identity(receipts)
+        require(stat.S_IMODE(os.fstat(receipts).st_mode) == 0o700,
+                "Unsafe receipts directory")
+        initial = read_record(receipts, "UNARCHIVED.json")
+    finally:
+        os.close(receipts)
+    require(isinstance(initial, dict), "Invalid preparation record")
+    facts = initial.get("identity")
+    keys = ("repository", "run_id", "attempt", "job", "source", "suite")
+    require(isinstance(facts, dict) and all(isinstance(facts.get(key), str) for key in keys),
+            "Invalid retained job identity")
+    environment = dict(zip(("GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT",
+                            "GITHUB_JOB", "GITHUB_SHA"), (facts[key] for key in keys[:5])))
+    environment["FERRULE_CI_SUITE"] = "native" if facts["suite"] == "native" else "codegen"
+    environment["FERRULE_CI_EVIDENCE_SUITE"] = facts["suite"]
+    require(identity(environment) == facts, "Invalid retained job identity")
+    nonce = initial.get("nonce")
+    require(isinstance(nonce, str) and re.fullmatch(r"[0-9a-f]{32}", nonce) is not None,
+            "Invalid retained job nonce")
+    legacy_id = "-".join((facts["run_id"], facts["attempt"], facts["job"], facts["suite"], nonce))
+    require(job_id in (nonce, legacy_id) and initial.get("job_id") == job_id
+            and initial.get("job_directory") == pin
+            and initial.get("schema") == SCHEMA and initial.get("state") == "UNARCHIVED"
+            and initial.get("archive_verified") is False
+            and initial.get("closure") == "UNQUALIFIED"
+            and initial.get("producer_tmpdir_compliance") == "UNQUALIFIED",
+            "Changed preparation record")
+    return initial
+
+
 def observe(home, environment):
     facts = identity(environment)
     job_id = environment.get("FERRULE_CI_EVIDENCE_ID", "")
