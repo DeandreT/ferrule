@@ -127,7 +127,7 @@ fn with_state(
         path(&["Second"]),
         path(&["Second", "Details"]),
     ]);
-    crate::import::materialize::eager_functions(&mut builder);
+    crate::import::materialize::eager_functions(&mut builder, None);
     let bindings = target
         .ports
         .iter()

@@ -139,7 +139,7 @@ fn with_world(
             builder.note_framed_prefixes(&source_path);
         }
     }
-    crate::import::materialize::eager_functions(&mut builder);
+    crate::import::materialize::eager_functions(&mut builder, None);
     let bindings = target
         .ports
         .iter()

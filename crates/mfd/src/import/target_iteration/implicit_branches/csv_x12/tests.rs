@@ -151,7 +151,7 @@ fn with_world_at_row(
             builder.fn_by_output.insert(*output, index);
         }
     }
-    crate::import::materialize::eager_functions(&mut builder);
+    crate::import::materialize::eager_functions(&mut builder, None);
     let bindings = target
         .ports
         .iter()
