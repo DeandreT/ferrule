@@ -535,3 +535,131 @@ fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
     assert_eq!(output.as_bytes(), EXPECTED_AUTOCOMPLETE.as_bytes());
     assert_physical_isa(&output, b'*', b':', b'~');
 }
+
+#[test]
+fn autocomplete_rejects_present_invalid_dates_without_panicking_or_using_the_clock() {
+    for (segment, field, values) in [
+        (
+            "ISA",
+            "09",
+            &[
+                "a€1234",
+                "xx300615",
+                "x030-06-15",
+                "00000615",
+                "19000229",
+                "2100-02-29",
+                "300231",
+                "301301",
+                "300100",
+                "300001",
+                "20300431",
+            ][..],
+        ),
+        (
+            "GS",
+            "04",
+            &[
+                "a€1234",
+                "xx300615",
+                "x030-06-15",
+                "00000615",
+                "19000229",
+                "2100-02-29",
+                "300615",
+                "20301301",
+                "20300100",
+                "20300001",
+                "20300431",
+            ][..],
+        ),
+    ] {
+        for (index, value) in values.iter().enumerate() {
+            let (schema, mut instance) = example();
+            change(&mut instance, "GS", "05", "10:30:00");
+            change(&mut instance, segment, field, value);
+            let name = format!("invalid-date-{segment}-{index}");
+            let result = to_string_with_syntax_and_autocomplete(
+                &schema,
+                &instance,
+                released(),
+                Some("00401"),
+                completion(),
+            );
+            retain(&name, &schema, &instance, &result);
+            assert!(
+                matches!(&result, Err(EdiFormatError::InvalidEnvelopeElement { element, value: original, .. })
+                    if element == &format!("{segment}{field}") && original.as_str() == *value),
+                "{segment}{field} {value:?}: {result:?}"
+            );
+            let destination = evidence_root().join(format!("{name}-destination.x12"));
+            std::fs::write(&destination, b"existing destination").unwrap();
+            let result = write_with_syntax_and_autocomplete(
+                &destination,
+                &schema,
+                &instance,
+                released(),
+                Some("00401"),
+                completion(),
+            );
+            assert!(matches!(
+                result,
+                Err(EdiFormatError::InvalidEnvelopeElement { .. })
+            ));
+            assert_eq!(std::fs::read(destination).unwrap(), b"existing destination");
+        }
+    }
+}
+
+#[test]
+fn autocomplete_preserves_valid_gregorian_dates_and_stable_datetime_defaults() {
+    for (isa_date, gs_date, expected_short, expected_long) in [
+        ("300615", "20300615", "300615", "20300615"),
+        ("20300615", "2030-06-15", "300615", "20300615"),
+        ("2030-06-15", "20300615", "300615", "20300615"),
+        ("000229", "20000229", "000229", "20000229"),
+        ("2000-02-29", "2000-02-29", "000229", "20000229"),
+        ("24000229", "2400-02-29", "000229", "24000229"),
+        ("1900-02-28", "19000228", "000228", "19000228"),
+    ] {
+        let (schema, mut instance) = example();
+        change(&mut instance, "ISA", "09", isa_date);
+        change(&mut instance, "GS", "04", gs_date);
+        change(&mut instance, "GS", "05", "10:30:00");
+        let output = to_string_with_syntax_and_autocomplete(
+            &schema,
+            &instance,
+            released(),
+            Some("00401"),
+            completion(),
+        )
+        .unwrap();
+        let expected = EXPECTED_AUTOCOMPLETE
+            .replace("*261009*", &format!("*{expected_short}*"))
+            .replace("*20261009*", &format!("*{expected_long}*"));
+        assert_eq!(output, expected, "{isa_date} / {gs_date}");
+        assert_physical_isa(&output, b'*', b':', b'~');
+    }
+
+    for datetime in ["2030-06-15T09:45:12Z", "2030-06-15T09:45:12-07:00"] {
+        let (schema, mut instance) = example();
+        for (segment, field) in [("ISA", "09"), ("ISA", "10"), ("GS", "04"), ("GS", "05")] {
+            change(&mut instance, segment, field, "");
+        }
+        let output = to_string_with_syntax_and_autocomplete(
+            &schema,
+            &instance,
+            released(),
+            Some("00401"),
+            Autocomplete {
+                current_datetime: datetime,
+                ..completion()
+            },
+        )
+        .unwrap();
+        let expected = EXPECTED_AUTOCOMPLETE
+            .replace("*261009*1030*", "*300615*0945*")
+            .replace("*20261009*103000*", "*20300615*094512*");
+        assert_eq!(output, expected, "{datetime}");
+    }
+}
