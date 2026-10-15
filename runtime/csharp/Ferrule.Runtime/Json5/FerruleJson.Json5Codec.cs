@@ -106,14 +106,16 @@ public static partial class FerruleJson
                 Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                 MaxDepth = MaximumDepth, SkipValidation = false,
             })) { WriteNode(writer, schema, instance, new NodeBudget(), 0); }
-            var canonical = CanonicalizeOutputStrings(buffer.WrittenSpan);
-            var bytes = checked(FerruleJson5Syntax.CountBoundaryBytes(canonical) + 1);
+            var text = CanonicalizeOutputText(buffer.WrittenSpan);
+            text.Append('\n');
+            var canonical = text.ToString();
+            var bytes = FerruleJson5Syntax.CountBoundaryBytes(canonical);
             if (bytes > MaximumDocumentBytes)
             {
                 throw new FerruleJson5ResourceException(FerruleJson5Resource.OutputDocumentBytes,
                     bytes, MaximumDocumentBytes);
             }
-            return canonical + "\n";
+            return canonical;
         }
         catch (FerruleRuntimeException) { throw; }
         catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException or OverflowException or System.Text.EncoderFallbackException)

@@ -284,7 +284,12 @@ public static partial class FerruleJson
     // Utf8JsonWriter does not indent WriteRawValue consistently inside arrays.
     // Rebuild serde_json's two-space layout from complete JSON tokens, retaining
     // each numeric token byte for byte so no float is parsed a second time.
-    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded)
+    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded) =>
+        CanonicalizeOutputText(encoded).ToString();
+
+    // Keep the ordinary string wrapper exact while allowing JSON5 to finish its
+    // newline in the builder before the single final string materialization.
+    private static StringBuilder CanonicalizeOutputText(ReadOnlySpan<byte> encoded)
     {
         var reader = new Utf8JsonReader(
             encoded,
@@ -368,7 +373,7 @@ public static partial class FerruleJson
         {
             throw Boundary("JSON output is incomplete.");
         }
-        return text.ToString();
+        return text;
     }
 
     private static void BeginPrettyValue(
