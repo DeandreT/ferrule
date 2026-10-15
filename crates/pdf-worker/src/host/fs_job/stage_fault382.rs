@@ -11,6 +11,9 @@ use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
 use std::rc::Rc;
 use std::time::Duration;
 
+mod journal;
+use journal::{Campaign, Log};
+
 type Observer = Box<dyn FnOnce(&File, &[u64; 9])>;
 struct ObserverState {
     callback: Option<Observer>,
@@ -60,34 +63,51 @@ fn observer_reached() -> bool {
 
 struct Journal {
     root: PathBuf,
-    sequence: RefCell<usize>,
+    log: RefCell<Log>,
     failures: RefCell<Vec<String>>,
     observer_original: RefCell<Option<Value>>,
 }
 impl Journal {
+    fn require_capture(&self) -> io::Result<()> {
+        if self.failures.borrow().is_empty() {
+            Ok(())
+        } else {
+            Err(io::Error::other("fixture stopped after incomplete capture"))
+        }
+    }
+    fn new(root: PathBuf, campaign: Rc<RefCell<Campaign>>) -> io::Result<Self> {
+        let log = RefCell::new(Log::create(&root, campaign)?);
+        Ok(Self {
+            root,
+            log,
+            failures: RefCell::new(Vec::new()),
+            observer_original: RefCell::new(None),
+        })
+    }
+    fn checkpoint(&self) -> bool {
+        match self.log.borrow_mut().checkpoint() {
+            Ok(()) => true,
+            Err(error) => {
+                self.bad(format!("incomplete operation capture: {error:?}"));
+                false
+            }
+        }
+    }
+    fn finish(&self) -> io::Result<Value> {
+        self.log.borrow_mut().finish()
+    }
     fn bad(&self, message: impl Into<String>) {
         let message = message.into();
         eprintln!("382 custody/fixture refusal: {message}");
         self.failures.borrow_mut().push(message);
     }
     fn emit(&self, operation: &str, raw: Value) {
-        let sequence = {
-            let mut sequence = self.sequence.borrow_mut();
-            *sequence += 1;
-            *sequence
-        };
-        let value = json!({"sequence":sequence,"operation":operation,"raw":raw});
-        let encoded = serde_json::to_vec(&value);
-        eprintln!("382 original {value}");
-        match encoded {
-            Ok(bytes) => {
-                if let Err(error) =
-                    freeze(&self.root.join(format!("raw-{sequence:06}.json")), &bytes)
-                {
-                    self.bad(format!("retain {operation}: {error:?}"));
-                }
+        if let Err(error) = self.log.borrow_mut().emit(operation, raw) {
+            // One stored refusal is enough to disqualify this case. The log's
+            // independent refusal reserve retains the triggering original.
+            if self.failures.borrow().is_empty() {
+                self.bad(format!("retain {operation}: {error:?}"));
             }
-            Err(error) => self.bad(format!("encode original {operation}: {error:?}")),
         }
     }
     fn io<T: Debug>(&self, operation: &str, result: &io::Result<T>) {
@@ -173,6 +193,9 @@ struct Original {
     stable_alias: bool,
 }
 fn capture_file(j: &Journal, named: &Path, label: &str, cap: u64) -> Option<Original> {
+    if j.require_capture().is_err() {
+        return None;
+    }
     let named_before_result = std::fs::symlink_metadata(named);
     let absent = named_before_result
         .as_ref()
@@ -218,6 +241,9 @@ fn capture_file(j: &Journal, named: &Path, label: &str, cap: u64) -> Option<Orig
     let mut eof = false;
     let mut block = [0; 16384];
     loop {
+        if !j.failures.borrow().is_empty() {
+            break;
+        }
         // Independent finite cap plus one sentinel, never an unbounded heap copy.
         let want =
             usize::try_from((cap.saturating_add(1).saturating_sub(count)).min(16384)).unwrap_or(0);
@@ -226,6 +252,9 @@ fn capture_file(j: &Journal, named: &Path, label: &str, cap: u64) -> Option<Orig
         }
         let read = file.read(&mut block[..want]);
         j.io("original streaming read", &read);
+        if j.require_capture().is_err() {
+            return None;
+        }
         let Ok(n) = read else {
             j.bad("original streaming read failed");
             break;
@@ -238,6 +267,9 @@ fn capture_file(j: &Journal, named: &Path, label: &str, cap: u64) -> Option<Orig
         hash.update(&block[..n]);
         let write = output.write_all(&block[..n]);
         j.io("original copy write", &write);
+        if j.require_capture().is_err() {
+            return None;
+        }
         if write.is_err() {
             j.bad("original copy write failed");
             break;
@@ -291,7 +323,7 @@ fn capture_file(j: &Journal, named: &Path, label: &str, cap: u64) -> Option<Orig
     if sync.is_err() {
         j.bad("original directory fsync failed");
     }
-    if !original.complete_eof || !original.stable_alias || count > cap {
+    if !j.checkpoint() || !original.complete_eof || !original.stable_alias || count > cap {
         j.bad("incomplete/changed original preserved");
     }
     Some(original)
@@ -370,7 +402,8 @@ fn capture_job(j: &Journal, path: &Path, phase: &str) -> Vec<Original> {
     );
     j.emit("actual complete job directory EOF and metadata", json!({"entries":count,"eof":eof,"bytes":total,
         "named_before":named_before,"held_before":held_before,"held_after":held_after,"named_after":named_after}));
-    if named_before.is_none()
+    if !j.checkpoint()
+        || named_before.is_none()
         || named_before != held_before
         || named_before != held_after
         || named_before != named_after
@@ -436,6 +469,9 @@ fn capture_terminal(
         "terminal fixed grammar complete original census",
         &observations,
     );
+    if !j.checkpoint() {
+        return;
+    }
     let mut custody_errors = Vec::new();
     if originals.iter().map(|r| r.byte_len).sum::<u64>() > 5 * crate::host::RECEIPT_BYTES as u64 {
         custody_errors.push("terminal five-record byte cap exceeded; preserve job");
@@ -556,6 +592,7 @@ fn ready_layout(j: &Journal, repair: bool) -> io::Result<mapping::PdfLayout> {
     Ok(layout)
 }
 fn source(j: &Journal, case: &Value) -> io::Result<(PathBuf, Option<File>)> {
+    j.require_capture()?;
     let path = j.root.join("source.pdf");
     match &case["length"] {
         Value::Null => {
@@ -593,12 +630,15 @@ fn source(j: &Journal, case: &Value) -> io::Result<(PathBuf, Option<File>)> {
                 .mode(0o600)
                 .open(&path);
             j.io("fresh held writable source open", &opened);
+            j.require_capture()?;
             let file = opened?;
             let resized = file.set_len(len);
             j.io("fresh zero sparse source length", &resized);
+            j.require_capture()?;
             resized?;
             let synced = file.sync_all();
             j.io("fresh source fsync", &synced);
+            j.require_capture()?;
             synced?;
             metadata(j, "fresh source held metadata", file.metadata());
             capture_file(
@@ -607,6 +647,7 @@ fn source(j: &Journal, case: &Value) -> io::Result<(PathBuf, Option<File>)> {
                 "source-before-call",
                 format_pdf::MAX_INPUT_BYTES as u64 + 1,
             );
+            j.require_capture()?;
             Ok((path, Some(file)))
         }
     }
@@ -681,6 +722,11 @@ fn observed_failure(j: &Journal, failure: Option<&Failure>) -> Value {
 fn stage_case(j: Rc<Journal>, case: &Value) -> io::Result<Value> {
     let (path, writer) = source(&j, case)?;
     let layout = ready_layout(&j, false)?;
+    if !j.checkpoint() {
+        return Err(io::Error::other(
+            "stage refused after incomplete fixture capture",
+        ));
+    }
     let scratch_path = j.root.join("scratch");
     mkdir(&j, &scratch_path)?;
     let policy = ScratchPolicy::admit(&scratch_path, 0);
@@ -745,6 +791,11 @@ fn manager_case(j: Rc<Journal>, case: &Value, cli: &Path) -> io::Result<Value> {
     let (path, writer) = source(&j, case)?;
     let repair = case["id"].as_str().is_some_and(|s| s.starts_with("c06_"));
     let layout = ready_layout(&j, repair)?;
+    if !j.checkpoint() {
+        return Err(io::Error::other(
+            "manager refused after incomplete fixture capture",
+        ));
+    }
     let program = WorkerProgram::admit_packaged_sibling(cli);
     j.debug(
         "actual coherent packaged sibling worker admission",
@@ -887,7 +938,10 @@ fn manager_case(j: Rc<Journal>, case: &Value, cli: &Path) -> io::Result<Value> {
                             &terminal,
                             "before-cleanup-terminal",
                         );
-                        if case["cleanup"] == true && j.failures.borrow().is_empty() {
+                        if case["cleanup"] == true
+                            && j.checkpoint()
+                            && j.failures.borrow().is_empty()
+                        {
                             // Only copies with complete EOF and exact custody permit deletion.
                             actual["cleanup_invoked"] = json!(true);
                             let cleanup = manager.cleanup_closed_failure();
@@ -1013,7 +1067,8 @@ fn retained_small_bytes(j: &Journal, path: &Path, cap: u64) -> io::Result<Vec<u8
     if let Some(error) = read_error {
         return Err(error);
     }
-    if !eof
+    if !j.checkpoint()
+        || !eof
         || bytes.len() as u64 > cap
         || named_before.is_none()
         || named_before != held_before
@@ -1030,6 +1085,16 @@ fn retained_small_bytes(j: &Journal, path: &Path, cap: u64) -> io::Result<Vec<u8
 fn compare(j: &Journal, case: &Value, actual: &Value, frozen: &Value) -> Vec<String> {
     let differences = RefCell::new(Vec::new());
     let same = |label: &str, observed: Value, expected: Value| {
+        j.emit(
+            "comparison operands before qualification",
+            json!({"label":label,"actual":observed,"expected":expected}),
+        );
+        if !j.checkpoint() {
+            differences
+                .borrow_mut()
+                .push(format!("{label}: incomplete capture"));
+            return;
+        }
         let equal = observed == expected;
         j.emit(
             "comparison after complete actual capture",
@@ -1309,12 +1374,18 @@ fn nine_controls_physical_files_and_no_child_closure() -> io::Result<()> {
     let permissions = std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700));
     eprintln!("382 initial root mode original {permissions:#?}");
     permissions?;
-    let top = Journal {
-        root: root.clone(),
-        sequence: RefCell::new(0),
-        failures: RefCell::new(Vec::new()),
-        observer_original: RefCell::new(None),
-    };
+    let campaign = Campaign::new();
+    let top = Journal::new(root.clone(), campaign.clone())?;
+    let lowered_records = std::env::var("FERRULE_PDF_387_CASE_RECORD_LIMIT")
+        .ok()
+        .map(|v| v.parse::<u64>().map_err(io::Error::other))
+        .transpose()?;
+    top.emit(
+        "operation journal policy before execution",
+        json!({"case_limit":journal::CASE_LIMIT,
+        "campaign_limit":journal::TOTAL_LIMIT,"lowered_case_record_limit":lowered_records,
+        "max_journals":17,"large_originals_have_separate_existing_caps":true}),
+    );
     let literal = include_bytes!("stage_fault382.expected.json");
     let retained = freeze(&root.join("frozen-expectations.original.json"), literal);
     top.io("frozen expectation literal original retention", &retained);
@@ -1332,19 +1403,24 @@ fn nine_controls_physical_files_and_no_child_closure() -> io::Result<()> {
             .ok_or_else(|| io::Error::other("frozen row id"))?;
         let case_root = root.join(id);
         mkdir(&top, &case_root)?;
-        let journal = Rc::new(Journal {
-            root: case_root,
-            sequence: RefCell::new(0),
-            failures: RefCell::new(Vec::new()),
-            observer_original: RefCell::new(None),
-        });
+        let journal = Rc::new(Journal::new(case_root, campaign.clone())?);
+        if let Some(records) = lowered_records {
+            journal.log.borrow_mut().lower_record_limit(records)?;
+        }
         journal.emit("frozen full case before actual operations", case.clone());
         let result = if case["mode"] == "manager" {
             manager_case(journal.clone(), case, &cli)
         } else {
             stage_case(journal.clone(), case)
         };
-        journal.debug("complete fixture row return/error", &result);
+        if journal.require_capture().is_ok() {
+            journal.debug("complete fixture row return/error", &result);
+        } else {
+            top.emit(
+                "complete refused fixture row return/error",
+                json!({"id":id,"complete_debug":format!("{result:#?}")}),
+            );
+        }
         let actual = match result {
             Ok(value) => value,
             Err(error) => {
@@ -1352,12 +1428,31 @@ fn nine_controls_physical_files_and_no_child_closure() -> io::Result<()> {
                 Value::Null
             }
         };
+        let complete = journal.checkpoint() && journal.failures.borrow().is_empty();
         completed.push((case, actual, journal));
+        if !complete {
+            // Owners have already closed. Do not reach another physical row
+            // after a collector failure or consume further campaign capacity.
+            break;
+        }
     }
     // Every row's reached raw originals exist before the first expected comparison.
     let mut failures = top.failures.borrow().clone();
+    let all_captured = top.checkpoint()
+        && completed.len() == rows.len()
+        && completed
+            .iter()
+            .all(|(_, _, j)| j.checkpoint() && j.failures.borrow().is_empty());
+    if !all_captured {
+        failures.push("incomplete raw capture; semantic qualification refused".into());
+    }
+    let reached_rows = completed.len();
     for (case, actual, journal) in completed {
-        let differences = compare(&journal, case, &actual, &frozen);
+        let differences = if all_captured {
+            compare(&journal, case, &actual, &frozen)
+        } else {
+            Vec::new()
+        };
         let custody_errors = journal.failures.borrow().clone();
         journal.emit(
             "complete concrete row comparison result",
@@ -1369,13 +1464,25 @@ fn nine_controls_physical_files_and_no_child_closure() -> io::Result<()> {
                 .map(|d| format!("{}: {d}", case["id"])),
         );
         failures.extend(journal.failures.borrow().clone());
+        match journal.finish() {
+            Ok(summary) => top.emit(
+                "complete case journal accounting",
+                json!({"id":case["id"],"summary":summary}),
+            ),
+            Err(error) => failures.push(format!("{}: journal finalization: {error:?}", case["id"])),
+        }
     }
     top.emit(
         "complete sixteen-row fixture verdict before assertion",
-        json!({"physical_rows":rows.len(),"failures":failures,"cleanup_of_retained_originals":false,
+        json!({"physical_rows":rows.len(),"reached_rows":reached_rows,"failures":failures,"cleanup_of_retained_originals":false,
         "resource_measurement_claim":false,"native_pdf_extraction_claim":false}),
     );
     failures.extend(top.failures.borrow().clone());
+    let finalization = top.finish();
+    eprintln!("387 complete journal finalization: {finalization:?}");
+    if let Err(error) = finalization {
+        failures.push(format!("campaign journal finalization: {error:?}"));
+    }
     assert!(
         failures.is_empty(),
         "physical fixture refusals retained: {failures:#?}"
