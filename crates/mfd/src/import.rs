@@ -164,9 +164,34 @@ pub struct ImportOptions {
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
     item_ordered_exceptions: bool,
+    resource_bindings_v1: Vec<crate::resource::ResourceBindingV1>,
+    resource_readset_v1: Option<crate::resource::ResourceReadSetV1>,
 }
 
 impl ImportOptions {
+    /// Explicit host authorization only; never enabled by discovered manifests.
+    /// A matching binding is authoritative, including in best-effort mode.
+    pub fn with_resource_bindings_v1<I>(mut self, bindings: I) -> Result<Self, MfdError>
+    where
+        I: IntoIterator<Item = crate::resource::ResourceBindingV1>,
+    {
+        for binding in bindings {
+            if self.resource_bindings_v1.len() >= crate::resource::MAX_RESOURCE_BINDINGS_V1 {
+                return Err(MfdError::Resource("binding count limit exceeded".into()));
+            }
+            self.resource_bindings_v1.push(binding);
+        }
+        crate::resource::validate_bindings(&self.resource_bindings_v1)?;
+        Ok(self)
+    }
+
+    /// Private provenance sink. Records identify actual supplied raw buffers;
+    /// a root-only pin does not imply that transitive files were pinned.
+    pub fn with_resource_readset_v1(mut self, readset: crate::resource::ResourceReadSetV1) -> Self {
+        self.resource_readset_v1 = Some(readset);
+        self
+    }
+
     /// Imports a supported native exception branch as a lazy per-item guard.
     ///
     /// The default preserves legacy pre-target failure rules. Unsupported
@@ -336,12 +361,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
     let resources = resolved_resources(path, options)?;
-    Ok(import_resolved(
+    let result = import_resolved(
         &resources,
         StageSelection::Ordinary,
         options.item_ordered_exceptions,
-    )?
-    .imported)
+    );
+    resources.finish_bindings()?;
+    Ok(result?.imported)
 }
 
 /// Import a connected, file-based design as a typed pipeline.
@@ -360,7 +386,20 @@ pub fn import_pipeline_with_options(
     options: &ImportOptions,
 ) -> Result<ImportedPipeline, MfdError> {
     let resources = resolved_resources(path, options)?;
-    let chain = discover_pipeline_chain(resources.mapping_path())?;
+    let result = import_pipeline_resolved(&resources, options);
+    resources.finish_bindings()?;
+    result
+}
+
+fn import_pipeline_resolved(
+    resources: &ResourceResolver,
+    options: &ImportOptions,
+) -> Result<ImportedPipeline, MfdError> {
+    let chain = if options.resource_bindings_v1.is_empty() {
+        discover_pipeline_chain(resources.mapping_path())?
+    } else {
+        discover_pipeline_chain_text(&resources.read_design()?)?
+    };
     let first_intermediate = &chain.intermediates[0];
     let mut lowered = vec![import_resolved(
         &resources,
@@ -402,6 +441,7 @@ pub fn import_pipeline_with_options(
         options.item_ordered_exceptions,
     )?);
 
+    resources.finish_bindings()?;
     let warnings = lowered
         .iter()
         .flat_map(|stage| stage.imported.warnings.iter().cloned())
@@ -595,7 +635,10 @@ fn resolved_resources(path: &Path, options: &ImportOptions) -> Result<ResourceRe
             .with_package_edi_catalog_roots(manifest.edi_catalog_roots())?
             .with_package_json_schema_catalog_roots(manifest.json_schema_catalog_roots())?;
     }
-    Ok(resources)
+    resources.with_bindings(
+        &options.resource_bindings_v1,
+        options.resource_readset_v1.clone(),
+    )
 }
 
 fn discover_package_manifest(path: &Path) -> Result<Option<PathBuf>, MfdError> {
@@ -1488,7 +1531,7 @@ fn import_resolved(
     item_ordered_exceptions: bool,
 ) -> Result<LoweredStage, MfdError> {
     let path = resources.mapping_path();
-    let text = crate::design::read(path)?;
+    let text = resources.read_design()?;
     let doc = roxmltree::Document::parse(&text)?;
     let mapping_el = doc.root_element();
     if mapping_el.tag_name().name() != "mapping" {
@@ -1614,6 +1657,9 @@ fn import_resolved(
                                                 .schema_file_authoritative,
                                             authoritative_schema_path: read
                                                 .authoritative_schema_path
+                                                .clone(),
+                                            authoritative_schema_bytes: read
+                                                .authoritative_schema_bytes
                                                 .clone(),
                                             no_port_warning_index: read.no_port_warning_index,
                                         },

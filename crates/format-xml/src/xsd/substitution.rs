@@ -39,6 +39,7 @@ pub(super) struct SubstitutionIndex {
     conflicting_global_identity: Option<String>,
     conflicting_global_attribute_identity: Option<String>,
     limit_reached: bool,
+    supplied_identities: bool,
 }
 
 impl SubstitutionIndex {
@@ -222,7 +223,12 @@ impl SubstitutionIndex {
     /// Returns a chameleon schema's adopted namespace only when this graph
     /// reaches the physical file through exactly one namespace context.
     pub(super) fn effective_namespace(&self, path: &Path) -> Option<&str> {
-        let namespaces = self.effective_namespaces.get(&normalized_path(path))?;
+        let path = if self.supplied_identities {
+            super::resources::lexical_path(path)
+        } else {
+            normalized_path(path)
+        };
+        let namespaces = self.effective_namespaces.get(&path)?;
         if namespaces.len() != 1 {
             return None;
         }
@@ -236,6 +242,7 @@ pub(super) fn build(
     reader: &SchemaReader,
 ) -> SubstitutionIndex {
     let mut index = SubstitutionIndex::default();
+    index.supplied_identities = reader.is_supplied();
     collect_declarations(
         schema,
         schema_path,
@@ -258,7 +265,7 @@ fn collect_declarations(
     if index.limit_reached {
         return;
     }
-    let path = normalized_path(schema_path);
+    let path = reader.identity(schema_path);
     let effective_namespace = schema.attribute("targetNamespace").or(inherited_namespace);
     index
         .effective_namespaces
@@ -333,14 +340,10 @@ fn collect_declarations(
             index.unresolved_namespaces.insert(dependency_namespace);
             continue;
         };
-        if location.contains("://") {
+        let Some(dependency) = reader.dependency(&path, location) else {
             index.unresolved_namespaces.insert(dependency_namespace);
             continue;
-        }
-        let dependency = path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(location);
+        };
         let Ok(text) = reader.read(&dependency) else {
             index.unresolved_namespaces.insert(dependency_namespace);
             continue;
