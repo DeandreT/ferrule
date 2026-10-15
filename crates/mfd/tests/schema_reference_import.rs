@@ -54,7 +54,7 @@ fn imports_a_uniquely_case_mismatched_schema_in_the_referenced_directory() {
 }
 
 #[test]
-fn ambiguous_and_missing_case_fallbacks_keep_the_existing_import_warning() {
+fn case_fallback_respects_distinct_physical_siblings() {
     let ambiguous_dir = TempDir::new();
     let ambiguous_design = write_design(&ambiguous_dir, "schemas/input.xsd");
     std::fs::write(
@@ -68,13 +68,33 @@ fn ambiguous_and_missing_case_fallbacks_keep_the_existing_import_warning() {
     )
     .unwrap();
 
-    let ambiguous = mfd::import(&ambiguous_design).unwrap();
-    assert!(ambiguous.warnings.iter().any(|warning| {
-        warning.contains("component `Company`: could not read schema `schemas/input.xsd`")
-            && warning.contains("multiple case-insensitive sibling matches")
-            && warning.contains("falling back to the entry tree")
-    }));
+    let physical_matches = std::fs::read_dir(ambiguous_dir.0.join("schemas"))
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.eq_ignore_ascii_case("input.xsd"))
+        })
+        .count();
+    assert!(matches!(physical_matches, 1 | 2));
+    let imported = mfd::import(&ambiguous_design).unwrap();
+    if physical_matches == 2 {
+        assert!(imported.warnings.iter().any(|warning| {
+            warning.contains("component `Company`: could not read schema `schemas/input.xsd`")
+                && warning.contains("multiple case-insensitive sibling matches")
+                && warning.contains("falling back to the entry tree")
+        }));
+    } else {
+        // Case-insensitive filesystems retain one file, not an ambiguous pair.
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        assert!(imported.project.source.child("Staff").unwrap().repeating);
+    }
+}
 
+#[test]
+fn missing_case_fallback_keeps_the_existing_import_warning() {
     let missing_dir = TempDir::new();
     let missing_design = write_design(&missing_dir, "schemas/missing.xsd");
     let missing = mfd::import(&missing_design).unwrap();
