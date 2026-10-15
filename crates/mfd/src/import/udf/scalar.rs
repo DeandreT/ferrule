@@ -151,7 +151,7 @@ pub(super) fn read(
     let mut scalar_outputs = Vec::new();
     let mut nested_calls = Vec::new();
     let mut seen_component_ids = BTreeSet::new();
-    let mut template_budget = ExpansionBudget::new();
+    let mut template_budget = ExpansionBudget::for_registry(registry);
     for child in children
         .children()
         .filter(|node| node.is_element() && node.has_tag_name("component"))
@@ -232,6 +232,9 @@ pub(super) fn read(
             return Err(ReadError::Shape(format!(
                 "definition {detail}: `{child_name}` ({library})"
             )));
+        }
+        if let Some(budget) = template_budget.shared.as_ref() {
+            budget.scalar_metadata(child).map_err(ReadError::Nested)?;
         }
         let function = read_function(&child);
         if !has_sequence_reducer
@@ -360,7 +363,7 @@ pub(super) fn read(
         parameter_default_by_key: &parameter_default_by_key,
         edge_from: &edge_from,
     };
-    let mut budget = ExpansionBudget::new();
+    let mut budget = ExpansionBudget::for_registry(registry);
     let mut outputs = BTreeMap::new();
     for (component_id, feed) in output_feeds {
         let expression = context
@@ -386,29 +389,67 @@ pub(super) fn read(
             parameters: scalar_parameters,
             outputs: scalar_outputs,
             external_required: None,
+            construction: registry
+                .external_owner
+                .then(|| registry.construction.clone())
+                .flatten(),
         }),
     })
 }
 
 struct ExpansionBudget {
     remaining: usize,
+    text_remaining: usize,
+    shared: Option<super::limits::ConstructionBudget>,
 }
 
 impl ExpansionBudget {
     fn new() -> Self {
         Self {
             remaining: MAX_SCALAR_EXPANSION_NODES,
+            text_remaining: 32 * 1024 * 1024,
+            shared: None,
         }
+    }
+
+    fn for_registry(registry: &Registry) -> Self {
+        Self {
+            shared: registry
+                .external_owner
+                .then(|| registry.construction.clone())
+                .flatten(),
+            ..Self::new()
+        }
+    }
+
+    fn work(&mut self, slots: usize, text: usize, depth: usize) -> Result<(), String> {
+        if text > self.text_remaining {
+            let reason =
+                "scalar expression expansion exceeds the decoded-text clone byte limit".to_string();
+            return Err(self
+                .shared
+                .as_ref()
+                .map_or(reason.clone(), |budget| budget.refuse(reason)));
+        }
+        if let Some(shared) = &self.shared {
+            shared.claim(slots, text, depth)?;
+        }
+        self.text_remaining -= text;
+        Ok(())
     }
 
     fn claim(&mut self, depth: usize) -> Result<(), String> {
         if depth >= MAX_SCALAR_EXPANSION_DEPTH || self.remaining == 0 {
-            return Err(format!(
+            let reason = format!(
                 "scalar expression expansion exceeds the {MAX_SCALAR_EXPANSION_NODES}-node or {MAX_SCALAR_EXPANSION_DEPTH}-level limit"
-            ));
+            );
+            return Err(self
+                .shared
+                .as_ref()
+                .map_or(reason.clone(), |budget| budget.refuse(reason)));
         }
         self.remaining -= 1;
-        Ok(())
+        self.work(1, 0, depth)
     }
 }
 
@@ -438,6 +479,9 @@ impl DefinitionContext<'_> {
         budget: &mut ExpansionBudget,
         sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
+        // Every recursive build, not only clone/substitute, is charged before
+        // construction. Account conservatively for synthesized adapter depth.
+        budget.claim(active.len().saturating_mul(2))?;
         if sequence_items.contains(&feed) {
             return Ok(ScalarExpr::SequenceItem(feed));
         }
@@ -573,6 +617,7 @@ impl DefinitionContext<'_> {
                 Ok(ScalarExpr::RuntimeValue(RuntimeValue::MainMappingFilePath))
             }
             (_, 3) => {
+                budget.work(4, 0, active.len().saturating_mul(2))?;
                 if function.library != "core" || function.inputs.len() != 2 {
                     return Err(
                         "definition uses a filter that is not a two-input core filter".to_string(),
@@ -619,25 +664,35 @@ impl DefinitionContext<'_> {
                     .as_ref()
                     .map(|(value, datatype)| (value.as_str(), datatype.as_str()))
                     .unwrap_or_default();
+                budget.work(0, value.len(), active.len().saturating_mul(2))?;
                 Ok(ScalarExpr::Const(parse_constant(value, datatype)))
             }
-            (_, 4) => Ok(ScalarExpr::If {
-                condition: Box::new(self.function_input(
-                    function,
-                    0,
-                    active,
-                    budget,
-                    sequence_items,
-                )?),
-                then: Box::new(self.function_input(function, 1, active, budget, sequence_items)?),
-                else_: Box::new(self.function_input(
-                    function,
-                    2,
-                    active,
-                    budget,
-                    sequence_items,
-                )?),
-            }),
+            (_, 4) => {
+                budget.work(3, 0, active.len().saturating_mul(2))?;
+                Ok(ScalarExpr::If {
+                    condition: Box::new(self.function_input(
+                        function,
+                        0,
+                        active,
+                        budget,
+                        sequence_items,
+                    )?),
+                    then: Box::new(self.function_input(
+                        function,
+                        1,
+                        active,
+                        budget,
+                        sequence_items,
+                    )?),
+                    else_: Box::new(self.function_input(
+                        function,
+                        2,
+                        active,
+                        budget,
+                        sequence_items,
+                    )?),
+                })
+            }
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(ScalarExpr::ValueMap {
@@ -664,13 +719,26 @@ impl DefinitionContext<'_> {
                 function: "exists".to_string(),
                 args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
             }),
-            ("not-exists", 5) if function.library == "core" => Ok(ScalarExpr::Call {
-                function: "not".to_string(),
-                args: vec![ScalarExpr::Call {
-                    function: "exists".to_string(),
-                    args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
-                }],
-            }),
+            ("not-exists", 5) if function.library == "core" => {
+                budget.work(
+                    3,
+                    "not".len() + "exists".len(),
+                    active.len().saturating_mul(2),
+                )?;
+                Ok(ScalarExpr::Call {
+                    function: "not".to_string(),
+                    args: vec![ScalarExpr::Call {
+                        function: "exists".to_string(),
+                        args: vec![self.function_input(
+                            function,
+                            0,
+                            active,
+                            budget,
+                            sequence_items,
+                        )?],
+                    }],
+                })
+            }
             ("xbrl-measure-shares", 5) if function.library == "xbrl" => Ok(ScalarExpr::Const(
                 Value::String("{http://www.xbrl.org/2003/instance}xbrli:shares".to_string()),
             )),
@@ -701,10 +769,21 @@ impl DefinitionContext<'_> {
                     .iter()
                     .rposition(|key| key.is_some_and(|key| self.edge_from.contains_key(&key)))
                     .map_or_else(|| usize::from(!function.inputs.is_empty()), |last| last + 1);
+                let numeric =
+                    matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round");
+                budget.work(
+                    arity.saturating_mul(if numeric { 3 } else { 1 }),
+                    mapped.len().saturating_add(if numeric {
+                        arity.saturating_mul("to_number".len())
+                    } else {
+                        0
+                    }),
+                    active.len().saturating_mul(2),
+                )?;
                 let mut args = (0..arity)
                     .map(|pos| self.function_input(function, pos, active, budget, sequence_items))
                     .collect::<Result<Vec<_>, _>>()?;
-                if matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round") {
+                if numeric {
                     args = args
                         .into_iter()
                         .map(|arg| ScalarExpr::Call {
@@ -952,10 +1031,13 @@ impl DefinitionContext<'_> {
         budget: &mut ExpansionBudget,
         sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
-        self.connected_input(function, position)
-            .map_or(Ok(ScalarExpr::Const(Value::Null)), |feed| {
-                self.expression_with_sequence_items(feed, active, budget, sequence_items)
-            })
+        match self.connected_input(function, position) {
+            Some(feed) => self.expression_with_sequence_items(feed, active, budget, sequence_items),
+            None => {
+                budget.claim(active.len().saturating_mul(2))?;
+                Ok(ScalarExpr::Const(Value::Null))
+            }
+        }
     }
 
     fn sequence_expression(
@@ -1170,6 +1252,7 @@ fn substitute(
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
+    refuse_unadapted_shared_recipe(expression, budget)?;
     match expression {
         ScalarExpr::Parameter(component_id) => {
             if let Some(expression) = parameters.get(component_id) {
@@ -1191,6 +1274,8 @@ fn substitute(
         }
         ScalarExpr::Const(value) => {
             budget.claim(depth)?;
+            let text = clone_value_text(value, budget)?;
+            budget.work(0, text, depth)?;
             Ok(ScalarExpr::Const(value.clone()))
         }
         ScalarExpr::RuntimeValue(value) => {
@@ -1199,6 +1284,7 @@ fn substitute(
         }
         ScalarExpr::Call { function, args } => {
             budget.claim(depth)?;
+            budget.work(args.len(), function.len(), depth)?;
             Ok(ScalarExpr::Call {
                 function: function.clone(),
                 args: args
@@ -1213,6 +1299,7 @@ fn substitute(
             else_,
         } => {
             budget.claim(depth)?;
+            budget.work(3, 0, depth)?;
             Ok(ScalarExpr::If {
                 condition: Box::new(substitute(condition, parameters, budget, depth + 1)?),
                 then: Box::new(substitute(then, parameters, budget, depth + 1)?),
@@ -1338,7 +1425,17 @@ fn clone_with_budget(
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
+    refuse_unadapted_shared_recipe(expression, budget)?;
     budget.claim(depth)?;
+    match expression {
+        ScalarExpr::Const(value) => {
+            let text = clone_value_text(value, budget)?;
+            budget.work(0, text, depth)?;
+        }
+        ScalarExpr::Call { function, args } => budget.work(args.len(), function.len(), depth)?,
+        ScalarExpr::If { .. } => budget.work(3, 0, depth)?,
+        _ => {}
+    }
     match expression {
         ScalarExpr::Parameter(component_id) => Ok(ScalarExpr::Parameter(*component_id)),
         ScalarExpr::DefaultedParameter {
@@ -1419,6 +1516,38 @@ fn clone_with_budget(
     }
 }
 
+fn value_text(value: &Value) -> usize {
+    match value {
+        Value::String(value) => value.len(),
+        _ => 0,
+    }
+}
+
+fn clone_value_text(value: &Value, budget: &ExpansionBudget) -> Result<usize, String> {
+    match &budget.shared {
+        Some(shared) => super::limits::scalar_text(value).map_err(|reason| shared.refuse(reason)),
+        None => Ok(value_text(value)),
+    }
+}
+
+fn refuse_unadapted_shared_recipe(
+    expression: &ScalarExpr,
+    budget: &ExpansionBudget,
+) -> Result<(), String> {
+    if let Some(shared) = &budget.shared {
+        if !matches!(
+            expression,
+            ScalarExpr::Parameter(_)
+                | ScalarExpr::Const(_)
+                | ScalarExpr::Call { .. }
+                | ScalarExpr::If { .. }
+        ) {
+            return Err(shared.refuse("imported default/sequence/value-map/runtime clone or substitution requires unsupported signature/effect adaptation".into()));
+        }
+    }
+    Ok(())
+}
+
 fn clone_sequence_with_budget(
     sequence: &ScalarSequenceExpr,
     budget: &mut ExpansionBudget,
@@ -1477,5 +1606,161 @@ mod tests {
             };
         }
         assert!(substitute(&overdeep, &BTreeMap::new(), &mut ExpansionBudget::new(), 0,).is_err());
+    }
+
+    fn ordinary_dag(layers: usize, duplicate: bool, literal: &str) -> String {
+        assert!(layers <= 130); // bounded fixture metadata, never an OOM probe
+        let mut children = format!(
+            r#"<component library="core" kind="2" uid="1" name="constant"><targets><datapoint key="10"/></targets><data><constant datatype="string" value="{literal}"/></data></component>"#
+        );
+        let mut graph = String::new();
+        let mut feed = 10;
+        for index in 0..layers {
+            let key = 100 + index as u32 * 3;
+            let second = if duplicate {
+                format!(r#"<datapoint pos="1" key="{}"/>"#, key + 1)
+            } else {
+                String::new()
+            };
+            let name = if duplicate { "concat" } else { "string" };
+            children.push_str(&format!(r#"<component library="core" kind="5" uid="{}" name="{name}"><sources><datapoint pos="0" key="{key}"/>{second}</sources><targets><datapoint key="{}"/></targets></component>"#, index + 2, key + 2));
+            graph.push_str(&format!(
+                r#"<vertex vertexkey="{feed}"><edges><edge vertexkey="{key}"/>{}</edges></vertex>"#,
+                if duplicate {
+                    format!(r#"<edge vertexkey="{}"/>"#, key + 1)
+                } else {
+                    String::new()
+                }
+            ));
+            feed = key + 2;
+        }
+        format!(
+            "<component><structure><children>{children}</children><graph><vertices>{graph}</vertices></graph></structure></component>"
+        )
+    }
+
+    fn build_ordinary(
+        xml: &str,
+        layers: usize,
+        budget: &mut ExpansionBudget,
+    ) -> Result<ScalarExpr, String> {
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let component = document.root_element();
+        let structure = component
+            .children()
+            .find(|n| n.has_tag_name("structure"))
+            .unwrap();
+        let functions = structure
+            .children()
+            .find(|n| n.has_tag_name("children"))
+            .unwrap()
+            .children()
+            .filter(|n| n.has_tag_name("component"))
+            .map(|n| read_function(&n))
+            .collect::<Vec<_>>();
+        let by_output = functions
+            .iter()
+            .enumerate()
+            .flat_map(|(i, f)| {
+                f.outputs
+                    .iter()
+                    .map(move |key| (*key, Producer::Function(i)))
+            })
+            .collect();
+        let context = DefinitionContext {
+            functions: &functions,
+            nested_calls: &[],
+            by_output: &by_output,
+            parameter_by_key: &BTreeMap::new(),
+            parameter_default_by_key: &BTreeMap::new(),
+            edge_from: &read_edges(&structure, Some(&component)),
+        };
+        context.expression(
+            if layers == 0 {
+                10
+            } else {
+                100 + (layers as u32 - 1) * 3 + 2
+            },
+            &mut BTreeSet::new(),
+            budget,
+        )
+    }
+
+    #[test]
+    fn ordinary_builds_share_exact_and_plus_one_nodes_and_decoded_bytes() {
+        let xml = ordinary_dag(3, true, "a"); // work nodes=29, cloned text=50
+        let shared = super::super::limits::ConstructionBudget::with_limits(29, 50, 16);
+        let mut budget = ExpansionBudget {
+            shared: Some(shared.clone()),
+            ..ExpansionBudget::new()
+        };
+        assert!(build_ordinary(&xml, 3, &mut budget).is_ok());
+        assert!(shared.claim(1, 0, 0).is_err());
+        for (nodes, text) in [(28, 50), (29, 49)] {
+            let mut budget = ExpansionBudget {
+                shared: Some(super::super::limits::ConstructionBudget::with_limits(
+                    nodes, text, 16,
+                )),
+                ..ExpansionBudget::new()
+            };
+            assert!(build_ordinary(&xml, 3, &mut budget).is_err());
+        }
+    }
+
+    #[test]
+    fn deep_chain_duplication_dag_and_long_literal_stop_at_tiny_quotas() {
+        let mut embedded = ExpansionBudget::new();
+        assert!(build_ordinary(&ordinary_dag(130, false, "a"), 130, &mut embedded).is_err());
+        let mut tiny = ExpansionBudget {
+            shared: Some(super::super::limits::ConstructionBudget::with_limits(
+                64, 512, 64,
+            )),
+            ..ExpansionBudget::new()
+        };
+        assert!(build_ordinary(&ordinary_dag(30, true, "a"), 30, &mut tiny).is_err());
+        let mut tiny = ExpansionBudget {
+            shared: Some(super::super::limits::ConstructionBudget::with_limits(
+                8, 15, 8,
+            )),
+            ..ExpansionBudget::new()
+        };
+        assert!(build_ordinary(&ordinary_dag(0, false, &"x".repeat(16)), 0, &mut tiny).is_err());
+    }
+
+    #[test]
+    fn clone_and_substitution_charge_function_names_and_literals_before_copying() {
+        let expression = ScalarExpr::Call {
+            function: "concat".into(),
+            args: vec![
+                ScalarExpr::Const(Value::String("a".into())),
+                ScalarExpr::Const(Value::String("b".into())),
+            ],
+        };
+        for substitute_value in [false, true] {
+            let mut exact = ExpansionBudget {
+                shared: Some(super::super::limits::ConstructionBudget::with_limits(
+                    5, 8, 4,
+                )),
+                ..ExpansionBudget::new()
+            };
+            let result = if substitute_value {
+                substitute(&expression, &BTreeMap::new(), &mut exact, 0)
+            } else {
+                clone_with_budget(&expression, &mut exact, 0)
+            };
+            assert!(result.is_ok());
+            let mut short = ExpansionBudget {
+                shared: Some(super::super::limits::ConstructionBudget::with_limits(
+                    5, 7, 4,
+                )),
+                ..ExpansionBudget::new()
+            };
+            let result = if substitute_value {
+                substitute(&expression, &BTreeMap::new(), &mut short, 0)
+            } else {
+                clone_with_budget(&expression, &mut short, 0)
+            };
+            assert!(result.is_err());
+        }
     }
 }
