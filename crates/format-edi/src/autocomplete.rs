@@ -542,6 +542,25 @@ fn normalize_x12_date(
     short: bool,
 ) -> Result<(), EdiFormatError> {
     let value = ensure_value(segment, index, "");
+    // Validate the entire supplied date before byte slicing or discarding its
+    // century. A bad present prefix must not turn into a valid short date.
+    let digits = |bytes: &[u8]| bytes.iter().all(u8::is_ascii_digit);
+    let bytes = value.as_bytes();
+    let compact_digits = matches!(bytes.len(), 6 | 8) && digits(bytes);
+    let dashed_digits = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && digits(&bytes[..4])
+        && digits(&bytes[5..7])
+        && digits(&bytes[8..]);
+    if !(dashed_digits || compact_digits && (short || bytes.len() == 8)) {
+        return Err(EdiFormatError::InvalidEnvelopeElement {
+            element: format!("{}{:02}", segment.id, index + 1),
+            value,
+            reason: "date must be YYYY-MM-DD or the dialect's compact numeric form",
+        });
+    }
+    let original = value.clone();
     let compact = if value.len() == 10
         && value.as_bytes().get(4) == Some(&b'-')
         && value.as_bytes().get(7) == Some(&b'-')
@@ -550,6 +569,38 @@ fn normalize_x12_date(
     } else {
         value
     };
+    let (year, month_at) = if compact.len() == 6 {
+        (2000 + compact[..2].parse::<u32>().unwrap_or(0), 2)
+    } else {
+        (compact[..4].parse::<u32>().unwrap_or(0), 4)
+    };
+    let month = compact[month_at..month_at + 2]
+        .parse::<usize>()
+        .unwrap_or(0);
+    let day = compact[month_at + 2..].parse::<u32>().unwrap_or(0);
+    let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+    let days = [
+        0,
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if year == 0 || month == 0 || month >= days.len() || day == 0 || day > days[month] {
+        return Err(EdiFormatError::InvalidEnvelopeElement {
+            element: format!("{}{:02}", segment.id, index + 1),
+            value: original,
+            reason: "date must identify a valid Gregorian date",
+        });
+    }
     let compact = if short && compact.len() == 8 {
         compact[2..].to_string()
     } else {
@@ -598,6 +649,51 @@ fn normalize_x12_time(
     }
     segment.elements[index][0][0] = compact;
     Ok(())
+}
+
+#[cfg(test)]
+mod x12_date_boundary_tests {
+    use super::*;
+
+    fn normalize(value: &str, short: bool) -> Result<String, EdiFormatError> {
+        let mut segment =
+            control_segment(if short { "ISA" } else { "GS" }, if short { 16 } else { 8 });
+        let index = if short { 8 } else { 3 };
+        segment.elements[index][0][0] = value.into();
+        normalize_x12_date(&mut segment, index, short)?;
+        Ok(segment.elements[index][0][0].clone())
+    }
+
+    #[test]
+    fn x12_bad_present_dates_refuse_before_utf8_slicing_or_century_truncation() {
+        for value in [
+            "a€1234",
+            "xx300615",
+            "x030-06-15",
+            "00000615",
+            "19000229",
+            "2100-02-29",
+        ] {
+            assert!(
+                matches!(normalize(value, true), Err(EdiFormatError::InvalidEnvelopeElement { element, value: original, .. }) if element == "ISA09" && original == value)
+            );
+        }
+    }
+
+    #[test]
+    fn x12_valid_compact_and_dashed_dates_keep_canonical_completion() {
+        for (input, expected) in [
+            ("300615", "300615"),
+            ("20300615", "300615"),
+            ("2030-06-15", "300615"),
+            ("2000-02-29", "000229"),
+        ] {
+            assert_eq!(normalize(input, true).unwrap(), expected);
+        }
+        assert_eq!(normalize("20300615", false).unwrap(), "20300615");
+        assert_eq!(normalize("2030-06-15", false).unwrap(), "20300615");
+        assert!(normalize("300615", false).is_err());
+    }
 }
 
 fn pad_x12_numeric_element(
