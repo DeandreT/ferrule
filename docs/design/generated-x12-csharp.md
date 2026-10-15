@@ -4,8 +4,8 @@ Generated C# libraries can include an explicit raw X12 boundary around the
 ordinary typed mapping. The default envelope profile contains one interchange,
 functional group and transaction. An explicit grouped profile admits declared
 functional-group and transaction collections inside one interchange. An
-explicit repeating-interchange profile admits repeated interchanges in the shape of
-the imported X12 `Envelope.Config`. Source and
+explicit repeating-interchange profile admits the hierarchy from an imported
+X12 `Envelope.Config`. Source and
 target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
@@ -136,12 +136,12 @@ retains its artifact set and typed/JSON APIs. The companion adds
 
 ### Repeating interchange envelopes
 
-The repeating-interchange profile admits the ownership that an imported
+`X12EnvelopeProfile::REPEATING_INTERCHANGES` admits the hierarchy that an
 X12 `Envelope.Config` produces when Ferrule imports a design. Select it
 explicitly on each intended X12 endpoint, with the CLI value
 `repeating-interchanges` for either envelope flag or through
 `cli::generate_project_with_x12_envelope_profiles` (or its static-document
-counterpart). The descriptor retains its serialized envelope-profile value. The shape is never inferred from
+counterpart). The descriptor retains its existing serialized profile identifier. The shape is never inferred from
 a schema or retained options. Static-document and CSV routes apply the same
 selection to their own X12 endpoints.
 
@@ -151,8 +151,9 @@ Envelope                 singular root
    ├─ ISA                repeating segment
    ├─ Group              repeating container
    │  ├─ GS              repeating segment
-   │  ├─ Message_<type>  repeating container: ST, body, SE
-   │  └─ GE              repeating segment
+   │  ├─ Message_<type>  repeating container: ST, body, SE[, ParserErrors_*]
+   │  ├─ GE              repeating segment
+   │  └─ ParserErrors_*  optional, source only: repeating acknowledgment branch
    └─ IEA                repeating segment
 ```
 
@@ -178,10 +179,18 @@ refused. Admission requires:
   fixed value must agree with the selection. The existing ISA11/ISA16 fixed
   syntax rules apply.
 
-`ParserErrors_*` acknowledgment branches, any other extra child in the
-envelope grammar, more than one message container per group, implied decimals
-on envelope elements and release separators are refused. Each refusal is an
-`X12BoundaryPolicyError::Schema` with its owner path and reason.
+A component with acknowledgment validation enabled imports two extra
+`ParserErrors_*` branches: a trailing member of the functional group after GE
+(starting with AK9) and a trailing member of the message after SE (AK3, AK4,
+AK5 and similar). A source schema may carry either or both, exactly in those
+trailing positions, as repeating non-segment containers without envelope
+segments; their contents follow the ordinary segment rules. A target schema
+refuses them, because output never writes parser acknowledgments. A
+`ParserErrors_*` node anywhere else, an unprefixed trailing member, any other
+extra child in the envelope grammar, more than one message container per
+group, implied decimals on envelope elements and release separators are
+refused. Each refusal is an `X12BoundaryPolicyError::Schema` with its owner
+path and reason.
 
 Input validates the physical segments as `(ISA (GS (ST … SE)+ GE)+ IEA)+`
 before typed reading. Every interchange needs at least one functional group and
@@ -199,6 +208,14 @@ carry the physical segment index and declared owner path with occurrence
 indices, such as `Interchange[1]/Group[0]/Message_945[0]/SE`. Typed reading then
 uses occurrence-indexed paths, as in the grouped profile. Int and Float controls
 read as native does, so `000000321` becomes 321.
+
+Native reading treats acknowledgment branches as ordinary loops matched on
+their segment IDs, so ordinary input reads each one as an empty collection;
+generated input produces the same empty `FerruleRepeated`. A segment that
+native would read into a branch, such as AK9 after GE or AK5 after SE, is
+refused as an `Envelope` error at the branch occurrence path, such as
+`Interchange[0]/Group[0]/ParserErrors_Group`. Acknowledgment content is outside
+the profile.
 
 Output mirrors the native writer:
 
@@ -231,9 +248,10 @@ Native reading, writing or completion can accept documents that this profile
 refuses: later interchanges with another version or syntax, missing trailers
 without completion, empty interchanges or groups, more than one GE or IEA per
 owner, a missing ISA or GS occurrence, mismatched counts or controls, an
-undeclared ST03, and negative or fractional numeric controls. Source
-acknowledgment extras, several message alternatives per group and release
-separators remain outside the profile.
+undeclared ST03, negative or fractional numeric controls, and acknowledgment
+segments that populate a source acknowledgment branch. Target acknowledgment
+branches, several message alternatives per group and release separators remain
+outside the profile.
 
 ## Public generated methods
 
@@ -459,7 +477,7 @@ native reader, an absent trailing element has no occurrences, while a present
 element, even an empty one, has one occurrence per delimited part: `REF*ZZ**7~`
 reads one Null `REF02` occurrence, and `N9*X~` reads no `N902` occurrences.
 Every occurrence counts toward the repeated-instance limit. Occurrence paths are
-indexed only under the grouped and repeating-interchange envelope profiles, matching loop
+indexed only under the grouped and repeating-interchange profiles, matching loop
 paths.
 
 A segment ID with no declared repeating element refuses repetition syntax during
