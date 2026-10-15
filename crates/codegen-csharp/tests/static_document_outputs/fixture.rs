@@ -5,7 +5,7 @@ use codegen::{
     StaticDocumentBoundaryPolicy, TargetConstruction, TargetScope, X12BoundaryOptions,
     X12EnvelopeProfile,
 };
-use ir::{JsonAllowedValue, JsonAllowedValues, ScalarType, SchemaNode, Value};
+use ir::{ScalarType, SchemaNode, Value};
 use mapping::{X12Autocomplete, X12Separators};
 
 fn text(name: &str) -> SchemaNode {
@@ -167,11 +167,8 @@ pub fn mixed() -> (Program, StaticDocumentBoundaryPolicy) {
             scope("W05", &[("W0502", message)], vec![]),
         ],
     );
-    let allowed = text("result")
-        .with_json_allowed_values(
-            JsonAllowedValues::new([JsonAllowedValue::String("ALLOW".into())]).unwrap(),
-        )
-        .unwrap();
+    // A singleton restriction is a fixed value, not a multi-value enum.
+    let allowed = text("result").with_fixed("ALLOW").unwrap();
     let alpha = SchemaNode::group("Restricted", vec![allowed])
         .with_required_fields(vec!["result".into()])
         .unwrap();
