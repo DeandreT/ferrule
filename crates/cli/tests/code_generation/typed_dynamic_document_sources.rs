@@ -395,6 +395,8 @@ fn exercise(language: &str) -> TestResult<()> {
             #[cfg(not(unix))]
             {
                 let mut permissions = std::fs::metadata(&lock)?.permissions();
+                // Clear the Windows read-only attribute on the copied lockfile.
+                #[allow(clippy::permissions_set_readonly_false)]
                 permissions.set_readonly(false);
                 std::fs::set_permissions(&lock, permissions)?;
             }
