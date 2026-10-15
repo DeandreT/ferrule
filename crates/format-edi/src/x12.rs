@@ -26,6 +26,9 @@ mod segment_descriptions;
 pub use segment_descriptions::segment_description;
 
 #[cfg(test)]
+#[path = "x12/document_role_tests.rs"]
+mod document_role_tests;
+#[cfg(test)]
 #[path = "x12/isa_encoding_tests.rs"]
 mod isa_encoding_tests;
 
@@ -59,6 +62,91 @@ pub struct Autocomplete<'a> {
     pub current_datetime: &'a str,
     pub request_acknowledgement: bool,
     pub transaction_set: Option<&'a str>,
+}
+
+/// A node's physical X12 role, determined by its parent, never its label alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaRole<'a> {
+    Root,
+    Container,
+    Segment(&'a str),
+    Element { segment: &'a str, index: usize },
+    Component,
+}
+
+/// Borrowed traversal of a container-root X12 document. Positional fields stop
+/// segment discovery, even when their labels are ISA, ST, GE or IEA.
+#[derive(Clone, Copy)]
+pub struct SchemaCursor<'a> {
+    schema: &'a SchemaNode,
+    role: SchemaRole<'a>,
+}
+
+pub fn schema_segment_id(name: &str) -> Option<&str> {
+    let name = name.strip_prefix("MF_").unwrap_or(name);
+    let name = name
+        .rsplit_once('_')
+        .filter(|(_, n)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        .map_or(name, |(id, _)| id);
+    ((2..=3).contains(&name.len())
+        && name.as_bytes()[0].is_ascii_uppercase()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
+    .then_some(name)
+}
+
+impl<'a> SchemaCursor<'a> {
+    pub fn schema(self) -> &'a SchemaNode {
+        self.schema
+    }
+    pub fn role(self) -> SchemaRole<'a> {
+        self.role
+    }
+    pub fn root(schema: &'a SchemaNode) -> Self {
+        Self {
+            schema,
+            role: SchemaRole::Root,
+        }
+    }
+    pub fn segment_id(self) -> Option<&'a str> {
+        match self.role {
+            SchemaRole::Segment(id) => Some(id),
+            _ => None,
+        }
+    }
+    pub fn children(self) -> impl DoubleEndedIterator<Item = Self> + 'a {
+        let children = match &self.schema.kind {
+            SchemaKind::Group { children, .. } => children.as_slice(),
+            _ => &[],
+        };
+        children.iter().enumerate().map(move |(index, schema)| {
+            let role = match self.role {
+                SchemaRole::Root | SchemaRole::Container => match schema.kind {
+                    SchemaKind::Group { .. } => schema_segment_id(&schema.name)
+                        .map_or(SchemaRole::Container, SchemaRole::Segment),
+                    _ => SchemaRole::Component,
+                },
+                SchemaRole::Segment(segment) => SchemaRole::Element { segment, index },
+                SchemaRole::Element { .. } | SchemaRole::Component => SchemaRole::Component,
+            };
+            Self { schema, role }
+        })
+    }
+    pub fn segments(self) -> impl Iterator<Item = Self> + 'a {
+        let mut pending = vec![self];
+        std::iter::from_fn(move || {
+            while let Some(node) = pending.pop() {
+                if node.segment_id().is_some() {
+                    return Some(node);
+                }
+                if matches!(node.role, SchemaRole::Root | SchemaRole::Container) {
+                    pending.extend(node.children().rev());
+                }
+            }
+            None
+        })
+    }
 }
 
 impl Default for Separators {
@@ -424,7 +512,34 @@ pub fn to_string_with_syntax(
     separators: Separators,
     interchange_version: Option<&str>,
 ) -> Result<String, EdiFormatError> {
-    to_string_with_syntax_inner(schema, instance, separators, interchange_version, None)
+    to_string_with_syntax_inner(
+        schema,
+        instance,
+        separators,
+        interchange_version,
+        None,
+        false,
+    )
+}
+
+/// Write an explicitly container-root document, preserving its declared root
+/// and field labels in diagnostics. Legacy fragment APIs retain their lookup
+/// behavior; generated strict document adapters should use this entry point.
+pub fn to_document_string_with_syntax(
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+    autocomplete: Option<Autocomplete<'_>>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_syntax_inner(
+        schema,
+        instance,
+        separators,
+        interchange_version,
+        autocomplete,
+        true,
+    )
 }
 
 /// Writes X12 and derives missing envelope dates, identifiers, counts, and
@@ -465,6 +580,7 @@ pub fn to_string_with_syntax_and_autocomplete(
         separators,
         interchange_version,
         Some(autocomplete),
+        false,
     )
 }
 
@@ -474,17 +590,29 @@ fn to_string_with_syntax_inner(
     separators: Separators,
     interchange_version: Option<&str>,
     autocomplete: Option<Autocomplete<'_>>,
+    document_root: bool,
 ) -> Result<String, EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
     options.interchange_version = interchange_version
         .map(parse_interchange_version)
         .transpose()?;
-    let options = write_options(schema, instance, options)?;
+    let options = if document_root {
+        match find_document_instance(SchemaCursor::root(schema), instance, "ISA") {
+            Some((isa, value)) => write_options_for_isa(isa, value, options)?,
+            None => options,
+        }
+    } else {
+        write_options(schema, instance, options)?
+    };
     // IEA02 repeats ISA13, which is fixed-width only when the schema declares
     // a complete ISA; partial schemas keep both controls as supplied.
     let encode: fn(&str, &mut [String], &WriteOptions) -> Result<(), EdiFormatError> =
-        if declares_complete_isa(schema) {
+        if if document_root {
+            SchemaCursor::root(schema).segments().any(|node| node.segment_id() == Some("ISA") && matches!(&node.schema.kind, SchemaKind::Group { children, .. } if children.len() == 16))
+        } else {
+            declares_complete_isa(schema)
+        } {
             encode_envelope_controls
         } else {
             encode_isa_controls
@@ -619,11 +747,19 @@ fn parse_interchange_version(value: &str) -> Result<[u8; 5], EdiFormatError> {
 fn write_options(
     schema: &SchemaNode,
     instance: &Instance,
-    mut options: WriteOptions,
+    options: WriteOptions,
 ) -> Result<WriteOptions, EdiFormatError> {
     let Some((isa_schema, isa_instance)) = find_schema_instance(schema, instance, "ISA") else {
         return Ok(options);
     };
+    write_options_for_isa(isa_schema, isa_instance, options)
+}
+
+fn write_options_for_isa(
+    isa_schema: &SchemaNode,
+    isa_instance: &Instance,
+    mut options: WriteOptions,
+) -> Result<WriteOptions, EdiFormatError> {
     let isa11_schema = isa_element(isa_schema, 10);
     let isa12_schema = isa_element(isa_schema, 11);
     let isa11 = isa11_schema
@@ -691,6 +827,28 @@ fn write_options(
         }
     }
     Ok(options)
+}
+
+fn find_document_instance<'a>(
+    node: SchemaCursor<'a>,
+    instance: &'a Instance,
+    id: &str,
+) -> Option<(&'a SchemaNode, &'a Instance)> {
+    let instance = match instance {
+        Instance::Repeated(items) => items.first()?,
+        other => other,
+    };
+    if node.segment_id().is_some() {
+        return (node.segment_id() == Some(id)).then_some((node.schema, instance));
+    }
+    if !matches!(node.role, SchemaRole::Root | SchemaRole::Container) {
+        return None;
+    }
+    node.children().find_map(|child| {
+        instance
+            .field(&child.schema.name)
+            .and_then(|value| find_document_instance(child, value, id))
+    })
 }
 
 fn find_schema_instance<'a>(

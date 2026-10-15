@@ -1,0 +1,199 @@
+use codegen_runtime::{
+    EdiFormatError, ExecutionContext, Instance, Value, X12BoundaryError as Failure,
+};
+use std::error::Error;
+use std::path::Path;
+
+type Text = fn(&str) -> Result<String, Failure>;
+type Bytes = fn(&[u8]) -> Result<Vec<u8>, Failure>;
+type ContextText = fn(&str, &ExecutionContext<'_>) -> Result<String, Failure>;
+type ContextBytes = fn(&[u8], &ExecutionContext<'_>) -> Result<Vec<u8>, Failure>;
+
+fn context() -> ExecutionContext<'static> {
+    ExecutionContext::new(Path::new("authored.mfd")).with_current_datetime("2030-06-15T09:45:00Z")
+}
+
+fn physical(
+    text: Text,
+    bytes: Bytes,
+    contextual: ContextText,
+    contextual_bytes: ContextBytes,
+    input: &str,
+    expected: &str,
+) -> Result<(), Box<dyn Error>> {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let case = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let actual = text(input);
+    std::fs::write(
+        format!("physical-{case}-text.original.txt"),
+        format!("{actual:#?}"),
+    )?;
+    assert_eq!(actual?, expected);
+    let actual = bytes(input.as_bytes());
+    std::fs::write(
+        format!("physical-{case}-bytes.original.txt"),
+        format!("{actual:#?}"),
+    )?;
+    assert_eq!(actual?, expected.as_bytes());
+    let actual = contextual(input, &context());
+    std::fs::write(
+        format!("physical-{case}-context.original.txt"),
+        format!("{actual:#?}"),
+    )?;
+    assert_eq!(actual?, expected);
+    let actual = contextual_bytes(input.as_bytes(), &context());
+    std::fs::write(
+        format!("physical-{case}-context-bytes.original.txt"),
+        format!("{actual:#?}"),
+    )?;
+    assert_eq!(actual?, expected.as_bytes());
+    Ok(())
+}
+
+fn malformed(text: Text, bytes: Bytes, input: &str) -> Result<(), Box<dyn Error>> {
+    for bad in [
+        input.replacen("SE*5*", "SE*6*", 1),
+        input.replacen("GE*", "SE*", 1),
+        input.replacen("000000123", "000000999", 1),
+    ] {
+        assert!(matches!(text(&bad), Err(Failure::Envelope { .. })));
+        assert!(matches!(
+            bytes(bad.as_bytes()),
+            Err(Failure::Envelope { .. })
+        ));
+    }
+    let error = text(&input.replacen("REF*AA:BB*3*", "REF*AA:BB*wrong*", 1)).unwrap_err();
+    assert!(
+        matches!(Error::source(&error).and_then(|cause| cause.downcast_ref::<EdiFormatError>()), Some(EdiFormatError::ElementParse { segment, element: 2, expected: codegen_runtime::ScalarType::Int, value }) if segment == "REF" && value == "wrong")
+    );
+    assert!(matches!(
+        text(&input.replacen("REF*AA:BB*3*1.25", "REF*AA:BB*3*1.25*lost", 1)),
+        Err(Failure::Syntax { .. })
+    ));
+    assert!(matches!(
+        text(&input.replacen("AA:BB", "AA:BB:lost", 1)),
+        Err(Failure::Syntax { .. })
+    ));
+    assert!(matches!(
+        text(&format!("\u{feff}{input}")),
+        Err(Failure::Syntax { .. })
+    ));
+    assert!(matches!(
+        text(input.trim_end_matches('\n').trim_end_matches('~')),
+        Err(Failure::Syntax { .. })
+    ));
+    let wrong_version = input.replacen(&input[84..89], "00403", 1);
+    assert!(matches!(
+        text(&wrong_version),
+        Err(Failure::UnsupportedProfile { segment: 0, .. })
+    ));
+    let too_many_notes = input
+        .replacen("NTE*two~", "NTE*two~\nNTE*three~\nNTE*four~", 1)
+        .replacen("SE*5*", "SE*7*", 1);
+    assert!(matches!(
+        text(&too_many_notes),
+        Err(Failure::Value {
+            reason: "declared item count interval failed",
+            ..
+        })
+    ));
+    let invalid = [b'I', b'S', b'A', 0xff];
+    assert!(matches!(bytes(&invalid), Err(Failure::Encoding(_))));
+    Ok(())
+}
+
+fn completion(
+    without_context: Text,
+    without_context_bytes: Bytes,
+    text: ContextText,
+    bytes: ContextBytes,
+    input: &str,
+    expected: &str,
+) -> Result<(), Box<dyn Error>> {
+    assert!(
+        matches!(without_context(input), Err(Failure::Envelope { ref path, .. }) if path == "autocomplete")
+    );
+    assert!(
+        matches!(without_context_bytes(input.as_bytes()), Err(Failure::Envelope { ref path, .. }) if path == "autocomplete")
+    );
+    assert_eq!(text(input, &context())?, expected);
+    assert_eq!(bytes(input.as_bytes(), &context())?, expected.as_bytes());
+    let invalid =
+        ExecutionContext::new(Path::new("authored.mfd")).with_current_datetime("not-a-date");
+    assert!(matches!(
+        text(input, &invalid),
+        Err(Failure::Native(EdiFormatError::EnvelopeAutocomplete { .. }))
+    ));
+    assert!(matches!(
+        bytes(input.as_bytes(), &invalid),
+        Err(Failure::Native(EdiFormatError::EnvelopeAutocomplete { .. }))
+    ));
+    Ok(())
+}
+
+fn limits(
+    bytes: Bytes,
+    parse: fn(&str) -> Result<Instance, Failure>,
+    serialize: fn(&Instance) -> Result<String, Failure>,
+    input: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut oversized = input.as_bytes().to_vec();
+    oversized.resize(codegen_runtime::MAX_X12_DOCUMENT_BYTES, b' ');
+    assert_eq!(bytes(&oversized)?, input.as_bytes());
+    oversized.push(0xff);
+    assert!(
+        matches!(bytes(&oversized), Err(Failure::InputLimit { bytes, maximum }) if bytes == maximum + 1)
+    );
+    oversized.clear();
+    let many = input.replacen(
+        "NTE*one~\n",
+        &"NTE*x~\n".repeat(codegen_runtime::MAX_X12_SEGMENTS),
+        1,
+    );
+    assert!(matches!(
+        bytes(many.as_bytes()),
+        Err(Failure::Resource {
+            resource: "x12_segments",
+            ..
+        })
+    ));
+    let mut instance = parse(input)?;
+    let Instance::Group(fields) = &mut instance else {
+        panic!("root")
+    };
+    let notes = fields.iter_mut().find(|(name, _)| name == "NTE").unwrap();
+    let Instance::Repeated(notes) = &mut notes.1 else {
+        panic!("notes")
+    };
+    let Instance::Group(fields) = &mut notes[0] else {
+        panic!("note")
+    };
+    let big = "x".repeat(codegen_runtime::MAX_X12_DOCUMENT_BYTES - input.len() + 3);
+    let expected = input.replacen("NTE*one", &format!("NTE*{big}"), 1);
+    fields[0].1 = Instance::Scalar(Value::String(big));
+    let actual = serialize(&instance)?;
+    assert_eq!(actual.len(), codegen_runtime::MAX_X12_DOCUMENT_BYTES);
+    assert_eq!(actual, expected);
+    std::fs::write("physical-output-at-limit.original.x12", actual)?;
+    let Instance::Group(fields) = &mut instance else {
+        panic!("root")
+    };
+    let notes = fields.iter_mut().find(|(name, _)| name == "NTE").unwrap();
+    let Instance::Repeated(notes) = &mut notes.1 else {
+        panic!("notes")
+    };
+    let Instance::Group(fields) = &mut notes[0] else {
+        panic!("note")
+    };
+    let Instance::Scalar(Value::String(value)) = &mut fields[0].1 else {
+        panic!("text")
+    };
+    value.push('x');
+    let actual = serialize(&instance);
+    std::fs::write(
+        "physical-output-one-over.original.txt",
+        format!("{actual:#?}"),
+    )?;
+    assert!(matches!(actual, Err(Failure::OutputLimit { bytes, maximum }) if bytes == maximum + 1));
+    Ok(())
+}
