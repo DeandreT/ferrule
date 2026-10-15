@@ -3,9 +3,32 @@ use std::path::Path;
 use anyhow::{Context, bail};
 use codegen::{
     DocumentBoundaryOptions, NamedDocumentBoundaryOptions, StaticDocumentBoundaryPolicy,
-    X12BoundaryOptions,
+    X12BoundaryOptions, X12EnvelopeProfile,
 };
 use mapping::{EdiBoundaryKind, FormatOptions, Project};
+
+/// Builds the static document policy and applies explicit envelope profiles to
+/// the primary X12 endpoints.
+pub(super) fn policy_with_envelope_profiles(
+    project: &Project,
+    source_envelope: Option<X12EnvelopeProfile>,
+    target_envelope: Option<X12EnvelopeProfile>,
+) -> anyhow::Result<StaticDocumentBoundaryPolicy> {
+    let mut policy = policy(project)?;
+    for (boundary, envelope, owner) in [
+        (&mut policy.source, source_envelope, "primary source"),
+        (&mut policy.target, target_envelope, "primary target"),
+    ] {
+        let Some(envelope) = envelope else {
+            continue;
+        };
+        let DocumentBoundaryOptions::X12(options) = boundary else {
+            bail!("static document {owner} envelope selection requires an X12 endpoint");
+        };
+        options.envelope_profile = envelope;
+    }
+    Ok(policy)
+}
 
 pub(super) fn policy(project: &Project) -> anyhow::Result<StaticDocumentBoundaryPolicy> {
     Ok(StaticDocumentBoundaryPolicy {
