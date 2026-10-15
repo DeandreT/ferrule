@@ -1,7 +1,7 @@
-# Declarative MFD function libraries — v2 source contract
+# Declarative MFD function libraries — v3 source contract
 
 Source-prepared, not compiler/SDK/runtime admitted. The earlier source-only
-commits and their stronger pending oracles are retained; v2 explicitly refuses
+commits and their stronger pending oracles are retained; v3 keeps the v2 refusals for
 the conversion/consumption cases whose correctness was not established.
 
 The importer reads document-local declarations of this form:
@@ -78,6 +78,28 @@ The following capabilities remain pending and are now explicit refusals:
 - call-site inline/context overrides, structured/qualified port metadata and
   unknown scalar call attributes beyond the saved kind19/name/library/UID and
   flat component-ID port contract.
+
+The v3 consumer gate checks the **downstream role**, not just leaf geometry:
+
+- `FileInstance` inputs selected by the XML reader are runtime filename ports,
+  even below a content root and regardless of `ns`, `pos`, or entry type. Such
+  collisions and legacy decimal-slot/`@` name aliases are refused. An unconnected
+  verified `FileInstance/document` protocol wrapper remains permitted.
+- Any direct `properties/@PassThrough="1"` marks an intermediate variable, not
+  an ordinary final target. This owner is refused before any of its ports are
+  admitted, including when its outputs reach a later ordinary target. No
+  transitive consumer walk may erase that boundary. Other output-bearing XML
+  consumer owners also remain outside the supported terminal profile.
+- All raw declarations of a connected numeric input key enter the census;
+  duplicate/normalized aliases cannot hide a protocol or second consumer owner.
+  The gate shares the XML reader's actual first-content and filename-input
+  selectors. Later content roots, transparent type-wrapper sockets and skipped
+  decoration entries are not treated as ordinary scalar targets.
+
+These are private typed consumer refusals carried through the existing import
+warning path; they do not add a public error API or claim whole-import admission.
+The four stronger pending positive oracles remain retained and unweakened. All
+v3 fixtures are authored only, not compiled or run.
 
 Mappings declaring MFD libraries do not use the specialized early root-view
 return: imported calls must first pass the ordinary consumption census, even
