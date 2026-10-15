@@ -421,57 +421,7 @@ fn stage_id_base(stem: &str) -> String {
 }
 
 fn mapping_identity(project_path: &Path, pipeline_path: &Path) -> anyhow::Result<String> {
-    let absolute = normalized_absolute(project_path)?;
-    let pipeline_parent = normalized_absolute(
-        pipeline_path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new(".")),
-    )?;
-    let from = pipeline_parent.components().collect::<Vec<_>>();
-    let to = absolute.components().collect::<Vec<_>>();
-    let common = from
-        .iter()
-        .zip(&to)
-        .take_while(|(left, right)| left == right)
-        .count();
-    if common == 0 {
-        bail!("project and pipeline paths cannot share a portable relative identity");
-    }
-    let mut value = PathBuf::new();
-    for component in &from[common..] {
-        if matches!(component, std::path::Component::Normal(_)) {
-            value.push("..");
-        }
-    }
-    for component in &to[common..] {
-        value.push(component.as_os_str());
-    }
-    value
-        .to_str()
-        .map(str::to_owned)
-        .context("project path is not valid Unicode")
-}
-
-fn normalized_absolute(path: &Path) -> anyhow::Result<PathBuf> {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(path)
-    };
-    let mut normalized = PathBuf::new();
-    for component in absolute.components() {
-        match component {
-            std::path::Component::Prefix(_)
-            | std::path::Component::RootDir
-            | std::path::Component::Normal(_) => normalized.push(component.as_os_str()),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                normalized.pop();
-            }
-        }
-    }
-    Ok(normalized)
+    Ok(cli::pipeline_mapping_identity(project_path, pipeline_path)?)
 }
 
 fn read_bounded(path: &Path) -> anyhow::Result<Vec<u8>> {

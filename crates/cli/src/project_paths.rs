@@ -29,7 +29,7 @@ pub fn rebase(
 
 /// Stores an imported mapping's active-file identity relative to a saved
 /// pipeline, so moving the two files together preserves runtime path values.
-pub(crate) fn mapping_identity_relative_to(
+pub fn mapping_identity_relative_to(
     mapping_path: &Path,
     pipeline_path: &Path,
 ) -> std::io::Result<String> {

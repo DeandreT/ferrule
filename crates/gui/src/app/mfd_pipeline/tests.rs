@@ -21,7 +21,8 @@ impl TestDirectory {
             NEXT.fetch_add(1, Ordering::Relaxed),
         ));
         std::fs::create_dir(&path).expect("unique test directory");
-        Self(path)
+        // Imported mapping paths are canonical; Windows temp paths may use 8.3 names.
+        Self(std::fs::canonicalize(&path).expect("canonical test directory"))
     }
 }
 
