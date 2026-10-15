@@ -41,6 +41,11 @@ For GUI changes, exercise the real controls in addition to state methods:
 - [ ] Use a realistic viewport and actual wheel/keyboard/pointer events.
 - [ ] Verify Preview separately from Run and output publication.
 
+To check Preview on a short window,
+open the [constant-output mapping](../examples/constant-preview.json), enter
+`{}`, and scroll to the action row. Preview should return
+`{"Value":"complete preview result"}`.
+
 ## Run the appropriate checks
 
 Native and generated-backend CI can use the dedicated OVHcloud build runner.
