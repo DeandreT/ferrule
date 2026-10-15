@@ -111,6 +111,25 @@ class EvidenceCompactionTests(unittest.TestCase):
             os.close(fd)
         self.assert_preserved()
 
+    def test_missing_or_malformed_mount_inventory_refuses(self):
+        invalid = ("", "\n", "incomplete\n",
+                   "42 1 0:1 / relative rw - ext4 device rw\n",
+                   "42 1 0:1 / /other\\bad rw - ext4 device rw\n",
+                   "42 1 0:1 /unknown\\000 /other rw - ext4 device rw\n",
+                   "42 1 0:1 / /other rw - ext4 device rw extra\n",
+                   "42 1 0:1 net:[unknown] /other rw - nsfs device rw\n",
+                   "42 1 0:1 net:[42] /other rw - ext4 device rw\n")
+        valid = "42 1 0:1 / /unrelated rw - ext4 device rw\n"
+        fd = evidence.owned_directory(self.original)
+        try:
+            for text in invalid + tuple(valid + row for row in invalid if row):
+                with self.subTest(inventory=text):
+                    with self.assertRaisesRegex(ValueError, "Mount inventory"):
+                        evidence.reject_mounts(fd, mountinfo=text)
+        finally:
+            os.close(fd)
+        self.assert_preserved()
+
     def test_producer_reappearing_before_removal_preserves_original(self):
         with self.assertRaisesRegex(ValueError, "producer"):
             self.archive_one(closed=Mock(side_effect=ValueError("producer alive")))
@@ -406,10 +425,58 @@ class CurrentJobCompactionTests(unittest.TestCase):
             with self.subTest(mount=point):
                 mounts = f"42 1 0:1 / {point} rw - ext4 device rw\n"
                 with patch.object(evidence, "reject_mounts",
-                                  side_effect=lambda fd: reject(fd, mountinfo=mounts)):
+                                  side_effect=lambda fd, **options: reject(
+                                      fd, mountinfo=mounts, **options)):
                     with self.assertRaisesRegex(ValueError, "Mounted evidence"):
                         self.compact()
                 self.assert_preserved()
+
+    def assert_mount_inventory_refused(self, text):
+        read_text = evidence.Path.read_text
+
+        def inventory(path, *args, **options):
+            if path == Path("/proc/self/mountinfo"):
+                return text
+            return read_text(path, *args, **options)
+
+        with patch.object(evidence.Path, "read_text", new=inventory):
+            with self.assertRaisesRegex(ValueError, "Mount inventory|Mounted evidence"):
+                self.compact()
+        self.assert_preserved()
+        self.assertEqual(list(self.archives.glob("*.tar.gz")), [])
+        self.assertEqual(list(self.archives.glob("*.pending")), [])
+
+    def test_empty_mount_inventory_preserves_originals(self):
+        self.assert_mount_inventory_refused("")
+
+    def test_relative_mountpoint_preserves_originals(self):
+        self.assert_mount_inventory_refused(
+            "42 1 0:1 / relative rw - ext4 device rw\n")
+
+    def test_exact_scratch_parent_mount_preserves_originals(self):
+        self.assert_mount_inventory_refused(
+            f"42 1 0:1 / {self.home / 'ci-tmp'} rw - ext4 device rw\n")
+
+    def test_exact_archive_parent_mount_preserves_originals(self):
+        self.assert_mount_inventory_refused(
+            f"42 1 0:1 / {self.archives} rw - ext4 device rw\n")
+
+    def test_unrelated_namespace_and_containing_home_mounts_allow_compaction(self):
+        text = "".join(f"42 1 0:1 {name}:[42] /unrelated/{name} rw - nsfs device rw\n"
+                       for name in ("cgroup", "ipc", "mnt", "net", "pid", "time", "user", "uts"))
+        text += f"42 1 0:1 / {self.home} rw - ext4 device rw\n"
+        read_text = evidence.Path.read_text
+
+        def inventory(path, *args, **options):
+            return text if path == Path("/proc/self/mountinfo") else read_text(path, *args, **options)
+
+        with patch.object(evidence.Path, "read_text", new=inventory):
+            results = self.compact()
+        self.assertEqual(len(results), 1)
+        self.assertFalse(self.original.exists())
+        with (self.archives / results[0]["archive"]).open("rb") as source:
+            evidence.verify_archive(source, results[0]["members"])
+        self.assertEqual(self.outside.read_bytes(), b"unrelated original")
 
     def test_live_producer_without_open_job_files_vetoes_current_job_compaction(self):
         child = subprocess.Popen([sys.executable, "-c", "print('ready',flush=True); input()"],
