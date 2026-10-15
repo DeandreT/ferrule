@@ -6,7 +6,7 @@ use std::path::Path;
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind, EdiValueConstraint};
 
-use super::files::{Files, parse_document, resolve_sibling};
+use super::files::{Files, parse_document};
 use super::{CompiledConfig, ConfigError};
 
 const MAX_DEFINITIONS: usize = 20_000;
@@ -243,7 +243,7 @@ pub(super) fn load_definitions(
         .map(str::to_string)
         .collect::<Vec<_>>();
     for include in includes {
-        let include_path = resolve_sibling(&canonical, &include, files.root())?;
+        let include_path = files.resolve_sibling(&canonical, &include)?;
         load_definitions(&include_path, files, definitions)?;
     }
     Ok(())

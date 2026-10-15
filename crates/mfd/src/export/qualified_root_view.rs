@@ -473,6 +473,27 @@ pub(crate) fn import_project(
         return Ok(None);
     }
     let load = |declared: &str| -> proof::Result<proof::SchemaResource> {
+        if let Some(bound) = resources
+            .bound_resource(crate::resource::ResourceBindingKindV1::XmlSchema, declared)
+            .map_err(|detail| proof::Rejection {
+                code: "schema",
+                detail,
+            })?
+        {
+            let bytes = bound
+                .bytes(bound.path())
+                .map_err(|error| proof::Rejection {
+                    code: "schema",
+                    detail: error.to_string(),
+                })?;
+            let bytes = bound.finish(proof::bounded_schema_bytes(std::io::Cursor::new(
+                bytes.as_ref(),
+            )))?;
+            return Ok(proof::SchemaResource {
+                path: bound.path().to_path_buf(),
+                bytes,
+            });
+        }
         let path = resources
             .resolve_file(declared, "root profile schema")
             .map_err(|detail| proof::Rejection {

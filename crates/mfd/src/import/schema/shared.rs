@@ -5,6 +5,139 @@ use ir::SchemaNode;
 
 use crate::resource::ResourceResolver;
 
+/// Carries request-specific authority; dispatching only by resolved pathname
+/// would accidentally grant an unbound alias another request's trusted root.
+#[derive(Clone)]
+pub(in crate::import) struct XmlSchemaResource {
+    path: PathBuf,
+    bound: Option<std::rc::Rc<crate::resource::BoundResource>>,
+}
+
+impl std::ops::Deref for XmlSchemaResource {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl XmlSchemaResource {
+    pub(in crate::import) fn unbound(path: &Path) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            bound: None,
+        }
+    }
+    pub(in crate::import) fn is_bound(&self) -> bool {
+        self.bound.is_some()
+    }
+
+    pub(in crate::import) fn witness_bytes(&self) -> Option<std::sync::Arc<[u8]>> {
+        self.bound
+            .as_ref()
+            .and_then(|bound| bound.bytes(bound.path()).ok())
+    }
+
+    pub(in crate::import) fn import_root(
+        &self,
+        root: Option<&str>,
+        resources: Option<&ResourceResolver>,
+    ) -> Result<SchemaNode, format_xml::XmlFormatError> {
+        let result = if let Some(bound) = &self.bound {
+            bound.finish(format_xml::xsd::import_root_with_byte_reader(
+                &self.path,
+                root,
+                bound.root(),
+                bound.clone(),
+            ))
+        } else {
+            match resources {
+                Some(r) => format_xml::xsd::import_root_with_resource_root(
+                    &self.path,
+                    root,
+                    r.package_root(),
+                ),
+                None => format_xml::xsd::import_root(&self.path, root),
+            }
+        };
+        retain_xsd_resource_refusal(resources, &result);
+        result
+    }
+
+    pub(in crate::import) fn import_type(
+        &self,
+        name: &str,
+        resources: Option<&ResourceResolver>,
+    ) -> Result<SchemaNode, format_xml::XmlFormatError> {
+        let result = if let Some(bound) = &self.bound {
+            bound.finish(format_xml::xsd::import_type_with_byte_reader(
+                &self.path,
+                name,
+                bound.root(),
+                bound.clone(),
+            ))
+        } else {
+            match resources {
+                Some(r) => format_xml::xsd::import_type_with_resource_root(
+                    &self.path,
+                    name,
+                    r.package_root(),
+                ),
+                None => format_xml::xsd::import_type(&self.path, name),
+            }
+        };
+        retain_xsd_resource_refusal(resources, &result);
+        result
+    }
+
+    pub(in crate::import) fn import_type_base(
+        &self,
+        name: &str,
+        resources: Option<&ResourceResolver>,
+    ) -> Result<Option<String>, format_xml::XmlFormatError> {
+        let result = if let Some(bound) = &self.bound {
+            bound.finish(format_xml::xsd::import_type_base_with_byte_reader(
+                &self.path,
+                name,
+                bound.root(),
+                bound.clone(),
+            ))
+        } else {
+            match resources {
+                Some(r) => format_xml::xsd::import_type_base_with_resource_root(
+                    &self.path,
+                    name,
+                    r.package_root(),
+                ),
+                None => format_xml::xsd::import_type_base(&self.path, name),
+            }
+        };
+        retain_xsd_resource_refusal(resources, &result);
+        result
+    }
+}
+
+pub(in crate::import) fn resolve_xml_resource(
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    reference: &str,
+    description: &str,
+) -> Result<XmlSchemaResource, String> {
+    if let Some(r) = resources {
+        if let Some(bound) =
+            r.bound_resource(crate::resource::ResourceBindingKindV1::XmlSchema, reference)?
+        {
+            return Ok(XmlSchemaResource {
+                path: bound.path().to_path_buf(),
+                bound: Some(bound),
+            });
+        }
+        return r
+            .resolve_file_retaining_boundary_refusals(reference, description)
+            .map(|path| XmlSchemaResource::unbound(&path));
+    }
+    resolve_xml_schema_reference(mfd_path, reference).map(|path| XmlSchemaResource::unbound(&path))
+}
+
 #[derive(Debug)]
 pub(in crate::import) enum XmlSchemaReadError {
     Xsd(format_xml::XmlFormatError),
@@ -66,10 +199,15 @@ pub(in crate::import) fn resolve_xml_schema_reference(
 }
 
 pub(in crate::import) fn read_xml_schema_file(
-    schema_path: &Path,
+    schema_path: &XmlSchemaResource,
     root: Option<&str>,
     resources: Option<&ResourceResolver>,
 ) -> Result<SchemaNode, XmlSchemaReadError> {
+    if schema_path.is_bound() {
+        return schema_path
+            .import_root(root, resources)
+            .map_err(XmlSchemaReadError::Xsd);
+    }
     let extension = schema_path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -78,14 +216,7 @@ pub(in crate::import) fn read_xml_schema_file(
         format_xml::dtd::import_root(schema_path, root)
             .map_err(|error| XmlSchemaReadError::Other(error.to_string()))
     } else {
-        let result = match resources {
-            Some(resources) => format_xml::xsd::import_root_with_resource_root(
-                schema_path,
-                root,
-                resources.package_root(),
-            ),
-            None => format_xml::xsd::import_root(schema_path, root),
-        };
+        let result = schema_path.import_root(root, resources);
         retain_xsd_resource_refusal(resources, &result);
         result.map_err(XmlSchemaReadError::Xsd)
     }
@@ -109,7 +240,29 @@ pub(in crate::import) fn read_xsd_metadata_text(
     description: &str,
     max_bytes: u64,
 ) -> Result<Option<String>, String> {
-    let resolved = resources.resolve_file(declared, description)?;
+    let resolved = resolve_xml_resource(
+        resources.mapping_path(),
+        Some(resources),
+        declared,
+        description,
+    )?;
+    if let Some(bound) = &resolved.bound {
+        let result = (|| {
+            let bytes = bound.bytes(bound.path()).map_err(|e| e.to_string())?;
+            let text = format_xml::xsd::decode_schema_bytes(&bytes, max_bytes)
+                .map_err(|e| e.to_string())?;
+            let doc = roxmltree::Document::parse(&text).map_err(|e| e.to_string())?;
+            if !doc
+                .root_element()
+                .has_tag_name(("http://www.w3.org/2001/XMLSchema", "schema"))
+            {
+                return Err("bound XML metadata resource is not an XSD document".to_string());
+            }
+            drop(doc);
+            Ok(Some(text))
+        })();
+        return bound.finish(result);
+    }
     if resolved
         .extension()
         .and_then(|extension| extension.to_str())
