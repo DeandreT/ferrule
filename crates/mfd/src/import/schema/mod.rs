@@ -34,7 +34,7 @@ pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configurati
 pub(super) use shared::{
     XmlSchemaReadError, XmlSchemaResource, entry_key_sets, is_default_output, parse_u32,
     read_xml_schema_file, read_xsd_metadata_text, resolve_xml_resource,
-    resolve_xml_schema_reference, retain_xsd_resource_refusal,
+    resolve_xml_schema_reference,
 };
 
 pub(super) use port_declarations::PortDeclarationCensus;

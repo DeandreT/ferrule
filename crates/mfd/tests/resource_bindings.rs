@@ -699,10 +699,7 @@ fn escaping_directory_link_is_not_a_transitive_authorization() -> Result<(), Box
     std::fs::create_dir(&outside)?;
     std::fs::write(outside.join("value.xsd"), TYPES)?;
     std::fs::remove_dir_all(f.catalog.join("types"))?;
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&outside, f.catalog.join("types"))?;
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(&outside, f.catalog.join("types"))?;
+    directory_link(&outside, &f.catalog.join("types"))?;
     let reads = ResourceReadSetV1::default();
     let binding = f.binding(Kind::XmlSchema, "RelocatedInput.xsd", hash(ROOT_XSD))?;
     refusal(
@@ -714,14 +711,79 @@ fn escaping_directory_link_is_not_a_transitive_authorization() -> Result<(), Box
 }
 
 #[cfg(any(unix, windows))]
-fn symlink_file(target: &Path, link: &Path) -> std::io::Result<()> {
+fn linked_file_fixture(target: &Path, link: &Path) -> std::io::Result<PathBuf> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)?;
+        Ok(link.to_path_buf())
+    }
+    #[cfg(windows)]
+    {
+        // A real directory reparse boundary is available without changing
+        // Developer Mode or token privileges. The returned file path traverses
+        // that boundary; following it would reach the outside authored bytes.
+        // This does not claim coverage of privilege-gated file-symlink tags.
+        let junction = link.with_extension("junction");
+        directory_link(
+            target
+                .parent()
+                .ok_or_else(|| std::io::Error::other("target parent missing"))?,
+            &junction,
+        )?;
+        Ok(junction.join(
+            target
+                .file_name()
+                .ok_or_else(|| std::io::Error::other("target filename missing"))?,
+        ))
+    }
+}
+
+#[cfg(any(unix, windows))]
+fn directory_link(target: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, link)
     }
     #[cfg(windows)]
     {
-        std::os::windows::fs::symlink_file(target, link)
+        use std::os::windows::fs::MetadataExt;
+        for path in [target, link] {
+            if path.to_string_lossy().chars().any(|c| {
+                matches!(
+                    c,
+                    '&' | '|' | '<' | '>' | '^' | '%' | '!' | '"' | '\r' | '\n'
+                )
+            }) {
+                return Err(std::io::Error::other(
+                    "junction fixture path contains shell metacharacters",
+                ));
+            }
+        }
+        let cmd = PathBuf::from(
+            std::env::var_os("SystemRoot")
+                .ok_or_else(|| std::io::Error::other("SystemRoot missing"))?,
+        )
+        .join("System32/cmd.exe");
+        let outcome = std::process::Command::new(cmd)
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()?;
+        if !outcome.status.success() {
+            return Err(std::io::Error::other(format!(
+                "junction fixture failed: {}",
+                String::from_utf8_lossy(&outcome.stderr)
+            )));
+        }
+        if std::fs::symlink_metadata(link)?.file_attributes() & 0x400 == 0 {
+            return Err(std::io::Error::other(
+                "junction fixture did not create a reparse point",
+            ));
+        }
+        eprintln!(
+            "WINDOWS_REPARSE_FIXTURE=directory-junction; file-symlink-tag coverage is separate"
+        );
+        Ok(())
     }
 }
 
@@ -729,17 +791,28 @@ fn symlink_file(target: &Path, link: &Path) -> std::io::Result<()> {
 #[test]
 fn escaping_and_dangling_target_links_refuse_public_import_before_delivery()
 -> Result<(), Box<dyn Error>> {
-    // A Windows privilege failure is an explicit test error, never a silent pass.
+    // Unix exercises file symlinks; Windows exercises actual directory reparse
+    // paths without pretending the file-symlink privilege is available.
     for dangling in [false, true] {
         let f = Fixture::new()?;
-        let outside = f.root.join("outside.xsd");
-        if !dangling {
-            std::fs::write(&outside, ROOT_XSD)?;
-        }
+        let outside_directory = f.root.join("outside-target");
+        std::fs::create_dir(&outside_directory)?;
+        let outside = outside_directory.join("outside.xsd");
+        std::fs::write(&outside, ROOT_XSD)?;
         std::fs::remove_file(f.catalog.join("input.xsd"))?;
-        symlink_file(&outside, &f.catalog.join("input.xsd"))?;
+        let effective_target = linked_file_fixture(&outside, &f.catalog.join("input.xsd"))?;
+        if dangling {
+            std::fs::remove_dir_all(&outside_directory)?;
+        }
         let reads = ResourceReadSetV1::default();
-        let binding = f.binding(Kind::XmlSchema, "RelocatedInput.xsd", hash(ROOT_XSD))?;
+        let binding = Binding::new(
+            Kind::XmlSchema,
+            &f.mapping,
+            "RelocatedInput.xsd",
+            &f.catalog,
+            effective_target.strip_prefix(&f.catalog)?,
+            hash(ROOT_XSD),
+        )?;
         refusal(
             mfd::import_with_options(&f.mapping, &f.options(vec![binding], reads.clone())?),
             "bound resource open refused",
@@ -754,14 +827,22 @@ fn escaping_and_dangling_target_links_refuse_public_import_before_delivery()
 fn escaping_include_link_cannot_yield_an_authoritative_default_schema() -> Result<(), Box<dyn Error>>
 {
     let f = Fixture::new()?;
-    std::fs::write(f.root.join("outside.xsd"), TYPES)?;
+    let outside_directory = f.root.join("outside-include");
+    std::fs::create_dir(&outside_directory)?;
+    std::fs::write(outside_directory.join("value.xsd"), TYPES)?;
     std::fs::remove_file(f.catalog.join("types/value.xsd"))?;
-    symlink_file(
-        &f.root.join("outside.xsd"),
+    let effective_target = linked_file_fixture(
+        &outside_directory.join("value.xsd"),
         &f.catalog.join("types/value.xsd"),
     )?;
+    let effective_reference = effective_target
+        .strip_prefix(&f.catalog)?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let root = ROOT_XSD.replace("types/value.xsd", &effective_reference);
+    std::fs::write(f.catalog.join("input.xsd"), &root)?;
     let reads = ResourceReadSetV1::default();
-    let binding = f.binding(Kind::XmlSchema, "RelocatedInput.xsd", hash(ROOT_XSD))?;
+    let binding = f.binding(Kind::XmlSchema, "RelocatedInput.xsd", hash(root))?;
     refusal(
         mfd::import_with_options(&f.mapping, &f.options(vec![binding], reads.clone())?),
         "bound resource open refused",
@@ -808,7 +889,7 @@ fn pipeline_public_api_uses_bound_bytes_and_refuses_a_mismatch() -> Result<(), B
         std::fs::write(
             &f.mapping,
             r#"<mapping><component name="map" uid="1"><structure><children>
-          <component name="input" library="xml" uid="2" kind="14"><data><root><entry name="Packet"><entry name="Quantity" outkey="10"/></entry></root><document schema="RelocatedInput.xsd" instanceroot="{}Packet"/></data></component>
+          <component name="input" library="xml" uid="2" kind="14"><data><root><entry name="Packet"><entry name="Quantity" outkey="10"/></entry></root><document schema="RelocatedInput.xsd" inputinstance="source.xml" instanceroot="{}Packet"/></data></component>
           <component name="buffer" library="xml" uid="4" kind="14"><properties PassThrough="1"/><data><root><entry name="Buffer"><entry name="Quantity" inpkey="20" outkey="30"/></entry></root><document schema="buffer.xsd" instanceroot="{}Buffer"/></data></component>
           <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Result"><entry name="Quantity" inpkey="40"/></entry></root><document schema="target.xsd" instanceroot="{}Result"/></data></component>
           </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
