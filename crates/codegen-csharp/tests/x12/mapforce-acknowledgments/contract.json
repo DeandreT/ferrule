@@ -1,0 +1,28 @@
+{
+  "scope": "Self-authored MapForce Envelope.Config source schema with acknowledgment-validation branches: a trailing ParserErrors_Group after GE and a trailing ParserErrors_Message after SE. Native format-edi reading defines every positive typed-tree and JSON oracle, where both branches read as empty collections. Each read error records a native acceptance in which native populates the named branch; the generated boundary refuses acknowledgment content.",
+  "version": "005010",
+  "isa": "00501",
+  "read_errors": [
+    {
+      "label": "acknowledgment-after-ge",
+      "replace": [["GE*2*42~\n", "GE*2*42~\nAK9*A*2*2*2~\n"]],
+      "native": "accepts",
+      "native_populates": "/Interchange/0/Group/0/ParserErrors_Group",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 acknowledgment segments are outside the MapForce profile.", "segment_index": 15, "field_path": "Interchange[0]/Group[0]/ParserErrors_Group" }
+    },
+    {
+      "label": "acknowledgment-after-se",
+      "replace": [["SE*6*0001~\n", "SE*6*0001~\nAK5*A~\n"]],
+      "native": "accepts",
+      "native_populates": "/Interchange/0/Group/0/Message_945/0/ParserErrors_Message",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 acknowledgment segments are outside the MapForce profile.", "segment_index": 8, "field_path": "Interchange[0]/Group[0]/Message_945[0]/ParserErrors_Message" }
+    },
+    {
+      "label": "acknowledgment-after-iea",
+      "replace": [["IEA*2*100000321~\n", "IEA*2*100000321~\nAK9*A*1*1*1~\n"]],
+      "native": "accepts",
+      "native_populates": "/Interchange/1/Group/0/ParserErrors_Group",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 acknowledgment segments are outside the MapForce profile.", "segment_index": 24, "field_path": "Interchange[1]/Group[0]/ParserErrors_Group" }
+    }
+  ]
+}
