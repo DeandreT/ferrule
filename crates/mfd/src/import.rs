@@ -402,7 +402,7 @@ fn import_pipeline_resolved(
     };
     let first_intermediate = &chain.intermediates[0];
     let mut lowered = vec![import_resolved(
-        &resources,
+        resources,
         StageSelection::Into {
             intermediate_key: first_intermediate.key,
             label: &first_intermediate.label,
@@ -415,7 +415,7 @@ fn import_pipeline_resolved(
             unreachable!("adjacent intermediate window has two entries")
         };
         lowered.push(import_resolved(
-            &resources,
+            resources,
             StageSelection::Between {
                 source_key: first_intermediate.key,
                 source_label: &first_intermediate.label,
@@ -430,7 +430,7 @@ fn import_pipeline_resolved(
         .last()
         .expect("chain has an intermediate");
     lowered.push(import_resolved(
-        &resources,
+        resources,
         StageSelection::OutOf {
             intermediate_key: last_intermediate.key,
             earlier_source_key: chain.final_named_source_key,
