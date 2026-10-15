@@ -80,7 +80,9 @@ pub use pipeline_preview::{
     PipelineHostPayload, PipelinePreviewArtifact, PipelinePreviewOptions, PipelinePreviewOutcome,
     PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
-pub use project_paths::rebase as rebase_project_paths;
+pub use project_paths::{
+    mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
+};
 pub use rest_json::{
     MAX_REST_JSON_BODY_BYTES, MAX_REST_JSON_HEADER_BYTES, MAX_REST_JSON_HEADERS,
     MAX_REST_JSON_URL_BYTES, RestExecutionPolicy, RestJsonError, RestJsonHeader,

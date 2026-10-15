@@ -14,6 +14,8 @@ pub mod hl7;
 pub mod idoc;
 mod segments;
 pub mod swift;
+#[cfg(test)]
+mod test_support;
 pub mod tradacoms;
 mod validation;
 pub mod x12;

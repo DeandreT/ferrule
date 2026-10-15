@@ -501,7 +501,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "ferrule-xlsx-grid-{}-{}.xlsx",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         std::fs::write(&path, bytes).unwrap();
         let actual = read_grid(&path, &schema(), &layout()).unwrap();

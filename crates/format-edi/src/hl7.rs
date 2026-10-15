@@ -510,7 +510,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "ferrule_hl7_write_{}_{}.hl7",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         assert!(write(&path, &schema, &instance).is_ok());
         let output = std::fs::read_to_string(&path).unwrap_or_default();

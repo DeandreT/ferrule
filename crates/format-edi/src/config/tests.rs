@@ -285,7 +285,7 @@ fn temp_directory(label: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
         "ferrule_edi_config_{label}_{}_{}",
         std::process::id(),
-        std::thread::current().name().unwrap_or("test")
+        crate::test_support::thread_file_label()
     ));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
