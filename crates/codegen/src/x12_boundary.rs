@@ -881,12 +881,11 @@ fn validate_repeating_envelope_grammar(
         || segment_id(&members[0].name) != Some("ST")
         || segment_id(&members[members.len() - 1].name) != Some("SE")
         || members[0].repeating
-        || members[members.len() - 1].repeating
     {
         return Err(schema_error(
             side,
             &message_path,
-            "each message in a repeating interchange requires a singular ST first and a singular SE last",
+            "each message in a repeating interchange requires a singular ST first and SE last",
         ));
     }
     let mut pending = members[1..members.len() - 1]
