@@ -480,6 +480,13 @@ impl BoundResource {
     }
 
     pub(crate) fn bytes(&self, path: &Path) -> io::Result<Arc<[u8]>> {
+        self.bytes_bounded(path, usize::MAX)
+    }
+
+    /// An outer declarative closure may impose a tighter remaining delivery
+    /// budget than this individual rooted reader. Enforce it before a body
+    /// read, including cached/prepared buffer delivery.
+    pub(crate) fn bytes_bounded(&self, path: &Path, remaining: usize) -> io::Result<Arc<[u8]>> {
         if let Some(failure) = self.failure.borrow().as_ref() {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -499,6 +506,9 @@ impl BoundResource {
         let rel = relative(rel)
             .map_err(|_| self.fail("bound dependency is not a normalized contained path"))?;
         if let Some(bytes) = self.cache.borrow().get(&rel).cloned() {
+            if bytes.len() > remaining {
+                return Err(self.fail("mapping-library aggregate byte budget exceeded"));
+            }
             return Ok(bytes);
         }
         let (max_files, max_bytes): (usize, usize) = match self.binding.kind {
@@ -511,7 +521,8 @@ impl BoundResource {
         }
         let budget = max_bytes
             .saturating_sub(self.bytes.get())
-            .min(MAX_IMPORT_BYTES.saturating_sub(self.total.get()));
+            .min(MAX_IMPORT_BYTES.saturating_sub(self.total.get()))
+            .min(remaining);
         let budget = if self.binding.kind == ResourceBindingKindV1::MappingLibrary {
             budget.min(8 * 1024 * 1024)
         } else {

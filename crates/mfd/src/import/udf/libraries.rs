@@ -143,8 +143,11 @@ fn read_document(
     if budget.active.iter().any(|p| p == path) {
         return Err("mapping-library file import cycle refused".into());
     }
+    if !budget.files.contains_key(path) && budget.files.len() >= MAX_FILES {
+        return Err("mapping-library file-count budget exceeded before resource read".into());
+    }
     let bytes = reader
-        .bytes(path)
+        .bytes_bounded(path, MAX_BYTES.saturating_sub(budget.bytes))
         .map_err(|e| format!("unresolved resource: {e}"))?;
     let sha256 = Sha256::digest(bytes.as_ref()).into();
     if let Some(previous) = budget.files.insert(path.to_path_buf(), sha256) {
@@ -1032,5 +1035,46 @@ mod tests {
             let document = roxmltree::Document::parse(text).unwrap();
             assert!(imports(document.root_element()).is_err());
         }
+    }
+
+    #[test]
+    fn outer_byte_and_file_budgets_apply_before_delivery_or_another_file_read() {
+        let dir = Directory::new();
+        let text = "<mapping/>";
+        dir.write("main.mfd", text);
+        dir.write("a.mfd", text);
+        let resources = ResourceResolver::new(&dir.0.join("main.mfd"), Some(&dir.0)).unwrap();
+        let digest = Sha256::digest(text.as_bytes()).into();
+        let reader = resources.mapping_library("a.mfd", digest).unwrap();
+        assert_eq!(
+            reader
+                .bytes_bounded(reader.path(), text.len())
+                .unwrap()
+                .as_ref(),
+            text.as_bytes()
+        );
+        assert!(reader.bytes_bounded(reader.path(), text.len() - 1).is_err());
+        let live = resources.mapping_library("a.mfd", digest).unwrap();
+        assert!(live.bytes_bounded(live.path(), text.len() - 1).is_err());
+        let reader = resources.mapping_library("a.mfd", digest).unwrap();
+        let mut budget = Budget::default();
+        for index in 0..MAX_FILES {
+            budget
+                .files
+                .insert(PathBuf::from(format!("unread-{index}")), [0; 32]);
+        }
+        let error = read_document(
+            reader.path(),
+            &reader,
+            resources.mapping_path(),
+            digest,
+            "a.mfd",
+            &resources,
+            &mut budget,
+            &mut Vec::new(),
+        )
+        .err()
+        .unwrap();
+        assert!(error.contains("before resource read"));
     }
 }
