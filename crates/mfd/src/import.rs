@@ -2523,6 +2523,17 @@ fn import_resolved(
     } else {
         (exception::lower(exception_recipes, &mut builder), None)
     };
+    let global_auto_number_nodes = builder
+        .fn_nodes
+        .iter()
+        .filter_map(|(&index, &node)| {
+            let function = &fn_components[index];
+            (function.kind == 5
+                && function.name == "auto-number"
+                && builder.input_feed(index, 0).is_some())
+            .then_some(node)
+        })
+        .collect::<Vec<_>>();
     warnings.extend(builder.warnings);
     let mut source_options = primary.options.clone();
     source_options.mfd_decimal_input_names =
@@ -2545,6 +2556,16 @@ fn import_resolved(
     };
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     project.prune_unreachable_nodes();
+    // Global-ID counters still lower to Null, including through unanchored
+    // scalar consumers. Only retained placeholders are import blockers; an
+    // unused eager placeholder must not reject an otherwise supported project.
+    for node in global_auto_number_nodes {
+        if project.graph.nodes.contains_key(&node) {
+            warnings.push(
+                "auto-number with a global identifier is unsupported; imported as Null".to_string(),
+            );
+        }
+    }
     enrich_unresolved_edi_source_schemas(&mut project);
     if matches!(selection, StageSelection::Ordinary) {
         unused_xml_source::classify(

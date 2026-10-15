@@ -1,3 +1,16 @@
+//! Static JSON/X12 document companions over the ordinary complete mapping.
+//!
+//! `ExecuteDocumentOutputs[WithHost]` and `ExecuteDocumentBytesOutputs[WithHost]`
+//! admit every input once and execute the mapping once. The primary and true
+//! named targets use their own admitted descriptors, in declaration order; no
+//! bundle is returned until every physical writer succeeds. Host context is
+//! shared unchanged by mapping and X12 completion (no implicit clock is added).
+//! Selected-target companions retain their existing contract. XML, dynamic
+//! sources/targets and document iteration remain outside this boundary policy.
+//! Complete input/output bundles each allow 4096 documents and 256 MiB of strict
+//! UTF-8, in addition to each codec's existing per-document/traversal limits.
+//! These are admission counters, not streaming or peak-memory guarantees.
+
 use std::fmt;
 
 use codegen::{
@@ -102,7 +115,9 @@ fn format_name(format: DocumentBoundaryFormat) -> &'static str {
 fn render(profile: &StaticDocumentBoundaryProfile) -> String {
     let mut output = String::from("namespace Ferrule.Generated;\n\n");
     output.push_str(crate::document_output_types::OUTPUT_TYPES);
+    output.push_str(COMPLETE_OUTPUT_TYPES);
     output.push_str("public static partial class GeneratedMapping\n{\n");
+    output.push_str(COMPLETE_OUTPUT_HELPERS);
     for (name, descriptor) in [
         ("DocumentSourceDescriptor", &profile.source.descriptor),
         ("DocumentTargetDescriptor", &profile.target.descriptor),
@@ -135,9 +150,249 @@ fn render(profile: &StaticDocumentBoundaryProfile) -> String {
         render_name_validation(profile, bytes, &mut output);
         render_named_parse(profile, bytes, &mut output);
         render_selected_serialize(profile, bytes, &mut output);
+        render_complete_api(bytes, &mut output);
+        render_complete_parse(profile, bytes, &mut output);
+        render_complete_serialize(profile, bytes, &mut output);
     }
     output.push_str("}\n");
     output
+}
+
+const COMPLETE_OUTPUT_TYPES: &str = r#"/// <summary>One complete physical run; Extras retain exact target declaration order.</summary>
+public sealed record DocumentExecutionOutputs(DocumentBoundaryFormat PrimaryFormat, string Primary,
+    global::System.Collections.Generic.IReadOnlyList<NamedDocumentOutput> Extras);
+public sealed record DocumentBytesExecutionOutputs(DocumentBoundaryFormat PrimaryFormat, byte[] Primary,
+    global::System.Collections.Generic.IReadOnlyList<NamedDocumentBytesOutput> Extras);
+
+public abstract record DocumentBoundaryOwner
+{
+    private DocumentBoundaryOwner() { }
+    public sealed record Source() : DocumentBoundaryOwner;
+    public sealed record NamedSource(int DeclarationIndex, string Name) : DocumentBoundaryOwner;
+    public sealed record Target() : DocumentBoundaryOwner;
+    public sealed record NamedTarget(int DeclarationIndex, string Name) : DocumentBoundaryOwner;
+}
+
+/// <summary>Codec/encoding/resource failures retain their original typed inner cause.
+/// Owner is null for whole-bundle count or output alignment failures. Mapping and
+/// source-name errors keep the ordinary runtime exception contract.</summary>
+public sealed class DocumentExecutionException : global::System.Exception
+{
+    internal DocumentExecutionException(DocumentBoundaryOwner? owner, global::System.Exception boundary)
+        : base(owner is null ? boundary.Message : $"document endpoint {owner}: {boundary.Message}", boundary)
+    { Owner = owner; Boundary = boundary; }
+    public DocumentBoundaryOwner? Owner { get; }
+    public global::System.Exception Boundary { get; }
+}
+
+public static class DocumentExecutionLimits
+{
+    public const int MaximumDocuments = 4096;
+    public const long MaximumTotalUtf8Bytes = 256L * 1024 * 1024;
+}
+
+public sealed class DocumentBundleResourceException : global::System.Exception
+{
+    internal DocumentBundleResourceException(string resource, long observed, long limit)
+        : base($"{resource} is {observed}; maximum is {limit}")
+    { Resource = resource; Observed = observed; Limit = limit; }
+    public string Resource { get; }
+    public long Observed { get; }
+    public long Limit { get; }
+}
+
+"#;
+
+const COMPLETE_OUTPUT_HELPERS: &str = r#"    private static readonly global::System.Text.UTF8Encoding DocumentOutputsUtf8 = new(false, true);
+
+    private static T DocumentBoundaryValue<T>(DocumentBoundaryOwner owner, global::System.Func<T> action)
+    {
+        try { return action(); }
+        catch (global::System.Exception error) when (error is global::Ferrule.Runtime.FerruleRuntimeException
+            or global::Ferrule.Runtime.FerruleX12Exception or global::System.Text.EncoderFallbackException)
+        { throw new DocumentExecutionException(owner, error); }
+    }
+
+    private sealed class DocumentBundleBudget
+    {
+        private long bytes;
+        internal DocumentBundleBudget(long count)
+        {
+            if (count > DocumentExecutionLimits.MaximumDocuments)
+                throw new DocumentExecutionException(null, new DocumentBundleResourceException(
+                    "document_bundle_count", count, DocumentExecutionLimits.MaximumDocuments));
+        }
+        internal void Charge(DocumentBoundaryOwner owner, long count)
+        {
+            // All counts are measured nonnegative byte lengths, never caller counters.
+            var observed = checked(bytes + count);
+            if (observed > DocumentExecutionLimits.MaximumTotalUtf8Bytes)
+                throw new DocumentExecutionException(owner, new DocumentBundleResourceException(
+                    "document_bundle_utf8_bytes", observed, DocumentExecutionLimits.MaximumTotalUtf8Bytes));
+            bytes = observed;
+        }
+    }
+
+    private static DocumentExecutionException DocumentOutputsAlignment() => new(null,
+        new global::System.InvalidOperationException("mapped document outputs do not match exact target declaration order"));
+"#;
+
+fn render_complete_api(bytes: bool, output: &mut String) {
+    let (method, result, document, input, suffix) = if bytes {
+        (
+            "ExecuteDocumentBytesOutputs",
+            "DocumentBytesExecutionOutputs",
+            "byte[]",
+            "NamedDocumentBytesInput",
+            "Bytes",
+        )
+    } else {
+        (
+            "ExecuteDocumentOutputs",
+            "DocumentExecutionOutputs",
+            "string",
+            "NamedDocumentInput",
+            "",
+        )
+    };
+    output.push_str(&format!(
+        r#"
+    public static {result} {method}({document} source)
+        => {method}WithHost(source, global::System.Array.Empty<{input}>());
+
+    public static {result} {method}WithHost(
+        {document} source,
+        global::System.Collections.Generic.IReadOnlyList<{input}> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null)
+    {{
+        var parsed = ParseDocument{suffix}OutputsInputs(source, extraSources);
+        var mapped = ExecuteOutputs(CreateContext(parsed.Primary, parsed.Inputs, executionContext));
+        return SerializeDocument{suffix}Outputs(mapped, executionContext);
+    }}
+"#
+    ));
+}
+
+fn render_complete_parse(
+    profile: &StaticDocumentBoundaryProfile,
+    bytes: bool,
+    output: &mut String,
+) {
+    let (document, input, suffix) = if bytes {
+        ("byte[]", "NamedDocumentBytesInput", "Bytes")
+    } else {
+        ("string", "NamedDocumentInput", "")
+    };
+    output.push_str(&format!(r#"
+    private static (global::Ferrule.Runtime.FerruleInstance Primary,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> Inputs) ParseDocument{suffix}OutputsInputs(
+        {document} source, global::System.Collections.Generic.IReadOnlyList<{input}> extraSources)
+    {{
+        global::System.ArgumentNullException.ThrowIfNull(source);
+        global::System.ArgumentNullException.ThrowIfNull(extraSources);
+        var budget = new DocumentBundleBudget(1L + extraSources.Count);
+        // Snapshot the named envelopes before validation and parsing. Caller documents
+        // must not be mutated concurrently during this synchronous operation.
+        var supplied = new {input}[extraSources.Count];
+        for (var index = 0; index < supplied.Length; index++) supplied[index] = extraSources[index];
+        ValidateNamedDocument{suffix}InputNames(supplied);
+        var documents = new global::System.Collections.Generic.Dictionary<string, {document}>(global::System.StringComparer.Ordinal);
+        foreach (var input in supplied)
+        {{
+            global::System.ArgumentNullException.ThrowIfNull(input.Document);
+            documents.Add(input.Name, input.Document);
+        }}
+        var owner = new DocumentBoundaryOwner.Source();
+"#));
+    let primary_size = if bytes {
+        "source.LongLength"
+    } else {
+        "DocumentBoundaryValue(owner, () => (long)DocumentOutputsUtf8.GetByteCount(source))"
+    };
+    output.push_str(&format!("        budget.Charge(owner, {primary_size});\n"));
+    for (index, source) in profile.extra_sources.iter().enumerate() {
+        let name = literal::string(&source.name);
+        let size = if bytes {
+            format!("document_{index}.LongLength")
+        } else {
+            format!(
+                "DocumentBoundaryValue(owner_{index}, () => (long)DocumentOutputsUtf8.GetByteCount(document_{index}))"
+            )
+        };
+        output.push_str(&format!(
+            "        var owner_{index} = new DocumentBoundaryOwner.NamedSource({index}, {name});\n        var document_{index} = documents[{name}];\n        budget.Charge(owner_{index}, {size});\n"
+        ));
+    }
+    let source_codec = codec(profile.source.format);
+    output.push_str(&format!("        var primary = DocumentBoundaryValue(owner, () => global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(DocumentSourceDescriptor, source));\n        var parsed = new global::System.Collections.Generic.List<NamedInput>({});\n", profile.extra_sources.len()));
+    for (index, source) in profile.extra_sources.iter().enumerate() {
+        let name = literal::string(&source.name);
+        let source_codec = codec(source.boundary.format);
+        output.push_str(&format!("        parsed.Add(new NamedInput({name}, DocumentBoundaryValue(owner_{index}, () => global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(ExtraDocumentSourceDescriptors[{index}], document_{index}))));\n"));
+    }
+    output.push_str("        return (primary, parsed);\n    }\n");
+}
+
+fn render_complete_serialize(
+    profile: &StaticDocumentBoundaryProfile,
+    bytes: bool,
+    output: &mut String,
+) {
+    let (result, named_output, suffix) = if bytes {
+        (
+            "DocumentBytesExecutionOutputs",
+            "NamedDocumentBytesOutput",
+            "Bytes",
+        )
+    } else {
+        ("DocumentExecutionOutputs", "NamedDocumentOutput", "")
+    };
+    let target_count = profile.extra_targets.len();
+    output.push_str(&format!(
+        r#"
+    private static {result} SerializeDocument{suffix}Outputs(ExecutionOutputs mapped,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext)
+    {{
+        if (mapped.Extras.Count != {target_count}) throw DocumentOutputsAlignment();
+"#
+    ));
+    for (index, target) in profile.extra_targets.iter().enumerate() {
+        let name = literal::string(&target.name);
+        output.push_str(&format!("        if (!global::System.String.Equals(mapped.Extras[{index}].Name, {name}, global::System.StringComparison.Ordinal))\n            throw DocumentOutputsAlignment();\n"));
+    }
+    output.push_str(&format!("        var budget = new DocumentBundleBudget(1L + {target_count});\n        var owner = new DocumentBoundaryOwner.Target();\n"));
+    let call = serialization(
+        &profile.target,
+        "DocumentTargetDescriptor",
+        "mapped.Primary",
+        suffix,
+    );
+    output.push_str(&format!(
+        "        var primary = DocumentBoundaryValue(owner, () => {call});\n"
+    ));
+    let primary_size = if bytes {
+        "primary.LongLength"
+    } else {
+        "DocumentBoundaryValue(owner, () => (long)DocumentOutputsUtf8.GetByteCount(primary))"
+    };
+    output.push_str(&format!("        budget.Charge(owner, {primary_size});\n        var extras = new global::System.Collections.Generic.List<{named_output}>({target_count});\n"));
+    for (index, target) in profile.extra_targets.iter().enumerate() {
+        let name = literal::string(&target.name);
+        let format = format_name(target.boundary.format);
+        let descriptor = format!("ExtraDocumentTargetDescriptors[{index}]");
+        let instance = format!("mapped.Extras[{index}].Instance");
+        let call = serialization(&target.boundary, &descriptor, &instance, suffix);
+        let size = if bytes {
+            format!("document_{index}.LongLength")
+        } else {
+            format!(
+                "DocumentBoundaryValue(owner_{index}, () => (long)DocumentOutputsUtf8.GetByteCount(document_{index}))"
+            )
+        };
+        output.push_str(&format!("        var owner_{index} = new DocumentBoundaryOwner.NamedTarget({index}, {name});\n        var document_{index} = DocumentBoundaryValue(owner_{index}, () => {call});\n        budget.Charge(owner_{index}, {size});\n        extras.Add(new {named_output}({name}, DocumentBoundaryFormat.{format}, document_{index}));\n"));
+    }
+    let primary_format = format_name(profile.target.format);
+    output.push_str(&format!("        return new {result}(DocumentBoundaryFormat.{primary_format}, primary, extras.AsReadOnly());\n    }}\n"));
 }
 
 fn render_api(profile: &StaticDocumentBoundaryProfile, bytes: bool, output: &mut String) {
