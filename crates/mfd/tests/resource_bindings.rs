@@ -747,6 +747,7 @@ fn directory_link(target: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
+        use std::os::windows::process::CommandExt;
         for path in [target, link] {
             if path.to_string_lossy().chars().any(|c| {
                 matches!(
@@ -764,14 +765,16 @@ fn directory_link(target: &Path, link: &Path) -> std::io::Result<()> {
                 .ok_or_else(|| std::io::Error::other("SystemRoot missing"))?,
         )
         .join("System32/cmd.exe");
+        // cmd does not use the C-runtime argv escaping convention. Supply one
+        // explicitly quoted command after rejecting shell metacharacters.
+        let command = format!("mklink /J \"{}\" \"{}\"", link.display(), target.display());
         let outcome = std::process::Command::new(cmd)
-            .args(["/d", "/c", "mklink", "/J"])
-            .arg(link)
-            .arg(target)
+            .args(["/d", "/c"])
+            .raw_arg(&command)
             .output()?;
         if !outcome.status.success() {
             return Err(std::io::Error::other(format!(
-                "junction fixture failed: {}",
+                "junction fixture failed for {command}: {}",
                 String::from_utf8_lossy(&outcome.stderr)
             )));
         }
