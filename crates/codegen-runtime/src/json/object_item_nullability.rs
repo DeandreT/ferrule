@@ -114,7 +114,7 @@ fn object_item_nullability_generated_rust_boundaries_keep_independent_values() {
                 assert_eq!(bytes.unwrap(), expected_output.as_bytes());
             } else {
                 let error = || JsonBoundaryError::InvalidOutput {
-                    message: format!("`Items`: expected {expected_kind}, got scalar"),
+                    message: format!("`Items`: expected {expected_kind}, got json null"),
                 };
                 assert_eq!(text, Err(error()));
                 assert_eq!(bytes, Err(error()));
