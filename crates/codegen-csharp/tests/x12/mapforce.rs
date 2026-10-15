@@ -146,7 +146,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     }
     root
 }
-fn identity(schema: &SchemaNode) -> Project {
+pub(super) fn identity(schema: &SchemaNode) -> Project {
     project(
         schema.clone(),
         schema.clone(),
@@ -159,7 +159,7 @@ fn identity(schema: &SchemaNode) -> Project {
 }
 /// Builds the typed instance a complete values literal denotes. Missing
 /// fields stay missing; JSON arrays are repeated occurrences.
-fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
+pub(super) fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
     if schema.repeating {
         let mut item = schema.clone();
         item.repeating = false;
@@ -236,7 +236,7 @@ fn native_write(
     }
 }
 /// Applies textual replacements whose search text occurs exactly once.
-fn replaced(base: &str, replacements: &serde_json::Value) -> String {
+pub(super) fn replaced(base: &str, replacements: &serde_json::Value) -> String {
     let mut text = base.to_owned();
     for pair in replacements.as_array().unwrap() {
         let from = pair[0].as_str().unwrap();

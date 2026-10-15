@@ -492,6 +492,13 @@ public static partial class FerruleX12
             && long.Parse(value, CultureInfo.InvariantCulture) == long.Parse(owner, CultureInfo.InvariantCulture);
         static FerruleX12Exception Ordering(int index, string path)
             => Failure(FerruleX12Error.Envelope, "X12 interchange envelope ordering is invalid.", index, path);
+        // A segment that would populate a source acknowledgment branch natively
+        // is refused at that branch; acknowledgment content is outside the profile.
+        void Acknowledgment(Node? branch, Segment segment, int index, string owner)
+        {
+            if (branch is not null && Triggers(branch).Any(trigger => Matches(trigger, segment, syntax)))
+                throw AcknowledgmentFailure(index, owner + "/" + branch.Name);
+        }
 
         InterchangeEnvelopeState state = InterchangeEnvelopeState.Header;
         int interchanges = 0, groups = 0, transactions = 0, transactionStart = -1;
@@ -505,6 +512,8 @@ public static partial class FerruleX12
                 case InterchangeEnvelopeState.Header:
                 {
                     string path = interchangePath(interchanges) + "/" + shape.Isa.Name;
+                    if (interchanges > 0)
+                        Acknowledgment(shape.GroupAcknowledgment, segment, index, interchangePath(interchanges) + "/" + shape.Groups.Name + Index(0));
                     if (segment.Id != "ISA") throw Ordering(index, path);
                     Width(segment, 16, 16, index, path);
                     for (int position = 0; position < 16; position++)
@@ -563,6 +572,7 @@ public static partial class FerruleX12
                         state = InterchangeEnvelopeState.Header;
                         break;
                     }
+                    Acknowledgment(shape.GroupAcknowledgment, segment, index, groupPath(interchange, Math.Max(group, 0)));
                     throw Ordering(index, interchangePath(interchange) + "/" + shape.Iea.Name);
                 case InterchangeEnvelopeState.TransactionOrTrailer:
                     if (segment.Id == "ST")
@@ -590,6 +600,9 @@ public static partial class FerruleX12
                         state = InterchangeEnvelopeState.GroupOrTrailer;
                         break;
                     }
+                    if (transactions > 0)
+                        Acknowledgment(shape.MessageAcknowledgment, segment, index, messagePath(interchange, group, transaction));
+                    Acknowledgment(shape.GroupAcknowledgment, segment, index, groupPath(interchange, group));
                     throw Ordering(index, segment.Id == "SE"
                         ? groupPath(interchange, group) + "/" + shape.Messages.Name
                         : groupPath(interchange, group) + "/" + shape.Ge.Name);
@@ -618,6 +631,9 @@ public static partial class FerruleX12
                 _ => interchangePath(0) + "/" + shape.Isa.Name,
             });
     }
+
+    private static FerruleX12Exception AcknowledgmentFailure(int index, string path)
+        => Failure(FerruleX12Error.Envelope, "X12 acknowledgment segments are outside the MapForce profile.", index, path);
 
     private static bool EnvelopeCount(string value, int expected) => Digits(value, 1, 9)
         && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int count) && count == expected;

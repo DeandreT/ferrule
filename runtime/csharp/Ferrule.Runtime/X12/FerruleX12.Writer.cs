@@ -88,7 +88,7 @@ public static partial class FerruleX12
                     if ((child == shape.Isa || child == shape.Gs) && items.Count != 1)
                         throw Failure(FerruleX12Error.Envelope, "MapForce X12 output requires exactly one header per owner.",
                             segments.Count, string.Join('/', childPath));
-                    if ((child == shape.Ge || child == shape.Iea) && items.Count > 1)
+                    if ((child == shape.Ge || child == shape.Iea || child == shape.Se) && items.Count > 1)
                         throw Failure(FerruleX12Error.Envelope, "MapForce X12 output permits at most one trailer per owner.",
                             segments.Count, string.Join('/', childPath));
                 }

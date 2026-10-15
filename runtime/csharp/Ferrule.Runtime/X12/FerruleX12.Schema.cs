@@ -34,9 +34,10 @@ public static partial class FerruleX12
     private sealed record GroupedShape(Node Groups, Node Transactions);
     // MapForce Envelope.Config ownership: repeating interchanges of optional
     // ISA/IEA around repeating functional groups of optional GS/GE around one
-    // repeating message container with singular ST/SE.
+    // repeating message container with singular ST and a singular or optional SE.
+    // Source schemas may add a trailing acknowledgment branch to each group and message.
     private sealed record MapForceShape(Node Interchanges, Node Isa, Node Groups, Node Gs, Node Messages,
-        Node St, Node Se, Node Ge, Node Iea);
+        Node St, Node Se, Node Ge, Node Iea, Node? GroupAcknowledgment = null, Node? MessageAcknowledgment = null);
     private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
         char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null,
         GroupedShape? Grouped = null, MapForceShape? MapForce = null)
@@ -82,7 +83,7 @@ public static partial class FerruleX12
             if (root.Repeating || root.Type is not null)
                 throw Failure(FerruleX12Error.Schema, "X12 requires a singular root container.");
             GroupedShape? groupedShape = grouped ? ValidateGroupedShape(root) : null;
-            MapForceShape? mapForceShape = mapforce ? ValidateMapForceShape(root) : null;
+            MapForceShape? mapForceShape = mapforce ? ValidateMapForceShape(root, input) : null;
             ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped || mapforce,
                 modern: version.Modern);
             var envelopes = new List<Node>();
@@ -457,14 +458,29 @@ public static partial class FerruleX12
         return new(groups, transactions);
     }
 
-    private static MapForceShape ValidateMapForceShape(Node root)
+    private static MapForceShape ValidateMapForceShape(Node root, bool input)
     {
         const string message = "MapForce X12 schemas require declared interchange, functional-group and message owners.";
         static FerruleX12Exception Invalid(string[] path) => Failure(FerruleX12Error.Schema, message, path: string.Join('/', path));
-        static void Acknowledgements(Node node, string[] path)
+        static bool Acknowledgment(Node node) => node.Name.StartsWith("ParserErrors_", StringComparison.Ordinal);
+        static Node? Trailing(Node? owner) => owner is { Children.Length: > 0 } && Acknowledgment(owner.Children[^1]) ? owner.Children[^1] : null;
+        // Acknowledgment validation adds exactly two placements: the trailing
+        // member of a functional group (after GE) and of a message (after SE).
+        // Their parser-generated contents are source-only and read as empty.
+        Node? groupCandidate = root.Children.Length > 0 && root.Children[0].Children.Length > 1 ? root.Children[0].Children[1] : null;
+        Node? messageCandidate = groupCandidate is { Children.Length: > 1 } ? groupCandidate.Children[1] : null;
+        Node? groupAcknowledgment = Trailing(groupCandidate), messageAcknowledgment = Trailing(messageCandidate);
+        void Acknowledgements(Node node, string[] path)
         {
-            // Source acknowledgment branches are outside the generated profile.
-            if (node.Name.StartsWith("ParserErrors_", StringComparison.Ordinal)) throw Invalid(path);
+            if (Acknowledgment(node))
+            {
+                if (!ReferenceEquals(node, groupAcknowledgment) && !ReferenceEquals(node, messageAcknowledgment)) throw Invalid(path);
+                if (!input)
+                    throw Failure(FerruleX12Error.Schema, "MapForce acknowledgment branches are source-only.", path: string.Join('/', path));
+                var nested = new List<Node>();
+                CollectEnvelopes(node, nested, false);
+                if (node.Type is not null || !node.Repeating || SegmentId(node.Name) is not null || nested.Count != 0) throw Invalid(path);
+            }
             foreach (Node child in node.Children) Acknowledgements(child, [.. path, child.Name]);
         }
         static Node Owner(Node owner, int index, string[] path)
@@ -474,10 +490,10 @@ public static partial class FerruleX12
                 throw Invalid([.. path, node.Name]);
             return node;
         }
-        static Node Envelope(Node owner, int index, string id, bool optional, string[] path)
+        static Node Envelope(Node owner, int index, string id, bool? optional, string[] path)
         {
             Node node = owner.Children[index];
-            if (SegmentId(node.Name) != id || node.Type is not null || node.Repeating != optional)
+            if (SegmentId(node.Name) != id || node.Type is not null || optional is { } required && node.Repeating != required)
                 throw Invalid([.. path, id]);
             return node;
         }
@@ -490,21 +506,23 @@ public static partial class FerruleX12
         Node iea = Envelope(interchanges, 2, "IEA", optional: true, interchangePath);
         Node groups = Owner(interchanges, 1, interchangePath);
         string[] groupPath = [.. interchangePath, groups.Name];
-        if (groups.Children.Length != 3) throw Invalid(groupPath);
+        if (groups.Children.Length != 3 + (groupAcknowledgment is null ? 0 : 1)) throw Invalid(groupPath);
         Node gs = Envelope(groups, 0, "GS", optional: true, groupPath);
         Node ge = Envelope(groups, 2, "GE", optional: true, groupPath);
         Node messages = Owner(groups, 1, groupPath);
         string[] messagePath = [.. groupPath, messages.Name];
-        if (messages.Children.Length < 2) throw Invalid(messagePath);
+        int seIndex = messages.Children.Length - (messageAcknowledgment is null ? 1 : 2);
+        if (seIndex < 1) throw Invalid(messagePath);
         Node st = Envelope(messages, 0, "ST", optional: false, messagePath);
-        Node se = Envelope(messages, messages.Children.Length - 1, "SE", optional: false, messagePath);
-        for (int index = 1; index < messages.Children.Length - 1; index++)
+        // Message configurations may declare SE optional (repeating) or required.
+        Node se = Envelope(messages, seIndex, "SE", optional: null, messagePath);
+        for (int index = 1; index < seIndex; index++)
         {
             var nested = new List<Node>();
             CollectEnvelopes(messages.Children[index], nested, false);
             if (nested.Count != 0) throw Invalid([.. messagePath, messages.Children[index].Name]);
         }
-        return new(interchanges, isa, groups, gs, messages, st, se, ge, iea);
+        return new(interchanges, isa, groups, gs, messages, st, se, ge, iea, groupAcknowledgment, messageAcknowledgment);
     }
 
     // ISA13, GS06, SE01, GE01/GE02 and IEA01/IEA02 are numeric data in MapForce

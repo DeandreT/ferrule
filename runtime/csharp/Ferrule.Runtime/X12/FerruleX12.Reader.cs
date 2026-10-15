@@ -121,6 +121,10 @@ public static partial class FerruleX12
                     int before = cursor.Position;
                     string[] itemPath = cursor.Profile.IndexedPaths
                         ? [.. path, child.Name + "[" + items.Count.ToString(CultureInfo.InvariantCulture) + "]"] : childPath;
+                    // Source acknowledgment branches always read as empty collections.
+                    if (cursor.Profile.MapForce is { } shape
+                        && (ReferenceEquals(child, shape.GroupAcknowledgment) || ReferenceEquals(child, shape.MessageAcknowledgment)))
+                        throw AcknowledgmentFailure(cursor.Position, string.Join('/', childPath));
                     items.Add(ReadContainer(child, cursor, itemPath, depth + 1, nestedFollow));
                     if (before == cursor.Position) throw Failure(FerruleX12Error.Schema, "An X12 loop failed to consume a segment.", cursor.Position);
                 }
