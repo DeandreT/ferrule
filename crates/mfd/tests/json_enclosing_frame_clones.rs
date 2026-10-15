@@ -510,10 +510,10 @@ fn json_implicit_optional_unbound_nested_object_is_omitted_with_complete_project
     let ir::SchemaKind::Group { children, .. } = &mut children[0].kind else {
         panic!("records");
     };
-    children.insert(
-        3,
-        required_group("Meta", vec![SchemaNode::scalar("Need", ScalarType::String)]),
-    );
+    children.push(required_group(
+        "Meta",
+        vec![SchemaNode::scalar("Need", ScalarType::String)],
+    ));
     assert_eq!(
         serde_json::to_value(imported.project).unwrap(),
         serde_json::to_value(expected).unwrap()
@@ -618,6 +618,8 @@ fn json_implicit_exact_64_branch_256_binding_limit_keeps_all_equal_feeds_and_ful
     let imported = FixtureDir::new().import(&authored_many_branches(64, false));
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut expected = expected_project(false);
+    // Every branch uses the left constant; the right one is unreachable.
+    expected.graph.nodes.remove(&1);
     let segment = Scope {
         bindings: vec![
             Binding {
