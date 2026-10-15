@@ -96,6 +96,8 @@ fn strict_string_branches_preserve_complete_projects_values_xml_and_bool_errors(
 #[test]
 fn unproved_string_branch_owners_schema_options_and_types_remain_refusals() {
     let original = std::fs::read_to_string(fixture("physical-branches.mfd")).unwrap();
+    let false_branch_edge = r#"<edge from="12" to="123"/>"#;
+    assert_eq!(original.matches(false_branch_edge).count(), 1);
     let schema: serde_json::Value =
         serde_json::from_slice(&std::fs::read(fixture("source.schema.json")).unwrap()).unwrap();
     let competing = r#"<component name="unknown" library="unlowered" kind="999"><targets><datapoint key="12"/></targets></component>"#;
@@ -112,8 +114,9 @@ fn unproved_string_branch_owners_schema_options_and_types_remain_refusals() {
         ("nonstring target", original.clone()),
         ("foreign predicate", original.replace("<edge from=\"11\" to=\"111\"/>", "<edge from=\"19\" to=\"111\"/>")),
         ("nonstring feed", original.replace("<edge from=\"12\" to=\"112\"/>", "<edge from=\"11\" to=\"112\"/>")),
-        ("recursive branch", original.replace("<edge from=\"13\" to=\"123\"/>", "<edge from=\"101\" to=\"123\"/>")),
-        ("missing branch", original.replace("<edge from=\"13\" to=\"123\"/>", "")),
+        ("nested conditional branch", original.replace(false_branch_edge, "<edge from=\"101\" to=\"123\"/>")),
+        ("recursive branch", original.replace(false_branch_edge, "<edge from=\"102\" to=\"123\"/>")),
+        ("missing branch", original.replace(false_branch_edge, "")),
         ("malformed pins", original.replacen("pos=\"2\" key=\"123\"", "pos=\"1\" key=\"123\"", 1)),
         ("competing producer", original.replace("</children>", &format!("{competing}</children>"))),
         ("competing frame driver", original.replace("</children>", &format!("{}</children>", competing.replace("key=\"12\"", "key=\"10\"")))),
