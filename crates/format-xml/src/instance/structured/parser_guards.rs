@@ -199,12 +199,12 @@ fn scan_with_limits(text: &str, limits: ParserLimits) -> Result<ParserBudget, Xm
         match reader.read_event()? {
             Event::Eof => return Ok(budget),
             Event::DocType(_) => return Err(XmlFormatError::StructuredInputDtd),
-            Event::Decl(declaration) => {
+            Event::Decl(declaration)
                 if declaration.encoding().is_some_and(|encoding| {
                     !encoding.is_ok_and(|value| value.eq_ignore_ascii_case(b"utf-8"))
-                }) {
-                    return Err(XmlFormatError::StructuredInputEncoding);
-                }
+                }) =>
+            {
+                return Err(XmlFormatError::StructuredInputEncoding);
             }
             Event::Start(start) => {
                 if parents.len() + 1 > ir::MAX_STRUCTURED_XML_DEPTH {
