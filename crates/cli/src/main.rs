@@ -161,6 +161,11 @@ enum Command {
         project: PathBuf,
     },
     /// Generate a standalone Rust or C# mapping library.
+    #[command(group(
+        clap::ArgGroup::new("x12_envelope_host")
+            .args(["x12_adapters", "static_document_adapters"])
+            .multiple(true)
+    ))]
     Generate {
         #[arg(long)]
         project: PathBuf,
@@ -181,11 +186,13 @@ enum Command {
         /// Include supported raw X12 text and strict UTF-8 C# methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
-        /// Explicit ownership grammar for the primary X12 source.
-        #[arg(long, value_enum, requires = "x12_adapters")]
+        /// Explicit ownership grammar for the primary X12 source. Requires
+        /// --x12-adapters or --static-document-adapters.
+        #[arg(long, value_enum, requires = "x12_envelope_host")]
         x12_source_envelope_profile: Option<CodegenX12EnvelopeProfile>,
-        /// Explicit ownership grammar for the primary X12 target.
-        #[arg(long, value_enum, requires = "x12_adapters")]
+        /// Explicit ownership grammar for the primary X12 target. Requires
+        /// --x12-adapters or --static-document-adapters.
+        #[arg(long, value_enum, requires = "x12_envelope_host")]
         x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
         /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
@@ -729,7 +736,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             } else if csv_x12_adapters {
                 cli::generate_project_with_csv_x12_adapters(&project, &out, target)?
             } else if static_document_adapters {
-                cli::generate_project_with_static_document_adapters(&project, &out, target)?
+                cli::generate_project_with_static_document_envelope_profiles(
+                    &project,
+                    &out,
+                    target,
+                    x12_source_envelope_profile.map(Into::into),
+                    x12_target_envelope_profile.map(Into::into),
+                )?
             } else if x12_adapters {
                 cli::generate_project_with_x12_envelope_profiles(
                     &project,
@@ -1084,6 +1097,42 @@ mod static_document_flag_tests {
             eprintln!("arguments={args:?}; original clap error={error}");
             assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
         }
+    }
+
+    #[test]
+    fn envelope_profiles_require_an_x12_or_static_document_adapter() {
+        let base = [
+            "ferrule",
+            "generate",
+            "--project",
+            "unused.json",
+            "--language",
+            "csharp",
+            "--out",
+            "unused-output",
+            "--x12-target-envelope-profile",
+            "mapforce-interchanges",
+        ];
+        let result = Cli::try_parse_from(base);
+        assert_eq!(
+            result.err().unwrap().kind(),
+            ErrorKind::MissingRequiredArgument
+        );
+        let mut static_documents = base.to_vec();
+        static_documents.push("--static-document-adapters");
+        let Command::Generate {
+            x12_target_envelope_profile,
+            static_document_adapters,
+            ..
+        } = Cli::try_parse_from(static_documents).unwrap().command
+        else {
+            panic!("generate subcommand");
+        };
+        assert!(static_document_adapters);
+        assert_eq!(
+            x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from),
+            Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+        );
     }
 
     #[test]

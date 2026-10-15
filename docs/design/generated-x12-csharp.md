@@ -69,13 +69,15 @@ ferrule generate --project project.json --language csharp --out generated \
   --x12-target-envelope-profile grouped-transactions
 ```
 
-Both envelope flags require `--x12-adapters`. An explicit selection, including
-`single-transaction`, on a JSON endpoint fails admission. The additive writer
-`cli::generate_project_with_x12_envelope_profiles` accepts optional source and
-target selections; the existing three-argument writer delegates with neither
-selected. Backend refusal precedes project loading. A Rust static-document
-policy can select grouped ownership on its own named X12 endpoints; the primary
-CLI flags do not override named endpoints.
+Both envelope flags require `--x12-adapters` or `--static-document-adapters`.
+An explicit selection, including `single-transaction`, on a JSON endpoint fails
+admission. The additive writers `cli::generate_project_with_x12_envelope_profiles`
+and `cli::generate_project_with_static_document_envelope_profiles` accept optional
+source and target selections; the existing three-argument writers delegate with
+neither selected. With static document adapters the flags select the primary
+X12 endpoints only. Backend refusal precedes project loading. A Rust
+static-document policy can select grouped ownership on its own named X12
+endpoints; the primary CLI flags do not override named endpoints.
 
 Grouped schemas contain exactly these declared owners:
 
@@ -138,7 +140,8 @@ retains its artifact set and typed/JSON APIs. The companion adds
 standard X12 `Envelope.Config` produces when Ferrule imports a design. Select it
 explicitly on each intended X12 endpoint, with the CLI value
 `mapforce-interchanges` for either envelope flag or through
-`cli::generate_project_with_x12_envelope_profiles`. The descriptor writes
+`cli::generate_project_with_x12_envelope_profiles` (or its static-document
+counterpart). The descriptor writes
 `"envelope_profile":"mapforce_interchanges"`. The shape is never inferred from
 a schema or retained options. Static-document and CSV routes apply the same
 selection to their own X12 endpoints.
