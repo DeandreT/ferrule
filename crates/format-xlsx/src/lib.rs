@@ -16,6 +16,8 @@ use thiserror::Error;
 mod composite;
 mod grid;
 mod hierarchical;
+#[cfg(test)]
+mod test_support;
 mod update;
 mod worksheet_set;
 
@@ -754,7 +756,7 @@ mod tests {
         std::env::temp_dir().join(format!(
             "ferrule-xlsx-{name}-{}-{}.xlsx",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ))
     }
 
