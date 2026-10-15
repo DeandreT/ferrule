@@ -2,6 +2,8 @@
 
 mod extract;
 mod layout;
+#[cfg(test)]
+mod test_support;
 
 use std::path::Path;
 use std::{fs::File, io::Read};
@@ -90,7 +92,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "ferrule_pdf_oversized_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            crate::test_support::thread_file_label()
         ));
         let Ok(file) = File::create(&path) else {
             panic!("sparse PDF test file must be creatable");
