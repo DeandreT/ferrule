@@ -100,14 +100,14 @@
     }
   },
   {
-    "name": "null left demands missing scalar path",
+    "name": "null left demands absent scalar and required target refuses absence",
     "input": "{\"Rows\":[{\"Value\":null}]}",
     "parameters": {
       "payload": "{\"Header\":{}}"
     },
-    "execution_error": {
-      "function": "json_parse_field",
-      "message": "field path does not resolve to a scalar"
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
     }
   },
   {
@@ -147,17 +147,14 @@
     }
   },
   {
-    "name": "supplied parameter Null stays Null",
+    "name": "supplied parameter Null stays absent at required target",
     "input": "{\"Rows\":[{\"Value\":null}]}",
     "parameters": {
       "payload": null
     },
-    "expected": {
-      "Rows": [
-        {
-          "Label": null
-        }
-      ]
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
     }
   },
   {

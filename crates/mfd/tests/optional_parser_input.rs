@@ -258,9 +258,12 @@ fn verify_case(project: &Project, case: &serde_json::Value) {
             "{case}"
         );
     } else {
+        let output = result.unwrap_or_else(|error| panic!("{case}: {error:?}"));
         assert_eq!(
-            format_json::to_value(&project.target, &result.unwrap()).unwrap(),
-            case["expected"],
+            &format_json::to_value(&project.target, &output)
+                .unwrap_or_else(|error| panic!("{case}: {error:?}")),
+            case.get("expected")
+                .expect("authored success needs expected"),
             "{case}"
         );
     }

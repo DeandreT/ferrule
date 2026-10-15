@@ -57,11 +57,22 @@ fn verify(project: &Project, case: &serde_json::Value) {
             "{case}"
         );
     } else {
-        assert_eq!(
-            format_json::to_value(&project.target, &result.unwrap()).unwrap(),
-            case["expected"],
-            "{case}"
-        );
+        let output = result.unwrap_or_else(|error| panic!("{case}: {error:?}"));
+        let actual = format_json::to_value(&project.target, &output);
+        if let Some(error) = case.get("output_error") {
+            assert!(
+                matches!(actual, Err(format_json::JsonFormatError::MissingRequiredProperty { object, property })
+                if object == error["object"].as_str().unwrap() && property == error["property"].as_str().unwrap()),
+                "{case}"
+            );
+        } else {
+            assert_eq!(
+                &actual.unwrap_or_else(|error| panic!("{case}: {error:?}")),
+                case.get("expected")
+                    .expect("authored success needs expected"),
+                "{case}"
+            );
+        }
     }
 }
 

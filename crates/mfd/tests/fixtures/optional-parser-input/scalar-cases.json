@@ -123,14 +123,17 @@
     }
   },
   {
-    "name": "absent Replacement",
+    "name": "absent optional Replacement selects literal fallback",
     "input": "{\"Rows\":[{}]}",
     "parameters": {
       "payload": "{\"Header\":{}}"
     },
-    "execution_error": {
-      "function": "json_parse_field",
-      "message": "field path does not resolve to a scalar"
+    "expected": {
+      "Rows": [
+        {
+          "Label": "FALLBACK"
+        }
+      ]
     }
   },
   {

@@ -67,6 +67,16 @@ static void Verify(Func<string> run, JsonElement test)
         { return; }
         throw new Exception($"JSON parser error differs: {test}");
     }
+    if (test.TryGetProperty("output_error", out var outputError))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary &&
+            string.Equals(error.Message,
+                $"JSON object '{outputError.GetProperty("object").GetString()}' requires property '{outputError.GetProperty("property").GetString()}'.",
+                StringComparison.Ordinal))
+        { return; }
+        throw new Exception($"Required output property error differs: {test}");
+    }
     if (test.TryGetProperty("reject", out _))
     {
         try { _ = run(); }

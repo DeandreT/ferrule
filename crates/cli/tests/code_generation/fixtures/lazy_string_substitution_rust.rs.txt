@@ -74,6 +74,13 @@ fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
             if function == expected["function"].as_str().unwrap() && message == expected["message"].as_str().unwrap()),
             "{case}: JSON parser error differs"
         );
+    } else if let Some(expected) = case.get("output_error") {
+        assert!(
+            matches!(result, Err(JsonBoundaryError::InvalidOutput { message })
+            if message == format!("object `{}` requires property `{}`",
+                expected["object"].as_str().unwrap(), expected["property"].as_str().unwrap())),
+            "{case}: required output property error differs"
+        );
     } else if case["reject"] == true {
         assert!(
             matches!(result, Err(JsonBoundaryError::InvalidInput { .. })),
@@ -81,8 +88,12 @@ fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
         );
     } else {
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&result.unwrap()).unwrap(),
-            case["expected"],
+            &serde_json::from_str::<serde_json::Value>(
+                &result.unwrap_or_else(|error| panic!("{case}: {error:?}")),
+            )
+            .unwrap(),
+            case.get("expected")
+                .expect("authored success needs expected"),
             "{case}"
         );
     }

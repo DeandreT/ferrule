@@ -48,15 +48,12 @@
     }
   },
   {
-    "name": "absent fallback becomes Null",
+    "name": "absent fallback stays absent at required target",
     "input": "{\"Rows\":[{}]}",
     "parameters": {},
-    "expected": {
-      "Rows": [
-        {
-          "Label": null
-        }
-      ]
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
     }
   },
   {
@@ -72,24 +69,12 @@
     }
   },
   {
-    "name": "complete ordered occurrences",
+    "name": "later absent fallback refuses required target after prior occurrences",
     "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"},{}]}",
     "parameters": {},
-    "expected": {
-      "Rows": [
-        {
-          "Label": "A"
-        },
-        {
-          "Label": "B"
-        },
-        {
-          "Label": "C"
-        },
-        {
-          "Label": null
-        }
-      ]
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
     }
   },
   {

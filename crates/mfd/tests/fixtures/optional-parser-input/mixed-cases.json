@@ -26,17 +26,14 @@
     }
   },
   {
-    "name": "absent Header suppresses envelope",
+    "name": "absent nonnullable Header keeps empty object and descendant refuses",
     "input": "{\"Rows\":[{\"Value\":\"LEFT\"},{\"Value\":null},{}]}",
     "parameters": {
       "payload": "{}"
     },
-    "expected": {
-      "Rows": [
-        {},
-        {},
-        {}
-      ]
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "field path does not resolve to a scalar"
     }
   },
   {
