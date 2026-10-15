@@ -228,8 +228,8 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
     assert!(ordinary.warnings.is_empty(), "{:?}", ordinary.warnings);
     assert!(engine::validate(&ordinary.project).is_empty());
     assert_eq!(
-        serde_json::to_value(&imported.project)?,
-        serde_json::to_value(&ordinary.project)?
+        mapping::project_file::encode_pretty(&imported.project)?,
+        mapping::project_file::encode_pretty(&ordinary.project)?
     );
 
     let source = Instance::Group(
