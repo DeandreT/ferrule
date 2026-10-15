@@ -182,3 +182,6 @@ The public API does not expose the intermediate normalized buffer. These limits 
 
 The [allocation fixtures](../examples/performance/json5-allocations/README.md)
 exercise the exact and one-byte-over original, normalized and output limits.
+
+The [Unicode controls](../examples/performance/json5-newline/README.md)
+include the final LF in the encoded output size.

@@ -55,6 +55,7 @@ internal static partial class Program
             ("JSON5 boundary encoding and stage priority", Json5BoundaryEncodingAndPriority),
             ("JSON5 descriptor decoded identities", Json5BoundaryDescriptorIdentity),
             ("JSON5 nested projection and original causes", Json5BoundaryNestedMappingAndOutput),
+            ("JSON5 final newline and ordinary writer equivalence", Json5FinalNewlineAndOrdinaryWriter),
             ("JSON5 syntax corpus", Json5SyntaxCorpus),
             ("JSON5 complete grammar", Json5SyntaxGrammar),
             ("JSON5 numbers and nonfinite", Json5SyntaxNumbers),
