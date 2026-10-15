@@ -35,6 +35,8 @@ enum CodegenLanguage {
 enum CodegenX12EnvelopeProfile {
     SingleTransaction,
     GroupedTransactions,
+    #[value(name = "mapforce-interchanges")]
+    MapForceInterchanges,
 }
 
 impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
@@ -42,6 +44,7 @@ impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
         match profile {
             CodegenX12EnvelopeProfile::SingleTransaction => Self::SingleTransaction,
             CodegenX12EnvelopeProfile::GroupedTransactions => Self::GroupedTransactions,
+            CodegenX12EnvelopeProfile::MapForceInterchanges => Self::MapForceInterchanges,
         }
     }
 }
@@ -945,7 +948,11 @@ mod x12_envelope_flag_tests {
                 result.err().unwrap().kind(),
                 ErrorKind::MissingRequiredArgument
             );
-            for value in ["single-transaction", "grouped-transactions"] {
+            for value in [
+                "single-transaction",
+                "grouped-transactions",
+                "mapforce-interchanges",
+            ] {
                 let mut accepted = base.to_vec();
                 accepted.extend(["--x12-adapters", flag, value]);
                 let result = Cli::try_parse_from(&accepted);
@@ -962,6 +969,55 @@ mod x12_envelope_flag_tests {
                 "arguments={invalid:?}; original outcome={:?}",
                 result.as_ref().err()
             );
+            assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidValue);
+        }
+    }
+
+    #[test]
+    fn mapforce_envelope_value_selects_mapforce_interchanges_on_each_side() {
+        for (flag, source) in [
+            ("--x12-source-envelope-profile", true),
+            ("--x12-target-envelope-profile", false),
+        ] {
+            let arguments = [
+                "ferrule",
+                "generate",
+                "--project",
+                "unused.json",
+                "--language",
+                "csharp",
+                "--out",
+                "unused-output",
+                "--x12-adapters",
+                flag,
+                "mapforce-interchanges",
+            ];
+            let parsed = Cli::try_parse_from(arguments);
+            eprintln!(
+                "arguments={arguments:?}; original outcome={:?}",
+                parsed.as_ref().err()
+            );
+            let Command::Generate {
+                x12_source_envelope_profile,
+                x12_target_envelope_profile,
+                ..
+            } = parsed.unwrap().command
+            else {
+                panic!("generate subcommand");
+            };
+            let (selected, other) = if source {
+                (x12_source_envelope_profile, x12_target_envelope_profile)
+            } else {
+                (x12_target_envelope_profile, x12_source_envelope_profile)
+            };
+            assert_eq!(
+                selected.map(codegen::X12EnvelopeProfile::from),
+                Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+            );
+            assert!(other.is_none());
+            let mut misspelled = arguments;
+            misspelled[10] = "map-force-interchanges";
+            let result = Cli::try_parse_from(misspelled);
             assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidValue);
         }
     }

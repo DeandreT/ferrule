@@ -315,6 +315,182 @@ fn isa_partial_schema_keeps_existing_positional_output() {
     assert_eq!(result.unwrap().as_bytes(), EXPECTED_PARTIAL.as_bytes());
 }
 
+/// Retypes `IEA02` and supplies one control value in that type.
+fn with_iea02(ty: ScalarType, value: Value) -> (SchemaNode, Instance) {
+    let (mut schema, mut instance) = example();
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        unreachable!();
+    };
+    let SchemaKind::Group { children, .. } = &mut children[6].kind else {
+        unreachable!();
+    };
+    children[1].kind = SchemaKind::Scalar { ty };
+    let Instance::Group(fields) = &mut instance else {
+        unreachable!();
+    };
+    let Instance::Group(elements) = &mut fields[6].1 else {
+        unreachable!();
+    };
+    elements[1].1 = Instance::Scalar(value);
+    (schema, instance)
+}
+
+/// Completion consumes `HH:MM:SS` GS05 text, so the writer needs a release
+/// character for the component separator inside it.
+fn released() -> Separators {
+    Separators {
+        release: Some('?'),
+        ..Separators::default()
+    }
+}
+
+fn completion() -> Autocomplete<'static> {
+    Autocomplete {
+        current_datetime: "2026-10-09T10:30:00Z",
+        request_acknowledgement: false,
+        transaction_set: Some("940"),
+    }
+}
+
+#[test]
+fn numeric_iea02_is_zero_padded_like_isa13_with_and_without_completion() {
+    for (name, ty, value) in [
+        (
+            "iea02-string",
+            ScalarType::String,
+            Value::String("321".into()),
+        ),
+        ("iea02-int", ScalarType::Int, Value::Int(321)),
+        ("iea02-float", ScalarType::Float, Value::Float(321.0)),
+        (
+            "iea02-padded",
+            ScalarType::String,
+            Value::String("000000321".into()),
+        ),
+    ] {
+        let (schema, mut instance) = with_iea02(ty, value);
+        let result = to_string(&schema, &instance);
+        retain(name, &schema, &instance, &result);
+        assert_eq!(
+            result.unwrap().as_bytes(),
+            EXPECTED_DEFAULT.as_bytes(),
+            "{name}"
+        );
+
+        change(&mut instance, "GS", "05", "10:30:00");
+        let result = to_string_with_syntax_and_autocomplete(
+            &schema,
+            &instance,
+            released(),
+            Some("00401"),
+            completion(),
+        );
+        retain(&format!("{name}-completed"), &schema, &instance, &result);
+        assert_eq!(
+            result.unwrap().as_bytes(),
+            EXPECTED_AUTOCOMPLETE.as_bytes(),
+            "{name} completed"
+        );
+    }
+}
+
+#[test]
+fn partial_isa_keeps_iea02_as_supplied() {
+    let isa = SchemaNode::group(
+        "ISA",
+        (1..=13)
+            .map(|index| SchemaNode::scalar(format!("{index:02}"), ScalarType::String))
+            .collect(),
+    );
+    let iea = SchemaNode::group(
+        "IEA",
+        vec![
+            SchemaNode::scalar("01", ScalarType::String),
+            SchemaNode::scalar("02", ScalarType::String),
+        ],
+    );
+    let schema = SchemaNode::group("X12", vec![isa, iea]);
+    let isa_values = [
+        "00", "", "00", "", "ZZ", "S", "ZZ", "R", "260702", "1200", "U", "00401", "321",
+    ];
+    let instance = Instance::Group(
+        vec![
+            (
+                "ISA".to_string(),
+                Instance::Group(
+                    isa_values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| {
+                            (
+                                format!("{:02}", index + 1),
+                                Instance::Scalar(Value::String((*value).into())),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
+                ),
+            ),
+            (
+                "IEA".to_string(),
+                Instance::Group(
+                    vec![
+                        (
+                            "01".to_string(),
+                            Instance::Scalar(Value::String("1".into())),
+                        ),
+                        (
+                            "02".to_string(),
+                            Instance::Scalar(Value::String("321".into())),
+                        ),
+                    ]
+                    .into(),
+                ),
+            ),
+        ]
+        .into(),
+    );
+    let output = to_string(&schema, &instance).unwrap();
+    assert!(output.contains("*00401*321~"), "{output}");
+    assert!(output.contains("IEA*1*321~"), "{output}");
+}
+
+#[test]
+fn non_numeric_or_full_width_iea02_remains_supplied_text() {
+    for (name, value) in [
+        ("iea02-text", "CTRL321"),
+        ("iea02-signed", "-321"),
+        ("iea02-ten-digits", "0000000321"),
+    ] {
+        let (schema, mut instance) = example();
+        change(&mut instance, "IEA", "02", value);
+        let result = to_string(&schema, &instance);
+        retain(name, &schema, &instance, &result);
+        assert_eq!(
+            result.unwrap(),
+            EXPECTED_DEFAULT.replace("IEA*1*000000321~", &format!("IEA*1*{value}~")),
+            "{name}"
+        );
+    }
+    // A completed trailer copies the already padded ISA13 reference.
+    let (schema, mut instance) = example();
+    let Instance::Group(fields) = &mut instance else {
+        unreachable!();
+    };
+    fields.retain(|(name, _)| name != "IEA");
+    change(&mut instance, "GS", "05", "10:30:00");
+    change(&mut instance, "ISA", "13", "321");
+    let result = to_string_with_syntax_and_autocomplete(
+        &schema,
+        &instance,
+        released(),
+        Some("00401"),
+        completion(),
+    );
+    retain("iea-created", &schema, &instance, &result);
+    assert_eq!(result.unwrap().as_bytes(), EXPECTED_AUTOCOMPLETE.as_bytes());
+}
+
 #[test]
 fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
     let (schema, mut instance) = example();

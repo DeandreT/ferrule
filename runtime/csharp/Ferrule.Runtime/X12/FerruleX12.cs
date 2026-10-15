@@ -72,22 +72,35 @@ public static partial class FerruleX12
         FerruleInstance outputView = HasOutputLexical(profile.Root)
             ? FormatOutputView(profile.Root, document, [], new Budget(), 0)
             : document;
-        if (profile.Autocomplete is not null)
+        // MapForce interchanges complete the written wire segments, as native completion does.
+        if (profile.Autocomplete is not null && profile.MapForce is null)
             outputView = CompleteOutputView(profile, outputView, executionContext);
         var segments = new List<Segment>();
         var budget = new Budget();
         WriteContainer(profile.Root, outputView, profile, [], segments, budget, 0, root: true);
-        // ISA padding is a fixed-width encoding operation, never control allocation.
-        if (segments.Count == 0 || segments[0].Id != "ISA" || segments[0].Elements.Length != 16)
-            throw Failure(FerruleX12Error.Envelope, "X12 output requires a complete ISA.");
-        for (int index = 0; index < 16; index++)
+        if (profile.MapForce is not null)
         {
-            string value = segments[0].Elements[index];
-            if (index is 1 or 3 or 5 or 7) value = value.PadRight(IsaWidths[index]);
-            segments[0].Elements[index] = value;
+            if (profile.Autocomplete is not null) segments = CompleteMapForceSegments(profile, segments, executionContext);
+            EncodeInterchangeControls(segments);
         }
-        if (segments[0].Elements[15] != syntax.Component.ToString())
-            throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.");
+        else
+        {
+            // ISA padding is a fixed-width encoding operation, never control allocation.
+            if (segments.Count == 0 || segments[0].Id != "ISA" || segments[0].Elements.Length != 16)
+                throw Failure(FerruleX12Error.Envelope, "X12 output requires a complete ISA.");
+            for (int index = 0; index < 16; index++)
+            {
+                string value = segments[0].Elements[index];
+                if (index is 1 or 3 or 5 or 7) value = value.PadRight(IsaWidths[index]);
+                segments[0].Elements[index] = value;
+            }
+            if (segments[0].Elements[15] != syntax.Component.ToString())
+                throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.");
+            // Native encoding zero-pads an all-digit IEA02 to the ISA13 width.
+            foreach (Segment segment in segments)
+                if (segment.Id == "IEA" && segment.Elements.Length >= 2 && Digits(segment.Elements[1], 1, 8))
+                    segment.Elements[1] = segment.Elements[1].PadLeft(9, '0');
+        }
         ValidateEnvelope(segments, profile, syntax);
         var output = new StringBuilder();
         long bytes = 0;
@@ -201,8 +214,27 @@ public static partial class FerruleX12
         return segments;
     }
 
+    // Native encoding of every interchange: space-padded ISA text fields and an
+    // all-digit IEA02 zero-padded to the nine-digit ISA13 width.
+    private static void EncodeInterchangeControls(List<Segment> segments)
+    {
+        foreach (Segment segment in segments)
+        {
+            if (segment.Id == "ISA" && segment.Elements.Length == 16)
+                foreach (int index in (int[])[1, 3, 5, 7])
+                    segment.Elements[index] = segment.Elements[index].PadRight(IsaWidths[index]);
+            if (segment.Id == "IEA" && segment.Elements.Length >= 2 && Digits(segment.Elements[1], 1, 8))
+                segment.Elements[1] = segment.Elements[1].PadLeft(9, '0');
+        }
+    }
+
     private static void ValidateEnvelope(IReadOnlyList<Segment> segments, Profile profile, Syntax syntax)
     {
+        if (profile.MapForce is not null)
+        {
+            ValidateMapForceEnvelope(segments, profile, syntax);
+            return;
+        }
         if (profile.Grouped is not null)
         {
             ValidateGroupedEnvelope(segments, profile, syntax);
@@ -420,6 +452,171 @@ public static partial class FerruleX12
             };
             throw Failure(FerruleX12Error.Envelope, "Grouped X12 envelope ordering is invalid.", segments.Count, path);
         }
+    }
+
+    private enum InterchangeEnvelopeState { Header, GroupOrTrailer, TransactionOrTrailer, Body }
+
+    // MapForce interchanges: (ISA (GS (ST ... SE)+ GE)+ IEA)+ over physical segments.
+    // Numeric controls are compared by value; ST02/SE02 by exact text. Every
+    // ISA repeats the selected version and the discovered separator syntax.
+    private static void ValidateMapForceEnvelope(IReadOnlyList<Segment> segments, Profile profile, Syntax syntax)
+    {
+        MapForceShape shape = profile.MapForce!;
+        static string Index(int value) => "[" + value.ToString(CultureInfo.InvariantCulture) + "]";
+        string interchangePath(int interchange) => shape.Interchanges.Name + Index(interchange);
+        string groupPath(int interchange, int group) => interchangePath(interchange) + "/" + shape.Groups.Name + Index(group);
+        string messagePath(int interchange, int group, int message) => groupPath(interchange, group) + "/" + shape.Messages.Name + Index(message);
+        static void Width(Segment segment, int minimum, int maximum, int index, string path)
+        {
+            if (segment.Elements.Length < minimum || segment.Elements.Length > maximum)
+                throw Failure(FerruleX12Error.Envelope, "X12 envelope element counts are invalid.", index, path);
+        }
+        static void Controls(bool valid, int index, string path)
+        {
+            if (!valid) throw Failure(FerruleX12Error.Envelope, "X12 control numbers have invalid lexical shapes.", index, path);
+        }
+        static void Identities(bool valid, int index, string path)
+        {
+            if (!valid) throw Failure(FerruleX12Error.Envelope,
+                "X12 requires sender, recipient, transaction and functional group identities.", index, path);
+        }
+        static void Dates(bool shapeValid, string date, string time, int index, string path)
+        {
+            if (!shapeValid) throw Failure(FerruleX12Error.Envelope,
+                "X12 envelope date, time or indicator shapes are invalid.", index, path);
+            if (!DateOnly.TryParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+                || !EnvelopeClock(time))
+                throw Failure(FerruleX12Error.Envelope, "X12 envelope dates or times are invalid.", index, path);
+        }
+        static bool SameControl(string value, string owner) => Digits(value, 1, 9) && Digits(owner, 1, 9)
+            && long.Parse(value, CultureInfo.InvariantCulture) == long.Parse(owner, CultureInfo.InvariantCulture);
+        static FerruleX12Exception Ordering(int index, string path)
+            => Failure(FerruleX12Error.Envelope, "X12 interchange envelope ordering is invalid.", index, path);
+
+        InterchangeEnvelopeState state = InterchangeEnvelopeState.Header;
+        int interchanges = 0, groups = 0, transactions = 0, transactionStart = -1;
+        Segment? isa = null, gs = null, st = null;
+        for (int index = 0; index < segments.Count; index++)
+        {
+            Segment segment = segments[index];
+            int interchange = interchanges - 1, group = groups - 1, transaction = transactions - 1;
+            switch (state)
+            {
+                case InterchangeEnvelopeState.Header:
+                {
+                    string path = interchangePath(interchanges) + "/" + shape.Isa.Name;
+                    if (segment.Id != "ISA") throw Ordering(index, path);
+                    Width(segment, 16, 16, index, path);
+                    for (int position = 0; position < 16; position++)
+                        if (segment.Elements[position].Length != IsaWidths[position] || segment.Elements[position].Any(character => character > 127))
+                            throw Failure(FerruleX12Error.Envelope, "ISA requires its declared ASCII widths.", index, path);
+                    if (segment.Elements[11] != profile.SelectedVersion.Interchange)
+                        throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope versions do not match the selected profile.", index, path);
+                    if (profile.SelectedVersion.Modern)
+                    {
+                        if (segment.Elements[10] != syntax.Repetition?.ToString())
+                            throw Failure(FerruleX12Error.Syntax, "ISA11 must match the selected repetition separator.", index, path);
+                    }
+                    else if (segment.Elements[10] != "U")
+                        throw Failure(FerruleX12Error.UnsupportedProfile,
+                            "Only the 00401/004010 envelope without element repetition is supported.", index, path);
+                    if (segment.Elements[15] != syntax.Component.ToString())
+                        throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.", index, path);
+                    Controls(Digits(segment.Elements[12], 9, 9), index, path);
+                    Identities(!string.IsNullOrWhiteSpace(segment.Elements[5]) && !string.IsNullOrWhiteSpace(segment.Elements[7]), index, path);
+                    Dates(Digits(segment.Elements[8], 6, 6) && Digits(segment.Elements[9], 4, 4)
+                        && (segment.Elements[13] is "0" or "1") && (segment.Elements[14] is "P" or "T" or "I"),
+                        "20" + segment.Elements[8], segment.Elements[9], index, path);
+                    isa = segment;
+                    interchanges++;
+                    groups = 0;
+                    state = InterchangeEnvelopeState.GroupOrTrailer;
+                    break;
+                }
+                case InterchangeEnvelopeState.GroupOrTrailer:
+                    if (segment.Id == "GS")
+                    {
+                        string path = groupPath(interchange, groups) + "/" + shape.Gs.Name;
+                        // GS07 and GS08 are unchecked data; the selected version comes from ISA12.
+                        Width(segment, 6, 8, index, path);
+                        Controls(Digits(segment.Elements[5], 1, 9), index, path);
+                        Identities(!string.IsNullOrWhiteSpace(segment.Elements[0])
+                            && !string.IsNullOrWhiteSpace(segment.Elements[1]) && !string.IsNullOrWhiteSpace(segment.Elements[2]), index, path);
+                        Dates(Digits(segment.Elements[3], 8, 8) && Digits(segment.Elements[4], 4, 8),
+                            segment.Elements[3], segment.Elements[4], index, path);
+                        gs = segment;
+                        groups++;
+                        transactions = 0;
+                        state = InterchangeEnvelopeState.TransactionOrTrailer;
+                        break;
+                    }
+                    if (segment.Id == "IEA")
+                    {
+                        if (groups == 0)
+                            throw Failure(FerruleX12Error.Envelope, "X12 interchange requires at least one functional group.",
+                                index, interchangePath(interchange) + "/" + shape.Groups.Name);
+                        string path = interchangePath(interchange) + "/" + shape.Iea.Name;
+                        Width(segment, 2, 2, index, path);
+                        if (!EnvelopeCount(segment.Elements[0], groups) || !SameControl(segment.Elements[1], isa!.Elements[12]))
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 interchange trailer count or control does not match its owner.", index, path);
+                        state = InterchangeEnvelopeState.Header;
+                        break;
+                    }
+                    throw Ordering(index, interchangePath(interchange) + "/" + shape.Iea.Name);
+                case InterchangeEnvelopeState.TransactionOrTrailer:
+                    if (segment.Id == "ST")
+                    {
+                        string path = messagePath(interchange, group, transactions) + "/" + shape.St.Name;
+                        Width(segment, 2, shape.St.Children.Length, index, path);
+                        Controls(Digits(segment.Elements[1], 4, 9), index, path);
+                        Identities(Digits(segment.Elements[0], 3, 3), index, path);
+                        st = segment;
+                        transactions++;
+                        transactionStart = index;
+                        state = InterchangeEnvelopeState.Body;
+                        break;
+                    }
+                    if (segment.Id == "GE")
+                    {
+                        if (transactions == 0)
+                            throw Failure(FerruleX12Error.Envelope, "X12 functional group requires at least one transaction.",
+                                index, groupPath(interchange, group) + "/" + shape.Messages.Name);
+                        string path = groupPath(interchange, group) + "/" + shape.Ge.Name;
+                        Width(segment, 2, 2, index, path);
+                        if (!EnvelopeCount(segment.Elements[0], transactions) || !SameControl(segment.Elements[1], gs!.Elements[5]))
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 functional group trailer count or control does not match its owner.", index, path);
+                        state = InterchangeEnvelopeState.GroupOrTrailer;
+                        break;
+                    }
+                    throw Ordering(index, segment.Id == "SE"
+                        ? groupPath(interchange, group) + "/" + shape.Messages.Name
+                        : groupPath(interchange, group) + "/" + shape.Ge.Name);
+                case InterchangeEnvelopeState.Body:
+                    if (segment.Id == "SE")
+                    {
+                        string path = messagePath(interchange, group, transaction) + "/" + shape.Se.Name;
+                        Width(segment, 2, 2, index, path);
+                        if (!EnvelopeCount(segment.Elements[0], index - transactionStart + 1) || segment.Elements[1] != st!.Elements[1])
+                            throw Failure(FerruleX12Error.Envelope,
+                                "X12 transaction trailer count or control does not match its owner.", index, path);
+                        state = InterchangeEnvelopeState.TransactionOrTrailer;
+                        break;
+                    }
+                    if (IsEnvelope(segment.Id))
+                        throw Ordering(index, messagePath(interchange, group, transaction) + "/" + shape.Se.Name);
+                    break;
+            }
+        }
+        if (state != InterchangeEnvelopeState.Header || interchanges == 0)
+            throw Ordering(segments.Count, state switch
+            {
+                InterchangeEnvelopeState.Body => messagePath(interchanges - 1, groups - 1, transactions - 1) + "/" + shape.Se.Name,
+                InterchangeEnvelopeState.TransactionOrTrailer => groupPath(interchanges - 1, groups - 1) + "/" + shape.Ge.Name,
+                InterchangeEnvelopeState.GroupOrTrailer => interchangePath(interchanges - 1) + "/" + shape.Iea.Name,
+                _ => interchangePath(0) + "/" + shape.Isa.Name,
+            });
     }
 
     private static bool EnvelopeCount(string value, int expected) => Digits(value, 1, 9)

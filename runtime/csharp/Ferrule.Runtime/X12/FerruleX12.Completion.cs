@@ -361,18 +361,22 @@ public static partial class FerruleX12
     }
 
     private static FerruleGroup NormalizeCompletionDate(Node node, FerruleGroup group, int index, bool shortDate)
+        => SetCompletionField(group, node.Children[index].Name, CompletionDate(CompletionText(node, group, index), shortDate));
+
+    private static FerruleGroup NormalizeCompletionTime(Node node, FerruleGroup group, int index, bool shortTime)
+        => SetCompletionField(group, node.Children[index].Name, CompletionTime(CompletionText(node, group, index), shortTime));
+
+    private static string CompletionDate(string value, bool shortDate)
     {
-        string value = CompletionText(node, group, index);
         RequireUtf8(value, MaximumDocumentBytes, "X12 field");
         if (value.Length == 10 && value[4] == '-' && value[7] == '-') value = value[..4] + value[5..7] + value[8..10];
         if (shortDate && value.Length == 8) value = value[2..];
         if (value.Length != (shortDate ? 6 : 8) || !Digits(value)) throw CompletionHeaderFailure();
-        return SetCompletionField(group, node.Children[index].Name, value);
+        return value;
     }
 
-    private static FerruleGroup NormalizeCompletionTime(Node node, FerruleGroup group, int index, bool shortTime)
+    private static string CompletionTime(string value, bool shortTime)
     {
-        string value = CompletionText(node, group, index);
         RequireUtf8(value, MaximumDocumentBytes, "X12 field");
         var compact = new System.Text.StringBuilder();
         foreach (char character in value)
@@ -387,7 +391,154 @@ public static partial class FerruleX12
         }
         if (shortTime && compact.Length == 6) compact.Length = 4;
         if (compact.Length != (shortTime ? 4 : 6)) throw CompletionHeaderFailure();
-        return SetCompletionField(group, node.Children[index].Name, compact.ToString());
+        return compact.ToString();
+    }
+
+    // Native completion owns every ISA field, GS04-GS06, ST01-ST02 and both
+    // trailer fields; their supplied empty values are deferred to completion.
+    private static bool MapForceCompletionField(string id, int index) => id switch
+    {
+        "ISA" => true,
+        "GS" => index is 3 or 4 or 5,
+        "ST" or "SE" or "GE" or "IEA" => index is 0 or 1,
+        _ => false,
+    };
+
+    // Port of native X12 wire completion over the written MapForce segments:
+    // ISA defaults and nine-digit ISA13, document-global GS06/ST02 ordinals,
+    // per-owner SE01/GE01/IEA01 counts and creation of absent trailers.
+    // Nonempty supplied text is retained for final envelope validation.
+    private static List<Segment> CompleteMapForceSegments(Profile profile, List<Segment> segments,
+        FerruleExecutionContext? executionContext)
+    {
+        CompletionTimestamp timestamp = ReadCompletionTimestamp(executionContext?.CurrentDateTime);
+        Autocomplete selected = profile.Autocomplete!;
+        var output = new List<Segment>(segments.Count + 8);
+        bool interchangeOpen = false, groupOpen = false, transactionOpen = false;
+        string interchangeReference = "", groupReference = "", transactionReference = "";
+        int interchangeGroups = 0, groupMessages = 0, transactionStart = 0, groupOrdinal = 0, transactionOrdinal = 0;
+        for (int index = 0; index < segments.Count; index++)
+        {
+            Segment segment = segments[index];
+            switch (segment.Id)
+            {
+                case "ISA":
+                    FinishTransaction(null, index);
+                    FinishGroup(null, index);
+                    FinishInterchange(null, index);
+                    string[] defaults = ["00", "          ", "00", "          ", "ZZ", "", "ZZ", "",
+                        timestamp.Date6, timestamp.Time4, "", "", "000000000", selected.RequestAcknowledgement ? "1" : "0", "P", ""];
+                    for (int position = 0; position < defaults.Length; position++) Ensure(segment, position, defaults[position]);
+                    segment.Elements[8] = CompletionDate(segment.Elements[8], shortDate: true);
+                    segment.Elements[9] = CompletionTime(segment.Elements[9], shortTime: true);
+                    // ISA13 is a fixed nine-digit control; final validation refuses other text.
+                    if (Digits(segment.Elements[12], 1, 9)) segment.Elements[12] = segment.Elements[12].PadLeft(9, '0');
+                    interchangeReference = segment.Elements[12];
+                    interchangeOpen = true;
+                    interchangeGroups = 0;
+                    Push(segment);
+                    break;
+                case "GS":
+                    FinishTransaction(null, index);
+                    FinishGroup(null, index);
+                    if (!interchangeOpen) throw OutsideOwner(index);
+                    groupOrdinal++;
+                    Ensure(segment, 3, timestamp.Date8);
+                    Ensure(segment, 4, timestamp.Time6);
+                    segment.Elements[3] = CompletionDate(segment.Elements[3], shortDate: false);
+                    segment.Elements[4] = CompletionTime(segment.Elements[4], shortTime: false);
+                    groupReference = Ensure(segment, 5, groupOrdinal.ToString(CultureInfo.InvariantCulture));
+                    groupOpen = true;
+                    groupMessages = 0;
+                    Push(segment);
+                    break;
+                case "ST":
+                    FinishTransaction(null, index);
+                    if (!groupOpen) throw OutsideOwner(index);
+                    transactionOrdinal++;
+                    Ensure(segment, 0, selected.TransactionSet ?? "");
+                    transactionReference = Ensure(segment, 1, transactionOrdinal.ToString("D4", CultureInfo.InvariantCulture));
+                    transactionStart = output.Count;
+                    Push(segment);
+                    transactionOpen = true;
+                    break;
+                case "SE":
+                    FinishTransaction(segment, index);
+                    break;
+                case "GE":
+                    FinishTransaction(null, index);
+                    FinishGroup(segment, index);
+                    break;
+                case "IEA":
+                    FinishTransaction(null, index);
+                    FinishGroup(null, index);
+                    FinishInterchange(segment, index);
+                    break;
+                default:
+                    Push(segment);
+                    break;
+            }
+        }
+        FinishTransaction(null, segments.Count);
+        FinishGroup(null, segments.Count);
+        FinishInterchange(null, segments.Count);
+        return output;
+
+        void Push(Segment segment)
+        {
+            if (output.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
+            output.Add(segment);
+        }
+        void FinishTransaction(Segment? trailer, int index)
+        {
+            if (!transactionOpen)
+            {
+                if (trailer is not null) throw OutsideOwner(index);
+                return;
+            }
+            transactionOpen = false;
+            Segment se = trailer ?? new Segment("SE", ["", ""]);
+            Ensure(se, 0, (output.Count - transactionStart + 1).ToString(CultureInfo.InvariantCulture));
+            Ensure(se, 1, transactionReference);
+            Push(se);
+            if (!groupOpen) throw OutsideOwner(index);
+            groupMessages++;
+        }
+        void FinishGroup(Segment? trailer, int index)
+        {
+            if (!groupOpen)
+            {
+                if (trailer is not null) throw OutsideOwner(index);
+                return;
+            }
+            groupOpen = false;
+            Segment ge = trailer ?? new Segment("GE", ["", ""]);
+            Ensure(ge, 0, groupMessages.ToString(CultureInfo.InvariantCulture));
+            Ensure(ge, 1, groupReference);
+            Push(ge);
+            if (!interchangeOpen) throw OutsideOwner(index);
+            interchangeGroups++;
+        }
+        void FinishInterchange(Segment? trailer, int index)
+        {
+            if (!interchangeOpen)
+            {
+                if (trailer is not null) throw OutsideOwner(index);
+                return;
+            }
+            interchangeOpen = false;
+            Segment iea = trailer ?? new Segment("IEA", ["", ""]);
+            Ensure(iea, 0, interchangeGroups.ToString(CultureInfo.InvariantCulture));
+            Ensure(iea, 1, interchangeReference);
+            Push(iea);
+        }
+        static string Ensure(Segment segment, int position, string fallback)
+        {
+            if (segment.Elements[position].Length == 0) segment.Elements[position] = fallback;
+            return segment.Elements[position];
+        }
+        static FerruleX12Exception OutsideOwner(int index)
+            => Failure(FerruleX12Error.Envelope, "X12 completion found an envelope segment outside its owner.", index);
     }
 
     private static FerruleX12Exception CompletionHeaderFailure()
