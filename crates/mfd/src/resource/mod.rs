@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 pub(crate) use bindings::validate as validate_bindings;
 pub(crate) use bindings::{BindingSession, BoundResource};
 pub use bindings::{
-    MAX_RESOURCE_BINDINGS_V1, ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1,
-    ResourceReadSetV1,
+    MAX_RESOURCE_BINDINGS_V1, MappingLibraryDefinitionRecordV1, MappingLibraryFunctionIdentityV1,
+    ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1, ResourceReadSetV1,
 };
 pub use manifest::PackageManifest;
 
@@ -30,6 +30,7 @@ pub(crate) struct ResourceResolver {
     resource_refusals: RefCell<BTreeSet<String>>,
     bindings: Option<BindingSession>,
     design_snapshot: Option<String>,
+    readset: Option<ResourceReadSetV1>,
 }
 
 impl ResourceResolver {
@@ -75,6 +76,7 @@ impl ResourceResolver {
             resource_refusals: RefCell::default(),
             bindings: None,
             design_snapshot: None,
+            readset: None,
         })
     }
 
@@ -83,6 +85,7 @@ impl ResourceResolver {
         bindings: &[ResourceBindingV1],
         readset: Option<ResourceReadSetV1>,
     ) -> Result<Self, MfdError> {
+        self.readset = readset.clone();
         if !bindings.is_empty() {
             let snapshot = crate::design::read(&self.mapping_path)?;
             self.bindings = Some(BindingSession::new(
@@ -117,6 +120,39 @@ impl ResourceResolver {
     pub(crate) fn finish_bindings(&self) -> Result<(), MfdError> {
         match &self.bindings {
             Some(session) => session.finish(),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn mapping_library(
+        &self,
+        reference: &str,
+        origin_sha256: [u8; 32],
+    ) -> Result<std::rc::Rc<BoundResource>, String> {
+        if let Some(bound) =
+            self.bound_resource(ResourceBindingKindV1::MappingLibrary, reference)?
+        {
+            return Ok(bound);
+        }
+        // No basename search or case-insensitive directory discovery. The
+        // saved document-relative reference selects one rooted native read.
+        let target = self.package_relative_path(reference, "declared mapping library")?;
+        BoundResource::mapping_library(
+            &self.package_root,
+            &self.mapping_path,
+            origin_sha256,
+            reference,
+            &target,
+            self.readset.clone(),
+        )
+    }
+
+    pub(crate) fn record_mapping_library_definition(
+        &self,
+        record: MappingLibraryDefinitionRecordV1,
+    ) -> Result<(), String> {
+        match &self.readset {
+            Some(readset) => readset.record_mapping_library_definition(record),
             None => Ok(()),
         }
     }

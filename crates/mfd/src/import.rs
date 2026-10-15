@@ -1978,6 +1978,15 @@ fn import_resolved(
                                 )),
                             }
                         }
+                    } else if component.attribute("kind") == Some("19")
+                        && udf_registry.has_declared_mapping_libraries()
+                    {
+                        warnings.push(format!(
+                            "unresolved declared user-defined function `{name}` ({other}): {}; no module discovery or name fallback is permitted",
+                            udf_registry.unsupported_reason(other, &name).unwrap_or(
+                                "required declaring library resource/producer is unavailable or the symbol is not directly exported"
+                            )
+                        ));
                     } else {
                         match external_scalar::read(&component, path, &selected_language, resources)
                         {

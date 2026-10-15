@@ -23,6 +23,8 @@ const MAX_IMPORT_BYTES: usize = 128 * 1024 * 1024;
 pub enum ResourceBindingKindV1 {
     XmlSchema,
     EdiConfig,
+    /// Declarative `.mfd` UDF metadata, never an executable mapping/module.
+    MappingLibrary,
 }
 
 /// One exact `(canonical original MFD, original reference, kind)` authorization.
@@ -37,7 +39,7 @@ pub struct ResourceBindingV1 {
     origin_sha256: Option<[u8; 32]>,
     root: PathBuf,
     target: PathBuf,
-    sha256: [u8; 32],
+    sha256: Option<[u8; 32]>,
     pins: BTreeMap<PathBuf, [u8; 32]>,
     prepared: Arc<BTreeMap<PathBuf, Arc<[u8]>>>,
 }
@@ -91,7 +93,7 @@ impl ResourceBindingV1 {
             origin_sha256: None,
             root,
             target,
-            sha256,
+            sha256: Some(sha256),
             pins: BTreeMap::new(),
             prepared: Arc::default(),
         })
@@ -174,12 +176,81 @@ pub struct ResourceReadRecordV1 {
     pub from_prepared_snapshot: bool,
 }
 
+/// Exact document-owned function identity, not a function-name alias.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MappingLibraryFunctionIdentityV1 {
+    pub document: PathBuf,
+    pub sha256: [u8; 32],
+    pub library: String,
+    pub name: String,
+}
+
+/// Host-private declarative authority. The exact declaration retains its saved
+/// signature, parameter defaults and ports; never serialized into a Project.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MappingLibraryDefinitionRecordV1 {
+    pub declaring_document: PathBuf,
+    pub declaring_sha256: [u8; 32],
+    pub original_reference: String,
+    pub identity: MappingLibraryFunctionIdentityV1,
+    pub declaration_xml: String,
+    pub dependencies: Vec<MappingLibraryFunctionIdentityV1>,
+    /// Supported means a complete, resource-free scalar recipe, not totality:
+    /// ordinary scalar errors and lazy branches retain existing semantics.
+    pub refusal: Option<String>,
+}
+
+impl MappingLibraryDefinitionRecordV1 {
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let identity_size = |i: &MappingLibraryFunctionIdentityV1| {
+            i.document.as_os_str().len() + i.library.len() + i.name.len() + 32
+        };
+        self.declaration_xml.len()
+            + self.declaring_document.as_os_str().len()
+            + self.original_reference.len()
+            + 32
+            + identity_size(&self.identity)
+            + self.dependencies.iter().map(identity_size).sum::<usize>()
+            + self.refusal.as_ref().map_or(0, String::len)
+    }
+}
+
 /// Append-only, explicitly host-selected private provenance. Clones share the
-/// sink, but resource caches and failures are private to each import session.
+/// sinks, but resource caches and failures are private to each import session.
 #[derive(Clone, Debug, Default)]
-pub struct ResourceReadSetV1(Arc<Mutex<Vec<ResourceReadRecordV1>>>);
+pub struct ResourceReadSetV1(
+    Arc<Mutex<Vec<ResourceReadRecordV1>>>,
+    Arc<Mutex<Vec<MappingLibraryDefinitionRecordV1>>>,
+);
 
 impl ResourceReadSetV1 {
+    pub fn mapping_library_definitions(&self) -> Vec<MappingLibraryDefinitionRecordV1> {
+        self.1.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn take_mapping_library_definitions(&self) -> Vec<MappingLibraryDefinitionRecordV1> {
+        std::mem::take(&mut *self.1.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub(crate) fn record_mapping_library_definition(
+        &self,
+        record: MappingLibraryDefinitionRecordV1,
+    ) -> Result<(), String> {
+        let mut records = self.1.lock().unwrap_or_else(|e| e.into_inner());
+        if records.len() >= 4096
+            || records
+                .iter()
+                .map(MappingLibraryDefinitionRecordV1::retained_bytes)
+                .sum::<usize>()
+                + record.retained_bytes()
+                > 32 * 1024 * 1024
+        {
+            return Err("mapping-library definition evidence budget exceeded".into());
+        }
+        records.push(record);
+        Ok(())
+    }
+
     pub fn records(&self) -> Vec<ResourceReadRecordV1> {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -349,6 +420,43 @@ impl std::fmt::Debug for BoundResource {
 }
 
 impl BoundResource {
+    /// Same native rooted reader as explicit bindings, without claiming an
+    /// expected digest for a naturally located package-contained library.
+    pub(crate) fn mapping_library(
+        root: &Path,
+        origin: &Path,
+        origin_sha256: [u8; 32],
+        reference: &str,
+        target: &Path,
+        readset: Option<ResourceReadSetV1>,
+    ) -> Result<Rc<Self>, String> {
+        let target = relative(target).map_err(|e| e.to_string())?;
+        let root = rooted::Root::open(root).map_err(|e| e.to_string())?;
+        let binding = ResourceBindingV1 {
+            kind: ResourceBindingKindV1::MappingLibrary,
+            origin: origin.to_path_buf(),
+            reference: reference.into(),
+            origin_sha256: Some(origin_sha256),
+            root: root.path().to_path_buf(),
+            target,
+            sha256: None,
+            pins: BTreeMap::new(),
+            prepared: Arc::default(),
+        };
+        Ok(Rc::new(Self {
+            path: root.path().join(&binding.target),
+            binding,
+            root,
+            cache: RefCell::default(),
+            bytes: Cell::new(0),
+            total: Rc::new(Cell::new(0)),
+            requests: Rc::new(Cell::new(0)),
+            failure: Rc::default(),
+            readset,
+            origin_sha256,
+        }))
+    }
+
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
@@ -396,6 +504,7 @@ impl BoundResource {
         let (max_files, max_bytes): (usize, usize) = match self.binding.kind {
             ResourceBindingKindV1::XmlSchema => (64, 64 * 1024 * 1024),
             ResourceBindingKindV1::EdiConfig => (32, 8 * 1024 * 1024),
+            ResourceBindingKindV1::MappingLibrary => (32, 32 * 1024 * 1024),
         };
         if self.cache.borrow().len() >= max_files {
             return Err(self.fail("bound resource file-count limit exceeded"));
@@ -403,6 +512,11 @@ impl BoundResource {
         let budget = max_bytes
             .saturating_sub(self.bytes.get())
             .min(MAX_IMPORT_BYTES.saturating_sub(self.total.get()));
+        let budget = if self.binding.kind == ResourceBindingKindV1::MappingLibrary {
+            budget.min(8 * 1024 * 1024)
+        } else {
+            budget
+        };
         let prepared = self.binding.prepared.get(&rel);
         let bytes: Arc<[u8]> = match prepared {
             Some(bytes) => bytes.clone(),
@@ -420,7 +534,7 @@ impl BoundResource {
         }
         let digest: [u8; 32] = Sha256::digest(bytes.as_ref()).into();
         let expected = if rel == self.binding.target {
-            Some(self.binding.sha256)
+            self.binding.sha256
         } else {
             self.binding.pins.get(&rel).copied()
         };
