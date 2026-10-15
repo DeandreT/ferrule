@@ -385,6 +385,7 @@ pub(super) fn read(
         scalar_interface: Some(ScalarInterface {
             parameters: scalar_parameters,
             outputs: scalar_outputs,
+            external_required: None,
         }),
     })
 }

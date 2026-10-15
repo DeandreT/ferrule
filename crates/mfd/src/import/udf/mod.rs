@@ -11,6 +11,7 @@ use super::graph::{GraphBuilder, read_edge_inputs, read_edges};
 use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
 use crate::resource::ResourceResolver;
 
+mod libraries;
 mod scalar;
 mod sequence;
 pub(super) mod structured;
@@ -184,6 +185,7 @@ impl ScalarExpr {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct Definition {
     parameters: BTreeSet<u32>,
     structured_parameters: BTreeSet<u32>,
@@ -209,6 +211,9 @@ struct ScalarOutput {
 struct ScalarInterface {
     parameters: Vec<ScalarParameter>,
     outputs: Vec<ScalarOutput>,
+    // None preserves the embedded importer contract. Some is an external
+    // owner contract, including the zero-required-parameter case.
+    external_required: Option<BTreeSet<u32>>,
 }
 
 #[derive(Default)]
@@ -217,6 +222,11 @@ pub(super) struct Registry {
     supported: BTreeMap<(String, String), usize>,
     unsupported: BTreeMap<(String, String), String>,
     sources: Vec<super::schema::SchemaComponent>,
+    // External documents never enter schema/resource recognizers, even if a
+    // scalar recognizer fails. Each is resolved in its own registry first.
+    external_owner: bool,
+    origins: BTreeMap<usize, crate::resource::MappingLibraryDefinitionRecordV1>,
+    declared_mapping_libraries: bool,
 }
 
 impl Registry {
@@ -234,9 +244,22 @@ impl Registry {
         resources: &ResourceResolver,
         warnings: &mut Vec<String>,
     ) -> Self {
-        Self::read_resolved(mapping, resources.mapping_path(), Some(resources), warnings)
+        let mut registry = Self::default();
+        registry.declared_mapping_libraries = libraries::has_mapping_imports(*mapping);
+        let library_warning_start = warnings.len();
+        if let Err(reason) = libraries::read(mapping, resources, &mut registry, warnings) {
+            // A missing declared owner is a resource diagnostic, not permission
+            // to search for a historical/similarly named function body.
+            warnings.push(format!("declared mapping library unresolved: {reason}"));
+        }
+        registry.read_declarations(mapping, resources.mapping_path(), Some(resources), warnings);
+        for warning in &warnings[library_warning_start..] {
+            resources.record_refusal(warning.clone());
+        }
+        registry
     }
 
+    #[cfg(test)]
     fn read_resolved(
         mapping: &roxmltree::Node<'_, '_>,
         mfd_path: &std::path::Path,
@@ -244,6 +267,17 @@ impl Registry {
         warnings: &mut Vec<String>,
     ) -> Self {
         let mut registry = Self::default();
+        registry.read_declarations(mapping, mfd_path, resources, warnings);
+        registry
+    }
+
+    fn read_declarations(
+        &mut self,
+        mapping: &roxmltree::Node<'_, '_>,
+        mfd_path: &std::path::Path,
+        resources: Option<&ResourceResolver>,
+        warnings: &mut Vec<String>,
+    ) {
         let declarations = mapping
             .children()
             .filter(|node| node.is_element() && node.has_tag_name("component"))
@@ -260,12 +294,24 @@ impl Registry {
                 })
             })
             .collect::<Vec<_>>();
-        let declaration_by_key = declarations
-            .iter()
-            .map(|(key, component)| (key.clone(), *component))
-            .collect::<BTreeMap<_, _>>();
+        let mut declaration_by_key = BTreeMap::new();
+        let mut duplicates = BTreeSet::new();
+        for (key, component) in &declarations {
+            // A declaration in this owner precedes any imported function of
+            // the same exact library/name. Never let an import shadow it.
+            self.supported.remove(key);
+            self.unsupported.remove(key);
+            if declaration_by_key.insert(key.clone(), *component).is_some() {
+                duplicates.insert(key.clone());
+            }
+        }
+        for key in duplicates {
+            declaration_by_key.remove(&key);
+            self.unsupported
+                .insert(key, "conflicting exact declarations in one owner".into());
+        }
         for (key, _) in &declarations {
-            let _ = registry.resolve(
+            let _ = self.resolve(
                 key,
                 &declaration_by_key,
                 &mut Vec::new(),
@@ -274,7 +320,6 @@ impl Registry {
                 warnings,
             );
         }
-        registry
     }
 
     fn resolve<'a, 'input>(
@@ -317,6 +362,13 @@ impl Registry {
                 key.1, key.0
             ));
         };
+
+        if self.external_owner {
+            if let Err(reason) = libraries::validate_definition(component) {
+                self.unsupported.insert(key.clone(), reason.clone());
+                return Err(reason);
+            }
+        }
 
         if let Some(structure) = component
             .children()
@@ -364,7 +416,24 @@ impl Registry {
                 })
             });
         let result = dependency_result.and_then(|()| {
-            if direct_recursive {
+            if self.external_owner {
+                if direct_recursive {
+                    return Err("recursive imported scalar definition is unsupported".into());
+                }
+                scalar::read(&component, self)
+                    .map(|mut definition| {
+                        if let Some(interface) = &mut definition.scalar_interface {
+                            interface.external_required =
+                                Some(libraries::required_parameters(component));
+                        }
+                        (definition, None, Vec::new())
+                    })
+                    .map_err(|error| match error {
+                        scalar::ReadError::Shape(reason) | scalar::ReadError::Nested(reason) => {
+                            reason
+                        }
+                    })
+            } else if direct_recursive {
                 if let Some(definition) =
                     structured::try_read_adjacency_tree(&component, mfd_path, resources)?
                 {
@@ -405,6 +474,10 @@ impl Registry {
         self.supported
             .get(&(library.to_string(), name.to_string()))
             .copied()
+    }
+
+    pub(super) fn has_declared_mapping_libraries(&self) -> bool {
+        self.declared_mapping_libraries
     }
 
     pub(super) fn unsupported_reason(&self, library: &str, name: &str) -> Option<&str> {
@@ -721,6 +794,28 @@ impl Call {
             return Err(format!(
                 "input port references unknown definition parameter `{component_id}`"
             ));
+        }
+        if let Some(required) = shape
+            .scalar_interface
+            .as_ref()
+            .and_then(|i| i.external_required.as_ref())
+        {
+            let structure = component
+                .ancestors()
+                .find(|n| n.has_tag_name("structure"))
+                .ok_or("imported call has no owning graph")?;
+            let owner = structure.parent();
+            let feeds = read_edges(&structure, owner.as_ref());
+            for parameter in required {
+                if inputs
+                    .get(parameter)
+                    .is_none_or(|port| !feeds.contains_key(port))
+                {
+                    return Err(format!(
+                        "required imported parameter `{parameter}` has no connected producer"
+                    ));
+                }
+            }
         }
         Ok(Self {
             definition,
@@ -1099,6 +1194,10 @@ impl GraphBuilder<'_> {
             return None;
         };
         let filter = expression.nullable_pass_through()?;
+        let external = definition
+            .scalar_interface
+            .as_ref()
+            .is_some_and(|i| i.external_required.is_some());
         let mut predicate_parameters = BTreeSet::new();
         filter
             .predicate
@@ -1114,7 +1213,11 @@ impl GraphBuilder<'_> {
             let Some(feed) = self.edge_from.get(&port).copied() else {
                 continue;
             };
-            let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
+            let node = match self.value_node(feed) {
+                Some(node) => node,
+                None if external => return None,
+                None => self.const_null(),
+            };
             parameters.insert(parameter, node);
         }
         let predicate = instantiate(
@@ -1143,6 +1246,12 @@ impl GraphBuilder<'_> {
             return Some(node);
         }
         let call = self.udf_calls.get(call_idx)?;
+        let external = self
+            .udf_registry
+            .definition(call.definition)?
+            .scalar_interface
+            .as_ref()
+            .is_some_and(|i| i.external_required.is_some());
         let input_ports: Vec<_> = call
             .inputs
             .iter()
@@ -1153,7 +1262,11 @@ impl GraphBuilder<'_> {
             let Some(feed) = self.edge_from.get(&port).copied() else {
                 continue;
             };
-            let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
+            let node = match self.value_node(feed) {
+                Some(node) => node,
+                None if external => return None,
+                None => self.const_null(),
+            };
             parameters.insert(parameter, node);
         }
         let first_class_parameters = self
