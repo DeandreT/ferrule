@@ -183,7 +183,7 @@ enum Command {
         /// Include singular JSON5 text and UTF-8 byte companion methods.
         #[arg(long, conflicts_with = "csv_output")]
         json5_adapters: bool,
-        /// Include supported raw X12 text and strict UTF-8 C# methods.
+        /// Include supported raw X12 text and strict UTF-8 document methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
         /// Explicit ownership grammar for the primary X12 source. Requires
@@ -719,9 +719,6 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             if static_document_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--static-document-adapters currently requires --language csharp");
             }
-            if x12_adapters && matches!(language, CodegenLanguage::Rust) {
-                bail!("--x12-adapters currently requires --language csharp");
-            }
             let target = match language {
                 CodegenLanguage::Rust => cli::GenerateTarget::Rust {
                     runtime_path: rust_runtime_path.context(
@@ -1045,7 +1042,7 @@ mod x12_envelope_flag_tests {
     }
 
     #[test]
-    fn grouped_flag_backend_refusal_precedes_project_and_runtime_loading() {
+    fn rust_grouped_flag_requires_an_explicit_runtime_path() {
         let root = std::env::temp_dir().join(format!(
             "ferrule-grouped-x12-flag-{}-{}",
             std::process::id(),
@@ -1074,7 +1071,7 @@ mod x12_envelope_flag_tests {
         std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
         assert_eq!(
             result.unwrap_err().to_string(),
-            "--x12-adapters currently requires --language csharp"
+            "--rust-runtime-path is required for --language rust until the runtime crate is published"
         );
         assert!(!output.parent().unwrap().exists());
     }

@@ -991,11 +991,13 @@ version = "0.1.0"
 dependencies = [
  "codegen-schema",
  "format-csv",
+ "format-edi",
  "format-json",
  "format-xml",
  "functions",
  "ir",
  "json-pattern",
+ "mapping",
  "quick-xml 0.41.0",
  "regex",
  "serde_json",

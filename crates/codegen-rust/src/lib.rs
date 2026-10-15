@@ -24,7 +24,9 @@ mod owned_basic;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
+mod x12_api;
 mod xml_api;
+pub use x12_api::{X12EmitError, emit_with_x12};
 
 /// How a generated Cargo project locates ferrule's small Rust runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]

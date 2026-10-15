@@ -57,7 +57,7 @@ pub fn generate_project_with_json5_adapters(
     generate_project_impl(project_path, output_directory, target, Adapter::Json5)
 }
 
-/// Generate supported explicit single-envelope raw X12 companions for a C# mapping.
+/// Generate supported explicit primary raw X12 companions for a Rust or C# mapping.
 /// The stored primary format identities and all retained options must agree
 /// with the selected bounded boundary before any source tree is published.
 pub fn generate_project_with_x12_adapters(
@@ -78,9 +78,6 @@ pub fn generate_project_with_x12_envelope_profiles(
     source_envelope: Option<codegen::X12EnvelopeProfile>,
     target_envelope: Option<codegen::X12EnvelopeProfile>,
 ) -> anyhow::Result<GenerateOutcome> {
-    if target != GenerateTarget::CSharp {
-        bail!("generated raw X12 adapters currently require the C# backend");
-    }
     generate_project_impl(
         project_path,
         output_directory,
@@ -277,7 +274,9 @@ fn generate_project_impl(
                 package_name: "ferrule-generated-mapping".to_string(),
                 runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime_path.to_owned()),
             };
-            if adapter == Adapter::Json5 {
+            if let Some(policy) = &x12_policy {
+                codegen_rust::emit_with_x12(&program, &options, policy)?
+            } else if adapter == Adapter::Json5 {
                 codegen_rust::emit_with_json5(&program, &options)?
             } else {
                 match &csv_policy {
