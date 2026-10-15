@@ -100,6 +100,107 @@ fn is_edifact_segment_group(name: &str) -> bool {
     })
 }
 
+#[cfg(test)]
+mod edifact_group_classification_regressions {
+    use super::*;
+    #[test]
+    fn edifact_sgn_containers_keep_literal_wire_and_all_occurrences() {
+        fn fields(id: &str, count: usize) -> SchemaNode {
+            SchemaNode::group(
+                id,
+                (1..=count)
+                    .map(|at| SchemaNode::scalar(format!("E{at:02}"), ScalarType::String))
+                    .collect(),
+            )
+        }
+        fn value(text: &str) -> Instance {
+            Instance::Scalar(Value::String(text.into()))
+        }
+        let wire = "UNB+UNOC:3+ALPHA+BETA+300615:0945+7'\nNAD+one'\nNAD+two'\nUNZ+1+7'\n";
+        for name in ["SG1", "MF_SG1_2", "SG10"] {
+            let mut unb = fields("UNB", 5);
+            if let SchemaKind::Group { children, .. } = &mut unb.kind {
+                children[0] = fields("E01", 2);
+                children[3] = fields("E04", 2);
+            }
+            let schema = SchemaNode::group(
+                "Envelope",
+                vec![
+                    unb,
+                    SchemaNode::group(name, vec![fields("NAD", 1)]).repeating(),
+                    fields("UNZ", 2),
+                ],
+            );
+            let expected = Instance::Group(
+                vec![
+                    (
+                        "UNB".into(),
+                        Instance::Group(
+                            vec![
+                                (
+                                    "E01".into(),
+                                    Instance::Group(
+                                        vec![
+                                            ("E01".into(), value("UNOC")),
+                                            ("E02".into(), value("3")),
+                                        ]
+                                        .into(),
+                                    ),
+                                ),
+                                ("E02".into(), value("ALPHA")),
+                                ("E03".into(), value("BETA")),
+                                (
+                                    "E04".into(),
+                                    Instance::Group(
+                                        vec![
+                                            ("E01".into(), value("300615")),
+                                            ("E02".into(), value("0945")),
+                                        ]
+                                        .into(),
+                                    ),
+                                ),
+                                ("E05".into(), value("7")),
+                            ]
+                            .into(),
+                        ),
+                    ),
+                    (
+                        name.into(),
+                        Instance::Repeated(
+                            ["one", "two"]
+                                .into_iter()
+                                .map(|text| {
+                                    Instance::Group(
+                                        vec![(
+                                            "NAD".into(),
+                                            Instance::Group(
+                                                vec![("E01".into(), value(text))].into(),
+                                            ),
+                                        )]
+                                        .into(),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                    ),
+                    (
+                        "UNZ".into(),
+                        Instance::Group(
+                            vec![("E01".into(), value("1")), ("E02".into(), value("7"))].into(),
+                        ),
+                    ),
+                ]
+                .into(),
+            );
+            assert_eq!(
+                crate::edifact::from_str(wire, &schema, false).unwrap(),
+                expected
+            );
+            assert_eq!(crate::edifact::to_string(&schema, &expected).unwrap(), wire);
+        }
+    }
+}
+
 enum Shape<'a> {
     Segment(&'a [SchemaNode]),
     Container(&'a [SchemaNode]),
