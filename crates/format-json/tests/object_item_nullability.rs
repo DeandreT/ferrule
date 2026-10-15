@@ -390,7 +390,7 @@ fn object_item_constraints_and_all_of_keep_separate_domains() {
         to_value(&intersection, &invalid_items),
         Err(JsonFormatError::Shape {
             expected: "object",
-            got: "scalar",
+            got: "json null",
             ..
         })
     ));
@@ -398,7 +398,7 @@ fn object_item_constraints_and_all_of_keep_separate_domains() {
         to_string(&intersection, &invalid_items),
         Err(JsonFormatError::Shape {
             expected: "object",
-            got: "scalar",
+            got: "json null",
             ..
         })
     ));
