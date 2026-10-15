@@ -97,6 +97,25 @@ pub fn generate_project_with_static_document_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
+    generate_project_with_static_document_envelope_profiles(
+        project_path,
+        output_directory,
+        target,
+        None,
+        None,
+    )
+}
+
+/// Generate static document adapters with explicitly selected envelope
+/// profiles for the primary X12 endpoints. Named endpoints keep their own
+/// policy; a selection on a primary JSON endpoint refuses.
+pub fn generate_project_with_static_document_envelope_profiles(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    source_envelope: Option<codegen::X12EnvelopeProfile>,
+    target_envelope: Option<codegen::X12EnvelopeProfile>,
+) -> anyhow::Result<GenerateOutcome> {
     if target != GenerateTarget::CSharp {
         bail!("generated static document adapters currently require the C# backend");
     }
@@ -104,7 +123,7 @@ pub fn generate_project_with_static_document_adapters(
         project_path,
         output_directory,
         target,
-        Adapter::StaticDocuments,
+        Adapter::StaticDocuments(source_envelope, target_envelope),
     )
 }
 
@@ -143,7 +162,10 @@ enum Adapter {
         Option<codegen::X12EnvelopeProfile>,
         Option<codegen::X12EnvelopeProfile>,
     ),
-    StaticDocuments,
+    StaticDocuments(
+        Option<codegen::X12EnvelopeProfile>,
+        Option<codegen::X12EnvelopeProfile>,
+    ),
     CsvX12,
     CsvJson,
 }
@@ -169,8 +191,8 @@ fn generate_project_impl(
     } else {
         None
     };
-    let static_document_policy = if adapter == Adapter::StaticDocuments {
-        let policy = static_documents::policy(&project)?;
+    let static_document_policy = if let Adapter::StaticDocuments(source, target) = adapter {
+        let policy = static_documents::policy_with_envelope_profiles(&project, source, target)?;
         codegen::prepare_static_document_project_boundaries(&project, &policy)?;
         Some(policy)
     } else {
