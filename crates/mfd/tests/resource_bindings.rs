@@ -747,12 +747,11 @@ fn directory_link(target: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        use std::os::windows::process::CommandExt;
         for path in [target, link] {
             if path.to_string_lossy().chars().any(|c| {
                 matches!(
                     c,
-                    '&' | '|' | '<' | '>' | '^' | '%' | '!' | '"' | '\r' | '\n'
+                    '&' | '|' | '<' | '>' | '^' | '%' | '!' | '"' | '\'' | '\r' | '\n'
                 )
             }) {
                 return Err(std::io::Error::other(
@@ -760,17 +759,21 @@ fn directory_link(target: &Path, link: &Path) -> std::io::Result<()> {
                 ));
             }
         }
-        let cmd = PathBuf::from(
+        let powershell = PathBuf::from(
             std::env::var_os("SystemRoot")
                 .ok_or_else(|| std::io::Error::other("SystemRoot missing"))?,
         )
-        .join("System32/cmd.exe");
-        // cmd does not use the C-runtime argv escaping convention. Supply one
-        // explicitly quoted command after rejecting shell metacharacters.
-        let command = format!("mklink /J \"{}\" \"{}\"", link.display(), target.display());
-        let outcome = std::process::Command::new(cmd)
-            .args(["/d", "/c"])
-            .raw_arg(&command)
+        .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+        // Use the installed native filesystem provider, not cmd's different
+        // argv/switch parsing rules. Paths are authored fixture values only.
+        let command = format!(
+            "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path '{}' -Target '{}' | Out-Null",
+            link.display(),
+            target.display()
+        );
+        let outcome = std::process::Command::new(powershell)
+            .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+            .arg(&command)
             .output()?;
         if !outcome.status.success() {
             return Err(std::io::Error::other(format!(
