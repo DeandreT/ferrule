@@ -84,6 +84,20 @@ fn mapforce_admission_is_explicit_and_uses_the_retained_version() {
             X12BoundarySide::Target,
         )
         .unwrap();
+        // Message configurations may declare SE optional.
+        let mut optional_se = candidate.clone();
+        node_mut(
+            &mut optional_se,
+            &["Interchange", "Group", "Message_945", "SE"],
+        )
+        .repeating = true;
+        retained_profile(
+            "mapforce-optional-se",
+            &optional_se,
+            &mapforce(isa),
+            X12BoundarySide::Target,
+        )
+        .unwrap();
     }
     // The shape is never inferred from repeating envelope segments.
     for profile in [
@@ -245,7 +259,7 @@ fn mapforce_refusals_name_their_exact_owner_and_reason() {
             }),
             Some("00501"),
             vec!["Interchange", "Group", "Message_945"],
-            "MapForce messages require singular ST first and singular SE last",
+            "MapForce messages require singular ST first and SE last",
         ),
         (
             "missing-se",
@@ -254,7 +268,7 @@ fn mapforce_refusals_name_their_exact_owner_and_reason() {
             }),
             Some("00501"),
             vec!["Interchange", "Group", "Message_945"],
-            "MapForce messages require singular ST first and singular SE last",
+            "MapForce messages require singular ST first and SE last",
         ),
         (
             "envelope-in-body",
