@@ -1,4 +1,4 @@
-//! X12 interchange admission: explicit selection, the retained version
+//! Repeating-interchange admission: explicit selection, the retained version
 //! and exact typed refusals for every ownership, width and type rule.
 use super::*;
 
@@ -33,9 +33,9 @@ fn repeating_envelope_schema() -> SchemaNode {
     serde_json::from_str(SCHEMAS[1].2).unwrap()
 }
 
-fn repeating_options(version: &str) -> X12BoundaryOptions {
+fn repeating_envelope(version: &str) -> X12BoundaryOptions {
     X12BoundaryOptions {
-        envelope_profile: X12EnvelopeProfile::MapForceInterchanges,
+        envelope_profile: X12EnvelopeProfile::REPEATING_INTERCHANGES,
         interchange_version: Some(version.into()),
         ..Default::default()
     }
@@ -51,7 +51,7 @@ fn node_mut<'a>(schema: &'a mut SchemaNode, path: &[&str]) -> &'a mut SchemaNode
 
 fn children_mut<'a>(schema: &'a mut SchemaNode, path: &[&str]) -> &'a mut Vec<SchemaNode> {
     let SchemaKind::Group { children, .. } = &mut node_mut(schema, path).kind else {
-        panic!("repeating-interchange test owner must be a group");
+        panic!("RepeatingEnvelope test owner must be a group");
     };
     children
 }
@@ -61,8 +61,13 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
     for (isa, version, literal) in SCHEMAS {
         let candidate: SchemaNode = serde_json::from_str(literal).unwrap();
         for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
-            let encoded =
-                retained_profile("repeating-envelope-version", &candidate, &repeating_options(isa), side).unwrap();
+            let encoded = retained_profile(
+                "repeating-envelope-version",
+                &candidate,
+                &repeating_envelope(isa),
+                side,
+            )
+            .unwrap();
             let descriptor: serde_json::Value = serde_json::from_str(&encoded).unwrap();
             assert_eq!(descriptor["envelope_profile"], "mapforce_interchanges");
             assert_eq!(descriptor["version"], version);
@@ -80,7 +85,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         retained_profile(
             "repeating-envelope-fixed-version",
             &fixed,
-            &repeating_options(isa),
+            &repeating_envelope(isa),
             X12BoundarySide::Target,
         )
         .unwrap();
@@ -94,7 +99,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         retained_profile(
             "repeating-envelope-optional-se",
             &optional_se,
-            &repeating_options(isa),
+            &repeating_envelope(isa),
             X12BoundarySide::Target,
         )
         .unwrap();
@@ -124,7 +129,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         ..program()
     };
     let policy = X12BoundaryPolicy {
-        source: Some(repeating_options("00501")),
+        source: Some(repeating_envelope("00501")),
         target: None,
     };
     let profile = prepare_x12_boundary(&program, &policy).unwrap();
@@ -154,7 +159,7 @@ fn repeating_envelope_refusals_name_their_exact_owner_and_reason() {
             }),
             Some("00501"),
             vec!["Interchange", "Group", "ParserErrors_Message"],
-            "acknowledgment branches are outside the generated profile",
+            MISPLACED,
         ),
         (
             "extra-root-child",
@@ -375,7 +380,7 @@ fn repeating_envelope_refusals_name_their_exact_owner_and_reason() {
         mutate(&mut candidate);
         let options = X12BoundaryOptions {
             interchange_version: version.map(Into::into),
-            ..repeating_options("00501")
+            ..repeating_envelope("00501")
         };
         for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
             let result = retained_profile(label, &candidate, &options, side);
@@ -389,7 +394,7 @@ fn repeating_envelope_refusals_name_their_exact_owner_and_reason() {
 }
 
 #[test]
-fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_syntax() {
+fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
     let path = vec![
         "Interchange".to_owned(),
         "ISA".to_owned(),
@@ -398,9 +403,14 @@ fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_synt
     for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
         let options = X12BoundaryOptions {
             implied_decimals: vec![EdiImpliedDecimal::new(path.clone(), 2).unwrap()],
-            ..repeating_options("00501")
+            ..repeating_envelope("00501")
         };
-        let result = retained_profile("repeating-envelope-implied", &repeating_envelope_schema(), &options, side);
+        let result = retained_profile(
+            "repeating-envelope-implied",
+            &repeating_envelope_schema(),
+            &options,
+            side,
+        );
         assert!(
             matches!(&result, Err(X12BoundaryPolicyError::Schema { path: found, reason, .. })
                 if *found == path && *reason == "implied decimals cannot apply to repeating-interchange envelope elements"),
@@ -420,7 +430,7 @@ fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_synt
         &repeating_envelope_schema(),
         &X12BoundaryOptions {
             implied_decimals: vec![EdiImpliedDecimal::new(body, 2).unwrap()],
-            ..repeating_options("00501")
+            ..repeating_envelope("00501")
         },
         X12BoundarySide::Source,
     )
@@ -433,7 +443,7 @@ fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_synt
             repetition: Some('^'),
             release: Some('?'),
         }),
-        ..repeating_options("00501")
+        ..repeating_envelope("00501")
     };
     assert!(matches!(
         retained_profile(
@@ -444,4 +454,277 @@ fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_synt
         ),
         Err(X12BoundaryPolicyError::Separators { .. })
     ));
+}
+
+const MISPLACED: &str =
+    "an acknowledgment branch must be the last member of its functional group or message";
+const SOURCE_ONLY: &str =
+    "acknowledgment branches are source-only; X12 output never writes parser acknowledgments";
+
+fn acknowledgment_schema() -> SchemaNode {
+    serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../codegen-csharp/tests/x12/repeating-envelope-acknowledgments/fixtures/005010-schema.json"
+    )))
+    .unwrap()
+}
+
+fn branch(name: &str) -> SchemaNode {
+    SchemaNode::group(
+        name,
+        vec![
+            SchemaNode::group(
+                "MF_AK9",
+                vec![SchemaNode::scalar("F715", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    )
+    .repeating()
+}
+
+fn assert_refused(
+    label: &str,
+    candidate: &SchemaNode,
+    side: X12BoundarySide,
+    path: &[&str],
+    reason: &str,
+) {
+    let result = retained_profile(label, candidate, &repeating_envelope("00501"), side);
+    assert!(
+        matches!(&result, Err(X12BoundaryPolicyError::Schema { side: actual, path: found, reason: found_reason })
+            if *actual == side && *found == path && *found_reason == reason),
+        "{label} {side:?}: {result:?}"
+    );
+}
+
+#[test]
+fn repeating_envelope_source_admits_trailing_acknowledgment_branches() {
+    let candidate = acknowledgment_schema();
+    let encoded = retained_profile(
+        "repeating-envelope-acknowledgments",
+        &candidate,
+        &repeating_envelope("00501"),
+        X12BoundarySide::Source,
+    )
+    .unwrap();
+    let descriptor: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        codegen_schema::decode(
+            descriptor["schema"].as_str().unwrap(),
+            MAX_EMBEDDED_X12_DESCRIPTOR_BYTES,
+        )
+        .unwrap(),
+        candidate
+    );
+    let group = node_mut(
+        &mut candidate.clone(),
+        &["Interchange", "Group", "ParserErrors_Group"],
+    )
+    .clone();
+    let message = node_mut(
+        &mut candidate.clone(),
+        &[
+            "Interchange",
+            "Group",
+            "Message_945",
+            "ParserErrors_Message",
+        ],
+    )
+    .clone();
+    // Each placement is independent, in every supported version.
+    for (isa, _, literal) in SCHEMAS {
+        let plain: SchemaNode = serde_json::from_str(literal).unwrap();
+        let mut both = plain.clone();
+        children_mut(&mut both, &["Interchange", "Group"]).push(group.clone());
+        children_mut(&mut both, &["Interchange", "Group", "Message_945"]).push(message.clone());
+        let mut group_only = plain.clone();
+        children_mut(&mut group_only, &["Interchange", "Group"]).push(group.clone());
+        let mut message_only = plain.clone();
+        children_mut(&mut message_only, &["Interchange", "Group", "Message_945"])
+            .push(message.clone());
+        // An optional SE keeps the message branch after it.
+        let mut optional_se = message_only.clone();
+        node_mut(
+            &mut optional_se,
+            &["Interchange", "Group", "Message_945", "SE"],
+        )
+        .repeating = true;
+        for (label, schema, target_path) in [
+            (
+                "both",
+                &both,
+                vec!["Interchange", "Group", "ParserErrors_Group"],
+            ),
+            (
+                "group-only",
+                &group_only,
+                vec!["Interchange", "Group", "ParserErrors_Group"],
+            ),
+            (
+                "message-only",
+                &message_only,
+                vec![
+                    "Interchange",
+                    "Group",
+                    "Message_945",
+                    "ParserErrors_Message",
+                ],
+            ),
+            (
+                "optional-se",
+                &optional_se,
+                vec![
+                    "Interchange",
+                    "Group",
+                    "Message_945",
+                    "ParserErrors_Message",
+                ],
+            ),
+        ] {
+            retained_profile(
+                label,
+                schema,
+                &repeating_envelope(isa),
+                X12BoundarySide::Source,
+            )
+            .unwrap_or_else(|error| panic!("{isa} {label}: {error:?}"));
+            assert_refused(
+                label,
+                schema,
+                X12BoundarySide::Target,
+                &target_path,
+                SOURCE_ONLY,
+            );
+        }
+    }
+}
+
+#[test]
+fn repeating_envelope_acknowledgment_branches_refuse_other_placements_and_shapes() {
+    let cases: Vec<(&str, SchemaMutation, Vec<&str>, &str)> = vec![
+        (
+            "group-branch-before-ge",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group"])
+                    .insert(2, branch("ParserErrors_Group"))
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group"],
+            MISPLACED,
+        ),
+        (
+            "message-branch-before-se",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945"])
+                    .insert(4, branch("ParserErrors_Message"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "Message_945",
+                "ParserErrors_Message",
+            ],
+            MISPLACED,
+        ),
+        (
+            "interchange-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange"]).push(branch("ParserErrors_Interchange"))
+            }),
+            vec!["Interchange", "ParserErrors_Interchange"],
+            MISPLACED,
+        ),
+        (
+            "root-branch",
+            Box::new(|schema| children_mut(schema, &[]).push(branch("ParserErrors_Envelope"))),
+            vec!["ParserErrors_Envelope"],
+            MISPLACED,
+        ),
+        (
+            "body-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945", "Detail"])
+                    .push(branch("ParserErrors_Detail"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "Message_945",
+                "Detail",
+                "ParserErrors_Detail",
+            ],
+            MISPLACED,
+        ),
+        (
+            "unprefixed-group-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group"]).push(branch("Acknowledgments"))
+            }),
+            vec!["Interchange", "Group"],
+            "each functional group in a repeating interchange requires exactly GS, one message container and GE",
+        ),
+        (
+            "unprefixed-message-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945"])
+                    .push(branch("Acknowledgments"))
+            }),
+            vec!["Interchange", "Group", "Message_945"],
+            "each message in a repeating interchange requires a singular ST first and SE last",
+        ),
+    ];
+    for (label, mutate, path, reason) in cases {
+        let mut candidate = repeating_envelope_schema();
+        mutate(&mut candidate);
+        for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
+            assert_refused(label, &candidate, side, &path, reason);
+        }
+    }
+    // Admitted placements still require a repeating container of ordinary
+    // segments; output refuses the branch itself first.
+    let source_cases: Vec<(&str, SchemaMutation, Vec<&str>, &str)> = vec![
+        (
+            "singular-branch",
+            Box::new(|schema| {
+                node_mut(schema, &["Interchange", "Group", "ParserErrors_Group"]).repeating = false
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group"],
+            "acknowledgment branches must be repeating non-segment containers",
+        ),
+        (
+            "envelope-in-branch",
+            Box::new(|schema| {
+                let ge = node_mut(schema, &["Interchange", "Group", "GE"]).clone();
+                children_mut(schema, &["Interchange", "Group", "ParserErrors_Group"]).push(ge)
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group", "GE"],
+            "acknowledgment branches cannot contain envelope segments",
+        ),
+        (
+            "nested-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "ParserErrors_Group"])
+                    .push(branch("ParserErrors_Nested"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "ParserErrors_Group",
+                "ParserErrors_Nested",
+            ],
+            MISPLACED,
+        ),
+    ];
+    for (label, mutate, path, reason) in source_cases {
+        let mut candidate = acknowledgment_schema();
+        mutate(&mut candidate);
+        assert_refused(label, &candidate, X12BoundarySide::Source, &path, reason);
+        assert_refused(
+            label,
+            &candidate,
+            X12BoundarySide::Target,
+            &["Interchange", "Group", "ParserErrors_Group"],
+            SOURCE_ONLY,
+        );
+    }
 }

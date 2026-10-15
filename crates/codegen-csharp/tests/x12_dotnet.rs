@@ -27,6 +27,8 @@ const DEEP: &str = include_str!("x12/deep-940.x12");
 mod grouped;
 #[path = "x12/repeating_envelope.rs"]
 mod repeating_envelope;
+#[path = "x12/repeating_envelope_acknowledgments.rs"]
+mod repeating_envelope_acknowledgments;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/repeated.rs"]

@@ -16,6 +16,9 @@ pub const MAX_EMBEDDED_X12_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
 const ENVELOPE_SEGMENTS: [&str; 6] = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
+/// Prefix of the acknowledgment branches the reference application adds to X12 components that
+/// validate acknowledgments.
+const ACKNOWLEDGMENT_PREFIX: &str = "ParserErrors_";
 
 /// Declared ownership grammar for a complete X12 document. Grouped and
 /// The reference application ownership are explicit; saved schemas and format options do not
@@ -767,6 +770,9 @@ fn validate_repeating_envelope_fields(
 
 /// the X12 `Envelope.Config` ownership. The importer represents optional
 /// envelope segments as repeating; ST and SE remain singular message bounds.
+/// A source may also carry the trailing acknowledgment branches that
+/// acknowledgment validation adds after GE and SE; generated input reads them
+/// as empty collections.
 fn validate_repeating_envelope_grammar(
     schema: &SchemaNode,
     side: X12BoundarySide,
@@ -782,20 +788,62 @@ fn validate_repeating_envelope_grammar(
         path.push(name.to_owned());
         path
     }
+    fn acknowledgment(node: &SchemaNode) -> bool {
+        node.name.starts_with(ACKNOWLEDGMENT_PREFIX)
+    }
+    fn trailing_acknowledgment(node: Option<&SchemaNode>) -> Option<&SchemaNode> {
+        children(node?).last().filter(|last| acknowledgment(last))
+    }
+    // Acknowledgment validation adds exactly two placements: the trailing
+    // member of a functional group (after GE) and of a message (after SE).
+    let group_candidate = children(schema)
+        .first()
+        .and_then(|interchange| children(interchange).get(1));
+    let message_candidate = group_candidate.and_then(|group| children(group).get(1));
+    let group_acknowledgment = trailing_acknowledgment(group_candidate);
+    let message_acknowledgment = trailing_acknowledgment(message_candidate);
+    let admitted = |node: &SchemaNode| {
+        [group_acknowledgment, message_acknowledgment]
+            .into_iter()
+            .flatten()
+            .any(|branch| std::ptr::eq(branch, node))
+    };
     let mut pending = vec![(schema, Vec::new())];
     while let Some((node, path)) = pending.pop() {
-        if node.name.starts_with("ParserErrors_") {
-            return Err(schema_error(
-                side,
-                &path,
-                "acknowledgment branches are outside the generated profile",
-            ));
+        if acknowledgment(node) {
+            if !admitted(node) {
+                return Err(schema_error(
+                    side,
+                    &path,
+                    "an acknowledgment branch must be the last member of its functional group or message",
+                ));
+            }
+            if side == X12BoundarySide::Target {
+                return Err(schema_error(
+                    side,
+                    &path,
+                    "acknowledgment branches are source-only; X12 output never writes parser acknowledgments",
+                ));
+            }
+            if !node.repeating
+                || segment_id(&node.name).is_some()
+                || !matches!(node.kind, SchemaKind::Group { .. })
+            {
+                return Err(schema_error(
+                    side,
+                    &path,
+                    "acknowledgment branches must be repeating non-segment containers",
+                ));
+            }
         }
         pending.extend(
             children(node)
                 .iter()
                 .map(|child| (child, joined(&path, &child.name))),
         );
+    }
+    fn without<'a>(members: &'a [SchemaNode], branch: Option<&SchemaNode>) -> &'a [SchemaNode] {
+        &members[..members.len() - usize::from(branch.is_some())]
     }
     let owner = |node: &SchemaNode, path: &[String]| {
         if !node.repeating
@@ -847,7 +895,7 @@ fn validate_repeating_envelope_grammar(
     let group = &members[1];
     let group_path = joined(&interchange_path, &group.name);
     owner(group, &group_path)?;
-    let members = children(group);
+    let members = without(children(group), group_acknowledgment);
     if members.len() > 3
         && segment_id(&members[0].name) == Some("GS")
         && segment_id(&members[members.len() - 1].name) == Some("GE")
@@ -876,7 +924,7 @@ fn validate_repeating_envelope_grammar(
     let message = &members[1];
     let message_path = joined(&group_path, &message.name);
     owner(message, &message_path)?;
-    let members = children(message);
+    let members = without(children(message), message_acknowledgment);
     if members.len() < 2
         || segment_id(&members[0].name) != Some("ST")
         || segment_id(&members[members.len() - 1].name) != Some("SE")
@@ -890,15 +938,24 @@ fn validate_repeating_envelope_grammar(
     }
     let mut pending = members[1..members.len() - 1]
         .iter()
-        .map(|member| (member, joined(&message_path, &member.name)))
+        .map(|member| (member, joined(&message_path, &member.name), false))
+        .chain(group_acknowledgment.map(|branch| (branch, joined(&group_path, &branch.name), true)))
+        .chain(
+            message_acknowledgment
+                .map(|branch| (branch, joined(&message_path, &branch.name), true)),
+        )
         .collect::<Vec<_>>();
-    while let Some((node, path)) = pending.pop() {
+    while let Some((node, path, branch)) = pending.pop() {
         if let Some(id) = segment_id(&node.name) {
             if ENVELOPE_SEGMENTS.contains(&id) {
                 return Err(schema_error(
                     side,
                     &path,
-                    "message bodies in a repeating interchange cannot contain envelope segments",
+                    if branch {
+                        "acknowledgment branches cannot contain envelope segments"
+                    } else {
+                        "message bodies in a repeating interchange cannot contain envelope segments"
+                    },
                 ));
             }
             continue;
@@ -906,7 +963,7 @@ fn validate_repeating_envelope_grammar(
         pending.extend(
             children(node)
                 .iter()
-                .map(|child| (child, joined(&path, &child.name))),
+                .map(|child| (child, joined(&path, &child.name), branch)),
         );
     }
     Ok(())
