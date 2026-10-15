@@ -133,11 +133,24 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
     std::fs::copy(fixture("pdf-table.pxt"), temp.0.join("Garden-Layout.PXT")).unwrap();
     std::fs::write(temp.0.join("Garden-Input.PDF"), b"").unwrap();
 
+    let expected_input = if temp.0.join("garden-input.pdf").is_file() {
+        "garden-input.pdf"
+    } else {
+        "Garden-Input.PDF"
+    };
+
     let imported = mfd::import(&temp.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
         imported.project.source_path.as_deref(),
-        Some("Garden-Input.PDF")
+        Some(expected_input)
+    );
+    let resolved_input = temp
+        .0
+        .join(imported.project.source_path.as_deref().unwrap());
+    assert_eq!(
+        std::fs::canonicalize(resolved_input).unwrap(),
+        std::fs::canonicalize(temp.0.join("Garden-Input.PDF")).unwrap()
     );
     let layout = imported.project.source_options.pdf.as_ref().unwrap();
     assert!(has_minimum_extent(layout.commands(), 30.0));
