@@ -34,6 +34,11 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
             vec![20, 20, 20],
         ),
         (
+            "json_parse_object_exists",
+            ScalarFunction::JsonParseObjectExists,
+            vec![20, 20, 20],
+        ),
+        (
             "json_serialize_object",
             ScalarFunction::JsonSerializeObject,
             vec![20, 20, 20],
@@ -97,6 +102,10 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("random", ScalarFunction::Random),
         ("format_guid_string", ScalarFunction::FormatGuidString),
         ("json_parse_field", ScalarFunction::JsonParseField),
+        (
+            "json_parse_object_exists",
+            ScalarFunction::JsonParseObjectExists,
+        ),
         ("json_serialize_object", ScalarFunction::JsonSerializeObject),
         ("format_number", ScalarFunction::FormatNumber),
         (

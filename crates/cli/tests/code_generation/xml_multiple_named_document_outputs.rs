@@ -322,6 +322,7 @@ fn exercise(language: &str, reverse: bool) -> TestResult<()> {
         build
             .args(["build", "--quiet", "--jobs", "1"])
             .current_dir(&host)
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", &target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-D warnings");

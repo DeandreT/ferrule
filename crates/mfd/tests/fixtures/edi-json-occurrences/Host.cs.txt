@@ -1,0 +1,49 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static JsonNode? Logical(FerruleInstance node) => node switch
+{
+    FerruleGroup group => new JsonObject(group.Fields.Select(field => new KeyValuePair<string, JsonNode?>(field.Name, Logical(field.Value)))),
+    FerruleRepeated repeated => new JsonArray(repeated.Items.Select(Logical).ToArray()),
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Null => null,
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.String => JsonValue.Create(scalar.Value.StringValue),
+    _ => throw new InvalidOperationException("Source must retain ordinary String or absent Null scalar tags."),
+};
+
+static string Wire(string segments)
+{
+    int count = segments.Split("N1", StringSplitOptions.None).Length + 1;
+    return $"ISA*00*          *00*          *ZZ*GENERIC-SENDER *ZZ*GENERIC-RECEIVE*261001*1200*^*00501*000000001*0*P*:~GS*FA*GENERIC*GENERIC*20261001*1200*1*X*005010~ST*990*0001~{segments}SE*{count}*0001~GE*1*1~IEA*1*000000001~";
+}
+
+var utf8 = new UTF8Encoding(false, true);
+var cases = JsonNode.Parse(File.ReadAllText("cases.json"))!.AsArray();
+foreach (JsonNode? frame in JsonNode.Parse(File.ReadAllText("frame-cases.json"))!.AsArray()) cases.Add(frame!.DeepClone());
+foreach (JsonNode? entry in cases)
+{
+    var test = entry!;
+    string wire = test["wire"] is JsonValue physical ? physical.GetValue<string>() : Wire(test["segments"]!.GetValue<string>());
+    var source = GeneratedMapping.ParseX12(wire);
+    if (!JsonNode.DeepEquals(Logical(source), test["source"])) throw new InvalidOperationException($"{test["name"]}: complete parsed typed source changed.");
+    var byteSource = GeneratedMapping.ParseX12Bytes(utf8.GetBytes(wire));
+    if (!JsonNode.DeepEquals(Logical(byteSource), test["source"])) throw new InvalidOperationException($"{test["name"]}: byte source changed.");
+    var actual = JsonNode.Parse(GeneratedMapping.ExecuteX12ToJson(wire));
+    var byteActual = JsonNode.Parse(utf8.GetString(GeneratedMapping.ExecuteX12ToJsonBytes(utf8.GetBytes(wire))));
+    if (!JsonNode.DeepEquals(actual, test["expected"]) || !JsonNode.DeepEquals(byteActual, test["expected"]))
+        throw new InvalidOperationException($"{test["name"]}: JSON order, cardinality, scalar values or omission changed.");
+}
+
+// A physical invalid ISA12 is distinct from a saved metadata mismatch. The
+// generated 00501 descriptor refuses it in syntax discovery before parsing.
+try
+{
+    GeneratedMapping.ParseX12(Wire("N1*A~").Replace("*00501*", "*0050A*", StringComparison.Ordinal));
+    throw new InvalidOperationException("Invalid physical ISA12 unexpectedly parsed.");
+}
+catch (FerruleX12Exception error) when (error.Error == FerruleX12Error.UnsupportedProfile
+    && error.Message == "X12 envelope versions do not match the selected profile."
+    && error.SegmentIndex is null && error.FieldPath is null) { }
+
+Console.WriteLine($"authored-edi-json-occurrences:{cases.Count}");

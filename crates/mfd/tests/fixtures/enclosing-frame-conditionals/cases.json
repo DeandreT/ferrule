@@ -1,0 +1,221 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left-true"
+            },
+            {
+              "Type": "right-true"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": ""
+            },
+            {
+              "Type": "right-false"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Count\":0,\"Note\":\"\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left-true",
+              "Count": 0,
+              "Note": ""
+            },
+            {
+              "Type": "right-true",
+              "Count": 0,
+              "Note": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Count\":-4,\"Note\":\"Ω\\\"\\\\\\n\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "",
+              "Count": -4,
+              "Note": "Ω\"\\\n"
+            },
+            {
+              "Type": "right-false",
+              "Count": -4,
+              "Note": "Ω\"\\\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Count\":7},{\"Choose\":false,\"Count\":-2}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left-true",
+              "Count": 7
+            },
+            {
+              "Type": "right-true",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "",
+              "Count": -2
+            },
+            {
+              "Type": "right-false",
+              "Count": -2
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"GlobalChoose\":false,\"Rows\":[{\"Choose\":true},{\"Choose\":false},{\"Choose\":true},{\"Choose\":false}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left-true"
+            },
+            {
+              "Type": "right-true"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": ""
+            },
+            {
+              "Type": "right-false"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left-true"
+            },
+            {
+              "Type": "right-true"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": ""
+            },
+            {
+              "Type": "right-false"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}]}",
+    "boolean_error": {
+      "node": 5,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"GlobalChoose\":true,\"Rows\":[{\"Count\":1}]}",
+    "boolean_error": {
+      "node": 5,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true},{}]}",
+    "boolean_error": {
+      "node": 5,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":\"true\"}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":1}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Count\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Note\":1}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true},{\"Choose\":true},{\"Choose\":true},{\"Choose\":true},{\"Choose\":true}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Other\":1}",
+    "reject": true
+  }
+]

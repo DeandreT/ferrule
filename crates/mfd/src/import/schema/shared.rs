@@ -186,12 +186,16 @@ mod tests {
         let dir = TempDir::new();
         let exact = dir.0.join("input.xsd");
         std::fs::write(&exact, "exact").unwrap();
-        std::fs::write(dir.0.join("INPUT.XSD"), "fallback").unwrap();
+        let fallback = dir.0.join("INPUT.XSD");
+        if !fallback.exists() {
+            // Distinct case-only siblings require a case-sensitive filesystem.
+            std::fs::write(fallback, "fallback").unwrap();
+        }
 
-        assert_eq!(
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "input.xsd").unwrap(),
-            exact
-        );
+        let resolved =
+            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "input.xsd").unwrap();
+        assert_eq!(resolved, exact);
+        assert_eq!(std::fs::read_to_string(resolved).unwrap(), "exact");
     }
 
     #[test]
@@ -203,14 +207,22 @@ mod tests {
         std::fs::write(&matched, "schema").unwrap();
         std::fs::write(dir.0.join("INPUT.XSD"), "wrong parent").unwrap();
 
+        let resolved =
+            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "schemas\\input.xsd").unwrap();
+        if schemas.join("input.xsd").is_file() {
+            assert_eq!(resolved, schemas.join("input.xsd"));
+        } else {
+            assert_eq!(resolved, matched);
+        }
         assert_eq!(
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "schemas\\input.xsd").unwrap(),
-            matched
+            std::fs::canonicalize(resolved).unwrap(),
+            std::fs::canonicalize(matched).unwrap()
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
-    fn ambiguous_or_missing_schema_references_are_rejected() {
+    fn ambiguous_schema_references_are_rejected() {
         let dir = TempDir::new();
         std::fs::write(dir.0.join("Input.xsd"), "first").unwrap();
         std::fs::write(dir.0.join("INPUT.XSD"), "second").unwrap();
@@ -218,7 +230,11 @@ mod tests {
         let ambiguous =
             resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "input.xsd").unwrap_err();
         assert!(ambiguous.contains("multiple case-insensitive sibling matches"));
+    }
 
+    #[test]
+    fn missing_schema_references_are_rejected() {
+        let dir = TempDir::new();
         let missing =
             resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "missing.xsd").unwrap_err();
         assert!(missing.contains("was not found"));

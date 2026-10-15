@@ -1,0 +1,50 @@
+<Config><Elements>
+  <Segment name="ISA">
+    <Data name="ISA01" type="string"/>
+    <Data name="ISA02" type="string"/>
+    <Data name="ISA03" type="string"/>
+    <Data name="ISA04" type="string"/>
+    <Data name="ISA05" type="string"/>
+    <Data name="ISA06" type="string"/>
+    <Data name="ISA07" type="string"/>
+    <Data name="ISA08" type="string"/>
+    <Data name="ISA09" type="string"/>
+    <Data name="ISA10" type="string"/>
+    <Data name="ISA11" type="string"/>
+    <Data name="ISA12" type="string"/>
+    <Data name="ISA13" type="string"/>
+    <Data name="ISA14" type="string"/>
+    <Data name="ISA15" type="string"/>
+    <Data name="ISA16" type="string"/>
+  </Segment>
+  <Segment name="GS">
+    <Data name="GS01" type="string"/>
+    <Data name="GS02" type="string"/>
+    <Data name="GS03" type="string"/>
+    <Data name="GS04" type="string"/>
+    <Data name="GS05" type="string"/>
+    <Data name="GS06" type="string"/>
+    <Data name="GS07" type="string"/>
+    <Data name="GS08" type="string"/>
+  </Segment>
+  <Segment name="ST">
+    <Data name="ST01" type="string"/>
+    <Data name="ST02" type="string"/>
+  </Segment>
+  <Segment name="SE">
+    <Data name="SE01" type="string"/>
+    <Data name="SE02" type="string"/>
+  </Segment>
+  <Segment name="GE">
+    <Data name="GE01" type="string"/>
+    <Data name="GE02" type="string"/>
+  </Segment>
+  <Segment name="IEA">
+    <Data name="IEA01" type="string"/>
+    <Data name="IEA02" type="string"/>
+  </Segment>
+  <Segment name="NTE">
+    <Data name="NTE01" type="string"/>
+    <Data name="NTE02" type="string"/>
+  </Segment>
+</Elements></Config>

@@ -120,6 +120,7 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet", "--offline"])
+        .env("CARGO_BUILD_BUILD_DIR", rust_root.join("target"))
         .env("CARGO_TARGET_DIR", rust_root.join("target"))
         .env("CARGO_BUILD_JOBS", "1")
         .env("CARGO_INCREMENTAL", "0")

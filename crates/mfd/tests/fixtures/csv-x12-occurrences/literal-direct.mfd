@@ -1,0 +1,54 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="text" kind="16"><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="Rows" outkey="10"><entry name="Key" outkey="11"/><entry name="Optional" outkey="12"/></entry></entry></entry></root>
+    <text type="csv" inputinstance="rows.csv"><settings separator="," firstrownames="true"><names root="Input" block="Rows"><field0 name="Key" type="string"/><field1 name="Optional" type="string"/></names></settings></text>
+  </data></component>
+  <component name="report" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="document"><entry name="Envelope"><entry name="Interchange">
+      <entry name="ISA"><entry name="ISA01" inpkey="1000"/><entry name="ISA02" inpkey="1001"/><entry name="ISA03" inpkey="1002"/><entry name="ISA04" inpkey="1003"/><entry name="ISA05" inpkey="1004"/><entry name="ISA06" inpkey="1005"/><entry name="ISA07" inpkey="1006"/><entry name="ISA08" inpkey="1007"/><entry name="ISA09" inpkey="1008"/><entry name="ISA10" inpkey="1009"/><entry name="ISA11" inpkey="1010"/><entry name="ISA12" inpkey="1011"/><entry name="ISA13" inpkey="1012"/><entry name="ISA14" inpkey="1013"/><entry name="ISA15" inpkey="1014"/><entry name="ISA16" inpkey="1015"/></entry><entry name="Group"><entry name="GS"><entry name="GS01" inpkey="1016"/><entry name="GS02" inpkey="1017"/><entry name="GS03" inpkey="1018"/><entry name="GS04" inpkey="1019"/><entry name="GS05" inpkey="1020"/><entry name="GS06" inpkey="1021"/><entry name="GS07" inpkey="1022"/><entry name="GS08" inpkey="1023"/></entry>
+        <entry name="Message_940"><entry name="ST"><entry name="ST01" inpkey="1024"/><entry name="ST02" inpkey="1025"/></entry><entry name="Rows" inpkey="40">
+          <entry name="NTE"><entry name="NTE01" inpkey="51"/><entry name="NTE02" inpkey="52"/></entry>
+          <entry name="NTE" clone="1"><entry name="NTE01" inpkey="61"/><entry name="NTE02" inpkey="62"/></entry>
+        </entry><entry name="SE"><entry name="SE01" inpkey="1026"/><entry name="SE02" inpkey="1027"/></entry></entry><entry name="GE"><entry name="GE01" inpkey="1028"/><entry name="GE02" inpkey="1029"/></entry>
+      </entry><entry name="IEA"><entry name="IEA01" inpkey="1030"/><entry name="IEA02" inpkey="1031"/></entry>
+    </entry></entry></entry></root>
+    <text type="edi" kind="EDIX12" config="Envelope.Config" outputinstance="report.x12"><messages><message type="940"/></messages></text>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2000"/></targets><data><constant value="00" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2001"/></targets><data><constant value="          " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2002"/></targets><data><constant value="00" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2003"/></targets><data><constant value="          " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2004"/></targets><data><constant value="ZZ" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2005"/></targets><data><constant value="AUTHOR-SENDER  " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2006"/></targets><data><constant value="ZZ" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2007"/></targets><data><constant value="AUTHOR-RECEIVER" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2008"/></targets><data><constant value="260102" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2009"/></targets><data><constant value="0304" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2010"/></targets><data><constant value="U" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2011"/></targets><data><constant value="00401" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2012"/></targets><data><constant value="000000007" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2013"/></targets><data><constant value="0" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2014"/></targets><data><constant value="T" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2015"/></targets><data><constant value=":" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2016"/></targets><data><constant value="OW" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2017"/></targets><data><constant value="AUTHOR-SENDER" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2018"/></targets><data><constant value="AUTHOR-RECEIVER" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2019"/></targets><data><constant value="20260102" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2020"/></targets><data><constant value="0304" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2021"/></targets><data><constant value="0007" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2022"/></targets><data><constant value="X" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2023"/></targets><data><constant value="004010" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2024"/></targets><data><constant value="940" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2025"/></targets><data><constant value="0011" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2026"/></targets><data><constant value="4" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2027"/></targets><data><constant value="0011" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2028"/></targets><data><constant value="1" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2029"/></targets><data><constant value="0007" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2030"/></targets><data><constant value="1" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2031"/></targets><data><constant value="000000007" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2101"/></targets><data><constant value="GEN" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="2102"/></targets><data><constant value="ALT" datatype="string"/></data></component>
+</children><connections>
+<edge from="10" to="40"/><edge from="2101" to="51"/><edge from="11" to="52"/><edge from="2102" to="61"/><edge from="12" to="62"/>
+<edge from="2000" to="1000"/><edge from="2001" to="1001"/><edge from="2002" to="1002"/><edge from="2003" to="1003"/><edge from="2004" to="1004"/><edge from="2005" to="1005"/><edge from="2006" to="1006"/><edge from="2007" to="1007"/><edge from="2008" to="1008"/><edge from="2009" to="1009"/><edge from="2010" to="1010"/><edge from="2011" to="1011"/><edge from="2012" to="1012"/><edge from="2013" to="1013"/><edge from="2014" to="1014"/><edge from="2015" to="1015"/><edge from="2016" to="1016"/><edge from="2017" to="1017"/><edge from="2018" to="1018"/><edge from="2019" to="1019"/><edge from="2020" to="1020"/><edge from="2021" to="1021"/><edge from="2022" to="1022"/><edge from="2023" to="1023"/><edge from="2024" to="1024"/><edge from="2025" to="1025"/><edge from="2026" to="1026"/><edge from="2027" to="1027"/><edge from="2028" to="1028"/><edge from="2029" to="1029"/><edge from="2030" to="1030"/><edge from="2031" to="1031"/>
+</connections></structure></component></mapping>

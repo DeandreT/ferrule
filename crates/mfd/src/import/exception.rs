@@ -16,6 +16,12 @@ pub(super) struct Recipe {
     message_input: Option<u32>,
 }
 
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        [self.throw_input, self.message_input].into_iter().flatten()
+    }
+}
+
 pub(super) fn read(component: &roxmltree::Node<'_, '_>) -> Recipe {
     let function = read_function(component);
     Recipe {

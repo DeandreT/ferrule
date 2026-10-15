@@ -252,13 +252,19 @@ mod tests {
 
         let manifest = PackageManifest::load(&manifest_path)?;
 
-        assert_eq!(manifest.package_root(), directory.path());
+        assert_eq!(
+            manifest.package_root(),
+            std::fs::canonicalize(directory.path())?.as_path()
+        );
         assert_eq!(
             manifest.path(),
             std::fs::canonicalize(&manifest_path)?.as_path()
         );
-        assert_eq!(manifest.edi_catalog_roots(), &[edi]);
-        assert_eq!(manifest.json_schema_catalog_roots(), &[json]);
+        assert_eq!(manifest.edi_catalog_roots(), &[std::fs::canonicalize(edi)?]);
+        assert_eq!(
+            manifest.json_schema_catalog_roots(),
+            &[std::fs::canonicalize(json)?]
+        );
         Ok(())
     }
 

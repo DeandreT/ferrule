@@ -1,0 +1,206 @@
+[
+  {
+    "name": "replacement for absent source field",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Label": "R"
+    }
+  },
+  {
+    "name": "replacement for explicit source null",
+    "input": "{\"Value\":null}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Label": "R"
+    }
+  },
+  {
+    "name": "ordinary source field retained",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Label": "S"
+    }
+  },
+  {
+    "name": "empty string is retained",
+    "input": "{\"Value\":\"\"}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Label": ""
+    }
+  },
+  {
+    "name": "present left skips absent replacement after object presence",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "expected": {
+      "Label": "S"
+    }
+  },
+  {
+    "name": "null runtime value suppresses root bindings",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {}
+  },
+  {
+    "name": "missing runtime value does not use preview",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "invalid unused field is still validated",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\",\"Unused\":10}}"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "malformed document",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "JSON null requires nullable schema root",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "null"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "wrong structural shape",
+    "input": "{\"Value\":\"S\"}",
+    "parameters": {
+      "payload": "{\"Header\":[]}"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "missing scalar remains an error when demanded",
+    "input": "{}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "field path does not resolve to a scalar"
+    }
+  },
+  {
+    "name": "explicit null replacement remains JSON null",
+    "input": "{}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":null}}"
+    },
+    "expected": {
+      "Label": null
+    }
+  },
+  {
+    "name": "input type rejected before parser",
+    "input": "{\"Value\":3}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "reject": true
+  },
+  {
+    "name": "empty primary rows leave missing parameter unevaluated",
+    "input": "[]",
+    "parameters": {},
+    "expected": {}
+  },
+  {
+    "name": "empty primary rows leave malformed parameter unevaluated",
+    "input": "[]",
+    "parameters": {
+      "payload": "{"
+    },
+    "expected": {}
+  },
+  {
+    "name": "singleton primary row",
+    "input": "[{}]",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Label": "R"
+    }
+  },
+  {
+    "name": "singleton primary row requires parameter",
+    "input": "[{}]",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "multiple primary rows refuse before mapping",
+    "input": "[{\"Value\":\"A\"},{\"Value\":\"B\"}]",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "mapping_exception": {
+      "node": 14,
+      "message": "JSON parser root object presence does not support multiple primary rows"
+    }
+  },
+  {
+    "name": "multiple primary rows refuse before missing parameter",
+    "input": "[{},{}]",
+    "parameters": {},
+    "mapping_exception": {
+      "node": 14,
+      "message": "JSON parser root object presence does not support multiple primary rows"
+    }
+  },
+  {
+    "name": "parser object does not accept flat document rows",
+    "input": "{}",
+    "parameters": {
+      "payload": "[{\"Header\":{\"Replacement\":\"R\"}}]"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  }
+]

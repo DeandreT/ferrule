@@ -1,0 +1,931 @@
+[
+  {
+    "design": "implicit",
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "implicit",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "implicit",
+    "input": "{\"Rows\":[{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "right"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "implicit",
+    "input": "{\"Rows\":[{\"Count\":0,\"Note\":\"\"},{\"Count\":7},{\"Note\":\"last\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 0,
+              "Note": ""
+            },
+            {
+              "Type": "right",
+              "Count": 0,
+              "Note": ""
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 7
+            },
+            {
+              "Type": "right",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Note": "last"
+            },
+            {
+              "Type": "right",
+              "Note": "last"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "literal-only",
+    "input": "{\"Rows\":[{},{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "right"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "right"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "literal-only",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "guaranteed",
+    "input": "{\"Rows\":[{\"Count\":0},{\"Count\":7,\"Note\":\"next\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Count": 0
+            },
+            {
+              "Count": 0
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Count": 7,
+              "Note": "next"
+            },
+            {
+              "Count": 7,
+              "Note": "next"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "guaranteed",
+    "input": "{\"Rows\":[{}]}",
+    "reject": true
+  },
+  {
+    "design": "guaranteed",
+    "input": "{\"Rows\":[{\"Count\":null}]}",
+    "reject": true
+  },
+  {
+    "design": "mixed",
+    "input": "{\"Rows\":[{\"Count\":5,\"Note\":\"owner\",\"Items\":[{\"Value\":1},{},{\"Value\":3}]},{\"Count\":8,\"Items\":[]},{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 1
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left",
+              "Count": 3
+            },
+            {
+              "Type": "right",
+              "Count": 5,
+              "Note": "owner"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "right",
+              "Count": 8
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "right"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "mixed",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "wrapped-markers",
+    "input": "{\"Rows\":[{\"Count\":2,\"Note\":\"ordered\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 2,
+              "Note": "ordered"
+            },
+            {
+              "Type": "right",
+              "Count": 2,
+              "Note": "ordered"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Sections\":[{\"Rows\":[{\"Count\":1},{\"Count\":2}]},{\"Rows\":[]},{\"Rows\":[{\"Count\":3}]}]}",
+    "expected": {
+      "Section": [
+        {
+          "Batch": [
+            {
+              "Record": [
+                {
+                  "Type": "left",
+                  "Count": 1
+                },
+                {
+                  "Type": "right",
+                  "Count": 1
+                }
+              ]
+            },
+            {
+              "Record": [
+                {
+                  "Type": "left",
+                  "Count": 2
+                },
+                {
+                  "Type": "right",
+                  "Count": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Batch": []
+        },
+        {
+          "Batch": [
+            {
+              "Record": [
+                {
+                  "Type": "left",
+                  "Count": 3
+                },
+                {
+                  "Type": "right",
+                  "Count": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Sections\":[]}",
+    "expected": {
+      "Section": []
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Sections\":[{\"Rows\":[{\"Count\":false}]}]}",
+    "reject": true
+  },
+  {
+    "design": "edi",
+    "input": "{\"Rows\":[{\"Count\":5},{}]}",
+    "expected": {
+      "Interchange": [
+        {
+          "Group": [
+            {
+              "Message_850": [
+                {
+                  "Loop0100": [
+                    {
+                      "N1": {
+                        "Text": "left",
+                        "Count": 5
+                      }
+                    },
+                    {
+                      "N1": {
+                        "Text": "right",
+                        "Count": 5
+                      }
+                    }
+                  ]
+                },
+                {
+                  "Loop0100": [
+                    {
+                      "N1": {
+                        "Text": "left"
+                      }
+                    },
+                    {
+                      "N1": {
+                        "Text": "right"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "edi",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Interchange": [
+        {
+          "Group": [
+            {
+              "Message_850": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "all-flat",
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "{\"Rows\":[{\"Count\":false}]}",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "{\"Rows\":[{\"Unexpected\":1}]}",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "{\"Rows\":[{\"Items\":[{\"Value\":\"bad\"}]}]}",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "{\"Rows\":[{},{},{},{},{}]}",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "7",
+    "reject": true
+  },
+  {
+    "design": "all-flat",
+    "input": "{broken",
+    "reject": true
+  },
+  {
+    "design": "many-branches",
+    "input": "{\"Rows\":[{},{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "left"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "many-branches",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "false-zero-empty",
+    "input": "{\"Rows\":[{},{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": false,
+              "Count": 0,
+              "Note": ""
+            },
+            {
+              "Type": true,
+              "Count": 0,
+              "Note": ""
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": false,
+              "Count": 0,
+              "Note": ""
+            },
+            {
+              "Type": true,
+              "Count": 0,
+              "Note": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "unconnected-declaration",
+    "input": "{\"Rows\":[{\"Count\":4}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 4
+            },
+            {
+              "Type": "right",
+              "Count": 4
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "idempotent-physical",
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "idempotent-physical",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "idempotent-physical",
+    "input": "{\"Rows\":[{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left"
+            },
+            {
+              "Type": "right"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "idempotent-physical",
+    "input": "{\"Rows\":[{\"Count\":0,\"Note\":\"\"},{\"Count\":7},{\"Note\":\"last\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 0,
+              "Note": ""
+            },
+            {
+              "Type": "right",
+              "Count": 0,
+              "Note": ""
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Count": 7
+            },
+            {
+              "Type": "right",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "left",
+              "Note": "last"
+            },
+            {
+              "Type": "right",
+              "Note": "last"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

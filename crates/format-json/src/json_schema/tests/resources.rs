@@ -299,8 +299,16 @@ fn rejects_missing_remote_anchor_and_reserved_bundle_refs() -> Result<(), Box<dy
 {
     let dir = resource_dir("invalid");
     std::fs::create_dir_all(&dir)?;
+    let missing_error = std::fs::canonicalize(dir.join("missing.json"))
+        .expect_err("missing resource fixture unexpectedly exists");
+    assert_eq!(missing_error.kind(), std::io::ErrorKind::NotFound);
+    let missing_reason = missing_error.to_string();
     for (name, reference, reason) in [
-        ("missing", "missing.json#/$defs/value", "No such file"),
+        (
+            "missing",
+            "missing.json#/$defs/value",
+            missing_reason.as_str(),
+        ),
         (
             "remote",
             "https://example.invalid/schema.json",

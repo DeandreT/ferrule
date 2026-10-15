@@ -43,7 +43,7 @@ fn capture<T: std::fmt::Debug>(id: &str, result: Result<T, RuntimeError>) -> Res
 fn owner(program: &str) -> OwnedSourceIdentity { if program == "primary" { OwnedSourceIdentity::Primary } else { OwnedSourceIdentity::Named("Ref".into()) } }
 fn semantic(error: &RuntimeError) -> Json {
     match error {
-        RuntimeError::OwnedSource(OwnedSourceError::InactiveSourceFrame { owner, collection: Some(collection) }) => {
+        RuntimeError::OwnedSourceAtNode { source: OwnedSourceError::InactiveSourceFrame { owner, collection: Some(collection) }, .. } => {
             let identity = match owner { OwnedSourceIdentity::Primary => json!({"is_primary":true,"name":null}), OwnedSourceIdentity::Named(name) => json!({"is_primary":false,"name":name}) };
             json!({"kind":"Error","semantic_kind":"InactiveSourceFrame","owner":identity,"collection":collection})
         }
@@ -76,7 +76,7 @@ fn all_twelve_complete_returns_before_comparison() {
                             other => json!({"kind":"UnexpectedSelection","complete_debug":format!("{other:#?}")}),
                         })
                     };
-                    eprintln!("{}",json!({"id":id,"classification":"before_comparison","complete_snapshot":match &actual { Ok(output)=>output.clone(),Err(error)=>semantic(error) },"actual_error_node_field_present":false,"actual_error_scope_field_present":false}));
+                    eprintln!("{}",json!({"id":id,"classification":"before_comparison","complete_snapshot":match &actual { Ok(output)=>output.clone(),Err(error)=>semantic(error) },"actual_error_node_field_present":matches!(&actual, Err(RuntimeError::OwnedSourceAtNode { .. } | RuntimeError::BasicSourceBridgeAtNode { .. })),"actual_error_scope_field_present":false}));
                     captured.push((id,$label,actual));
                 }
             }
@@ -90,13 +90,14 @@ fn all_twelve_complete_returns_before_comparison() {
         match actual {
             Ok(output) => assert_eq!(output,&row["expected"],"full typed generated return mismatch; originals retained"),
             Err(error) => {
-                assert_eq!(error,&RuntimeError::OwnedSource(OwnedSourceError::InactiveSourceFrame { owner:owner(program), collection:Some(vec![]) }));
+                assert_eq!(error,&RuntimeError::OwnedSourceAtNode { node:2, source:OwnedSourceError::InactiveSourceFrame { owner:owner(program), collection:Some(vec![]) } });
                 assert_eq!(semantic(error),row["expected"]);
                 let direct = error.source().unwrap().downcast_ref::<OwnedSourceError>().unwrap();
                 assert_eq!(direct,&OwnedSourceError::InactiveSourceFrame { owner:owner(program), collection:Some(vec![]) });
+                // Preserve the frozen historical descriptor; current node2 wrapping is asserted above.
                 assert_eq!(row["expected_error_provenance"],json!({"node_field_present":false,"native_semantic_node":2}));
             }
         }
     }
-    eprintln!("{}",json!({"classification":"fixture_protocol_qualified","lane":"Rust","calls":12,"complete_success_oracles":8,"complete_inactive_oracles":4,"semantic_inactive_contract_qualified":true,"full_error_parity":false,"error_provenance_gap":{"native_node":2,"Rust_node_field_present":false,"Rust_scope_field_present":false},"total_parity":false}));
+    eprintln!("{}",json!({"classification":"fixture_protocol_qualified","lane":"Rust","calls":12,"complete_success_oracles":8,"complete_inactive_oracles":4,"semantic_inactive_contract_qualified":true,"full_error_parity":false,"current_owned_node_contract":{"expected_node":2,"Rust_node_field_present":true,"Rust_scope_field_present":false},"historical_fixture_provenance_descriptor_preserved":true,"total_parity":false}));
 }

@@ -779,6 +779,7 @@ fn scalar_function_batch_matches_engine_and_generated_backends() -> TestResult<(
     let rust = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", directory.0.join("cargo-target"))
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
         .isolated_output()?;
     assert!(

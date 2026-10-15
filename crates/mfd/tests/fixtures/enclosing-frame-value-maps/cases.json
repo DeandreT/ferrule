@@ -1,0 +1,168 @@
+[
+  {
+    "expected_xml": "<Result></Result>",
+    "input": "{}",
+    "id": "absent-rows",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "expected_xml": "<Result></Result>",
+    "input": "{\"Rows\":[]}",
+    "id": "empty-rows",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>alpha</Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\"A\"}]}",
+    "id": "one-match",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "alpha"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>beta</Note></Record></Batch><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>other</Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\"B\"},{\"Code\":\"Z\"}]}",
+    "id": "two-frame-order-and-default",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "beta"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "other"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>empty-key</Note></Record></Batch><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note></Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\"\"},{\"Code\":\"E\"}]}",
+    "id": "empty-key-and-nonnull-empty-result",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "empty-key"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>first</Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\"D\"}]}",
+    "id": "ordered-duplicate-key-first-wins",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "first"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>α&amp;&lt;</Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\"x&<\"}]}",
+    "id": "unicode-and-escaping",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "α&<"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "expected_xml": "<Result><Batch><Record><Type>literal</Type><Note>anchor</Note></Record><Record><Type>mapped</Type><Note>other</Note></Record></Batch></Result>",
+    "input": "{\"Rows\":[{\"Code\":\" A \"}]}",
+    "id": "no-string-trimming",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "literal",
+              "Note": "anchor"
+            },
+            {
+              "Type": "mapped",
+              "Note": "other"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

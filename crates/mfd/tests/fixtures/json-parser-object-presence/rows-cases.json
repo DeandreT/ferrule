@@ -1,0 +1,130 @@
+[
+  {
+    "name": "outer rows keep their own values and fallback",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{},{\"Value\":null}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"R\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Envelope": {
+            "Label": "A"
+          }
+        },
+        {
+          "Envelope": {
+            "Label": "R"
+          }
+        },
+        {
+          "Envelope": {
+            "Label": "R"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent object preserves outer occurrences",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{}]}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "expected": {
+      "Rows": [
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "name": "null object preserves outer occurrences",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{\"Header\":null}"
+    },
+    "expected": {
+      "Rows": [
+        {}
+      ]
+    }
+  },
+  {
+    "name": "null parameter preserves outer occurrences",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {
+      "Rows": [
+        {}
+      ]
+    }
+  },
+  {
+    "name": "empty rows do not demand parameter",
+    "input": "{\"Rows\":[]}",
+    "parameters": {},
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "absent rows do not demand parameter",
+    "input": "{}",
+    "parameters": {},
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "nonempty rows demand parameter",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "nonempty rows validate malformed JSON",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "empty rows leave malformed parameter unevaluated",
+    "input": "{\"Rows\":[]}",
+    "parameters": {
+      "payload": "{"
+    },
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "input row schema rejects wrong value",
+    "input": "{\"Rows\":[{\"Value\":3}]}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "reject": true
+  },
+  {
+    "name": "parser object does not accept flat document rows",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "[{\"Header\":{\"Replacement\":\"R\"}}]"
+    },
+    "execution_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    }
+  }
+]

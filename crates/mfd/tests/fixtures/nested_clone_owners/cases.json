@@ -547,5 +547,160 @@
         }
       ]
     }
+  },
+  {
+    "name": "same_source_distinct_target_branches",
+    "design": "same_source_owners.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "same_source_empty_children",
+    "design": "same_source_owners.mfd",
+    "input_xml": "<Source><Left/><Right/></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": []
+        }
+      ],
+      "Right": [
+        {
+          "Item": []
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-two"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "same_source_left_absent_right_populated",
+    "design": "same_source_owners.mfd",
+    "input_xml": "<Source><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": []
+    }
   }
 ]

@@ -1,0 +1,91 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var parameters = new FerruleRuntimeParameters(test.GetProperty("parameters").EnumerateObject().Select(parameter =>
+        KeyValuePair.Create(parameter.Name, parameter.Value.ValueKind switch
+        {
+            JsonValueKind.String => FerruleValue.FromString(parameter.Value.GetString()!),
+            JsonValueKind.True => FerruleValue.FromBoolean(true),
+            JsonValueKind.False => FerruleValue.FromBoolean(false),
+            JsonValueKind.Number => FerruleValue.FromInt64(parameter.Value.GetInt64()),
+            JsonValueKind.Null => FerruleValue.Null,
+            JsonValueKind.Object when parameter.Value.GetProperty("non_finite").GetString() == "positive-infinity" => FerruleValue.FromDouble(double.PositiveInfinity),
+            _ => throw new Exception($"Unsupported authored parameter: {test}"),
+        })));
+    var context = new FerruleExecutionContext("parser-input.ferrule.json", "parser-input.ferrule.json", null, parameters);
+    var input = test.GetProperty("input").GetString()!;
+    var savedInput = input;
+    var savedParameterCount = parameters.Count;
+    Verify(() => GeneratedMapping.ExecuteJson(input, context), test);
+    Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input), context)), test);
+    if (input != savedInput || parameters.Count != savedParameterCount || !ReferenceEquals(context.RuntimeParameters, parameters))
+    {
+        throw new Exception($"Caller state changed: {test}");
+    }
+}
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} lazy substitution cases");
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    if (test.TryGetProperty("missing_parameter", out var missing))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.MissingRuntimeParameter &&
+            error.Node == missing.GetProperty("node").GetUInt32() && error.RuntimeParameter == missing.GetProperty("name").GetString())
+        { return; }
+        throw new Exception($"Missing parameter error differs: {test}");
+    }
+    if (test.TryGetProperty("mapping_exception", out var cardinality))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.MappingException &&
+            error.Node == cardinality.GetProperty("node").GetUInt32() && error.MappingExceptionMessage == cardinality.GetProperty("message").GetString())
+        { return; }
+        throw new Exception($"Cardinality refusal differs: {test}");
+    }
+    if (test.TryGetProperty("parameter_type_error", out var type))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.RuntimeParameterType &&
+            error.Node == type.GetProperty("node").GetUInt32() && error.RuntimeParameter == type.GetProperty("name").GetString() &&
+            type.GetProperty("expected").GetString() == "string" && error.ExpectedScalarType == FerruleScalarType.String &&
+            type.GetProperty("found").GetString() == "float" && error.FoundKind == FerruleValueKind.Double)
+        { return; }
+        throw new Exception($"Parameter type error differs: {test}");
+    }
+    if (test.TryGetProperty("execution_error", out var expectedError))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.FunctionInvalidArgument &&
+            error.Function == expectedError.GetProperty("function").GetString() && error.Detail == expectedError.GetProperty("message").GetString())
+        { return; }
+        throw new Exception($"JSON parser error differs: {test}");
+    }
+    if (test.TryGetProperty("output_error", out var outputError))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary &&
+            string.Equals(error.Message,
+                $"JSON object '{outputError.GetProperty("object").GetString()}' requires property '{outputError.GetProperty("property").GetString()}'.",
+                StringComparison.Ordinal))
+        { return; }
+        throw new Exception($"Required output property error differs: {test}");
+    }
+    if (test.TryGetProperty("reject", out _))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary) { return; }
+        throw new Exception($"Invalid primary input was accepted: {test}");
+    }
+    var actual = run();
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+    {
+        throw new Exception($"JSON output differs: {test}; actual: {actual}");
+    }
+}

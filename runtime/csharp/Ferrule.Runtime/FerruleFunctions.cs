@@ -44,6 +44,7 @@ public static partial class FerruleFunctions
             "create_guid" => CreateGuid(arguments),
             "random" => RandomNumber(arguments),
             "json_parse_field" => JsonParseField(arguments),
+            "json_parse_object_exists" => JsonParseObjectExists(arguments),
             "json_serialize_object" => JsonSerializeObject(arguments),
             "format_number" => FormatNumber(arguments),
             "round" => Round(arguments),

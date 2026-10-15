@@ -1,0 +1,1404 @@
+{
+  "implicit": [
+    {
+      "name": "two-parent-frames",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0},{\"Flag\":true,\"Id\":\"B\",\"Zero\":7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "empty-array",
+      "input": "{\"Rows\":[]}",
+      "expected": {
+        "Batches": []
+      },
+      "expected_json": "{\n  \"Batches\": []\n}\n",
+      "parent_count": 0
+    },
+    {
+      "name": "false-zero-empty-string",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"\",\"Zero\":0}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "equal-parent-values-distinct-items",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"same\",\"Zero\":1},{\"Flag\":true,\"Id\":\"same\",\"Zero\":1}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "unicode-string",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"é中😀é\",\"Zero\":-7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "missing-required-array",
+      "input": "{}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-array-container",
+      "input": "{\"Rows\":null}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-object-item",
+      "input": "{\"Rows\":[null]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "missing-required-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "explicit-null-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":null,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "wrong-leaf-type",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":\"0\"}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "unknown-field",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0,\"Unknown\":1}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "invalid-utf8-byte",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        255,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "utf8-surrogate-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        237,
+        160,
+        128,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "truncated-utf8-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        240,
+        159,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    }
+  ],
+  "reversed": [
+    {
+      "name": "two-parent-frames",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0},{\"Flag\":true,\"Id\":\"B\",\"Zero\":7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "empty-array",
+      "input": "{\"Rows\":[]}",
+      "expected": {
+        "Batches": []
+      },
+      "expected_json": "{\n  \"Batches\": []\n}\n",
+      "parent_count": 0
+    },
+    {
+      "name": "false-zero-empty-string",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"\",\"Zero\":0}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "equal-parent-values-distinct-items",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"same\",\"Zero\":1},{\"Flag\":true,\"Id\":\"same\",\"Zero\":1}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "unicode-string",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"é中😀é\",\"Zero\":-7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "missing-required-array",
+      "input": "{}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-array-container",
+      "input": "{\"Rows\":null}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-object-item",
+      "input": "{\"Rows\":[null]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "missing-required-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "explicit-null-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":null,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "wrong-leaf-type",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":\"0\"}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "unknown-field",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0,\"Unknown\":1}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "invalid-utf8-byte",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        255,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "utf8-surrogate-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        237,
+        160,
+        128,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "truncated-utf8-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        240,
+        159,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    }
+  ],
+  "wrapped": [
+    {
+      "name": "two-parent-frames",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0},{\"Flag\":true,\"Id\":\"B\",\"Zero\":7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "A",
+                "Zero": 0
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "B",
+                "Zero": 7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"A\",\n          \"Zero\": 0\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"B\",\n          \"Zero\": 7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "empty-array",
+      "input": "{\"Rows\":[]}",
+      "expected": {
+        "Batches": []
+      },
+      "expected_json": "{\n  \"Batches\": []\n}\n",
+      "parent_count": 0
+    },
+    {
+      "name": "false-zero-empty-string",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"\",\"Zero\":0}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "equal-parent-values-distinct-items",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"same\",\"Zero\":1},{\"Flag\":true,\"Id\":\"same\",\"Zero\":1}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "same",
+                "Zero": 1
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"same\",\n          \"Zero\": 1\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "unicode-string",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"é中😀é\",\"Zero\":-7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              },
+              {
+                "Branch": "right",
+                "Flag": true,
+                "Id": "é中😀é",
+                "Zero": -7
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": true,\n          \"Id\": \"é中😀é\",\n          \"Zero\": -7\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "missing-required-array",
+      "input": "{}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-array-container",
+      "input": "{\"Rows\":null}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-object-item",
+      "input": "{\"Rows\":[null]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "missing-required-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "explicit-null-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":null,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "wrong-leaf-type",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":\"0\"}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "unknown-field",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0,\"Unknown\":1}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "invalid-utf8-byte",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        255,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "utf8-surrogate-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        237,
+        160,
+        128,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "truncated-utf8-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        240,
+        159,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    }
+  ],
+  "literals": [
+    {
+      "name": "two-parent-frames",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0},{\"Flag\":true,\"Id\":\"B\",\"Zero\":7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "empty-array",
+      "input": "{\"Rows\":[]}",
+      "expected": {
+        "Batches": []
+      },
+      "expected_json": "{\n  \"Batches\": []\n}\n",
+      "parent_count": 0
+    },
+    {
+      "name": "false-zero-empty-string",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"\",\"Zero\":0}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "equal-parent-values-distinct-items",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"same\",\"Zero\":1},{\"Flag\":true,\"Id\":\"same\",\"Zero\":1}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    },\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 2
+    },
+    {
+      "name": "unicode-string",
+      "input": "{\"Rows\":[{\"Flag\":true,\"Id\":\"é中😀é\",\"Zero\":-7}]}",
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Branch": "left",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              },
+              {
+                "Branch": "right",
+                "Flag": false,
+                "Id": "",
+                "Zero": 0
+              }
+            ]
+          }
+        ]
+      },
+      "expected_json": "{\n  \"Batches\": [\n    {\n      \"Records\": [\n        {\n          \"Branch\": \"left\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        },\n        {\n          \"Branch\": \"right\",\n          \"Flag\": false,\n          \"Id\": \"\",\n          \"Zero\": 0\n        }\n      ]\n    }\n  ]\n}\n",
+      "parent_count": 1
+    },
+    {
+      "name": "missing-required-array",
+      "input": "{}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-array-container",
+      "input": "{\"Rows\":null}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "null-object-item",
+      "input": "{\"Rows\":[null]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "missing-required-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "explicit-null-leaf",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":null,\"Zero\":0}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "wrong-leaf-type",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":\"0\"}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "unknown-field",
+      "input": "{\"Rows\":[{\"Flag\":false,\"Id\":\"A\",\"Zero\":0,\"Unknown\":1}]}",
+      "reject": true,
+      "error_domain": "input-schema-boundary"
+    },
+    {
+      "name": "invalid-utf8-byte",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        255,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "utf8-surrogate-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        237,
+        160,
+        128,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    },
+    {
+      "name": "truncated-utf8-sequence",
+      "bytes": [
+        123,
+        34,
+        82,
+        111,
+        119,
+        115,
+        34,
+        58,
+        91,
+        123,
+        34,
+        70,
+        108,
+        97,
+        103,
+        34,
+        58,
+        102,
+        97,
+        108,
+        115,
+        101,
+        44,
+        34,
+        73,
+        100,
+        34,
+        58,
+        34,
+        240,
+        159,
+        34,
+        44,
+        34,
+        90,
+        101,
+        114,
+        111,
+        34,
+        58,
+        48,
+        125,
+        93,
+        125
+      ],
+      "reject": true,
+      "invalid_utf8": true,
+      "error_domain": "input-utf8-boundary"
+    }
+  ],
+  "target_rejections": [
+    {
+      "name": "null-target-array-container",
+      "input": "{\"Batches\":null}"
+    },
+    {
+      "name": "null-target-object-item",
+      "input": "{\"Batches\":[null]}"
+    },
+    {
+      "name": "null-target-inner-array-container",
+      "input": "{\"Batches\":[{\"Records\":null}]}"
+    },
+    {
+      "name": "null-target-inner-object-item",
+      "input": "{\"Batches\":[{\"Records\":[null]}]}"
+    },
+    {
+      "name": "missing-target-required-leaf",
+      "input": "{\"Batches\":[{\"Records\":[{\"Branch\":\"left\",\"Flag\":false,\"Zero\":0}]}]}"
+    }
+  ]
+}

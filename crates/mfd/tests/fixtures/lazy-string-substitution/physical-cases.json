@@ -1,0 +1,104 @@
+[
+  {
+    "name": "present left",
+    "input": "{\"Rows\":[{\"Value\":\"L\",\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "L"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty left remains present",
+    "input": "{\"Rows\":[{\"Value\":\"\",\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "null left chooses physical fallback",
+    "input": "{\"Rows\":[{\"Value\":null,\"Replacement\":\"R\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "R"
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent left chooses physical fallback",
+    "input": "{\"Rows\":[{\"Replacement\":\"\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent fallback stays absent at required target",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {},
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
+    }
+  },
+  {
+    "name": "null fallback remains Null",
+    "input": "{\"Rows\":[{\"Value\":null,\"Replacement\":null}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "complete ordered present occurrences",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "A"
+        },
+        {
+          "Label": "B"
+        },
+        {
+          "Label": "C"
+        }
+      ]
+    }
+  },
+  {
+    "name": "later absent fallback refuses required target after prior occurrences",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"},{}]}",
+    "parameters": {},
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
+    }
+  },
+  {
+    "name": "numeric fallback refuses source",
+    "input": "{\"Rows\":[{\"Value\":\"L\",\"Replacement\":1}]}",
+    "parameters": {},
+    "reject": true
+  }
+]

@@ -42,5 +42,5 @@ foreach (var item in cases.RootElement.EnumerateArray()) {
 var original = JsonSerializer.Serialize(outcomes, new JsonSerializerOptions { WriteIndented = true });
 File.WriteAllText(Path.Combine(args[1], "host-complete-outcomes.original.json"), original);
 Console.WriteLine(original);
-var expectedCases = args[0] == "unequal" ? 3 : 1;
+var expectedCases = args[0] is "unequal" or "same_source_owners" ? 3 : 1;
 if (outcomes.Count != expectedCases || !good) throw new InvalidOperationException("complete typed generated values differ from frozen literals");

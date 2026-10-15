@@ -831,6 +831,7 @@ fn generated_tokenizer_cap_matches_native(kind: TokenizerCapKind) -> TestResult<
         .args(["run", "--quiet", "--jobs", "1", "--", kind.name()])
         .arg(&native)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", &host_target)
         .env("CARGO_TARGET_DIR", host_target)
         .env("CARGO_INCREMENTAL", "0");
     let rust = recorded_tokenizer_cap_command(&mut rust_command, &rust_output, "host")?;

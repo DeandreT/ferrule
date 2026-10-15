@@ -130,7 +130,7 @@ fn validate_json_single_node(
     if let Some(item) = schema.json_array_wrapper_item() {
         return validate_json_node(item, value, recursive, recursion_depth);
     }
-    if schema.json_any || schema.container_nullable && value.is_null() {
+    if schema.json_any || schema.json_single_container_nullable() && value.is_null() {
         return Ok(());
     }
     let (
@@ -262,7 +262,7 @@ fn validate_raw_single_node(
         return validate_raw_node(item, raw, recursive, recursion_depth);
     }
     if schema.json_any
-        || schema.container_nullable && raw.get().trim() == "null"
+        || schema.json_single_container_nullable() && raw.get().trim() == "null"
         || !matches!(schema.kind, SchemaKind::Group { .. })
         || !raw.get().trim_start().starts_with('{')
     {

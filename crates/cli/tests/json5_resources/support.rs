@@ -510,6 +510,7 @@ impl Runner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .env("CARGO_BUILD_BUILD_DIR", target)
             .env("CARGO_TARGET_DIR", target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-Dwarnings")

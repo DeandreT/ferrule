@@ -1,0 +1,149 @@
+[
+  {
+    "name": "two-parent-frames",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Id": "A",
+          "Zero": 0
+        },
+        {
+          "Flag": true,
+          "Id": "B",
+          "Zero": 7
+        }
+      ]
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Branch": "left",
+              "Flag": false,
+              "Id": "A",
+              "Zero": 0
+            },
+            {
+              "Branch": "right",
+              "Flag": false,
+              "Id": "A",
+              "Zero": 0
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Branch": "left",
+              "Flag": true,
+              "Id": "B",
+              "Zero": 7
+            },
+            {
+              "Branch": "right",
+              "Flag": true,
+              "Id": "B",
+              "Zero": 7
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty-array",
+    "input": {
+      "Rows": []
+    },
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "name": "false-zero-empty-string",
+    "input": {
+      "Rows": [
+        {
+          "Flag": false,
+          "Id": "",
+          "Zero": 0
+        }
+      ]
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Branch": "left",
+              "Flag": false,
+              "Id": "",
+              "Zero": 0
+            },
+            {
+              "Branch": "right",
+              "Flag": false,
+              "Id": "",
+              "Zero": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "equal-parent-values-distinct-items",
+    "input": {
+      "Rows": [
+        {
+          "Flag": true,
+          "Id": "same",
+          "Zero": 1
+        },
+        {
+          "Flag": true,
+          "Id": "same",
+          "Zero": 1
+        }
+      ]
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Branch": "left",
+              "Flag": true,
+              "Id": "same",
+              "Zero": 1
+            },
+            {
+              "Branch": "right",
+              "Flag": true,
+              "Id": "same",
+              "Zero": 1
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Branch": "left",
+              "Flag": true,
+              "Id": "same",
+              "Zero": 1
+            },
+            {
+              "Branch": "right",
+              "Flag": true,
+              "Id": "same",
+              "Zero": 1
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

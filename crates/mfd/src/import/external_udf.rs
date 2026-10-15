@@ -172,8 +172,12 @@ fn read_json_output_source(
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
+        input_branch_paths: Vec::new(),
+        ambiguous_branch_inputs: Default::default(),
+        has_target_node_controls: false,
         input_keys: BTreeSet::new(),
         output_keys,
+        json_schema_authoritative: false,
         port_declarations: Some(declarations.finish(*root)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
@@ -430,6 +434,70 @@ mod tests {
         assert_eq!(components[0].name, "ExternalRows");
         assert!(warnings.is_empty());
         assert!(components[0].options.external_source.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn ordinary_source_takes_precedence_over_an_eligible_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let ordinary_document = roxmltree::Document::parse(
+            r#"<component name="Ordinary" library="json" kind="23"><data><root>
+              <entry name="object"><entry name="value" type="json-property">
+                <entry name="string" outkey="40"/>
+              </entry></entry>
+            </root></data></component>"#,
+        )?;
+        let target_inputs = BTreeSet::from([30]);
+        let edges = BTreeMap::from([(30, 10)]);
+        for has_ordinary_source in [false, true] {
+            let mut warnings = Vec::new();
+            let ordinary =
+                read_json_output_source(&ordinary_document.root_element(), &mut warnings)
+                    .ok_or_else(|| std::io::Error::other("missing ordinary source"))?;
+            assert!(ordinary.options.external_source.is_none());
+            let candidate =
+                candidate().ok_or_else(|| std::io::Error::other("missing candidate"))?;
+            assert!(candidate.is_eligible(&target_inputs, &edges, &[]));
+            let expected = if has_ordinary_source {
+                &ordinary
+            } else {
+                &candidate.component
+            };
+            let expected_name = expected.name.clone();
+            let expected_schema = expected.schema.clone();
+            let expected_options = expected.options.clone();
+            let expected_ports = expected.ports.clone();
+            let expected_outputs = expected.output_keys.clone();
+            let mut components = if has_ordinary_source {
+                vec![ordinary]
+            } else {
+                Vec::new()
+            };
+            install_fallback(
+                &mut components,
+                vec![candidate],
+                &target_inputs,
+                &edges,
+                &[],
+                &mut warnings,
+            );
+            assert_eq!(components.len(), 1);
+            assert_eq!(components[0].name, expected_name);
+            assert_eq!(components[0].schema, expected_schema);
+            assert_eq!(components[0].options, expected_options);
+            assert_eq!(components[0].ports, expected_ports);
+            assert_eq!(components[0].output_keys, expected_outputs);
+            assert_eq!(
+                components[0].options.external_source.is_some(),
+                !has_ordinary_source
+            );
+            let expected_warnings = if has_ordinary_source {
+                vec!["skipped user-defined function `ExternalRows`: definition is recursive"]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(warnings, expected_warnings);
+        }
         Ok(())
     }
 }

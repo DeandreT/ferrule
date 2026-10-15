@@ -30,6 +30,7 @@ pub(super) fn validate(
         json_document: _,
         json_schema_unresolved_reference,
         mfd_decimal_input_names,
+        mfd_optional_parser_input_names,
         json5: _,
         tabular_kind,
         delimiter,
@@ -98,6 +99,7 @@ pub(super) fn validate(
         edi_lexical_formats,
         edi_value_constraints,
         mfd_decimal_input_names,
+        mfd_optional_parser_input_names,
         xlsx_columns,
         xlsx_headers,
         xlsx_rows

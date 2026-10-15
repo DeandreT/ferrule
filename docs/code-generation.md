@@ -348,6 +348,13 @@ methods parse a primary JSON document with the mapping's embedded source schema,
 execute the same generated functions as the typed API, and serialize the
 primary and ordered named targets with their embedded target schemas.
 
+Object arrays retain separate array-container and object-item nullability in
+both generated readers and writers. Schemas with explicit
+`json_object_item_nullable` metadata use embedded descriptor version 4, which
+older runtimes reject. Schemas without this metadata keep their existing
+descriptor bytes and item behavior. The selected JSON5 companion profile
+rejects explicit object-item metadata.
+
 Rust:
 
 ```rust
