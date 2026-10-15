@@ -411,6 +411,7 @@ fn exercise(language: &str) -> TestResult<()> {
                     "--message-format=json-render-diagnostics",
                 ])
                 .current_dir(&host)
+                .env("CARGO_BUILD_BUILD_DIR", target)
                 .env("CARGO_TARGET_DIR", target)
                 .env("CARGO_BUILD_JOBS", "1")
                 .env("CARGO_INCREMENTAL", "0")

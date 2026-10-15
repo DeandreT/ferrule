@@ -676,9 +676,12 @@ fn run_frontier(target: GenerateTarget) -> TestResult<()> {
             .current_dir(&generated)
             .env("CARGO_BUILD_JOBS", "1")
             .env("CARGO_INCREMENTAL", "0");
-        if let Some(shared) = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
-            command.env("CARGO_TARGET_DIR", shared);
-        }
+        let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| generated.join("target"));
+        command
+            .env("CARGO_BUILD_BUILD_DIR", &target)
+            .env("CARGO_TARGET_DIR", target);
         command
     } else {
         let host = directory.path.join("host");

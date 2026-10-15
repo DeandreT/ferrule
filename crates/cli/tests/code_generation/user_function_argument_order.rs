@@ -261,6 +261,7 @@ fn user_function_argument_order_compiled_complete_oracles() -> TestResult<()> {
                         .args(["run", "--quiet", "--offline", "--jobs", "1", "--", mode])
                         .arg(&directory)
                         .current_dir(&directory)
+                        .env("CARGO_BUILD_BUILD_DIR", &target)
                         .env("CARGO_TARGET_DIR", &target)
                         .env("CARGO_INCREMENTAL", "0")
                         .env("RUSTFLAGS", "-Dwarnings");

@@ -98,6 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(&source_path)
         .arg(&target_path)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", &rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .env("RUSTFLAGS", "-Dwarnings")
         .isolated_output()?;

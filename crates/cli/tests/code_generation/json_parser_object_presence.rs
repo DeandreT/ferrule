@@ -61,6 +61,7 @@ fn mixed_parser_object_presence_matches_generated_rust_and_csharp() -> TestResul
         rust_command
             .args(["run", "--quiet"])
             .current_dir(&rust_output)
+            .env("CARGO_BUILD_BUILD_DIR", &host_target)
             .env("CARGO_TARGET_DIR", &host_target)
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env("RUSTFLAGS", "-Dwarnings");

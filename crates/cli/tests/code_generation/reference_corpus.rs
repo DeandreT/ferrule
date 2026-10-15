@@ -1938,6 +1938,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -1951,6 +1952,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .args(["run", "--quiet", "--"])
         .arg(&generated_input)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target);
     if let Some((source_schema, target_schema)) = &typed_host_schemas {
         rust_run_command.arg(source_schema).arg(target_schema);
@@ -2831,6 +2833,7 @@ fn run_fixed_width_output_set_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -2845,6 +2848,7 @@ fn run_fixed_width_output_set_case(
         .arg(&target_schema_path)
         .arg(&source_path)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3219,6 +3223,7 @@ fn run_multi_target_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3236,6 +3241,7 @@ fn run_multi_target_case(
         .arg(&named_json_schema_path)
         .arg(&source_path)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3512,6 +3518,7 @@ fn run_xml_nil_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3526,6 +3533,7 @@ fn run_xml_nil_case(
         .arg(&target_schema)
         .arg(&source_path)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3885,6 +3893,7 @@ fn run_failure_rule_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -3900,6 +3909,7 @@ fn run_failure_rule_case(
         .arg(&failing_path)
         .arg(&successful_path)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -4232,6 +4242,7 @@ fn run_dynamic_source_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -4250,6 +4261,7 @@ fn run_dynamic_source_case(
         .arg(mapping_path)
         .arg(&dynamic.name)
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target);
     for (path, payload) in &payloads {
         rust_run.arg(path).arg(payload);
@@ -4683,6 +4695,7 @@ fn run_file_set_case(
     let rust_build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target)
         .isolated_output()?;
     assert!(
@@ -4703,6 +4716,7 @@ fn run_file_set_case(
             "single"
         })
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", rust_target)
         .env("CARGO_TARGET_DIR", rust_target);
     for (portable, resolved, json) in &input_args {
         rust_run_command.arg(portable).arg(resolved).arg(json);

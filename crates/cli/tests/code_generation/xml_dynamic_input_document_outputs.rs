@@ -475,6 +475,7 @@ fn run_variant(
                 "--message-format=json-render-diagnostics",
             ])
             .current_dir(&host)
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", &target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-D warnings");

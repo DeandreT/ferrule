@@ -123,6 +123,7 @@ fn generated_rust_and_csharp_required_root_reads_match_lazy_typed_failures() {
     build
         .args(["build", "--offline", "--quiet"])
         .env("CARGO_NET_OFFLINE", "true")
+        .env("CARGO_BUILD_BUILD_DIR", rust.join("target"))
         .env("CARGO_TARGET_DIR", rust.join("target"))
         .env("CARGO_INCREMENTAL", "0");
     checked_command(&rust, "actual-offline-build", build);
@@ -138,6 +139,7 @@ fn generated_rust_and_csharp_required_root_reads_match_lazy_typed_failures() {
     command
         .args(["run", "--locked", "--offline", "--quiet"])
         .env("CARGO_NET_OFFLINE", "true")
+        .env("CARGO_BUILD_BUILD_DIR", rust.join("target"))
         .env("CARGO_TARGET_DIR", rust.join("target"))
         .env("CARGO_INCREMENTAL", "0");
     let result = checked_command(&rust, "actual-host", command);

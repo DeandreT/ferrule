@@ -731,6 +731,7 @@ fn run_generated_boundary_cases_json_with_harnesses(
     rust_command
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", target)
         .env("RUSTFLAGS", "-Dwarnings");
     let rust = recorded_json_boundary_command(&mut rust_command, &directory.path, "rust")?;

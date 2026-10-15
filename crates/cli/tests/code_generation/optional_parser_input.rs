@@ -59,6 +59,7 @@ fn optional_global_parser_inputs_match_generated_rust_and_csharp() -> TestResult
         rust_command
             .args(["run", "--quiet"])
             .current_dir(&rust_output)
+            .env("CARGO_BUILD_BUILD_DIR", &host_target)
             .env("CARGO_TARGET_DIR", &host_target)
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env("RUSTFLAGS", "-Dwarnings");

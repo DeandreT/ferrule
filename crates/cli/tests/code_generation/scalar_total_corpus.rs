@@ -340,6 +340,7 @@ fn scalar_total_corpus_executes_computed_sum_frames_in_both_languages() -> TestR
     let build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&rust_host)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", &target)
         .env("RUSTFLAGS", "-D warnings")
         .isolated_output()?;
@@ -406,6 +407,7 @@ fn scalar_total_corpus_executes_computed_sum_frames_in_both_languages() -> TestR
             .arg(&target_schema)
             .arg(&project_path)
             .current_dir(&rust_host)
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", &target)
             .env("RUSTFLAGS", "-D warnings")
             .isolated_output()?;

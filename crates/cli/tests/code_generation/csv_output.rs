@@ -681,6 +681,7 @@ fn run_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])
         .current_dir(output)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", target)
         .env("CARGO_INCREMENTAL", "0");
     let result = recorded_csv_command(&mut command, output, "rust-host")?;
@@ -1229,6 +1230,7 @@ fn run_named_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])
         .current_dir(output)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", target)
         .env("CARGO_INCREMENTAL", "0");
     let result = recorded_csv_command(&mut command, output, "rust-named-host")?;

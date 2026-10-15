@@ -147,6 +147,7 @@ fn format_guid_string_compiled_complete_oracles() -> TestResult<()> {
                     .args(["run", "--quiet", "--offline", "--jobs", "1", "--"])
                     .arg(&directory)
                     .current_dir(&directory)
+                    .env("CARGO_BUILD_BUILD_DIR", &target)
                     .env("CARGO_TARGET_DIR", &target)
                     .env("CARGO_INCREMENTAL", "0")
                     .env("RUSTFLAGS", "-Dwarnings");

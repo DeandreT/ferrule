@@ -269,6 +269,7 @@ fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
 
 fn configure_cargo(command: &mut Command, target: &Path) {
     command
+        .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("CARGO_BUILD_JOBS", "1")
         .env("CARGO_INCREMENTAL", "0");
@@ -404,6 +405,7 @@ fn cache_policy_preserves_host_arguments_and_warning_flags() {
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet"])
+        .env("CARGO_BUILD_BUILD_DIR", "/outer-build")
         .env("RUSTFLAGS", "-D warnings");
     configure_cargo(&mut command, Path::new("/dedicated-host"));
     assert_eq!(
@@ -421,6 +423,10 @@ fn cache_policy_preserves_host_arguments_and_warning_flags() {
     assert_eq!(env[OsStr::new("CARGO_INCREMENTAL")], Some(OsStr::new("0")));
     assert_eq!(
         env[OsStr::new("CARGO_TARGET_DIR")],
+        Some(OsStr::new("/dedicated-host"))
+    );
+    assert_eq!(
+        env[OsStr::new("CARGO_BUILD_BUILD_DIR")],
         Some(OsStr::new("/dedicated-host"))
     );
 }

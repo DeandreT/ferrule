@@ -1149,6 +1149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(&output)
+        .env("CARGO_BUILD_BUILD_DIR", directory.0.join("cargo-target"))
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
         .isolated_output()?;
     assert!(
@@ -1385,6 +1386,7 @@ fn target_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance
     let command = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(&output)
+        .env("CARGO_BUILD_BUILD_DIR", directory.0.join("cargo-target"))
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
         .isolated_output()?;
     assert!(
