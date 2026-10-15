@@ -9,6 +9,65 @@ use super::{
 };
 
 #[test]
+fn keyless_clone_paths_and_wrapped_markers_keep_exact_declaration_order() {
+    let document = roxmltree::Document::parse(
+        r#"<entry name="Result"><entry name="Batch" inpkey="40">
+          <entry name="Record"><entry name="Count" inpkey="4294967294"/></entry>
+          <entry name="Record" clone="1"><entry name="Count" inpkey="52"/></entry>
+        </entry></entry>"#,
+    )
+    .unwrap();
+    let entry = document.root_element();
+    let keys = std::collections::BTreeSet::from([40, 52, u32::MAX - 1]);
+    let paths = super::input_branch_paths(&entry, &keys);
+    assert_eq!(
+        paths,
+        vec![
+            (u32::MAX, vec!["Batch".to_string(), "Record".to_string()]),
+            (0, vec!["Batch".to_string(), "Record".to_string()]),
+        ]
+    );
+    assert_eq!(
+        super::input_port_ancestors(&entry, &keys),
+        BTreeMap::from([
+            (40, vec![]),
+            (u32::MAX - 1, vec![40, u32::MAX]),
+            (52, vec![40, 0]),
+        ])
+    );
+}
+
+#[test]
+fn repeated_input_keys_keep_legacy_ancestry_but_refuse_unique_clone_ownership() {
+    let document = roxmltree::Document::parse(
+        r#"<entry name="Result"><entry name="Batch" inpkey="40">
+          <entry name="Record"><entry name="Count" inpkey="52"/></entry>
+          <entry name="Record" clone="1"><entry name="Count" inpkey="52"/></entry>
+        </entry></entry>"#,
+    )
+    .unwrap();
+    let ancestry = super::input_port_ancestry(
+        &document.root_element(),
+        &std::collections::BTreeSet::from([40, 52]),
+    );
+    assert_eq!(
+        ancestry.ancestors,
+        BTreeMap::from([(40, vec![]), (52, vec![40, 54])])
+    );
+    assert_eq!(
+        ancestry.ambiguous_inputs,
+        std::collections::BTreeSet::from([52])
+    );
+    assert_eq!(
+        ancestry.branches,
+        vec![
+            (53, vec!["Batch".to_string(), "Record".to_string()]),
+            (54, vec!["Batch".to_string(), "Record".to_string()]),
+        ]
+    );
+}
+
+#[test]
 fn marked_nested_json_array_ports_preserve_each_declared_level()
 -> Result<(), Box<dyn std::error::Error>> {
     let project: mapping::Project = serde_json::from_str(include_str!(
@@ -385,4 +444,66 @@ fn whole_table_ports_include_introspected_columns_missing_from_the_entry_tree() 
             ty: ScalarType::Int
         })
     ));
+}
+
+#[test]
+fn json_property_paths_preserve_all_legacy_marker_allocation_and_raw_ancestry() {
+    let document = roxmltree::Document::parse(r#"<entry name="object">
+        <entry name="ignored"/><entry name="ignored"/>
+        <entry name="17:Records" type="json-property"><entry name="array"><entry name="item" type="json-item">
+            <entry name="object"><entry name="Value" type="json-property"><entry name="string" inpkey="4294967294"/></entry></entry>
+            <entry name="object" clone="1"><entry name="Value" type="json-property"><entry name="string" inpkey="52"/></entry></entry>
+        </entry></entry></entry>
+    </entry>"#).unwrap();
+    let keys = std::collections::BTreeSet::from([52, u32::MAX - 1]);
+    let legacy = super::input_port_ancestry(&document.root_element(), &keys);
+    let json = super::input_port_ancestry_projected(&document.root_element(), &keys, true);
+    assert_eq!(json.ancestors, legacy.ancestors);
+    assert_eq!(json.ambiguous_inputs, legacy.ambiguous_inputs);
+    assert_eq!(
+        json.branches,
+        vec![
+            (1, vec!["17:Records".into()]),
+            (2, vec!["17:Records".into()])
+        ]
+    );
+    assert_eq!(
+        json.ancestors,
+        BTreeMap::from([(u32::MAX - 1, vec![1]), (52, vec![2])])
+    );
+}
+
+#[test]
+fn json_branch_projection_refuses_alternative_and_ambiguous_wrappers_without_renumbering() {
+    let text = r#"<entry name="object"><entry name="Records" type="json-property"><entry name="array"><entry name="item" type="json-item">
+        <entry name="object"><entry name="Value" type="json-property"><entry name="string" inpkey="51"/></entry></entry>
+        <entry name="object" clone="1"><entry name="Value" type="json-property"><entry name="string" inpkey="61"/></entry></entry>
+    </entry></entry></entry></entry>"#;
+    for (before, after) in [
+        (
+            r#"<entry name="object" clone="1">"#,
+            r#"<entry name="object" type="json-subtype" clone="1">"#,
+        ),
+        (
+            r#"<entry name="item" type="json-item">"#,
+            r#"<entry name="item" type="json-item"><entry name="null"/>"#,
+        ),
+        (
+            r#"<entry name="array">"#,
+            r#"<entry name="array"/><entry name="array">"#,
+        ),
+        (
+            r#"<entry name="item" type="json-item">"#,
+            r#"<entry name="item" type="json-item"/><entry name="item" type="json-item">"#,
+        ),
+    ] {
+        let changed = text.replace(before, after);
+        let document = roxmltree::Document::parse(&changed).unwrap();
+        let keys = std::collections::BTreeSet::from([51, 61]);
+        let legacy = super::input_port_ancestry(&document.root_element(), &keys);
+        let json = super::input_port_ancestry_projected(&document.root_element(), &keys, true);
+        assert!(json.branches.is_empty(), "{after}");
+        assert_eq!(json.ancestors, legacy.ancestors);
+        assert_eq!(json.ambiguous_inputs, legacy.ambiguous_inputs);
+    }
 }

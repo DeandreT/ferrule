@@ -1,0 +1,218 @@
+[
+  {
+    "name": "present left skips omitted fallback",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "LEFT"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty left is present and skips malformed fallback",
+    "input": "{\"Rows\":[{\"Value\":\"\"}]}",
+    "parameters": {
+      "payload": ""
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "present left skips missing parser path",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"}]}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": "LEFT"
+        }
+      ]
+    }
+  },
+  {
+    "name": "present left skips wrong unused schema field",
+    "input": "{\"Rows\":[{\"Value\":\"LEFT\"}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"},\"Tail\":1}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": "LEFT"
+        }
+      ]
+    }
+  },
+  {
+    "name": "null left demands fallback",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": "RIGHT"
+        }
+      ]
+    }
+  },
+  {
+    "name": "absent source field demands fallback",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": "RIGHT"
+        }
+      ]
+    }
+  },
+  {
+    "name": "null left with omitted fallback parameter",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "absent source field with omitted fallback parameter",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "null left demands absent scalar and required target refuses absence",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
+    }
+  },
+  {
+    "name": "null left demands empty parser input",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": ""
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "null left demands complete unused schema field",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"},\"Tail\":1}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "name": "fallback empty String is retained",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "supplied parameter Null stays absent at required target",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {
+      "payload": null
+    },
+    "output_error": {
+      "object": "Rows",
+      "property": "Label"
+    }
+  },
+  {
+    "name": "mixed rows preserve positions and complete values",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null},{},{\"Value\":\"\"}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"}}"
+    },
+    "expected": {
+      "Rows": [
+        {
+          "Label": "A"
+        },
+        {
+          "Label": "RIGHT"
+        },
+        {
+          "Label": "RIGHT"
+        },
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "zero rows skip omitted parameter",
+    "input": "{\"Rows\":[]}",
+    "parameters": {},
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "zero rows skip malformed parameter",
+    "input": "{\"Rows\":[]}",
+    "parameters": {
+      "payload": ""
+    },
+    "expected": {
+      "Rows": []
+    }
+  },
+  {
+    "name": "later row fails after earlier left was selected",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null}]}",
+    "parameters": {},
+    "missing_parameter": {
+      "node": 2,
+      "name": "payload"
+    }
+  },
+  {
+    "name": "wrong source scalar refuses input",
+    "input": "{\"Rows\":[{\"Value\":7}]}",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"RIGHT\"}}"
+    },
+    "reject": true
+  }
+]

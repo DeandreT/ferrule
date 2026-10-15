@@ -1,0 +1,224 @@
+[
+  {
+    "name": "groups and transactions retain physical occurrence identity",
+    "wire": "ISA*00*          *00*          *ZZ*GENERIC-SENDER *ZZ*GENERIC-RECEIVE*261001*1200*^*00501*000000001*0*P*:~GS*FA*GENERIC*GENERIC*20261001*1200*1*X*005010~ST*990*0001~N1*A~SE*3*0001~ST*990*0002~N1~SE*3*0002~GE*2*1~GS*FA*GENERIC*GENERIC*20261001*1200*2*X*005010~ST*990*1001~SE*2*1001~ST*990*1002~N1*B~N1*C~SE*4*1002~GE*2*2~IEA*2*000000001~",
+    "source": {
+      "ISA": {
+        "A01": "00",
+        "A02": "          ",
+        "A03": "00",
+        "A04": "          ",
+        "A05": "ZZ",
+        "A06": "GENERIC-SENDER ",
+        "A07": "ZZ",
+        "A08": "GENERIC-RECEIVE",
+        "A09": "261001",
+        "A10": "1200",
+        "A11": "^",
+        "A12": "00501",
+        "A13": "000000001",
+        "A14": "0",
+        "A15": "P",
+        "A16": ":"
+      },
+      "Group": [
+        {
+          "GS": {
+            "G01": "FA",
+            "G02": "GENERIC",
+            "G03": "GENERIC",
+            "G04": "20261001",
+            "G05": "1200",
+            "G06": "1",
+            "G07": "X",
+            "G08": "005010"
+          },
+          "Message": [
+            {
+              "ST": {
+                "S01": "990",
+                "S02": "0001"
+              },
+              "Item": [
+                {
+                  "N1": {
+                    "Label": "A"
+                  }
+                }
+              ],
+              "SE": {
+                "T01": "3",
+                "T02": "0001"
+              }
+            },
+            {
+              "ST": {
+                "S01": "990",
+                "S02": "0002"
+              },
+              "Item": [
+                {
+                  "N1": {
+                    "Label": null
+                  }
+                }
+              ],
+              "SE": {
+                "T01": "3",
+                "T02": "0002"
+              }
+            }
+          ],
+          "GE": {
+            "E01": "2",
+            "E02": "1"
+          }
+        },
+        {
+          "GS": {
+            "G01": "FA",
+            "G02": "GENERIC",
+            "G03": "GENERIC",
+            "G04": "20261001",
+            "G05": "1200",
+            "G06": "2",
+            "G07": "X",
+            "G08": "005010"
+          },
+          "Message": [
+            {
+              "ST": {
+                "S01": "990",
+                "S02": "1001"
+              },
+              "Item": [],
+              "SE": {
+                "T01": "2",
+                "T02": "1001"
+              }
+            },
+            {
+              "ST": {
+                "S01": "990",
+                "S02": "1002"
+              },
+              "Item": [
+                {
+                  "N1": {
+                    "Label": "B"
+                  }
+                },
+                {
+                  "N1": {
+                    "Label": "C"
+                  }
+                }
+              ],
+              "SE": {
+                "T01": "4",
+                "T02": "1002"
+              }
+            }
+          ],
+          "GE": {
+            "E01": "2",
+            "E02": "2"
+          }
+        }
+      ],
+      "IEA": {
+        "I01": "2",
+        "I02": "000000001"
+      }
+    },
+    "expected": {
+      "Groups": [
+        {
+          "Transactions": [
+            {
+              "Batches": [
+                {
+                  "Records": [
+                    {
+                      "Branch": "left",
+                      "Label": "A",
+                      "Enabled": false,
+                      "Count": 0
+                    },
+                    {
+                      "Branch": "right",
+                      "Label": "A",
+                      "Enabled": false,
+                      "Count": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Batches": [
+                {
+                  "Records": [
+                    {
+                      "Branch": "left",
+                      "Enabled": false,
+                      "Count": 0
+                    },
+                    {
+                      "Branch": "right",
+                      "Enabled": false,
+                      "Count": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Transactions": [
+            {
+              "Batches": []
+            },
+            {
+              "Batches": [
+                {
+                  "Records": [
+                    {
+                      "Branch": "left",
+                      "Label": "B",
+                      "Enabled": false,
+                      "Count": 0
+                    },
+                    {
+                      "Branch": "right",
+                      "Label": "B",
+                      "Enabled": false,
+                      "Count": 0
+                    }
+                  ]
+                },
+                {
+                  "Records": [
+                    {
+                      "Branch": "left",
+                      "Label": "C",
+                      "Enabled": false,
+                      "Count": 0
+                    },
+                    {
+                      "Branch": "right",
+                      "Label": "C",
+                      "Enabled": false,
+                      "Count": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

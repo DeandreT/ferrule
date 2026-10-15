@@ -651,6 +651,7 @@ fn compiled_rust(root: &Path) {
                 "--offline",
                 "--quiet",
             ])
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", target)
             .env("CARGO_BUILD_JOBS", "1")
             .current_dir(root),

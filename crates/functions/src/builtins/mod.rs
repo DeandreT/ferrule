@@ -111,6 +111,7 @@ pub(super) fn call_builtin(
         BuiltinId::Isbn10ToIsbn13 => isbn::isbn10_to_isbn13(args),
         BuiltinId::JsonSerializeObject => json::serialize_object(args),
         BuiltinId::JsonParseField => json::parse_field(args),
+        BuiltinId::JsonParseObjectExists => json::object_exists(args),
         BuiltinId::FlextextParseField => flextext::parse_field(args),
     }
 }

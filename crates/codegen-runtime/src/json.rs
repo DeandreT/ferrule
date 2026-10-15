@@ -15,6 +15,8 @@ mod embedded_schema;
 mod large_collections;
 mod multiple_of;
 #[cfg(test)]
+mod object_item_nullability;
+#[cfg(test)]
 mod output_normalization;
 #[cfg(test)]
 mod pattern_properties;

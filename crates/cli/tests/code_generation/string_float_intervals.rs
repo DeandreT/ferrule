@@ -280,6 +280,7 @@ fn string_float_intervals_compiled_complete_oracles() -> TestResult<()> {
                         .arg(&directory)
                         .arg(label)
                         .current_dir(&directory)
+                        .env("CARGO_BUILD_BUILD_DIR", &target)
                         .env("CARGO_TARGET_DIR", &target)
                         .env("CARGO_INCREMENTAL", "0")
                         .env("RUSTFLAGS", "-Dwarnings");

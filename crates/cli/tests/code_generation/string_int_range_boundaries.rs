@@ -410,6 +410,7 @@ fn compiled_hosts(
         cargo
             .args(["build", "--offline", "--jobs", "1"])
             .current_dir(&rust)
+            .env("CARGO_BUILD_BUILD_DIR", target)
             .env("CARGO_TARGET_DIR", target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-Dwarnings");

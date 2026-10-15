@@ -1,0 +1,30 @@
+{
+  "title": "Source",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "Count": {
+            "type": "integer"
+          },
+          "Note": {
+            "type": "string"
+          },
+          "Choose": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "GlobalChoose": {
+      "type": "boolean"
+    }
+  }
+}

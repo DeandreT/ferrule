@@ -406,6 +406,7 @@ pub(super) fn build(
         command
             .args(["build", "--offline", "--quiet", "--jobs", "1"])
             .current_dir(&host)
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", &target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-D warnings");

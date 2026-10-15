@@ -523,6 +523,7 @@ fn exercise(evidence: &mut Evidence, label: &str, artifacts: &ArtifactSet, host:
     command
         .args(["run", "--quiet", "--offline", "--jobs", "1"])
         .current_dir(&directory)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", &target)
         .env("CARGO_BUILD_JOBS", "1")
         .env("CARGO_INCREMENTAL", "0")

@@ -674,6 +674,7 @@ fn generated_rust_structured_xml_public_apis_preserve_nested_nil_and_all_quotes(
         .arg(directory.path.join("source-schema.json"))
         .arg(&path)
         .current_dir(&host)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", target)
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-D warnings")

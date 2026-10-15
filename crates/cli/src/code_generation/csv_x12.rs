@@ -32,5 +32,18 @@ fn extension(path: Option<&str>) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
+/// Only an explicit caller choice changes the target grammar. All retained
+/// source and target options are captured by the ordinary policy first.
+pub(super) fn policy_with_envelope_profile(
+    project: &Project,
+    target_envelope: Option<codegen::X12EnvelopeProfile>,
+) -> anyhow::Result<CsvX12BoundaryPolicy> {
+    let mut policy = policy(project)?;
+    if let Some(profile) = target_envelope {
+        policy.target.envelope_profile = profile;
+    }
+    Ok(policy)
+}
+
 #[cfg(test)]
 mod tests;

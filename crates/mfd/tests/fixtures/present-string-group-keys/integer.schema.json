@@ -1,0 +1,1 @@
+{"title":"Feed","type":"object","additionalProperties":false,"required":["Rows"],"properties":{"Rows":{"type":"array","minItems":0,"maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["Key","Name"],"properties":{"Key":{"type":"integer"},"Name":{"type":"string"}}}}}}

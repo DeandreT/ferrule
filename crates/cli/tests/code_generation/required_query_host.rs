@@ -160,6 +160,7 @@ fn imported_required_query_host_matches_generated_rust_and_csharp() -> TestResul
     let rust = Command::new("cargo")
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", directory.0.join("cargo-target"))
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
         .env("RUSTFLAGS", "-Dwarnings")
         .isolated_output()?;

@@ -676,6 +676,7 @@ fn required_ref_compiled_rust_and_csharp_all_complete_text_and_bytes() -> TestRe
         cargo
             .args(["build", "--offline", "--jobs", "1"])
             .current_dir(&rust_host)
+            .env("CARGO_BUILD_BUILD_DIR", &target)
             .env("CARGO_TARGET_DIR", &target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-Dwarnings");

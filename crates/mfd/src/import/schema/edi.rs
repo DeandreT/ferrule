@@ -343,6 +343,7 @@ pub(super) fn read(
         embedded_lexical_formats,
         embedded_value_constraints,
     ));
+    let mut occurrence_authoritative = has_compiled_schema && !is_variable && kind == "EDIX12";
     if is_variable {
         schema = match variable::select(data, &schema) {
             Ok(selected) => selected,
@@ -355,7 +356,10 @@ pub(super) fn read(
         };
     }
     if !is_variable && has_compiled_schema && kind == "EDIX12" {
+        // Occurrence proof cannot use virtual entries merged after compilation.
+        let compiled_schema = schema.clone();
         merge_parser_error_entries(&entry, &mut schema);
+        occurrence_authoritative &= schema == compiled_schema;
     }
     // External configuration compilation is authoritative. Embedded Ferrule
     // provenance is usable only when the file has no external config reference
@@ -402,8 +406,12 @@ pub(super) fn read(
     let mut out_count = 0usize;
     let mut in_count = 0usize;
     let (input_keys, output_keys) = super::entry_key_sets(&root);
-    let input_ancestors = super::input_port_ancestors(&entry, &input_keys);
+    let ancestry = super::input_port_ancestry(&entry, &input_keys);
+    let input_ancestors = ancestry.ancestors;
     let mut declarations = super::PortDeclarationCensus::default();
+    if occurrence_authoritative {
+        declarations.mark_complete_x12_config();
+    }
     declarations.record(entry, &[]);
     super::record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
     super::collect_entry_ports_with_declarations(
@@ -493,6 +501,10 @@ pub(super) fn read(
         input_keys,
         output_keys,
         input_ancestors,
+        input_branch_paths: ancestry.branches,
+        ambiguous_branch_inputs: ancestry.ambiguous_inputs,
+        has_target_node_controls: super::has_target_node_controls(component),
+        json_schema_authoritative: false,
         port_declarations: Some(declarations.finish(root)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),

@@ -135,10 +135,26 @@ pub fn generate_project_with_csv_x12_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
+    generate_project_with_csv_x12_envelope_profile(project_path, output_directory, target, None)
+}
+
+/// Generate CSV input and X12 output companions with an explicit target
+/// envelope grammar. An absent selection retains the single-transaction default.
+pub fn generate_project_with_csv_x12_envelope_profile(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    target_envelope: Option<codegen::X12EnvelopeProfile>,
+) -> anyhow::Result<GenerateOutcome> {
     if target != GenerateTarget::CSharp {
         bail!("generated CSV-to-X12 adapters require the C# backend");
     }
-    generate_project_impl(project_path, output_directory, target, Adapter::CsvX12)
+    generate_project_impl(
+        project_path,
+        output_directory,
+        target,
+        Adapter::CsvX12(target_envelope),
+    )
 }
 
 /// Generate full-row CSV input and selected own strict JSON C# companions.
@@ -166,7 +182,7 @@ enum Adapter {
         Option<codegen::X12EnvelopeProfile>,
         Option<codegen::X12EnvelopeProfile>,
     ),
-    CsvX12,
+    CsvX12(Option<codegen::X12EnvelopeProfile>),
     CsvJson,
 }
 
@@ -184,8 +200,8 @@ fn generate_project_impl(
     } else {
         None
     };
-    let csv_x12_policy = if adapter == Adapter::CsvX12 {
-        let policy = csv_x12::policy(&project)?;
+    let csv_x12_policy = if let Adapter::CsvX12(target_envelope) = adapter {
+        let policy = csv_x12::policy_with_envelope_profile(&project, target_envelope)?;
         codegen::prepare_csv_x12_project_boundary(&project, &policy)?;
         Some(policy)
     } else {

@@ -124,6 +124,7 @@ fn json5_companions_all184_small_public_calls_in_rust_and_csharp() -> TestResult
             cargo
                 .args(["build", "--offline", "--jobs", "1"])
                 .current_dir(&rust_host)
+                .env("CARGO_BUILD_BUILD_DIR", &target)
                 .env("CARGO_TARGET_DIR", &target)
                 .env("CARGO_INCREMENTAL", "0")
                 .env("RUSTFLAGS", "-Dwarnings");

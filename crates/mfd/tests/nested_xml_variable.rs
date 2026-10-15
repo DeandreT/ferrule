@@ -107,10 +107,7 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let invalid = matches!(
-        shape,
-        VariableShape::Ambiguous | VariableShape::NestedRepetition
-    );
+    let invalid = shape == VariableShape::Ambiguous;
     let second_row = if invalid {
         r#"<entry name="Row" inpkey="23"><entry name="BatchId"/><entry name="Code"/><entry name="Qty"/></entry>"#
     } else {
@@ -276,13 +273,18 @@ fn unconnected_nested_repetition_does_not_block_projected_siblings() -> Result<(
 fn projection_across_nested_repetition_remains_unsupported() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let design = write_fixture(&dir.0, VariableShape::NestedRepetition)?;
-    let mapping = std::fs::read_to_string(&design)?
+    let mapping = std::fs::read_to_string(&design)?;
+    let qty_entry = r#"<entry name="Qty" inpkey="15"/></entry>"#;
+    let code_edge = r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/></edges></vertex>"#;
+    assert_eq!(mapping.matches(qty_entry).count(), 1);
+    assert_eq!(mapping.matches(code_edge).count(), 1);
+    let mapping = mapping
         .replace(
-            r#"<entry name="Qty" inpkey="15"/></entry>"#,
+            qty_entry,
             r#"<entry name="Qty" inpkey="15"/><entry name="Detail"><entry name="Value" inpkey="16"/></entry></entry>"#,
         )
         .replace(
-            r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/></edges></vertex>"#,
+            code_edge,
             r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/><edge vertexkey="16"/></edges></vertex>"#,
         );
     write(&design, &mapping)?;

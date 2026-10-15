@@ -1,0 +1,49 @@
+[
+  {
+    "name": "present String",
+    "input": "{\"Rows\":[{\"Value\":\"L\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "L"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty String",
+    "input": "{\"Rows\":[{\"Value\":\"\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing and Null",
+    "input": "{\"Rows\":[{},{\"Value\":null}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "FALLBACK"
+        },
+        {
+          "Label": "FALLBACK"
+        }
+      ]
+    }
+  },
+  {
+    "name": "zero rows",
+    "input": "{\"Rows\":[]}",
+    "parameters": {},
+    "expected": {
+      "Rows": []
+    }
+  }
+]

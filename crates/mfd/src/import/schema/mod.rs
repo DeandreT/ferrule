@@ -16,6 +16,7 @@ mod flextext;
 mod generic_xml;
 mod http_get;
 mod json_variable;
+pub(super) mod occurrence_provenance;
 mod pdf;
 mod port_declarations;
 mod protobuf;
@@ -219,7 +220,10 @@ impl ComponentFormat {
     }
 
     pub(super) const fn supports_cloned_target_branches(self) -> bool {
-        matches!(self, Self::Xml | Self::Edi | Self::Db | Self::Xbrl)
+        matches!(
+            self,
+            Self::Xml | Self::Json | Self::Edi | Self::Db | Self::Xbrl
+        )
     }
 }
 
@@ -242,8 +246,20 @@ pub(super) struct SchemaComponent {
     /// Input port -> enclosing input ports, outermost first. This preserves
     /// cloned target-entry branch identity when several ports share one path.
     pub(super) input_ancestors: BTreeMap<u32, Vec<u32>>,
+    /// Exact entry path owned by each import-only duplicate-entry marker.
+    /// Descendant paths alone cannot identify a keyless cloned group.
+    pub(super) input_branch_paths: Vec<(u32, Vec<String>)>,
+    /// Keys declared beneath distinct target branch lineages cannot be moved
+    /// using the legacy one-key/one-ancestor map.
+    pub(super) ambiguous_branch_inputs: BTreeSet<u32>,
+    /// Target node rules/cast policies need branch-aware post-processing before
+    /// new occurrence lowering can carry them into concatenated segments.
+    pub(super) has_target_node_controls: bool,
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
+    /// True only when a referenced JSON Schema was resolved and imported.
+    /// Synthetic and entry-tree fallback components never supply this proof.
+    pub(super) json_schema_authoritative: bool,
     /// Raw declaration facts retained only for bounded admission proofs.
     pub(super) port_declarations: Option<PortDeclarations>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
@@ -286,6 +302,18 @@ impl SchemaComponent {
         self.port_declarations
             .as_ref()
             .is_none_or(|facts| facts.ambiguous_input_affects(key, path))
+    }
+
+    pub(super) fn json_scalar_port(&self, key: u32, ty: ScalarType) -> bool {
+        self.port_declarations
+            .as_ref()
+            .is_some_and(|facts| facts.json_scalar(key, ty))
+    }
+
+    pub(super) fn json_array_object_frame_port(&self, key: u32) -> bool {
+        self.port_declarations
+            .as_ref()
+            .is_some_and(|facts| facts.json_array_object_frame(key))
     }
 }
 
@@ -489,7 +517,8 @@ fn read_schema_component_resolved(
         &mut in_count,
         Some(&mut declarations),
     );
-    let input_ancestors = input_port_ancestors(&entry, &input_keys);
+    let ancestry = input_port_ancestry(&entry, &input_keys);
+    let input_ancestors = ancestry.ancestors;
     let no_port_warning_index = (out_count == 0 && in_count == 0).then(|| {
         let index = warnings.len();
         warnings.push(if root_view_is_source.is_some() {
@@ -679,8 +708,12 @@ fn read_schema_component_resolved(
                 .and_then(|entry| parse_u32(entry.attribute("inpkey"))),
             ports,
             input_ancestors,
+            input_branch_paths: ancestry.branches,
+            ambiguous_branch_inputs: ancestry.ambiguous_inputs,
+            has_target_node_controls: has_target_node_controls(component),
             input_keys,
             output_keys,
+            json_schema_authoritative: false,
             port_declarations: Some(declarations.finish(root_el)),
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
@@ -913,6 +946,7 @@ fn read_json_component_resolved(
     }
 
     // Schema: prefer the referenced JSON Schema (types + repeating info).
+    let mut json_schema_authoritative = false;
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
@@ -955,7 +989,10 @@ fn read_json_component_resolved(
                 None => format_json::json_schema::import(&schema_path),
             };
             match imported {
-                Ok(schema) => Some(schema),
+                Ok(schema) => {
+                    json_schema_authoritative = ordinary_json_schema_declaration(component);
+                    Some(schema)
+                }
                 Err(e) => {
                     if json_schema_unresolved_reference.is_none() {
                         json_schema_unresolved_reference = Some(rel.to_string());
@@ -1014,7 +1051,7 @@ fn read_json_component_resolved(
     }
 
     let (input_keys, output_keys) = entry_key_sets(&root_el);
-    let input_ancestors = input_port_ancestors(&entry, &input_keys);
+    let ancestry = input_port_ancestry_projected(&entry, &input_keys, true);
 
     Some(SchemaComponent {
         name,
@@ -1039,9 +1076,13 @@ fn read_json_component_resolved(
         is_pass_through: false,
         compute_when_key: None,
         ports,
-        input_ancestors,
+        input_ancestors: ancestry.ancestors,
+        input_branch_paths: ancestry.branches,
+        ambiguous_branch_inputs: ancestry.ambiguous_inputs,
+        has_target_node_controls: has_target_node_controls(component),
         input_keys,
         output_keys,
+        json_schema_authoritative,
         port_declarations: Some(declarations.finish(root_el)),
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
@@ -1278,6 +1319,54 @@ fn record_json_dynamic_source_ports(
     ports.insert(*value_key, value_path);
     *out_count += 2;
     true
+}
+
+/// A bounded ordinary JSON reader must not derive authority from the general
+/// reader's first-data/root/json normalization or ignored boundary controls.
+fn ordinary_json_schema_declaration(component: &roxmltree::Node<'_, '_>) -> bool {
+    let data = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect::<Vec<_>>();
+    let [data] = data.as_slice() else {
+        return false;
+    };
+    let roots = data
+        .children()
+        .filter(|node| node.has_tag_name("root"))
+        .collect::<Vec<_>>();
+    let json = data
+        .children()
+        .filter(|node| node.has_tag_name("json"))
+        .collect::<Vec<_>>();
+    let ([_], [json]) = (roots.as_slice(), json.as_slice()) else {
+        return false;
+    };
+    data.attributes().len() == 0
+        && data.tag_name().namespace().is_none()
+        && data
+            .children()
+            .filter(|node| node.is_element())
+            .all(|node| matches!(node.tag_name().name(), "root" | "json"))
+        && json
+            .attribute("schema")
+            .is_some_and(|schema| !schema.is_empty())
+        && json.tag_name().namespace().is_none()
+        && matches!(json.attribute("jsonlines"), None | Some("0"))
+        && json.attributes().all(|attribute| {
+            attribute.namespace().is_none()
+                && matches!(
+                    attribute.name(),
+                    "schema" | "inputinstance" | "outputinstance" | "jsonlines"
+                )
+        })
+        && !json.children().any(|node| node.is_element())
+        && !component.descendants().any(|node| {
+            node.has_tag_name("entry")
+                && node
+                    .children()
+                    .any(|child| child.has_tag_name("outputnodefunctions"))
+        })
 }
 
 fn attach_json_dynamic_source_schema(
@@ -1521,8 +1610,12 @@ pub(super) fn read_csv_component(
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
+        input_branch_paths: Vec::new(),
+        ambiguous_branch_inputs: Default::default(),
+        has_target_node_controls: false,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
+        json_schema_authoritative: false,
         port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
@@ -1628,7 +1721,48 @@ fn input_port_ancestors(
     entry: &roxmltree::Node<'_, '_>,
     input_keys: &BTreeSet<u32>,
 ) -> BTreeMap<u32, Vec<u32>> {
+    input_port_ancestry(entry, input_keys).ancestors
+}
+
+fn has_target_node_controls(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.descendants().any(|entry| {
+        entry.has_tag_name("entry")
+            && (entry.attribute("casttotargettypemode").is_some()
+                || entry
+                    .children()
+                    .any(|child| child.has_tag_name("inputnodefunctions")))
+    })
+}
+
+#[cfg(test)]
+fn input_branch_paths(
+    entry: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+) -> Vec<(u32, Vec<String>)> {
+    input_port_ancestry(entry, input_keys).branches
+}
+
+struct InputPortAncestry {
+    ancestors: BTreeMap<u32, Vec<u32>>,
+    branches: Vec<(u32, Vec<String>)>,
+    ambiguous_inputs: BTreeSet<u32>,
+}
+
+fn input_port_ancestry(
+    entry: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+) -> InputPortAncestry {
+    input_port_ancestry_projected(entry, input_keys, false)
+}
+
+fn input_port_ancestry_projected(
+    entry: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+    json_paths: bool,
+) -> InputPortAncestry {
     let mut result = BTreeMap::new();
+    let mut branches = Vec::new();
+    let mut ambiguous_inputs = BTreeSet::new();
     let mut ancestors = Vec::new();
     let mut next_branch = input_keys
         .last()
@@ -1645,16 +1779,29 @@ fn input_port_ancestors(
         &mut next_branch,
         &mut ancestors,
         &mut result,
+        &mut Vec::new(),
+        &mut branches,
+        &mut ambiguous_inputs,
+        json_paths,
     );
-    result
+    InputPortAncestry {
+        ancestors: result,
+        branches,
+        ambiguous_inputs,
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_input_port_ancestors(
     entry: &roxmltree::Node<'_, '_>,
     input_keys: &BTreeSet<u32>,
     next_branch: &mut u32,
     ancestors: &mut Vec<u32>,
     result: &mut BTreeMap<u32, Vec<u32>>,
+    path: &mut Vec<String>,
+    branches: &mut Vec<(u32, Vec<String>)>,
+    ambiguous_inputs: &mut BTreeSet<u32>,
+    json_paths: bool,
 ) {
     let children = entry
         .children()
@@ -1671,20 +1818,54 @@ fn collect_input_port_ancestors(
         let normalized = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
         let duplicate_branch = name_counts.get(&normalized).copied().unwrap_or_default() > 1;
         let branch = duplicate_branch.then(|| take_branch_marker(input_keys, next_branch));
+        let advances_path = !json_paths || child.attribute("type") == Some("json-property");
+        if advances_path {
+            path.push(if json_paths {
+                child.attribute("name").unwrap_or_default().to_string()
+            } else {
+                normalized.0.to_owned()
+            });
+        }
         if let Some(branch) = branch {
+            // Allocate every legacy marker in the same raw declaration order.
+            // JSON metadata projects only ordinary duplicate object item views;
+            // scalar/null alternatives and protocol wrappers are not occurrences.
             ancestors.push(branch);
+            let json_object_item = port_declarations::ordinary_json_object_item(child);
+            if !json_paths || json_object_item {
+                branches.push((branch, path.clone()));
+            }
         }
         let key = parse_u32(child.attribute("inpkey"));
         if let Some(key) = key {
+            if result
+                .get(&key)
+                .is_some_and(|previous| previous != ancestors)
+            {
+                ambiguous_inputs.insert(key);
+            }
             result.insert(key, ancestors.clone());
             ancestors.push(key);
         }
-        collect_input_port_ancestors(&child, input_keys, next_branch, ancestors, result);
+        collect_input_port_ancestors(
+            &child,
+            input_keys,
+            next_branch,
+            ancestors,
+            result,
+            path,
+            branches,
+            ambiguous_inputs,
+            json_paths,
+        );
         if key.is_some() {
             ancestors.pop();
         }
         if branch.is_some() {
             ancestors.pop();
+        }
+        if advances_path {
+            path.pop();
         }
     }
 }
@@ -2133,8 +2314,12 @@ fn read_db_component_resolved(
         compute_when_key: None,
         ports,
         input_ancestors,
+        input_branch_paths: Vec::new(),
+        ambiguous_branch_inputs: Default::default(),
+        has_target_node_controls: false,
         input_keys,
         output_keys,
+        json_schema_authoritative: false,
         port_declarations: None,
         db_queries: Vec::new(),
         db_xml_columns,

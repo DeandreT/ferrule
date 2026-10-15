@@ -1,0 +1,49 @@
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+
+fn typed(schema: &SchemaNode, literal: &serde_json::Value) -> Instance {
+    if schema.repeating {
+        let mut item = schema.clone();
+        item.repeating = false;
+        return Instance::Repeated(literal.as_array().unwrap().iter().map(|value| typed(&item, value)).collect());
+    }
+    match &schema.kind {
+        SchemaKind::Group { children, .. } => {
+            let fields = literal.as_object().unwrap();
+            assert_eq!(fields.len(), children.len());
+            Instance::Group(children.iter().map(|child| (child.name.clone(), typed(child, &fields[&child.name]))).collect::<Vec<_>>().into())
+        }
+        SchemaKind::Scalar { ty: ScalarType::String } => Instance::Scalar(match literal {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::String(value) => Value::String(value.clone()),
+            _ => panic!("Authored source literal must be String or absent Null"),
+        }),
+        _ => panic!("Outside authored ordinary String source contract"),
+    }
+}
+
+fn wire(segments: &str) -> String {
+    let count = segments.matches("N1").count() + 2;
+    format!("ISA*00*          *00*          *ZZ*GENERIC-SENDER *ZZ*GENERIC-RECEIVE*261001*1200*^*00501*000000001*0*P*:~GS*FA*GENERIC*GENERIC*20261001*1200*1*X*005010~ST*990*0001~{segments}SE*{count}*0001~GE*1*1~IEA*1*000000001~")
+}
+
+fn main() {
+    let source: SchemaNode = serde_json::from_slice(&std::fs::read("source.ir-schema.json").unwrap()).unwrap();
+    let target: SchemaNode = serde_json::from_slice(&std::fs::read("target.ir-schema.json").unwrap()).unwrap();
+    let mut cases: serde_json::Value = serde_json::from_slice(&std::fs::read("cases.json").unwrap()).unwrap();
+    let frames: serde_json::Value = serde_json::from_slice(&std::fs::read("frame-cases.json").unwrap()).unwrap();
+    cases.as_array_mut().unwrap().extend(frames.as_array().unwrap().iter().cloned());
+    for case in cases.as_array().unwrap() {
+        let physical = case["wire"].as_str().map(str::to_owned).unwrap_or_else(|| wire(case["segments"].as_str().unwrap()));
+        let input = format_edi::x12::from_str(&physical, &source, true).unwrap();
+        assert_eq!(input, typed(&source, &case["source"]), "{}", case["name"]);
+        let output = ferrule_edi_json_occurrences::execute(&input).unwrap();
+        let actual: serde_json::Value = serde_json::from_str(&format_json::to_string(&target, &output).unwrap()).unwrap();
+        assert_eq!(actual, case["expected"], "{}", case["name"]);
+    }
+    // Native reader validates physical ISA12 lexical shape. It has no saved
+    // interchange-version argument, and its typed error differs from C#.
+    assert!(matches!(format_edi::x12::from_str(&wire("N1*A~").replace("*00501*", "*0050A*"), &source, true),
+        Err(format_edi::EdiFormatError::InvalidEnvelopeElement { element, value, reason: "expected a five-digit X12 version such as 00401 or 00501" })
+            if element == "ISA12" && value == "0050A"));
+    println!("authored-edi-json-occurrences:{}", cases.as_array().unwrap().len());
+}

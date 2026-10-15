@@ -193,7 +193,9 @@ fn single<'a>(
             _ => crate::write_json_any(schema, instance).map(Output::Value),
         };
     }
-    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+    if schema.json_single_container_nullable()
+        && matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+    {
         return Ok(Output::Value(serde_json::Value::Null));
     }
     match (&schema.kind, instance) {

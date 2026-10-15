@@ -47,6 +47,27 @@ fn render_shape(
     node: &SchemaNode,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
+    if node.repeating
+        && matches!(node.kind, SchemaKind::Group { .. })
+        && !node.json_array_wrapper
+        && !node.json_any
+        && node.json_single_container_nullable()
+    {
+        let mut content = serde_json::Map::new();
+        render_non_nullable_shape(node, &mut content)?;
+        out.insert(
+            "anyOf".into(),
+            serde_json::json!([serde_json::Value::Object(content), {"type": "null"}]),
+        );
+        return Ok(());
+    }
+    render_non_nullable_shape(node, out)
+}
+
+fn render_non_nullable_shape(
+    node: &SchemaNode,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), JsonFormatError> {
     if node.json_array_wrapper {
         let item = node.json_array_wrapper_item().ok_or_else(|| {
             JsonFormatError::InvalidArrayWrapperMetadata {

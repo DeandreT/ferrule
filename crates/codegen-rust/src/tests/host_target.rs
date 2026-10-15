@@ -44,11 +44,16 @@ fn configure(
     } else {
         None
     };
+    configure_cargo(command, &target);
+    Ok(shared_run)
+}
+
+fn configure_cargo(command: &mut Command, target: &Path) {
     command
+        .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("CARGO_BUILD_JOBS", "1")
         .env("CARGO_INCREMENTAL", "0");
-    Ok(shared_run)
 }
 
 fn choose_target(directory: &Path, cwd: &Path, explicit: Option<&OsStr>) -> io::Result<PathBuf> {
@@ -152,5 +157,31 @@ fn empty_explicit_cache_is_a_configuration_error() {
         .unwrap_err()
         .kind(),
         io::ErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn selected_target_overrides_child_build_directory_without_changing_host_flags() {
+    let mut command = Command::new("cargo");
+    command
+        .args(["run", "--quiet"])
+        .env("CARGO_BUILD_BUILD_DIR", "/outer-build")
+        .env("RUSTFLAGS", "-D warnings");
+    configure_cargo(&mut command, Path::new("/dedicated-host"));
+    let env = command
+        .get_envs()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for key in ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"] {
+        assert_eq!(env[OsStr::new(key)], Some(OsStr::new("/dedicated-host")));
+    }
+    assert_eq!(
+        env[OsStr::new("RUSTFLAGS")],
+        Some(OsStr::new("-D warnings"))
+    );
+    assert_eq!(env[OsStr::new("CARGO_BUILD_JOBS")], Some(OsStr::new("1")));
+    assert_eq!(env[OsStr::new("CARGO_INCREMENTAL")], Some(OsStr::new("0")));
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        vec![OsStr::new("run"), OsStr::new("--quiet")]
     );
 }

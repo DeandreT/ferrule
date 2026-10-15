@@ -1,0 +1,170 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    },
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    },
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Then\":\"A\",\"Else\":\"B\"},{\"Choose\":false,\"Then\":\"C\",\"Else\":\"D\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Text": "A"
+            },
+            {
+              "Text": "B"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Text": "D"
+            },
+            {
+              "Text": "C"
+            }
+          ]
+        }
+      ]
+    },
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"GlobalChoose\":false,\"Rows\":[{\"Choose\":true,\"Then\":\"\",\"Else\":\"Ω<&\"},{\"Choose\":false,\"Then\":\"last\",\"Else\":\"\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Text": ""
+            },
+            {
+              "Text": "Ω<&"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Text": ""
+            },
+            {
+              "Text": "last"
+            }
+          ]
+        }
+      ]
+    },
+    "design": "physical-branches",
+    "expected_xml": "<Result><Batch><Record><Text></Text></Record><Record><Text>Ω&lt;&amp;</Text></Record></Batch><Batch><Record><Text></Text></Record><Record><Text>last</Text></Record></Batch></Result>"
+  },
+  {
+    "input": "{\"Rows\":[{\"Then\":\"A\",\"Else\":\"B\"}]}",
+    "boolean_error": {
+      "node": 1,
+      "found": "null"
+    },
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Then\":\"A\",\"Else\":\"B\"},{\"Then\":\"C\",\"Else\":\"D\"}]}",
+    "boolean_error": {
+      "node": 1,
+      "found": "null"
+    },
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":null,\"Then\":\"A\",\"Else\":\"B\"}]}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":\"true\",\"Then\":\"A\",\"Else\":\"B\"}]}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Then\":\"A\"}]}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Then\":null,\"Else\":\"B\"}]}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":[null]}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true,
+    "design": "physical-branches"
+  },
+  {
+    "design": "mixed-branches",
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "mixed-branches",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "mixed-branches",
+    "input": "{\"Rows\":[{\"Choose\":true,\"Then\":\"A\",\"Else\":\"unused\"},{\"Choose\":false,\"Then\":\"B\",\"Else\":\"ignored\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Text": "A"
+            },
+            {
+              "Text": ""
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Text": ""
+            },
+            {
+              "Text": "B"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_xml": "<Result><Batch><Record><Text>A</Text></Record><Record><Text></Text></Record></Batch><Batch><Record><Text></Text></Record><Record><Text>B</Text></Record></Batch></Result>"
+  },
+  {
+    "design": "mixed-branches",
+    "input": "{\"Rows\":[{\"Then\":\"\",\"Else\":\"unused\"}]}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  }
+]

@@ -375,6 +375,7 @@ fn run_rust(
     let build = Command::new("cargo")
         .args(["build", "--quiet"])
         .current_dir(&output)
+        .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("RUSTFLAGS", "-D warnings")
         .isolated_output()?;
@@ -383,6 +384,7 @@ fn run_rust(
     command
         .args(["run", "--quiet", "--"])
         .current_dir(&output)
+        .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("RUSTFLAGS", "-D warnings");
     input_arguments(&mut command, inputs);

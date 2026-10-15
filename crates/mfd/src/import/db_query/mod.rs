@@ -377,8 +377,12 @@ fn read_uncorrelated_component(
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
+        input_branch_paths: Vec::new(),
+        ambiguous_branch_inputs: Default::default(),
+        has_target_node_controls: false,
         input_keys,
         output_keys,
+        json_schema_authoritative: false,
         port_declarations: None,
         db_queries: vec![DbQuery {
             name: query_name.to_string(),

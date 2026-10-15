@@ -200,6 +200,9 @@ enum Command {
         /// Include all-row flat CSV input and singular X12 C# output methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters"])]
         csv_x12_adapters: bool,
+        /// Explicit ownership grammar for the CSV companion's X12 target.
+        #[arg(long, value_enum, requires = "csv_x12_adapters")]
+        csv_x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
         /// Include full-row CSV input and explicitly selected strict JSON C# outputs.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters"])]
         csv_json_adapters: bool,
@@ -704,6 +707,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             x12_target_envelope_profile,
             static_document_adapters,
             csv_x12_adapters,
+            csv_x12_target_envelope_profile,
             csv_json_adapters,
         } => {
             if csv_json_adapters && matches!(language, CodegenLanguage::Rust) {
@@ -734,7 +738,12 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             let outcome = if csv_json_adapters {
                 cli::generate_project_with_csv_json_adapters(&project, &out, target)?
             } else if csv_x12_adapters {
-                cli::generate_project_with_csv_x12_adapters(&project, &out, target)?
+                cli::generate_project_with_csv_x12_envelope_profile(
+                    &project,
+                    &out,
+                    target,
+                    csv_x12_target_envelope_profile.map(Into::into),
+                )?
             } else if static_document_adapters {
                 cli::generate_project_with_static_document_envelope_profiles(
                     &project,
@@ -1173,6 +1182,115 @@ mod static_document_flag_tests {
 #[cfg(test)]
 mod csv_x12_flag_tests {
     use super::*;
+
+    #[test]
+    fn csv_x12_target_profile_is_explicit_required_and_value_checked() {
+        let base = [
+            "ferrule",
+            "generate",
+            "--project",
+            "absent.json",
+            "--language",
+            "csharp",
+            "--out",
+            "absent-output",
+        ];
+        for (value, wanted) in [
+            (
+                "single-transaction",
+                codegen::X12EnvelopeProfile::SingleTransaction,
+            ),
+            (
+                "grouped-transactions",
+                codegen::X12EnvelopeProfile::GroupedTransactions,
+            ),
+        ] {
+            let mut missing = base.to_vec();
+            missing.extend(["--csv-x12-target-envelope-profile", value]);
+            assert_eq!(
+                Cli::try_parse_from(&missing)
+                    .err()
+                    .expect("required CSV companion")
+                    .kind(),
+                ErrorKind::MissingRequiredArgument
+            );
+            let mut selected = base.to_vec();
+            selected.extend([
+                "--csv-x12-adapters",
+                "--csv-x12-target-envelope-profile",
+                value,
+            ]);
+            let parsed = Cli::try_parse_from(selected).unwrap();
+            let Command::Generate {
+                csv_x12_target_envelope_profile,
+                ..
+            } = parsed.command
+            else {
+                panic!("generate");
+            };
+            assert_eq!(
+                csv_x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from),
+                Some(wanted)
+            );
+        }
+        let mut absent = base.to_vec();
+        absent.push("--csv-x12-adapters");
+        let parsed = Cli::try_parse_from(absent).unwrap();
+        let Command::Generate {
+            csv_x12_target_envelope_profile,
+            ..
+        } = parsed.command
+        else {
+            panic!("generate");
+        };
+        assert!(csv_x12_target_envelope_profile.is_none());
+        let mut invalid = base.to_vec();
+        invalid.extend([
+            "--csv-x12-adapters",
+            "--csv-x12-target-envelope-profile",
+            "automatic",
+        ]);
+        assert_eq!(
+            Cli::try_parse_from(invalid)
+                .err()
+                .expect("invalid profile")
+                .kind(),
+            ErrorKind::InvalidValue
+        );
+    }
+
+    #[test]
+    fn csv_x12_grouped_target_flag_keeps_early_backend_refusal() {
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-csv-x12-explicit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let output = root.join("absent-parent/output");
+        let args = vec![
+            OsString::from("ferrule"),
+            OsString::from("generate"),
+            OsString::from("--project"),
+            root.join("absent-project.json").into_os_string(),
+            OsString::from("--language"),
+            OsString::from("rust"),
+            OsString::from("--out"),
+            output.clone().into_os_string(),
+            OsString::from("--csv-x12-adapters"),
+            OsString::from("--csv-x12-target-envelope-profile"),
+            OsString::from("grouped-transactions"),
+        ];
+        let result = execute(Cli::try_parse_from(args).unwrap());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "--csv-x12-adapters requires --language csharp"
+        );
+        assert!(!output.parent().unwrap().exists());
+    }
 
     #[test]
     fn csv_x12_flag_conflicts_before_project_loading() {

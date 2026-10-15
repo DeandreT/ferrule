@@ -1,0 +1,535 @@
+[
+  {
+    "design": "optional-root",
+    "expected_complete_json": {},
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root omitted host suppresses one Envelope",
+    "parameters": {},
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {},
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root supplied Null suppresses one Envelope",
+    "parameters": {
+      "payload": null
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root empty String with one empty business Loop is demanded",
+    "parameters": {
+      "payload": ""
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {},
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "name": "optional root omitted host with zero actual roots is lazy",
+    "parameters": {},
+    "primary_typed_value": {
+      "typed_root_sequence": []
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {},
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "name": "optional root empty String with zero actual roots is lazy",
+    "parameters": {
+      "payload": ""
+    },
+    "primary_typed_value": {
+      "typed_root_sequence": []
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {
+      "Label": "GLOBAL"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root valid global field replaces empty physical element",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"GLOBAL\"}}"
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {
+      "Label": "EDI"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*EDI~IEA*0*000000001~",
+    "name": "optional root valid global field preserves nonempty physical element",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"GLOBAL\"}}"
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": "EDI"
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root String null remains distinct from host Null",
+    "parameters": {
+      "payload": "null"
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_complete_json": {
+      "Label": "EDI"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*EDI~IEA*0*000000001~",
+    "name": "optional root absent scalar in a present object preserves physical value",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": "EDI"
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_error": {
+      "function": "json_parse_object_exists",
+      "message": "input does not match the JSON schema"
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "optional root schema-invalid unselected sibling retains complete error",
+    "parameters": {
+      "payload": "{\"Header\":{\"Replacement\":\"GLOBAL\"},\"Tail\":\"bad\"}"
+    },
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_error": {
+      "kind": "MappingException",
+      "message": "JSON parser root object presence does not support multiple primary rows",
+      "node": 14
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "name": "optional root two candidates raise before omitted parameter demand",
+    "parameters": {},
+    "primary_typed_value": {
+      "typed_root_sequence": [
+        {
+          "IEA": {
+            "Control": "000000001",
+            "Count": 0
+          },
+          "ISA": {
+            "E01": "00",
+            "E02": "          ",
+            "E03": "00",
+            "E04": "          ",
+            "E05": "ZZ",
+            "E06": "GENERIC        ",
+            "E07": "ZZ",
+            "E08": "TARGET         ",
+            "E09": "261012",
+            "E10": "1200",
+            "E11": "U",
+            "E12": "00401",
+            "E13": "000000001",
+            "E14": "0",
+            "E15": "T",
+            "E16": ":"
+          },
+          "Loop": [],
+          "NTE": {
+            "Text": null
+          }
+        },
+        {
+          "IEA": {
+            "Control": "000000001",
+            "Count": 0
+          },
+          "ISA": {
+            "E01": "00",
+            "E02": "          ",
+            "E03": "00",
+            "E04": "          ",
+            "E05": "ZZ",
+            "E06": "GENERIC        ",
+            "E07": "ZZ",
+            "E08": "TARGET         ",
+            "E09": "261012",
+            "E10": "1200",
+            "E11": "U",
+            "E12": "00401",
+            "E13": "000000001",
+            "E14": "0",
+            "E15": "T",
+            "E16": ":"
+          },
+          "Loop": [],
+          "NTE": {
+            "Text": null
+          }
+        }
+      ]
+    }
+  },
+  {
+    "design": "optional-root",
+    "expected_error": {
+      "kind": "MappingException",
+      "message": "JSON parser root object presence does not support multiple primary rows",
+      "node": 14
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "name": "optional root two candidates raise before supplied Null parameter demand",
+    "parameters": {
+      "payload": null
+    },
+    "primary_typed_value": {
+      "typed_root_sequence": [
+        {
+          "IEA": {
+            "Control": "000000001",
+            "Count": 0
+          },
+          "ISA": {
+            "E01": "00",
+            "E02": "          ",
+            "E03": "00",
+            "E04": "          ",
+            "E05": "ZZ",
+            "E06": "GENERIC        ",
+            "E07": "ZZ",
+            "E08": "TARGET         ",
+            "E09": "261012",
+            "E10": "1200",
+            "E11": "U",
+            "E12": "00401",
+            "E13": "000000001",
+            "E14": "0",
+            "E15": "T",
+            "E16": ":"
+          },
+          "Loop": [],
+          "NTE": {
+            "Text": null
+          }
+        },
+        {
+          "IEA": {
+            "Control": "000000001",
+            "Count": 0
+          },
+          "ISA": {
+            "E01": "00",
+            "E02": "          ",
+            "E03": "00",
+            "E04": "          ",
+            "E05": "ZZ",
+            "E06": "GENERIC        ",
+            "E07": "ZZ",
+            "E08": "TARGET         ",
+            "E09": "261012",
+            "E10": "1200",
+            "E11": "U",
+            "E12": "00401",
+            "E13": "000000001",
+            "E14": "0",
+            "E15": "T",
+            "E16": ":"
+          },
+          "Loop": [],
+          "NTE": {
+            "Text": null
+          }
+        }
+      ]
+    }
+  },
+  {
+    "design": "root",
+    "expected_error": {
+      "kind": "MissingRuntimeParameter",
+      "name": "payload",
+      "node": 2
+    },
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "input_x12": "ISA*00*          *00*          *ZZ*GENERIC        *ZZ*TARGET         *261012*1200*U*00401*000000001*0*T*:~NTE*~IEA*0*000000001~",
+    "name": "required root missing host remains a complete parameter error in mixed cohort",
+    "parameters": {},
+    "primary_typed_value": {
+      "IEA": {
+        "Control": "000000001",
+        "Count": 0
+      },
+      "ISA": {
+        "E01": "00",
+        "E02": "          ",
+        "E03": "00",
+        "E04": "          ",
+        "E05": "ZZ",
+        "E06": "GENERIC        ",
+        "E07": "ZZ",
+        "E08": "TARGET         ",
+        "E09": "261012",
+        "E10": "1200",
+        "E11": "U",
+        "E12": "00401",
+        "E13": "000000001",
+        "E14": "0",
+        "E15": "T",
+        "E16": ":"
+      },
+      "Loop": [],
+      "NTE": {
+        "Text": null
+      }
+    }
+  },
+  {
+    "design": "root",
+    "expected_complete_json": {},
+    "input_contract": "authored typed EDI root candidates; native X12 text/UTF-8 only when explicitly present",
+    "name": "required root zero candidates still bypass host parameter demand",
+    "parameters": {},
+    "primary_typed_value": {
+      "typed_root_sequence": []
+    }
+  }
+]

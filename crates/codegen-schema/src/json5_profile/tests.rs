@@ -146,6 +146,30 @@ fn root_and_nested_unsupported_typed_shapes_refuse_without_changing_codec() {
 }
 
 #[test]
+fn explicit_object_item_metadata_is_outside_the_json5_profile() {
+    let base = object();
+    assert_eq!(decode_schema(&encode_schema(&base).unwrap()).unwrap(), base);
+    for value in [false, true] {
+        let mut typed = base.clone();
+        typed.json_object_item_nullable = Some(value);
+        unsupported(&typed, "json_object_item_nullable");
+        for nested in [false, true] {
+            let mut raw = serde_json::to_value(&base).unwrap();
+            if nested {
+                raw["kind"]["children"][0]["json_object_item_nullable"] = json!(value);
+            } else {
+                raw["json_object_item_nullable"] = json!(value);
+            }
+            let original = decode_schema(&raw.to_string());
+            eprintln!("original explicit object-item profile {value}/{nested}: {original:?}");
+            assert!(
+                matches!(original, Err(Json5ProfileError::UnsupportedDescriptorMetadata { field }) if field == "json_object_item_nullable")
+            );
+        }
+    }
+}
+
+#[test]
 fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit() {
     let base = json!({"name":"S","repeating":false,"kind":{"kind":"group","children":[{"name":"n","repeating":false,"kind":{"kind":"scalar","ty":"string"}}]}});
     let rejected = [

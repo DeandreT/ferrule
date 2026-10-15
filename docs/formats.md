@@ -295,7 +295,13 @@ layout and dialect details that an extension cannot express.
   nullability. Canonical JSON Schema export and `.mfd` array/item ports retain
   those levels and declared paths. An ordinary object property named `item`
   does not acquire the wrapper role. XML, CSV, and EDI boundaries reject the
-  JSON wrapper role. Positional nested arrays and unsupported structured
+  JSON wrapper role. Arrays of objects also keep the array's nullability
+  independent from the object's nullability: a nullable array of nonnullable
+  objects accepts `null` and `[{}]` but rejects `[null]`; a nonnullable array
+  of nullable objects accepts `[null]` and rejects `null`. The optional
+  `json_object_item_nullable` schema field carries the item setting on genuine
+  repeated object groups. When absent, existing schemas retain their legacy
+  item behavior. Positional nested arrays and unsupported structured
   predicates remain outside this subset. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,

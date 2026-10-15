@@ -422,6 +422,7 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
     rust_command
         .args(["run", "--quiet", "--jobs", "1"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", &target)
         .env("CARGO_INCREMENTAL", "0");
     let rust = recorded_value_map_command(&mut rust_command, &directory.path, "rust")?;
@@ -1063,6 +1064,7 @@ fn isolated_value_map_precision_matches_engine_and_public_generated_hosts() -> T
     rust_command
         .args(["run", "--quiet", "--jobs", "1"])
         .current_dir(&rust_output)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
         .env("CARGO_TARGET_DIR", &target)
         .env("CARGO_INCREMENTAL", "0");
     let rust = recorded_value_map_command(&mut rust_command, &directory.path, "rust-isolated")?;

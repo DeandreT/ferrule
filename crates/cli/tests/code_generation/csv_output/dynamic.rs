@@ -842,9 +842,12 @@ fn run_dynamic_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
         .current_dir(output)
         .env("CARGO_INCREMENTAL", "0")
         .env("CARGO_BUILD_JOBS", "1");
-    if let Some(target) = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
-        command.env("CARGO_TARGET_DIR", target);
-    }
+    let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| output.join("target"));
+    command
+        .env("CARGO_BUILD_BUILD_DIR", &target)
+        .env("CARGO_TARGET_DIR", target);
     let actual = recorded_csv_command(&mut command, output, &format!("rust-dynamic-{mode}"))?;
     assert!(
         actual.status.success(),

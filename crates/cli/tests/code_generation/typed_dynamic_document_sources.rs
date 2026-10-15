@@ -395,6 +395,8 @@ fn exercise(language: &str) -> TestResult<()> {
             #[cfg(not(unix))]
             {
                 let mut permissions = std::fs::metadata(&lock)?.permissions();
+                // Clear the Windows read-only attribute on the copied lockfile.
+                #[allow(clippy::permissions_set_readonly_false)]
                 permissions.set_readonly(false);
                 std::fs::set_permissions(&lock, permissions)?;
             }
@@ -409,6 +411,7 @@ fn exercise(language: &str) -> TestResult<()> {
                     "--message-format=json-render-diagnostics",
                 ])
                 .current_dir(&host)
+                .env("CARGO_BUILD_BUILD_DIR", target)
                 .env("CARGO_TARGET_DIR", target)
                 .env("CARGO_BUILD_JOBS", "1")
                 .env("CARGO_INCREMENTAL", "0")

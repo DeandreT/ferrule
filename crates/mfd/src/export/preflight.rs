@@ -14,6 +14,31 @@ use super::{
 };
 
 /// Export represents all stored main nodes and every declared function body.
+pub(super) fn validate_optional_parser_input_provenance(project: &Project) -> Result<(), MfdError> {
+    if !project
+        .source_options
+        .mfd_optional_parser_input_names
+        .is_empty()
+        || !project
+            .target_options
+            .mfd_optional_parser_input_names
+            .is_empty()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| !source.options.mfd_optional_parser_input_names.is_empty())
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| !target.options.mfd_optional_parser_input_names.is_empty())
+    {
+        return Err(MfdError::Unsupported(
+            "optional parser input absence provenance cannot be preserved in .mfd export".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdError> {
     if let Some(scope) = mapping::first_project_owned_source_scope(project) {
         return Err(MfdError::UnsupportedSourceIteration { scope });

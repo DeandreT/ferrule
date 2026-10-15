@@ -1,0 +1,33 @@
+{
+  "title": "Source",
+  "type": "object",
+  "required": [
+    "Rows"
+  ],
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "Replacement": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 4
+    }
+  },
+  "additionalProperties": false
+}

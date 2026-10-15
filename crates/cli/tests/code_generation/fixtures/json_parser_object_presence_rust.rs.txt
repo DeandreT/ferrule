@@ -1,0 +1,163 @@
+use codegen_runtime::{
+    DocumentMember, ExecutionContext, Instance, JsonBoundaryError, RuntimeError, RuntimeParameters,
+    ScalarType, Value,
+};
+use ferrule_generated_mapping::{
+    execute_json_bytes_with_context, execute_json_with_context, execute_with_context,
+};
+use std::path::Path;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json"))?;
+    for case in &cases {
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in case["parameters"].as_object().unwrap() {
+            let value = match value {
+                serde_json::Value::String(value) => Value::String(value.clone()),
+                serde_json::Value::Bool(value) => Value::Bool(*value),
+                serde_json::Value::Number(value) => Value::Int(value.as_i64().unwrap()),
+                serde_json::Value::Null => Value::Null,
+                serde_json::Value::Object(marker)
+                    if marker.len() == 1
+                        && marker.get("non_finite").and_then(serde_json::Value::as_str)
+                            == Some("positive-infinity") =>
+                {
+                    Value::Float(f64::INFINITY)
+                }
+                _ => panic!("unsupported authored parameter: {case}"),
+            };
+            parameters.insert(name, value)?;
+        }
+        let context = ExecutionContext::new(Path::new("parser-input.ferrule.json"))
+            .with_parameters(&parameters);
+        let input = case["input"].as_str().unwrap();
+        verify(execute_json_with_context(input, &context), case);
+        verify(
+            execute_json_bytes_with_context(input.as_bytes(), &context)
+                .map(|bytes| String::from_utf8(bytes).unwrap()),
+            case,
+        );
+    }
+    if include_str!("../design.txt") == "root" {
+        verify_function_cases();
+        verify_document_sets()?;
+    }
+    println!("verified {} parser object presence cases", cases.len());
+    Ok(())
+}
+
+fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
+    if let Some(expected) = case.get("missing_parameter") {
+        assert!(
+            matches!(result, Err(JsonBoundaryError::Execution(RuntimeError::MissingRuntimeParameter { node, name }))
+            if node == expected["node"].as_u64().unwrap() as u32 && name == expected["name"].as_str().unwrap()),
+            "{case}: missing parameter error differs"
+        );
+    } else if let Some(expected) = case.get("mapping_exception") {
+        assert!(
+            matches!(result, Err(JsonBoundaryError::Execution(RuntimeError::MappingException { node, message }))
+            if node == expected["node"].as_u64().unwrap() as u32 && message.as_deref() == expected["message"].as_str()),
+            "{case}: cardinality refusal differs"
+        );
+    } else if let Some(expected) = case.get("parameter_type_error") {
+        assert_eq!(expected["expected"], "string", "{case}");
+        assert!(
+            matches!(result, Err(JsonBoundaryError::Execution(RuntimeError::RuntimeParameterType { node, name, expected: ty, found }))
+            if node == expected["node"].as_u64().unwrap() as u32 && name == expected["name"].as_str().unwrap()
+                && ty == ScalarType::String && found == expected["found"].as_str().unwrap()),
+            "{case}: parameter type error differs"
+        );
+    } else if let Some(expected) = case.get("execution_error") {
+        assert!(
+            matches!(result, Err(JsonBoundaryError::Execution(RuntimeError::Function(codegen_runtime::FunctionError::InvalidArgument { function, message })))
+            if function == expected["function"].as_str().unwrap() && message == expected["message"].as_str().unwrap()),
+            "{case}: JSON parser error differs"
+        );
+    } else if case["reject"] == true {
+        assert!(
+            matches!(result, Err(JsonBoundaryError::InvalidInput { .. })),
+            "{case}: {result:?}"
+        );
+    } else {
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&result.unwrap()).unwrap(),
+            case["expected"],
+            "{case}"
+        );
+    }
+}
+
+fn verify_function_cases() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../function-cases.json")).unwrap();
+    for case in cases {
+        let args = case["arguments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| match value {
+                serde_json::Value::String(value) => Value::String(value.clone()),
+                serde_json::Value::Null => Value::Null,
+                _ => panic!("unsupported authored argument"),
+            })
+            .collect::<Vec<_>>();
+        let result = codegen_runtime::call("json_parse_object_exists", &args);
+        if let Some(expected) = case.get("execution_error") {
+            assert!(
+                matches!(result, Err(RuntimeError::Function(codegen_runtime::FunctionError::InvalidArgument { function, message }))
+                if function == expected["function"].as_str().unwrap() && message == expected["message"].as_str().unwrap()),
+                "{case}"
+            );
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                Value::Bool(case["expected"].as_bool().unwrap()),
+                "{case}"
+            );
+        }
+    }
+}
+
+fn verify_document_sets() -> Result<(), Box<dyn std::error::Error>> {
+    for size in 0..=2 {
+        for supplied in [false, true] {
+            let source = Instance::DocumentSet(
+                (0..size)
+                    .map(|index| {
+                        DocumentMember::new(
+                            format!("authored-{index}.json"),
+                            Instance::Group(Vec::new().into()),
+                        )
+                        .unwrap()
+                    })
+                    .collect(),
+            );
+            let mut parameters = RuntimeParameters::new();
+            if supplied {
+                parameters.insert(
+                    "payload",
+                    Value::String(r#"{"Header":{"Replacement":"R"}}"#.into()),
+                )?;
+            }
+            let context = ExecutionContext::new(Path::new("object-presence.ferrule.json"))
+                .with_parameters(&parameters);
+            let result = execute_with_context(&source, &context);
+            match (size, supplied) {
+                (0, _) => assert_eq!(result.unwrap(), Instance::Group(Vec::new().into())),
+                (1, false) => assert!(
+                    matches!(result, Err(RuntimeError::MissingRuntimeParameter { node: 2, ref name }) if name == "payload")
+                ),
+                (1, true) => assert_eq!(
+                    result.unwrap().field("Label").and_then(Instance::as_scalar),
+                    Some(&Value::String("R".into()))
+                ),
+                (2, _) => assert!(
+                    matches!(result, Err(RuntimeError::MappingException { node: 14, ref message })
+                    if message.as_deref() == Some("JSON parser root object presence does not support multiple primary rows"))
+                ),
+                _ => unreachable!(),
+            }
+        }
+    }
+    Ok(())
+}

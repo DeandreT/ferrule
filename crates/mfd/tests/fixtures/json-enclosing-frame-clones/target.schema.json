@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "properties": {
+    "Batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "Branch": {
+                  "type": "string"
+                },
+                "Flag": {
+                  "type": "boolean"
+                },
+                "Id": {
+                  "type": "string"
+                },
+                "Zero": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "Branch",
+                "Flag",
+                "Id",
+                "Zero"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "Records"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "Batches"
+  ],
+  "additionalProperties": false,
+  "title": "Target"
+}

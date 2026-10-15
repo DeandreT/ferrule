@@ -1,0 +1,312 @@
+[
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "supplied-runtime-overrides-preview",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7}}"
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "zero",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":0}}"
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "complete-optional-fields",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":9,\"Unused\":\"ok\"},\"Tail\":true}"
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 9
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 9
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "missing-runtime-parameter",
+    "parameters": {},
+    "missing_parameter": {
+      "name": "payload",
+      "node": 1
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "scalar-boolean-coerces-before-parser",
+    "parameters": {
+      "payload": true
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "scalar-integer-coerces-before-parser",
+    "parameters": {
+      "payload": 7
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "supplied-null-is-an-absent-field",
+    "parameters": {
+      "payload": null
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "nonfinite-runtime-parameter-type",
+    "parameters": {
+      "payload": {
+        "non_finite": "positive-infinity"
+      }
+    },
+    "parameter_type_error": {
+      "name": "payload",
+      "found": "float",
+      "node": 1,
+      "expected": "string"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "selected-number-range",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":10}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "unselected-sibling-type",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Unused\":123}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "unselected-sibling-length",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Unused\":\"long\"}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "unknown-unselected-property",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Extra\":true}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "missing-required-selected-property",
+    "parameters": {
+      "payload": "{\"Header\":{}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "malformed-encoded-json",
+    "parameters": {
+      "payload": "{invalid"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "overwritten-invalid-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":\"bad\",\"Count\":7}}"
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "last-invalid-duplicate-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7,\"Count\":\"bad\"}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "last-valid-duplicate-value",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":2,\"Count\":7}}"
+    },
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 7
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{}, {\"Count\":2}]}",
+    "name": "duplicate-does-not-hide-invalid-sibling",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":\"bad\",\"Count\":7,\"Unused\":123}}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Count\":\"bad\"}]}",
+    "name": "invalid-primary-input",
+    "parameters": {
+      "payload": "{\"Header\":{\"Count\":7}}"
+    },
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "name": "empty-parent-does-not-demand-parameter",
+    "parameters": {},
+    "expected": {
+      "Batches": []
+    }
+  }
+]

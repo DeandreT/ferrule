@@ -12,6 +12,9 @@ impl GraphBuilder<'_> {
         if let Some(&id) = self.fn_nodes.get(&idx) {
             return id;
         }
+        if let Some(id) = self.lazy_string_substitution_node(idx) {
+            return id;
+        }
         // Reserve the id first so cycles cannot recurse forever.
         let id = self.next_id;
         self.next_id += 1;
@@ -168,6 +171,39 @@ impl GraphBuilder<'_> {
                         }
                     }
                 };
+                if let Some(definition) = functions::builtin(&function)
+                    && let Some(position) = (0..definition.arity.minimum())
+                        .find(|&position| input_ids.get(position).copied().flatten().is_none())
+                {
+                    let state = if fc
+                        .inputs
+                        .get(position)
+                        .copied()
+                        .flatten()
+                        .is_some_and(|input| self.edge_from.contains_key(&input))
+                    {
+                        "connected but could not be resolved"
+                    } else {
+                        "not connected"
+                    };
+                    self.warnings.push(format!(
+                        "function `{name}` required input {} is {state}; function call is unsupported",
+                        position + 1,
+                    ));
+                    let args = input_ids.iter().filter_map(|input| *input).collect();
+                    self.graph.nodes.insert(
+                        id,
+                        Node::Call {
+                            function: format!(
+                                "unsupported:required-input:{}:{name}:{}",
+                                fc.library,
+                                position + 1
+                            ),
+                            args,
+                        },
+                    );
+                    return id;
+                }
                 // The reference application declares the function's full optional pin set even
                 // when callers leave its trailing optional arguments unwired.
                 // Keep interior pin positions, but do not turn unused trailing

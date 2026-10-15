@@ -476,8 +476,16 @@ fn intersect(
             "allOf branches have incompatible nested array wrapper levels",
         ));
     }
+    let explicit_object_items =
+        target.json_object_item_nullable.is_some() || branch.json_object_item_nullable.is_some();
+    let object_items_nullable =
+        target.json_single_container_nullable() && branch.json_single_container_nullable();
     target.nullable &= branch.nullable;
     target.container_nullable &= branch.container_nullable;
+    if explicit_object_items {
+        target.json_object_item_nullable =
+            (target.container_nullable || object_items_nullable).then_some(object_items_nullable);
+    }
     target.item_count_range =
         item_counts::intersect(name, target.item_count_range, branch.item_count_range)?;
     target.json_contains = contains::merge(
