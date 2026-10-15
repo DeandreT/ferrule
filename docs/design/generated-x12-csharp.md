@@ -166,8 +166,10 @@ refused. Admission requires:
 - An interchange of exactly ISA, one repeating non-segment functional-group
   container and IEA. A group has exactly GS, one repeating non-segment message
   container and GE.
-- A message with singular ST first and singular SE last. Its body contains no
-  envelope segment.
+- A message with singular ST first and SE last. SE may be singular or optional
+  (repeating, as message configurations declare it); output permits at most one
+  SE per message, and only selected completion creates a missing one. Its body
+  contains no envelope segment.
 - ISA with 16 elements, GS with 8, ST with 2 or 3 (a String ST03), and SE, GE
   and IEA with 2. ISA13, GS06, SE01, GE01, GE02, IEA01 and IEA02 may be String,
   Int or Float, as in MapForce's numeric data elements. Every other envelope

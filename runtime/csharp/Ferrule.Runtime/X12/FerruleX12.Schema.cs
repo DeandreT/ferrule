@@ -34,7 +34,7 @@ public static partial class FerruleX12
     private sealed record GroupedShape(Node Groups, Node Transactions);
     // MapForce Envelope.Config ownership: repeating interchanges of optional
     // ISA/IEA around repeating functional groups of optional GS/GE around one
-    // repeating message container with singular ST/SE.
+    // repeating message container with singular ST and a singular or optional SE.
     private sealed record MapForceShape(Node Interchanges, Node Isa, Node Groups, Node Gs, Node Messages,
         Node St, Node Se, Node Ge, Node Iea);
     private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
@@ -474,10 +474,10 @@ public static partial class FerruleX12
                 throw Invalid([.. path, node.Name]);
             return node;
         }
-        static Node Envelope(Node owner, int index, string id, bool optional, string[] path)
+        static Node Envelope(Node owner, int index, string id, bool? optional, string[] path)
         {
             Node node = owner.Children[index];
-            if (SegmentId(node.Name) != id || node.Type is not null || node.Repeating != optional)
+            if (SegmentId(node.Name) != id || node.Type is not null || optional is { } required && node.Repeating != required)
                 throw Invalid([.. path, id]);
             return node;
         }
@@ -497,7 +497,8 @@ public static partial class FerruleX12
         string[] messagePath = [.. groupPath, messages.Name];
         if (messages.Children.Length < 2) throw Invalid(messagePath);
         Node st = Envelope(messages, 0, "ST", optional: false, messagePath);
-        Node se = Envelope(messages, messages.Children.Length - 1, "SE", optional: false, messagePath);
+        // Message configurations may declare SE optional (repeating) or required.
+        Node se = Envelope(messages, messages.Children.Length - 1, "SE", optional: null, messagePath);
         for (int index = 1; index < messages.Children.Length - 1; index++)
         {
             var nested = new List<Node>();
