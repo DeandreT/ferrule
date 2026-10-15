@@ -229,6 +229,14 @@ impl<'a> Document<'a> {
     }
 
     pub(super) fn validate(&self, profile: &Profile) -> Result<(), X12BoundaryError> {
+        self.validate_with_name_limit(profile, MAX_X12_MATERIALIZED_NAME_BYTES)
+    }
+
+    pub(super) fn validate_with_name_limit(
+        &self,
+        profile: &Profile,
+        name_limit: usize,
+    ) -> Result<(), X12BoundaryError> {
         self.envelopes(profile)?;
         let declared = Self::declared(profile);
         let selected: Vec<_> = self
@@ -243,6 +251,7 @@ impl<'a> Document<'a> {
             selected,
             position: 0,
             budget: Budget::default(),
+            name_limit,
         };
         reader.node(&profile.schema, &mut Vec::new(), &mut Vec::new(), 0, true)?;
         if reader.position != reader.selected.len() {
@@ -537,6 +546,7 @@ struct Reader<'a, 'd> {
     selected: Vec<(usize, &'a Segment<'d>)>,
     position: usize,
     budget: Budget,
+    name_limit: usize,
 }
 impl Reader<'_, '_> {
     fn failure(&self, reason: &'static str) -> X12BoundaryError {
@@ -604,6 +614,9 @@ impl Reader<'_, '_> {
                 return Err(self.failure("undeclared elements would be lost by native parsing"));
             }
             for (index, element) in children(schema).iter().enumerate() {
+                // Native read_segment clones every declared field name, including
+                // absent positions and empty repeated element collections.
+                self.budget.name(&element.name, self.name_limit)?;
                 path.push(element.name.clone());
                 owner.push(element.name.clone());
                 let result = self.element(
@@ -626,12 +639,15 @@ impl Reader<'_, '_> {
             return Ok(());
         }
         for child in children(schema) {
+            // The container slot exists even when its repeating collection is
+            // empty. Charge once for this occurrence, not once per schema.
+            self.budget.name(&child.name, self.name_limit)?;
             path.push(child.name.clone());
             if child.repeating {
                 self.budget.node(depth + 1)?;
                 let mut count = 0;
                 while self.matches(child) {
-                    if child.name.starts_with("ParserErrors_") {
+                    if self.profile.is_acknowledgment(path) {
                         return Err(self.failure(
                             "acknowledgment content is outside the MapForce source profile",
                         ));
@@ -743,6 +759,8 @@ impl Reader<'_, '_> {
                     return Err(self.failure("undeclared composite components"));
                 }
                 for (index, child) in children.iter().enumerate() {
+                    // Native read_nested_component materializes missing slots.
+                    self.budget.name(&child.name, self.name_limit)?;
                     let mut path = path.to_vec();
                     path.push(child.name.clone());
                     owner.push(child.name.clone());

@@ -17,6 +17,8 @@ use serde_json::{Value as Json, json};
 #[allow(dead_code)]
 mod host_target;
 use host_target::GeneratedHostCommand;
+#[path = "x12_documents/review.rs"]
+mod review;
 
 fn fields(id: &str, count: usize) -> SchemaNode {
     SchemaNode::group(
@@ -385,6 +387,7 @@ fn generated_primary_x12_documents_compile_and_run_all_profiles_and_directions()
         }
     }
     option_libraries(&root, &mut manifest, &mut host)?;
+    review::add_cases(&root, &mut manifest, &mut host)?;
     host.push_str("    limits(single_00401_x12_to_x12::execute_x12_to_x12_bytes, single_00401_x12_to_x12::parse_x12, single_00401_x12_to_x12::serialize_x12, include_str!(\"../single-00401.x12\"))?;\n    println!(\"27 direction/profile/version libraries, 9 completion libraries; real text/byte/context, malformed and budget calls passed\");\n    Ok(())\n}\n");
     assert_eq!(cases, 27);
     let harness = root.join("Harness");

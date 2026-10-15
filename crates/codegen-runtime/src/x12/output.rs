@@ -1,10 +1,38 @@
 use super::*;
+mod reserve;
+pub(super) use reserve::{OutputLimits, preflight};
 
 pub(super) fn serialize(
     profile: &Profile,
     document: &Instance,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<String, X12BoundaryError> {
+    serialize_with(
+        profile,
+        document,
+        execution,
+        OutputLimits::default(),
+        native_write,
+    )
+}
+
+pub(super) fn serialize_with<F>(
+    profile: &Profile,
+    document: &Instance,
+    execution: Option<&ExecutionContext<'_>>,
+    limits: OutputLimits,
+    write: F,
+) -> Result<String, X12BoundaryError>
+where
+    F: FnOnce(
+        &Profile,
+        &Instance,
+        Option<&ExecutionContext<'_>>,
+    ) -> Result<String, X12BoundaryError>,
+{
+    // Finish occurrence-weighted reservations before any private tree clone,
+    // default materialization or eager native writer allocation.
+    preflight(profile, document, limits)?;
     // Inspect before cloning or calling the eager native formatter/writer.
     let mut view = private_view(
         profile,
@@ -17,6 +45,17 @@ pub(super) fn serialize(
         true,
     )?;
     format_edi::apply_output_lexical_formats(&mut view, &profile.lexical)?;
+    let text = write(profile, &view, execution)?;
+    output_size(text.len())?;
+    wire::Document::read(&text, profile)?.validate(profile)?;
+    Ok(text)
+}
+
+fn native_write(
+    profile: &Profile,
+    view: &Instance,
+    execution: Option<&ExecutionContext<'_>>,
+) -> Result<String, X12BoundaryError> {
     let syntax = wire::Syntax::output(profile).native();
     let text = if let Some(completion) = &profile.autocomplete {
         let datetime = execution.and_then(|context| context.value(RuntimeValue::CurrentDateTime));
@@ -29,7 +68,7 @@ pub(super) fn serialize(
         };
         format_edi::x12::to_string_with_syntax_and_autocomplete(
             &profile.schema,
-            &view,
+            view,
             syntax,
             Some(profile.version),
             format_edi::x12::Autocomplete {
@@ -41,16 +80,11 @@ pub(super) fn serialize(
     } else {
         format_edi::x12::to_string_with_syntax(
             &profile.schema,
-            &view,
+            view,
             syntax,
             Some(profile.version),
         )?
     };
-    output_size(text.len())?;
-    // Revalidate final owner controls, schema/cardinality and physical lexicals.
-    // Completion cannot mask duplicate owners or turn an invalid result into a
-    // partial document. Native fixed-width padding is checked in its wire form.
-    wire::Document::read(&text, profile)?.validate(profile)?;
     Ok(text)
 }
 

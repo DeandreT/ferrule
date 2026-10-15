@@ -50,7 +50,15 @@ pub fn emit_with_x12(
     policy: &X12BoundaryPolicy,
 ) -> Result<ArtifactSet, X12EmitError> {
     let profile = codegen::prepare_x12_boundary(program, policy).map_err(X12EmitError::Policy)?;
-    for (side, selected) in [("source", &policy.source), ("target", &policy.target)] {
+    for (side, selected, schema) in [
+        ("source", &policy.source, &program.source),
+        ("target", &policy.target, &program.target),
+    ] {
+        if selected.is_some()
+            && let Some(setting) = native_schema_limit(schema, true)
+        {
+            return Err(X12EmitError::UnsupportedNativeSetting { side, setting });
+        }
         if selected
             .as_ref()
             .and_then(|options| options.separators)
@@ -125,4 +133,66 @@ pub fn emit_with_x12(
     }
     library.contents.extend_from_slice(source.as_bytes());
     ArtifactSet::new(files).map_err(X12EmitError::ArtifactSet)
+}
+
+// Keep this role-sensitive native-reader proof aligned with the runtime guard.
+// A root, a positional composite, and a longer SG10 container are not SGn wire
+// segments merely because their names have that prefix.
+fn native_schema_limit(schema: &ir::SchemaNode, root: bool) -> Option<&'static str> {
+    fn id(name: &str) -> Option<&str> {
+        let name = name.strip_prefix("MF_").unwrap_or(name);
+        let name = name
+            .rsplit_once('_')
+            .filter(|(_, n)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            .map_or(name, |(id, _)| id);
+        ((2..=3).contains(&name.len())
+            && name.as_bytes()[0].is_ascii_uppercase()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
+        .then_some(name)
+    }
+    fn empty_fixed(schema: &ir::SchemaNode) -> bool {
+        schema.fixed.as_deref() == Some("")
+            || match &schema.kind {
+                ir::SchemaKind::Group { children, .. } => children.iter().any(empty_fixed),
+                _ => false,
+            }
+    }
+    fn nullable(schema: &ir::SchemaNode) -> bool {
+        id(&schema.name).is_none()
+            && match &schema.kind {
+                ir::SchemaKind::Group { children, .. } => children.iter().all(|child| {
+                    child.repeating
+                        && child
+                            .item_count_range
+                            .is_none_or(|range| range.minimum() == 0)
+                        || nullable(child)
+                }),
+                _ => false,
+            }
+    }
+    if !root && let Some(id) = id(&schema.name) {
+        if id
+            .strip_prefix("SG")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        {
+            return Some("SGn wire segment IDs reserved for containers by the native EDI codec");
+        }
+        if empty_fixed(schema) {
+            return Some("empty fixed positional qualifiers in the native EDI reader");
+        }
+        return None;
+    }
+    if !root && !schema.repeating && nullable(schema) {
+        return Some(
+            "required containers capable of consuming zero physical segments in the native EDI reader",
+        );
+    }
+    match &schema.kind {
+        ir::SchemaKind::Group { children, .. } => children
+            .iter()
+            .find_map(|child| native_schema_limit(child, false)),
+        _ => None,
+    }
 }

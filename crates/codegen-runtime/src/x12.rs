@@ -16,6 +16,8 @@ use serde_json::Value as Json;
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
 
 mod output;
+#[cfg(test)]
+mod tests;
 mod wire;
 
 pub const MAX_EMBEDDED_X12_SCHEMA_BYTES: usize = 1024 * 1024;
@@ -23,6 +25,10 @@ pub const MAX_X12_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_X12_SEGMENTS: usize = 100_000;
 pub const MAX_X12_NODES: usize = 1_000_000;
 pub const MAX_X12_LOOP_INSTANCES: usize = 100_000;
+/// Occurrence-weighted names allocated by native reading or the private view.
+pub const MAX_X12_MATERIALIZED_NAME_BYTES: usize = 64 * 1024 * 1024;
+/// Pre-writer reservation for scalar/default/format/padding expansion.
+pub const MAX_X12_PROJECTED_SCALAR_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 const MAX_ELEMENTS: usize = 1024;
 
@@ -146,6 +152,34 @@ fn descriptor(message: impl Into<String>) -> X12BoundaryError {
 }
 
 impl Profile {
+    fn is_acknowledgment(&self, path: &[String]) -> bool {
+        if self.envelope != EnvelopeProfile::MapForce || !(3..=4).contains(&path.len()) {
+            return false;
+        }
+        let Some(interchange) = children(&self.schema).first() else {
+            return false;
+        };
+        let Some(group) = children(interchange).get(1) else {
+            return false;
+        };
+        if path[0] != interchange.name || path[1] != group.name {
+            return false;
+        }
+        let owner = if path.len() == 3 {
+            group
+        } else {
+            let Some(message) = children(group).get(1) else {
+                return false;
+            };
+            if path[2] != message.name {
+                return false;
+            }
+            message
+        };
+        children(owner).last().is_some_and(|branch| {
+            branch.name.starts_with("ParserErrors_") && path.last() == Some(&branch.name)
+        })
+    }
     fn parse(text: &str) -> Result<Self, X12BoundaryError> {
         if text.len() > MAX_EMBEDDED_X12_SCHEMA_BYTES {
             return Err(descriptor("descriptor exceeds 1 MiB"));
@@ -223,6 +257,7 @@ impl Profile {
                 pending.extend(children.iter().map(|child| (child, depth + 1)));
             }
         }
+        validate_native_schema(&schema, true)?;
         Ok(Self {
             schema,
             version,
@@ -252,17 +287,34 @@ pub fn parse_x12_bytes(descriptor: &str, document: &[u8]) -> Result<Instance, X1
 pub fn parse_x12(descriptor: &str, document: &str) -> Result<Instance, X12BoundaryError> {
     input_size(document.len())?;
     let profile = Profile::parse(descriptor)?;
-    let wire = wire::Document::read(document, &profile)?;
-    wire.validate(&profile)?;
+    parse_admitted(
+        &profile,
+        document,
+        MAX_X12_MATERIALIZED_NAME_BYTES,
+        |filtered, schema, syntax| {
+            format_edi::x12::from_str_with_separators(filtered, schema, false, Some(syntax))
+                .map_err(X12BoundaryError::Native)
+        },
+    )
+}
+
+// A single bridge also lets tiny-budget tests prove that refusal precedes the
+// actual native allocation, without constructing an out-of-memory payload.
+fn parse_admitted<F>(
+    profile: &Profile,
+    document: &str,
+    name_limit: usize,
+    decode: F,
+) -> Result<Instance, X12BoundaryError>
+where
+    F: FnOnce(&str, &SchemaNode, format_edi::x12::Separators) -> Result<Instance, X12BoundaryError>,
+{
+    let wire = wire::Document::read(document, profile)?;
+    wire.validate_with_name_limit(profile, name_limit)?;
     // Native leniency may skip a declared segment with a bad fixed qualifier.
     // Remove only globally undeclared IDs after strict validation, then read strictly.
-    let filtered = wire.native_input(&profile)?;
-    let mut instance = format_edi::x12::from_str_with_separators(
-        &filtered,
-        &profile.schema,
-        false,
-        Some(wire.syntax.native()),
-    )?;
+    let filtered = wire.native_input(profile)?;
+    let mut instance = decode(&filtered, &profile.schema, wire.syntax.native())?;
     format_edi::apply_implied_decimals(&mut instance, &profile.implied)?;
     Ok(instance)
 }
@@ -347,6 +399,7 @@ fn segment_id(name: &str) -> Option<&str> {
 struct Budget {
     nodes: usize,
     loops: usize,
+    name_bytes: usize,
 }
 impl Budget {
     fn node(&mut self, depth: usize) -> Result<(), X12BoundaryError> {
@@ -358,4 +411,59 @@ impl Budget {
         self.loops += count;
         resource("x12_loop_instances", self.loops, MAX_X12_LOOP_INSTANCES)
     }
+    fn name(&mut self, name: &str, maximum: usize) -> Result<(), X12BoundaryError> {
+        self.name_bytes = match self.name_bytes.checked_add(name.len()) {
+            Some(bytes) => bytes,
+            None => {
+                return Err(X12BoundaryError::Resource {
+                    resource: "x12_materialized_name_bytes",
+                    observed: usize::MAX,
+                    maximum,
+                });
+            }
+        };
+        resource("x12_materialized_name_bytes", self.name_bytes, maximum)
+    }
+}
+
+fn validate_native_schema(schema: &SchemaNode, root: bool) -> Result<(), X12BoundaryError> {
+    fn empty_fixed(schema: &SchemaNode) -> bool {
+        schema.fixed.as_deref() == Some("") || children(schema).iter().any(empty_fixed)
+    }
+    fn nullable(schema: &SchemaNode) -> bool {
+        segment_id(&schema.name).is_none()
+            && matches!(schema.kind, SchemaKind::Group { .. })
+            && children(schema).iter().all(|child| {
+                child.repeating
+                    && child
+                        .item_count_range
+                        .is_none_or(|range| range.minimum() == 0)
+                    || nullable(child)
+            })
+    }
+    if !root && let Some(id) = segment_id(&schema.name) {
+        if id
+            .strip_prefix("SG")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        {
+            return Err(descriptor(
+                "SGn wire segment IDs reserved for containers by the native EDI codec",
+            ));
+        }
+        if empty_fixed(schema) {
+            return Err(descriptor(
+                "empty fixed positional qualifiers in the native EDI reader",
+            ));
+        }
+        return Ok(());
+    }
+    if !root && !schema.repeating && nullable(schema) {
+        return Err(descriptor(
+            "required containers capable of consuming zero physical segments in the native EDI reader",
+        ));
+    }
+    for child in children(schema) {
+        validate_native_schema(child, false)?;
+    }
+    Ok(())
 }

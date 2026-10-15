@@ -96,7 +96,8 @@ pub use runtime_value::{
 pub use user_function::adapt_user_function_value;
 pub use value_map::{value_map, value_map_user_function};
 pub use x12::{
-    MAX_EMBEDDED_X12_SCHEMA_BYTES, MAX_X12_DOCUMENT_BYTES, MAX_X12_LOOP_INSTANCES, MAX_X12_NODES,
+    MAX_EMBEDDED_X12_SCHEMA_BYTES, MAX_X12_DOCUMENT_BYTES, MAX_X12_LOOP_INSTANCES,
+    MAX_X12_MATERIALIZED_NAME_BYTES, MAX_X12_NODES, MAX_X12_PROJECTED_SCALAR_BYTES,
     MAX_X12_SEGMENTS, X12BoundaryError, parse_x12, parse_x12_bytes, serialize_x12,
     serialize_x12_bytes,
 };
