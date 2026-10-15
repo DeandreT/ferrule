@@ -16,6 +16,8 @@ use crate::resource::{
 
 type Key = (String, String);
 
+mod consumers;
+
 const MAX_FILES: usize = 32;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -1044,41 +1046,7 @@ pub(super) fn validate_call(
         }
     }
     let feeds = super::read_edges(&structure, Some(&owner));
-    for output in component
-        .descendants()
-        .filter_map(|n| super::parse_u32(n.attribute("outkey")))
-    {
-        let mut consumers = 0;
-        for (input, _) in feeds.iter().filter(|(_, from)| **from == output) {
-            consumers += 1;
-            let count = children
-                .children()
-                .filter(|n| {
-                    n.has_tag_name("component")
-                        && n.attribute("library") == Some("xml")
-                        && n.attribute("kind") == Some("14")
-                })
-                .flat_map(|n| n.children().filter(|n| n.has_tag_name("data")))
-                .flat_map(|n| n.descendants().filter(|n| n.has_tag_name("entry")))
-                .filter(|n| {
-                    super::parse_u32(n.attribute("inpkey")) == Some(*input)
-                        && n.attribute("outkey").is_none()
-                        && !n.children().any(|n| n.has_tag_name("entry"))
-                        && ordinary_content_entry(*n)
-                })
-                .count();
-            if count != 1 {
-                return Err(refuse(
-                    "only direct ordinary XML scalar target entries are supported; failure/predicate/filename/forwarded calls require separate proof",
-                ));
-            }
-        }
-        if consumers == 0 {
-            return Err(refuse(
-                "unused call output has no proven eager consumption boundary",
-            ));
-        }
-    }
+    consumers::validate(component, children, &feeds).map_err(|reason| refuse(reason.message()))?;
     Ok(())
 }
 
