@@ -635,6 +635,15 @@ pub(super) struct Call {
 }
 
 impl Call {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> + '_ {
+        self.inputs.values().copied().chain(
+            self.structured_inputs
+                .values()
+                .flatten()
+                .map(|(_, input)| *input),
+        )
+    }
+
     pub(super) fn read(
         component: &roxmltree::Node<'_, '_>,
         definition: usize,

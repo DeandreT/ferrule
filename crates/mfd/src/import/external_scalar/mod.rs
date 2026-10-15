@@ -30,6 +30,12 @@ pub(super) struct Recipe {
     expression: Expr,
 }
 
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> + '_ {
+        self.inputs.iter().copied()
+    }
+}
+
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mapping_path: &Path,

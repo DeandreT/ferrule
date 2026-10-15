@@ -2380,13 +2380,28 @@ fn import_resolved(
         }
     }
 
+    // Other pipeline stages have different source boundaries. Eagerly lower only
+    // functions demanded by this stage's targets and owned failure rules.
+    let eager_functions = (!matches!(selection, StageSelection::Ordinary)).then(|| {
+        materialize::stage_functions(
+            &builder,
+            connected_targets
+                .iter()
+                .flat_map(|target| target.ports.keys().copied())
+                .chain(
+                    exception_recipes
+                        .iter()
+                        .flat_map(exception::Recipe::input_pins),
+                ),
+        )
+    });
     let mut root = build_target_scope(
         &mapping_el,
         target,
         &structure,
         resources,
-        &edge_from,
         &copy_all_targets,
+        eager_functions.as_ref(),
         &mut builder,
     );
     restore_scope_source_hints(&mut root, target, &scope_source_hints);
@@ -2397,8 +2412,8 @@ fn import_resolved(
             extra,
             &structure,
             resources,
-            &edge_from,
             &copy_all_targets,
+            eager_functions.as_ref(),
             &mut builder,
         );
         restore_scope_source_hints(&mut extra_root, extra, &scope_source_hints);
@@ -2645,10 +2660,11 @@ fn build_target_scope(
     target: &SchemaComponent,
     structure: &roxmltree::Node<'_, '_>,
     resources: &ResourceResolver,
-    edge_from: &BTreeMap<u32, u32>,
     copy_all_targets: &BTreeSet<u32>,
+    eager_functions: Option<&BTreeSet<usize>>,
     builder: &mut GraphBuilder<'_>,
 ) -> Scope {
+    let edge_from = builder.edge_from;
     builder.rejected_join_paths.clear();
     let mut scopes = ScopeBuilder {
         root: Scope::default(),
@@ -2804,7 +2820,7 @@ fn build_target_scope(
             }
         }
     }
-    materialize::eager_functions(builder);
+    materialize::eager_functions(builder, eager_functions);
     scalar_root::install(target, structure, resources, builder, &mut scopes);
     if let Some(feed) = dynamic_document
         && let Some(node) = builder.binding_node_at_anchor(feed, &[], &[])
