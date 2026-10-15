@@ -69,6 +69,24 @@
     }
   },
   {
+    "name": "complete ordered present occurrences",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"}]}",
+    "parameters": {},
+    "expected": {
+      "Rows": [
+        {
+          "Label": "A"
+        },
+        {
+          "Label": "B"
+        },
+        {
+          "Label": "C"
+        }
+      ]
+    }
+  },
+  {
     "name": "later absent fallback refuses required target after prior occurrences",
     "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":null,\"Replacement\":\"B\"},{\"Replacement\":\"C\"},{}]}",
     "parameters": {},
