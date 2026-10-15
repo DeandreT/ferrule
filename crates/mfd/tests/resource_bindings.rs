@@ -10,6 +10,9 @@ use mfd::{
 };
 use sha2::{Digest, Sha256};
 
+#[path = "resource_bindings/cache_controls.rs"]
+mod cache_controls;
+
 const ROOT_XSD: &str = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:b="urn:binding" targetNamespace="urn:binding" elementFormDefault="qualified"><xs:include schemaLocation="types/value.xsd"/><xs:element name="Packet"><xs:complexType><xs:sequence><xs:element name="Quantity" type="b:Count"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#;
 const TYPES: &str = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:binding"><xs:simpleType name="Count"><xs:restriction base="xs:int"/></xs:simpleType></xs:schema>"#;
 const TARGET: &str = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Result"><xs:complexType><xs:sequence><xs:element name="Quantity" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#;

@@ -241,8 +241,10 @@ pub(super) fn build(
     schema_path: &Path,
     reader: &SchemaReader,
 ) -> SubstitutionIndex {
-    let mut index = SubstitutionIndex::default();
-    index.supplied_identities = reader.is_supplied();
+    let mut index = SubstitutionIndex {
+        supplied_identities: reader.is_supplied(),
+        ..SubstitutionIndex::default()
+    };
     collect_declarations(
         schema,
         schema_path,
