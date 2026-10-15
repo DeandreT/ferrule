@@ -26,6 +26,7 @@ mod recursive_filter;
 mod runtime_value;
 mod user_function;
 mod value_map;
+mod x12;
 mod xml;
 mod xml_boundary;
 mod xml_mixed_content;
@@ -63,6 +64,7 @@ pub use filter_map::{
     MAX_FILTER_MAP_WORK, filter_map_sequence,
 };
 pub use format_csv::{CsvFormatError, CsvWriteOptions};
+pub use format_edi::EdiFormatError;
 pub use functions::FunctionError;
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
@@ -93,6 +95,11 @@ pub use runtime_value::{
 };
 pub use user_function::adapt_user_function_value;
 pub use value_map::{value_map, value_map_user_function};
+pub use x12::{
+    MAX_EMBEDDED_X12_SCHEMA_BYTES, MAX_X12_DOCUMENT_BYTES, MAX_X12_LOOP_INSTANCES, MAX_X12_NODES,
+    MAX_X12_SEGMENTS, X12BoundaryError, parse_x12, parse_x12_bytes, serialize_x12,
+    serialize_x12_bytes,
+};
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 pub use xml_boundary::{
     DynamicXmlSourceLoader, MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES,

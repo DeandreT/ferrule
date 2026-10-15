@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_backend_refuses_before_loading_or_publishing_a_project() {
+    fn rust_x12_missing_project_retains_io_cause_without_publication() {
         let root = std::env::temp_dir().join(format!("ferrule-x12-backend-{}", std::process::id()));
         let output = root.join("unpublished");
         let error = crate::generate_project_with_x12_adapters(
@@ -272,10 +272,8 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "generated raw X12 adapters currently require the C# backend"
-        );
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert!(error.to_string().starts_with("reading project file "));
         assert!(!output.exists());
     }
 
@@ -347,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn grouped_facade_backend_refusal_precedes_project_and_output_loading() {
+    fn rust_grouped_facade_load_failure_preserves_output_parent() {
         let root = std::env::temp_dir().join(format!(
             "ferrule-grouped-x12-backend-{}-{}",
             std::process::id(),
@@ -374,10 +372,9 @@ mod tests {
             None,
         );
         std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "generated raw X12 adapters currently require the C# backend"
-        );
+        let error = result.unwrap_err();
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert!(error.to_string().starts_with("reading project file "));
         assert!(!output.parent().unwrap().exists());
     }
 
