@@ -313,10 +313,10 @@ impl GraphBuilder<'_> {
         active_anchor: &[String],
     ) -> NodeId {
         if self.input_feed(idx, 0).is_some() {
-            self.warnings.push(
-                "auto-number with a global identifier is unsupported; imported as Null".to_string(),
-            );
-            return self.const_null();
+            // Keep one placeholder identity for every use of this component.
+            // Diagnose it only if it survives final project reachability pruning;
+            // eager function materialization also visits unused components.
+            return self.fn_node(idx);
         }
         let Some(restart_feed) = self.input_feed(idx, 3) else {
             return self.fn_node(idx);
