@@ -191,7 +191,7 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
       <root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Value" inpkey="20"/></entry></entry></entry></root>
       <document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/>
     </data></component>
-  </children></structure><connections><edge from="10" to="30"/><edge from="40" to="20"/></connections></component>
+  </children></structure><connections><edge from="40" to="30"/><edge from="40" to="20"/></connections></component>
   <component name="FetchUnused" library="user"><structure><children>
     <component name="opaque-runtime" library="custom" kind="99"/>
   </children></structure></component>
@@ -200,10 +200,37 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
 
     let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
     assert_eq!(imported.project.source.name, "Source");
+    assert!(imported.project.source_options.external_source.is_none());
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].starts_with("skipped user-defined function `FetchUnused`"));
     assert!(!imported.warnings[0].contains("external source"));
     assert!(engine::validate(&imported.project).is_empty());
+
+    // The unused exists call still has a valid ordinary-source input. Removing
+    // only the opaque call and its definition must preserve the whole Project.
+    let design = std::fs::read_to_string(dir.0.join("mapping.mfd"))?;
+    let document = roxmltree::Document::parse(&design)?;
+    let mut opaque_components = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("component") && node.attribute("name") == Some("FetchUnused")
+        })
+        .map(|node| node.range())
+        .collect::<Vec<_>>();
+    assert_eq!(opaque_components.len(), 2);
+    opaque_components.sort_unstable_by_key(|range| range.start);
+    let mut ordinary_design = design.clone();
+    for range in opaque_components.into_iter().rev() {
+        ordinary_design.replace_range(range, "");
+    }
+    write(&dir.0.join("mapping.mfd"), &ordinary_design)?;
+    let ordinary = mfd::import(&dir.0.join("mapping.mfd"))?;
+    assert!(ordinary.warnings.is_empty(), "{:?}", ordinary.warnings);
+    assert!(engine::validate(&ordinary.project).is_empty());
+    assert_eq!(
+        serde_json::to_value(&imported.project)?,
+        serde_json::to_value(&ordinary.project)?
+    );
 
     let source = Instance::Group(
         (vec![(
@@ -217,5 +244,6 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
         scalar(&output, "Value"),
         Some(&Value::String("ordinary".to_owned()))
     );
+    assert_eq!(engine::run(&ordinary.project, &source)?, output);
     Ok(())
 }
