@@ -154,7 +154,7 @@ fn mapforce_refusals_name_their_exact_owner_and_reason() {
             }),
             Some("00501"),
             vec!["Interchange", "Group", "ParserErrors_Message"],
-            "MapForce acknowledgment branches are outside the generated profile",
+            MISPLACED,
         ),
         (
             "extra-root-child",
@@ -444,4 +444,270 @@ fn mapforce_envelope_elements_refuse_implied_decimals_and_release_syntax() {
         ),
         Err(X12BoundaryPolicyError::Separators { .. })
     ));
+}
+
+const MISPLACED: &str = "MapForce acknowledgment branches are admitted only as the trailing member of a functional group or message";
+const SOURCE_ONLY: &str = "MapForce acknowledgment branches are source-only; X12 output never writes parser acknowledgments";
+
+fn acknowledgment_schema() -> SchemaNode {
+    serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../codegen-csharp/tests/x12/mapforce-acknowledgments/fixtures/005010-schema.json"
+    )))
+    .unwrap()
+}
+
+fn branch(name: &str) -> SchemaNode {
+    SchemaNode::group(
+        name,
+        vec![
+            SchemaNode::group(
+                "MF_AK9",
+                vec![SchemaNode::scalar("F715", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    )
+    .repeating()
+}
+
+fn assert_refused(
+    label: &str,
+    candidate: &SchemaNode,
+    side: X12BoundarySide,
+    path: &[&str],
+    reason: &str,
+) {
+    let result = retained_profile(label, candidate, &mapforce("00501"), side);
+    assert!(
+        matches!(&result, Err(X12BoundaryPolicyError::Schema { side: actual, path: found, reason: found_reason })
+            if *actual == side && *found == path && *found_reason == reason),
+        "{label} {side:?}: {result:?}"
+    );
+}
+
+#[test]
+fn mapforce_source_admits_trailing_acknowledgment_branches() {
+    let candidate = acknowledgment_schema();
+    let encoded = retained_profile(
+        "mapforce-acknowledgments",
+        &candidate,
+        &mapforce("00501"),
+        X12BoundarySide::Source,
+    )
+    .unwrap();
+    let descriptor: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        codegen_schema::decode(
+            descriptor["schema"].as_str().unwrap(),
+            MAX_EMBEDDED_X12_DESCRIPTOR_BYTES,
+        )
+        .unwrap(),
+        candidate
+    );
+    let group = node_mut(
+        &mut candidate.clone(),
+        &["Interchange", "Group", "ParserErrors_Group"],
+    )
+    .clone();
+    let message = node_mut(
+        &mut candidate.clone(),
+        &[
+            "Interchange",
+            "Group",
+            "Message_945",
+            "ParserErrors_Message",
+        ],
+    )
+    .clone();
+    // Each placement is independent, in every supported version.
+    for (isa, _, literal) in SCHEMAS {
+        let plain: SchemaNode = serde_json::from_str(literal).unwrap();
+        let mut both = plain.clone();
+        children_mut(&mut both, &["Interchange", "Group"]).push(group.clone());
+        children_mut(&mut both, &["Interchange", "Group", "Message_945"]).push(message.clone());
+        let mut group_only = plain.clone();
+        children_mut(&mut group_only, &["Interchange", "Group"]).push(group.clone());
+        let mut message_only = plain.clone();
+        children_mut(&mut message_only, &["Interchange", "Group", "Message_945"])
+            .push(message.clone());
+        // An optional SE keeps the message branch after it.
+        let mut optional_se = message_only.clone();
+        node_mut(
+            &mut optional_se,
+            &["Interchange", "Group", "Message_945", "SE"],
+        )
+        .repeating = true;
+        for (label, schema, target_path) in [
+            (
+                "both",
+                &both,
+                vec!["Interchange", "Group", "ParserErrors_Group"],
+            ),
+            (
+                "group-only",
+                &group_only,
+                vec!["Interchange", "Group", "ParserErrors_Group"],
+            ),
+            (
+                "message-only",
+                &message_only,
+                vec![
+                    "Interchange",
+                    "Group",
+                    "Message_945",
+                    "ParserErrors_Message",
+                ],
+            ),
+            (
+                "optional-se",
+                &optional_se,
+                vec![
+                    "Interchange",
+                    "Group",
+                    "Message_945",
+                    "ParserErrors_Message",
+                ],
+            ),
+        ] {
+            retained_profile(label, schema, &mapforce(isa), X12BoundarySide::Source)
+                .unwrap_or_else(|error| panic!("{isa} {label}: {error:?}"));
+            assert_refused(
+                label,
+                schema,
+                X12BoundarySide::Target,
+                &target_path,
+                SOURCE_ONLY,
+            );
+        }
+    }
+}
+
+#[test]
+fn mapforce_acknowledgment_branches_refuse_other_placements_and_shapes() {
+    let cases: Vec<(&str, SchemaMutation, Vec<&str>, &str)> = vec![
+        (
+            "group-branch-before-ge",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group"])
+                    .insert(2, branch("ParserErrors_Group"))
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group"],
+            MISPLACED,
+        ),
+        (
+            "message-branch-before-se",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945"])
+                    .insert(4, branch("ParserErrors_Message"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "Message_945",
+                "ParserErrors_Message",
+            ],
+            MISPLACED,
+        ),
+        (
+            "interchange-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange"]).push(branch("ParserErrors_Interchange"))
+            }),
+            vec!["Interchange", "ParserErrors_Interchange"],
+            MISPLACED,
+        ),
+        (
+            "root-branch",
+            Box::new(|schema| children_mut(schema, &[]).push(branch("ParserErrors_Envelope"))),
+            vec!["ParserErrors_Envelope"],
+            MISPLACED,
+        ),
+        (
+            "body-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945", "Detail"])
+                    .push(branch("ParserErrors_Detail"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "Message_945",
+                "Detail",
+                "ParserErrors_Detail",
+            ],
+            MISPLACED,
+        ),
+        (
+            "unprefixed-group-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group"]).push(branch("Acknowledgments"))
+            }),
+            vec!["Interchange", "Group"],
+            "MapForce functional groups require exactly GS, one message container and GE",
+        ),
+        (
+            "unprefixed-message-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "Message_945"])
+                    .push(branch("Acknowledgments"))
+            }),
+            vec!["Interchange", "Group", "Message_945"],
+            "MapForce messages require singular ST first and SE last",
+        ),
+    ];
+    for (label, mutate, path, reason) in cases {
+        let mut candidate = mapforce_schema();
+        mutate(&mut candidate);
+        for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
+            assert_refused(label, &candidate, side, &path, reason);
+        }
+    }
+    // Admitted placements still require a repeating container of ordinary
+    // segments; output refuses the branch itself first.
+    let source_cases: Vec<(&str, SchemaMutation, Vec<&str>, &str)> = vec![
+        (
+            "singular-branch",
+            Box::new(|schema| {
+                node_mut(schema, &["Interchange", "Group", "ParserErrors_Group"]).repeating = false
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group"],
+            "MapForce acknowledgment branches must be repeating non-segment containers",
+        ),
+        (
+            "envelope-in-branch",
+            Box::new(|schema| {
+                let ge = node_mut(schema, &["Interchange", "Group", "GE"]).clone();
+                children_mut(schema, &["Interchange", "Group", "ParserErrors_Group"]).push(ge)
+            }),
+            vec!["Interchange", "Group", "ParserErrors_Group", "GE"],
+            "MapForce acknowledgment branches cannot contain envelope segments",
+        ),
+        (
+            "nested-branch",
+            Box::new(|schema| {
+                children_mut(schema, &["Interchange", "Group", "ParserErrors_Group"])
+                    .push(branch("ParserErrors_Nested"))
+            }),
+            vec![
+                "Interchange",
+                "Group",
+                "ParserErrors_Group",
+                "ParserErrors_Nested",
+            ],
+            MISPLACED,
+        ),
+    ];
+    for (label, mutate, path, reason) in source_cases {
+        let mut candidate = acknowledgment_schema();
+        mutate(&mut candidate);
+        assert_refused(label, &candidate, X12BoundarySide::Source, &path, reason);
+        assert_refused(
+            label,
+            &candidate,
+            X12BoundarySide::Target,
+            &["Interchange", "Group", "ParserErrors_Group"],
+            SOURCE_ONLY,
+        );
+    }
 }
