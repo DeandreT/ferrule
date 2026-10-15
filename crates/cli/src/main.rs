@@ -1560,6 +1560,8 @@ mod pdf_evidence_flag_tests {
             assert_eq!(output_bytes, b"sentinel");
             assert!(!trace_exists);
         }
+        // Each retained file is synced above; directory syncing is Unix-specific.
+        #[cfg(unix)]
         std::fs::File::open(&root).unwrap().sync_all().unwrap();
     }
 }
