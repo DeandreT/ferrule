@@ -481,12 +481,20 @@ fn to_string_with_syntax_inner(
         .map(parse_interchange_version)
         .transpose()?;
     let options = write_options(schema, instance, options)?;
+    // IEA02 repeats ISA13, which is fixed-width only when the schema declares
+    // a complete ISA; partial schemas keep both controls as supplied.
+    let encode: fn(&str, &mut [String], &WriteOptions) -> Result<(), EdiFormatError> =
+        if declares_complete_isa(schema) {
+            encode_envelope_controls
+        } else {
+            encode_isa_controls
+        };
     // Completion consumes the mapped lexicals before physical encoding. Its
     // existing date/time/control normalization must run before width checks.
     let mut out = if autocomplete.is_some() {
         write_segments(schema, instance, &options)?
     } else {
-        write_segments_with_encoding(schema, instance, &options, Some(encode_envelope_controls))?
+        write_segments_with_encoding(schema, instance, &options, Some(encode))?
     };
     if let Some(autocomplete) = autocomplete {
         let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
@@ -496,8 +504,7 @@ fn to_string_with_syntax_inner(
             autocomplete.request_acknowledgement,
             autocomplete.transaction_set,
         )?;
-        out =
-            serialize_segments_with_encoding(&completed, &options, Some(encode_envelope_controls))?;
+        out = serialize_segments_with_encoding(&completed, &options, Some(encode))?;
     }
     Ok(out)
 }
@@ -517,6 +524,26 @@ fn encode_envelope_controls(
         }
         _ => Ok(()),
     }
+}
+
+/// Encodes only the complete ISA when the schema's ISA is partial.
+fn encode_isa_controls(
+    segment: &str,
+    elements: &mut [String],
+    syntax: &WriteOptions,
+) -> Result<(), EdiFormatError> {
+    match segment {
+        "ISA" => encode_complete_isa(elements, syntax),
+        _ => Ok(()),
+    }
+}
+
+/// Whether the schema declares an ISA segment with all 16 elements.
+fn declares_complete_isa(schema: &SchemaNode) -> bool {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return false;
+    };
+    (schema.name == "ISA" && children.len() == 16) || children.iter().any(declares_complete_isa)
 }
 
 /// IEA02 repeats the fixed nine-digit ISA13 control. A numeric control,

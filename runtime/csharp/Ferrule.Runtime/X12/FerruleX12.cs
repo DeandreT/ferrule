@@ -96,6 +96,10 @@ public static partial class FerruleX12
             }
             if (segments[0].Elements[15] != syntax.Component.ToString())
                 throw Failure(FerruleX12Error.Syntax, "ISA16 must match the selected component separator.");
+            // Native encoding zero-pads an all-digit IEA02 to the ISA13 width.
+            foreach (Segment segment in segments)
+                if (segment.Id == "IEA" && segment.Elements.Length >= 2 && Digits(segment.Elements[1], 1, 8))
+                    segment.Elements[1] = segment.Elements[1].PadLeft(9, '0');
         }
         ValidateEnvelope(segments, profile, syntax);
         var output = new StringBuilder();

@@ -395,6 +395,67 @@ fn numeric_iea02_is_zero_padded_like_isa13_with_and_without_completion() {
 }
 
 #[test]
+fn partial_isa_keeps_iea02_as_supplied() {
+    let isa = SchemaNode::group(
+        "ISA",
+        (1..=13)
+            .map(|index| SchemaNode::scalar(format!("{index:02}"), ScalarType::String))
+            .collect(),
+    );
+    let iea = SchemaNode::group(
+        "IEA",
+        vec![
+            SchemaNode::scalar("01", ScalarType::String),
+            SchemaNode::scalar("02", ScalarType::String),
+        ],
+    );
+    let schema = SchemaNode::group("X12", vec![isa, iea]);
+    let isa_values = [
+        "00", "", "00", "", "ZZ", "S", "ZZ", "R", "260702", "1200", "U", "00401", "321",
+    ];
+    let instance = Instance::Group(
+        vec![
+            (
+                "ISA".to_string(),
+                Instance::Group(
+                    isa_values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| {
+                            (
+                                format!("{:02}", index + 1),
+                                Instance::Scalar(Value::String((*value).into())),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
+                ),
+            ),
+            (
+                "IEA".to_string(),
+                Instance::Group(
+                    vec![
+                        (
+                            "01".to_string(),
+                            Instance::Scalar(Value::String("1".into())),
+                        ),
+                        (
+                            "02".to_string(),
+                            Instance::Scalar(Value::String("321".into())),
+                        ),
+                    ]
+                    .into(),
+                ),
+            ),
+        ]
+        .into(),
+    );
+    let output = to_string(&schema, &instance).unwrap();
+    assert!(output.contains("*00401*321~"), "{output}");
+    assert!(output.contains("IEA*1*321~"), "{output}");
+}
+
+#[test]
 fn non_numeric_or_full_width_iea02_remains_supplied_text() {
     for (name, value) in [
         ("iea02-text", "CTRL321"),

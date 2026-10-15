@@ -183,7 +183,8 @@ Input validates the physical segments as `(ISA (GS (ST … SE)+ GE)+ IEA)+`
 before typed reading. Every interchange needs at least one functional group and
 every group at least one transaction. Every ISA must carry the selected ISA12
 (`UnsupportedProfile`) and repeat the discovered ISA11 and ISA16 syntax
-(`Syntax`); under `00401`, ISA11 is `U`. GS08 is ordinary data: it is never
+(`Syntax`); under `00401`, ISA11 is `U` and any other value is
+`UnsupportedProfile`. GS08 is ordinary data: it is never
 compared with the version or filled. Numeric wire controls are ASCII digits:
 ISA13 has exactly nine, while GS06, GE02, IEA02 and the counts have one through
 nine. SE01 counts ST through SE inclusive; GE01 and IEA01 count their owner's
