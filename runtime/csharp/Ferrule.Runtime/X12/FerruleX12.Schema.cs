@@ -32,12 +32,19 @@ public static partial class FerruleX12
         internal bool Modern => Interchange != "00401";
     }
     private sealed record GroupedShape(Node Groups, Node Transactions);
+    // MapForce Envelope.Config ownership: repeating interchanges of optional
+    // ISA/IEA around repeating functional groups of optional GS/GE around one
+    // repeating message container with singular ST/SE.
+    private sealed record MapForceShape(Node Interchanges, Node Isa, Node Groups, Node Gs, Node Messages,
+        Node St, Node Se, Node Ge, Node Iea);
     private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
         char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null,
-        GroupedShape? Grouped = null)
+        GroupedShape? Grouped = null, MapForceShape? MapForce = null)
     {
         internal VersionProfile SelectedVersion => Version ?? new("00401", "004010");
         internal Syntax OutputSyntax => Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
+        // Declared envelope owner collections report occurrence-indexed paths.
+        internal bool IndexedPaths => Grouped is not null || MapForce is not null;
     }
 
     private static Profile ParseProfile(string descriptor, bool input = true)
@@ -49,13 +56,16 @@ public static partial class FerruleX12
             using JsonDocument parsed = JsonDocument.Parse(descriptor, new JsonDocumentOptions { MaxDepth = 127 });
             JsonElement wrapper = parsed.RootElement;
             Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete", "envelope_profile"]);
-            bool grouped = wrapper.TryGetProperty("envelope_profile", out JsonElement envelopeProfile)
-                && (envelopeProfile.GetString() switch
+            string envelope = wrapper.TryGetProperty("envelope_profile", out JsonElement envelopeProfile)
+                ? envelopeProfile.GetString() switch
                 {
-                    "single_transaction" => false,
-                    "grouped_transactions" => true,
+                    "single_transaction" => "single_transaction",
+                    "grouped_transactions" => "grouped_transactions",
+                    "mapforce_interchanges" => "mapforce_interchanges",
                     _ => throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 envelope profile."),
-                });
+                }
+                : "single_transaction";
+            bool grouped = envelope == "grouped_transactions", mapforce = envelope == "mapforce_interchanges";
             VersionProfile version = wrapper.GetProperty("version").GetString() switch
             {
                 "004010" => new("00401", "004010"),
@@ -72,20 +82,42 @@ public static partial class FerruleX12
             if (root.Repeating || root.Type is not null)
                 throw Failure(FerruleX12Error.Schema, "X12 requires a singular root container.");
             GroupedShape? groupedShape = grouped ? ValidateGroupedShape(root) : null;
-            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped, modern: version.Modern);
+            MapForceShape? mapForceShape = mapforce ? ValidateMapForceShape(root) : null;
+            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped || mapforce,
+                modern: version.Modern);
             var envelopes = new List<Node>();
             CollectEnvelopes(root, envelopes, true);
             string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
             int[] widths = [16, 8, 2, 2, 2, 2];
             if (envelopes.Count != 6) throw Failure(FerruleX12Error.Schema, "The schema requires exactly one envelope sequence.");
-            for (int index = 0; index < ids.Length; index++)
-                if (SegmentId(envelopes[index].Name) != ids[index] || envelopes[index].Children.Length != widths[index]
-                    || envelopes[index].Children.Any(child => child.Type != "string" || child.Repeating))
-                    throw Failure(FerruleX12Error.Schema, "Envelope schemas require exact positional String elements.");
-            if (envelopes[0].Children[11].Fixed != version.Interchange || envelopes[1].Children[7].Fixed != version.Group)
-                throw Failure(FerruleX12Error.UnsupportedProfile, version.Modern
-                    ? "Envelope schema versions must agree with the selected X12 profile."
-                    : "Envelope schema versions must be fixed to 00401 and 004010.");
+            if (mapforce)
+            {
+                for (int index = 0; index < ids.Length; index++)
+                {
+                    Node segment = envelopes[index];
+                    bool width = segment.Children.Length == widths[index] || ids[index] == "ST" && segment.Children.Length == 3;
+                    if (SegmentId(segment.Name) != ids[index] || !width || segment.Children.Select((child, position) =>
+                            child.Repeating || child.Type is null
+                            || child.Type != "string" && !MapForceNumericControl(ids[index], position)).Any(invalid => invalid))
+                        throw Failure(FerruleX12Error.Schema,
+                            "MapForce envelope schemas require exact positional elements with supported control types.");
+                }
+                // ISA12 and GS08 need not be fixed; the descriptor version selects the profile.
+                if (envelopes[0].Children[11].Fixed is { } interchange && interchange != version.Interchange
+                    || envelopes[1].Children[7].Fixed is { } group && group != version.Group)
+                    throw Failure(FerruleX12Error.UnsupportedProfile, "Envelope schema versions must agree with the selected X12 profile.");
+            }
+            else
+            {
+                for (int index = 0; index < ids.Length; index++)
+                    if (SegmentId(envelopes[index].Name) != ids[index] || envelopes[index].Children.Length != widths[index]
+                        || envelopes[index].Children.Any(child => child.Type != "string" || child.Repeating))
+                        throw Failure(FerruleX12Error.Schema, "Envelope schemas require exact positional String elements.");
+                if (envelopes[0].Children[11].Fixed != version.Interchange || envelopes[1].Children[7].Fixed != version.Group)
+                    throw Failure(FerruleX12Error.UnsupportedProfile, version.Modern
+                        ? "Envelope schema versions must agree with the selected X12 profile."
+                        : "Envelope schema versions must be fixed to 00401 and 004010.");
+            }
             Syntax? separators = null;
             char? inactiveRepetition = null;
             JsonElement selected = wrapper.GetProperty("separators");
@@ -161,7 +193,7 @@ public static partial class FerruleX12
                     || separators is { } componentSyntax && fixedComponent != componentSyntax.Component.ToString()
                     || separators is null && !input && fixedComponent != ":"))
                 throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA16 does not agree with the selected modern component syntax.");
-            return new(root, separators, lenient, inactiveRepetition, autocomplete, version, groupedShape);
+            return new(root, separators, lenient, inactiveRepetition, autocomplete, version, groupedShape, mapForceShape);
         }
         catch (FerruleX12Exception) { throw; }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
@@ -424,6 +456,64 @@ public static partial class FerruleX12
         }
         return new(groups, transactions);
     }
+
+    private static MapForceShape ValidateMapForceShape(Node root)
+    {
+        const string message = "MapForce X12 schemas require declared interchange, functional-group and message owners.";
+        static FerruleX12Exception Invalid(string[] path) => Failure(FerruleX12Error.Schema, message, path: string.Join('/', path));
+        static void Acknowledgements(Node node, string[] path)
+        {
+            // Source acknowledgment branches are outside the generated profile.
+            if (node.Name.StartsWith("ParserErrors_", StringComparison.Ordinal)) throw Invalid(path);
+            foreach (Node child in node.Children) Acknowledgements(child, [.. path, child.Name]);
+        }
+        static Node Owner(Node owner, int index, string[] path)
+        {
+            Node node = owner.Children[index];
+            if (node.Type is not null || !node.Repeating || SegmentId(node.Name) is not null)
+                throw Invalid([.. path, node.Name]);
+            return node;
+        }
+        static Node Envelope(Node owner, int index, string id, bool optional, string[] path)
+        {
+            Node node = owner.Children[index];
+            if (SegmentId(node.Name) != id || node.Type is not null || node.Repeating != optional)
+                throw Invalid([.. path, id]);
+            return node;
+        }
+        foreach (Node child in root.Children) Acknowledgements(child, [child.Name]);
+        if (root.Children.Length != 1) throw Invalid([]);
+        Node interchanges = Owner(root, 0, []);
+        string[] interchangePath = [interchanges.Name];
+        if (interchanges.Children.Length != 3) throw Invalid(interchangePath);
+        Node isa = Envelope(interchanges, 0, "ISA", optional: true, interchangePath);
+        Node iea = Envelope(interchanges, 2, "IEA", optional: true, interchangePath);
+        Node groups = Owner(interchanges, 1, interchangePath);
+        string[] groupPath = [.. interchangePath, groups.Name];
+        if (groups.Children.Length != 3) throw Invalid(groupPath);
+        Node gs = Envelope(groups, 0, "GS", optional: true, groupPath);
+        Node ge = Envelope(groups, 2, "GE", optional: true, groupPath);
+        Node messages = Owner(groups, 1, groupPath);
+        string[] messagePath = [.. groupPath, messages.Name];
+        if (messages.Children.Length < 2) throw Invalid(messagePath);
+        Node st = Envelope(messages, 0, "ST", optional: false, messagePath);
+        Node se = Envelope(messages, messages.Children.Length - 1, "SE", optional: false, messagePath);
+        for (int index = 1; index < messages.Children.Length - 1; index++)
+        {
+            var nested = new List<Node>();
+            CollectEnvelopes(messages.Children[index], nested, false);
+            if (nested.Count != 0) throw Invalid([.. messagePath, messages.Children[index].Name]);
+        }
+        return new(interchanges, isa, groups, gs, messages, st, se, ge, iea);
+    }
+
+    // ISA13, GS06, SE01, GE01/GE02 and IEA01/IEA02 are numeric data in MapForce
+    // configurations; every other envelope element is String.
+    private static bool MapForceNumericControl(string id, int position) => (id, position) switch
+    {
+        ("ISA", 12) or ("GS", 5) or ("SE", 0) or ("GE", 0 or 1) or ("IEA", 0 or 1) => true,
+        _ => false,
+    };
 
     private static bool IsEnvelope(string id) => id is "ISA" or "GS" or "ST" or "SE" or "GE" or "IEA";
     private static void CollectEnvelopes(Node node, List<Node> result, bool root)

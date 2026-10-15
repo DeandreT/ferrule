@@ -25,6 +25,8 @@ const DEEP: &str = include_str!("x12/deep-940.x12");
 
 #[path = "x12/grouped.rs"]
 mod grouped;
+#[path = "x12/mapforce.rs"]
+mod mapforce;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/repeated.rs"]

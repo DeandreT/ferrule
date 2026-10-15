@@ -1,0 +1,437 @@
+{
+  "name": "Envelope",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {
+        "name": "Interchange",
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "ISA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "FI01",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI02",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI03",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI04",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI05_1",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI06",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI05_2",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI07",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI08",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI09",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI65",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI11",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI12",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "FI13",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI14",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "FI15",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            },
+            {
+              "name": "Group",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "GS",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "F479",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F142",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F124",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F373",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F337",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F28",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "float"
+                          }
+                        },
+                        {
+                          "name": "F455",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        },
+                        {
+                          "name": "F480",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "repeating": true
+                  },
+                  {
+                    "name": "Message_945",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "ST",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "F143",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                },
+                                "fixed": "945"
+                              },
+                              {
+                                "name": "F329",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              },
+                              {
+                                "name": "F1705",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "W06",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "F92",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              },
+                              {
+                                "name": "F145",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              },
+                              {
+                                "name": "F373",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "Detail",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "LX",
+                                "kind": {
+                                  "kind": "group",
+                                  "children": [
+                                    {
+                                      "name": "F554",
+                                      "kind": {
+                                        "kind": "scalar",
+                                        "ty": "int"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "name": "W12",
+                                "kind": {
+                                  "kind": "group",
+                                  "children": [
+                                    {
+                                      "name": "F368",
+                                      "kind": {
+                                        "kind": "scalar",
+                                        "ty": "string"
+                                      }
+                                    },
+                                    {
+                                      "name": "F330",
+                                      "kind": {
+                                        "kind": "scalar",
+                                        "ty": "float"
+                                      }
+                                    },
+                                    {
+                                      "name": "F382",
+                                      "kind": {
+                                        "kind": "scalar",
+                                        "ty": "float"
+                                      }
+                                    },
+                                    {
+                                      "name": "F355",
+                                      "kind": {
+                                        "kind": "scalar",
+                                        "ty": "string"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "repeating": true
+                        },
+                        {
+                          "name": "W03",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "F76",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "float"
+                                }
+                              },
+                              {
+                                "name": "F81",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "float"
+                                }
+                              },
+                              {
+                                "name": "F355",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "SE",
+                          "kind": {
+                            "kind": "group",
+                            "children": [
+                              {
+                                "name": "F96",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "float"
+                                }
+                              },
+                              {
+                                "name": "F329",
+                                "kind": {
+                                  "kind": "scalar",
+                                  "ty": "string"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "repeating": true
+                  },
+                  {
+                    "name": "GE",
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "F97",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "float"
+                          }
+                        },
+                        {
+                          "name": "F28",
+                          "kind": {
+                            "kind": "scalar",
+                            "ty": "float"
+                          }
+                        }
+                      ]
+                    },
+                    "repeating": true
+                  }
+                ]
+              },
+              "repeating": true
+            },
+            {
+              "name": "IEA",
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "FI16",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "FI12",
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  }
+                ]
+              },
+              "repeating": true
+            }
+          ]
+        },
+        "repeating": true
+      }
+    ]
+  }
+}

@@ -144,6 +144,43 @@ fn static_policy_retains_all_declared_own_boundaries_in_order() {
 }
 
 #[test]
+fn static_envelope_profiles_apply_only_to_primary_x12_endpoints() {
+    let mut candidate = project();
+    candidate.target_options = FormatOptions {
+        edi_kind: Some(EdiBoundaryKind::X12),
+        ..Default::default()
+    };
+    let policy = policy_with_envelope_profiles(
+        &candidate,
+        None,
+        Some(X12EnvelopeProfile::MapForceInterchanges),
+    )
+    .unwrap();
+    let DocumentBoundaryOptions::X12(ref target) = policy.target else {
+        panic!("primary X12 target was not retained")
+    };
+    assert_eq!(
+        target.envelope_profile,
+        X12EnvelopeProfile::MapForceInterchanges
+    );
+    assert!(matches!(policy.source, DocumentBoundaryOptions::Json));
+    let DocumentBoundaryOptions::X12(ref named) = policy.extra_targets[0].options else {
+        panic!("own X12 target was not retained")
+    };
+    assert_eq!(named.envelope_profile, X12EnvelopeProfile::default());
+
+    let refused = policy_with_envelope_profiles(
+        &candidate,
+        Some(X12EnvelopeProfile::MapForceInterchanges),
+        None,
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "static document primary source envelope selection requires an X12 endpoint"
+    );
+}
+
+#[test]
 fn static_backend_refuses_before_project_load_or_destination_creation() {
     let root = evidence("backend");
     let output = root.join("absent-parent/output");

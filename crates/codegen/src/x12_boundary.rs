@@ -15,14 +15,21 @@ use crate::{EmbeddedSchemaError, Program, ProgramValidationError, serialize_embe
 pub const MAX_EMBEDDED_X12_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
+const ENVELOPE_SEGMENTS: [&str; 6] = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
 
-/// Declared ownership grammar for one complete X12 interchange.
-/// Grouped ownership is explicit; saved schemas and format options do not infer it.
+/// Declared ownership grammar for a complete X12 document. Grouped and
+/// MapForce ownership are explicit; saved schemas and format options do not
+/// infer either.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum X12EnvelopeProfile {
     #[default]
     SingleTransaction,
     GroupedTransactions,
+    /// MapForce `Envelope.Config` ownership: repeating interchanges of
+    /// optional ISA/IEA around repeating functional groups of optional GS/GE
+    /// around one repeating message container. The retained
+    /// `interchange_version` selects the version.
+    MapForceInterchanges,
 }
 
 /// One explicitly selected raw X12 side. Missing separators mean ISA discovery
@@ -32,7 +39,8 @@ pub enum X12EnvelopeProfile {
 pub struct X12BoundaryOptions {
     pub envelope_profile: X12EnvelopeProfile,
     /// Explicit five-digit ISA12 metadata, when retained by the source design.
-    /// The fixed ISA12/GS08 schema pair always determines the selected profile.
+    /// The fixed ISA12/GS08 schema pair determines the selected single and
+    /// grouped profiles; MapForce interchanges require this retained version.
     pub interchange_version: Option<String>,
     pub separators: Option<X12Separators>,
     pub constraints: Vec<EdiValueConstraint>,
@@ -395,8 +403,14 @@ pub(crate) fn descriptor(
         "lexical_formats": options.lexical_formats,
         "autocomplete": options.autocomplete,
     });
-    if options.envelope_profile == X12EnvelopeProfile::GroupedTransactions {
-        encoded["envelope_profile"] = serde_json::json!("grouped_transactions");
+    match options.envelope_profile {
+        X12EnvelopeProfile::SingleTransaction => {}
+        X12EnvelopeProfile::GroupedTransactions => {
+            encoded["envelope_profile"] = serde_json::json!("grouped_transactions");
+        }
+        X12EnvelopeProfile::MapForceInterchanges => {
+            encoded["envelope_profile"] = serde_json::json!("mapforce_interchanges");
+        }
     }
     let encoded = encoded.to_string();
     if encoded.len() > MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
@@ -452,8 +466,10 @@ fn validate_schema(
             "a singular root container is required",
         ));
     }
-    if options.envelope_profile == X12EnvelopeProfile::GroupedTransactions {
-        validate_grouped_grammar(schema, side)?;
+    match options.envelope_profile {
+        X12EnvelopeProfile::SingleTransaction => {}
+        X12EnvelopeProfile::GroupedTransactions => validate_grouped_grammar(schema, side)?,
+        X12EnvelopeProfile::MapForceInterchanges => validate_mapforce_grammar(schema, side)?,
     }
     let mut nodes = 0;
     let mut envelopes = Vec::new();
@@ -470,6 +486,83 @@ fn validate_schema(
         &mut envelopes,
         &mut repeats,
     )?;
+    let version = if options.envelope_profile == X12EnvelopeProfile::MapForceInterchanges {
+        validate_mapforce_envelopes(schema, &envelopes, options, side)?
+    } else {
+        validate_declared_envelopes(&envelopes, options, side)?
+    };
+    let SchemaKind::Group {
+        children: isa_fields,
+        ..
+    } = &envelopes[0].1.kind
+    else {
+        unreachable!()
+    };
+    validate_repeated_elements(&repeats, version, side)?;
+    if version != "004010" {
+        let syntax = options.separators.unwrap_or(X12Separators {
+            element: '*',
+            component: ':',
+            segment: '~',
+            repetition: Some('^'),
+            release: None,
+        });
+        if side == X12BoundarySide::Target && syntax.repetition.is_none() {
+            return Err(X12BoundaryPolicyError::Separators {
+                reason: "modern output requires a selected repetition separator",
+            });
+        }
+        if let Some(fixed) = isa_fields[10].fixed.as_deref() {
+            let mut characters = fixed.chars();
+            let repetition = characters
+                .next()
+                .filter(|character| character.is_ascii_punctuation());
+            if repetition.is_none()
+                || characters.next().is_some()
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && repetition.is_some_and(|character| {
+                        [syntax.element, syntax.component, syntax.segment].contains(&character)
+                    })
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && syntax
+                        .repetition
+                        .is_some_and(|selected| Some(selected) != repetition)
+            {
+                return Err(schema_error(
+                    side,
+                    &envelopes[0].2,
+                    "modern fixed ISA11 must agree with the distinct selected repetition separator",
+                ));
+            }
+        }
+        if let Some(fixed) = isa_fields[15].fixed.as_deref() {
+            let mut characters = fixed.chars();
+            let component = characters
+                .next()
+                .filter(|character| character.is_ascii_punctuation());
+            if component.is_none()
+                || characters.next().is_some()
+                || (options.separators.is_some() || side == X12BoundarySide::Target)
+                    && fixed != syntax.component.to_string()
+            {
+                return Err(schema_error(
+                    side,
+                    &envelopes[0].2,
+                    "modern fixed ISA16 must agree with the selected component separator",
+                ));
+            }
+        }
+    }
+    Ok(version)
+}
+
+/// Single and grouped profiles: exactly one String-only envelope sequence
+/// whose fixed ISA12/GS08 pair selects the version.
+fn validate_declared_envelopes(
+    envelopes: &[(&str, &SchemaNode, Vec<String>)],
+    options: &X12BoundaryOptions,
+    side: X12BoundarySide,
+) -> Result<&'static str, X12BoundaryPolicyError> {
     let expected = [
         ("ISA", 16),
         ("GS", 8),
@@ -564,62 +657,254 @@ fn validate_schema(
             "retained interchange version must agree with fixed ISA12",
         ));
     }
-    validate_repeated_elements(&repeats, version, side)?;
-    if version != "004010" {
-        let syntax = options.separators.unwrap_or(X12Separators {
-            element: '*',
-            component: ':',
-            segment: '~',
-            repetition: Some('^'),
-            release: None,
+    Ok(version)
+}
+
+/// Positions that MapForce configurations declare as numeric data: ISA13,
+/// GS06, SE01, GE01/GE02 and IEA01/IEA02. Other envelope elements are String.
+fn mapforce_numeric_control(id: &str, position: usize) -> bool {
+    matches!(
+        (id, position),
+        ("ISA", 12) | ("GS", 5) | ("SE", 0) | ("GE", 0 | 1) | ("IEA", 0 | 1)
+    )
+}
+
+/// MapForce envelope widths, element types and the retained version. ISA12
+/// and GS08 need not be fixed; fixed values must agree with the selection.
+fn validate_mapforce_envelopes(
+    schema: &SchemaNode,
+    envelopes: &[(&str, &SchemaNode, Vec<String>)],
+    options: &X12BoundaryOptions,
+    side: X12BoundarySide,
+) -> Result<&'static str, X12BoundaryPolicyError> {
+    for (id, node, path) in envelopes {
+        let SchemaKind::Group { children, .. } = &node.kind else {
+            unreachable!()
+        };
+        let width = match *id {
+            "ISA" => children.len() == 16,
+            "GS" => children.len() == 8,
+            "ST" => (2..=3).contains(&children.len()),
+            _ => children.len() == 2,
+        };
+        if !width {
+            return Err(schema_error(
+                side,
+                path,
+                "MapForce envelope segments require ISA 16, GS 8, ST 2 or 3 and SE/GE/IEA 2 elements",
+            ));
+        }
+        let typed = children.iter().enumerate().all(|(position, child)| {
+            !child.repeating
+                && match child.kind {
+                    SchemaKind::Scalar {
+                        ty: ScalarType::String,
+                    } => true,
+                    SchemaKind::Scalar {
+                        ty: ScalarType::Int | ScalarType::Float,
+                    } => mapforce_numeric_control(id, position),
+                    _ => false,
+                }
         });
-        if side == X12BoundarySide::Target && syntax.repetition.is_none() {
-            return Err(X12BoundaryPolicyError::Separators {
-                reason: "modern output requires a selected repetition separator",
-            });
+        if !typed {
+            return Err(schema_error(
+                side,
+                path,
+                "MapForce envelope controls and counts permit String, Int or Float; other envelope elements require String",
+            ));
         }
-        if let Some(fixed) = isa_fields[10].fixed.as_deref() {
-            let mut characters = fixed.chars();
-            let repetition = characters
-                .next()
-                .filter(|character| character.is_ascii_punctuation());
-            if repetition.is_none()
-                || characters.next().is_some()
-                || (options.separators.is_some() || side == X12BoundarySide::Target)
-                    && repetition.is_some_and(|character| {
-                        [syntax.element, syntax.component, syntax.segment].contains(&character)
-                    })
-                || (options.separators.is_some() || side == X12BoundarySide::Target)
-                    && syntax
-                        .repetition
-                        .is_some_and(|selected| Some(selected) != repetition)
-            {
+    }
+    let (interchange, group, version) = match options.interchange_version.as_deref() {
+        Some("00401") => ("00401", "004010", "004010"),
+        Some("00501") => ("00501", "005010", "005010"),
+        Some("00604") => ("00604", "006040", "006040"),
+        _ => {
+            return Err(schema_error(
+                side,
+                &[],
+                "MapForce interchanges require a retained 00401, 00501 or 00604 interchange version",
+            ));
+        }
+    };
+    let fixed = |index: usize, position: usize| match &envelopes[index].1.kind {
+        SchemaKind::Group { children, .. } => children[position].fixed.as_deref(),
+        _ => None,
+    };
+    if fixed(0, 11).is_some_and(|value| value != interchange)
+        || fixed(1, 7).is_some_and(|value| value != group)
+    {
+        return Err(schema_error(
+            side,
+            &[],
+            "fixed ISA12 or GS08 must agree with the retained interchange version",
+        ));
+    }
+    // Envelope controls are integer wire data; implied decimals would rescale them.
+    for implied in &options.implied_decimals {
+        let mut node = schema;
+        for name in implied.path() {
+            let Some(child) = node.child(name) else {
+                break;
+            };
+            node = child;
+            if segment_id(&node.name).is_some_and(|id| ENVELOPE_SEGMENTS.contains(&id)) {
                 return Err(schema_error(
                     side,
-                    &envelopes[0].2,
-                    "modern fixed ISA11 must agree with the distinct selected repetition separator",
-                ));
-            }
-        }
-        if let Some(fixed) = isa_fields[15].fixed.as_deref() {
-            let mut characters = fixed.chars();
-            let component = characters
-                .next()
-                .filter(|character| character.is_ascii_punctuation());
-            if component.is_none()
-                || characters.next().is_some()
-                || (options.separators.is_some() || side == X12BoundarySide::Target)
-                    && fixed != syntax.component.to_string()
-            {
-                return Err(schema_error(
-                    side,
-                    &envelopes[0].2,
-                    "modern fixed ISA16 must agree with the selected component separator",
+                    implied.path(),
+                    "implied decimals cannot apply to MapForce envelope elements",
                 ));
             }
         }
     }
     Ok(version)
+}
+
+/// MapForce `Envelope.Config` ownership. The importer represents optional
+/// envelope segments as repeating; ST and SE remain singular message bounds.
+fn validate_mapforce_grammar(
+    schema: &SchemaNode,
+    side: X12BoundarySide,
+) -> Result<(), X12BoundaryPolicyError> {
+    fn children(node: &SchemaNode) -> &[SchemaNode] {
+        match &node.kind {
+            SchemaKind::Group { children, .. } => children.as_slice(),
+            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => &[],
+        }
+    }
+    fn joined(path: &[String], name: &str) -> Vec<String> {
+        let mut path = path.to_vec();
+        path.push(name.to_owned());
+        path
+    }
+    let mut pending = vec![(schema, Vec::new())];
+    while let Some((node, path)) = pending.pop() {
+        if node.name.starts_with("ParserErrors_") {
+            return Err(schema_error(
+                side,
+                &path,
+                "MapForce acknowledgment branches are outside the generated profile",
+            ));
+        }
+        pending.extend(
+            children(node)
+                .iter()
+                .map(|child| (child, joined(&path, &child.name))),
+        );
+    }
+    let owner = |node: &SchemaNode, path: &[String]| {
+        if !node.repeating
+            || segment_id(&node.name).is_some()
+            || !matches!(node.kind, SchemaKind::Group { .. })
+        {
+            return Err(schema_error(
+                side,
+                path,
+                "MapForce interchange, group and message owners must be non-segment repeating containers",
+            ));
+        }
+        Ok(())
+    };
+    let optional = |node: &SchemaNode, owner: &[String]| {
+        if !node.repeating {
+            return Err(schema_error(
+                side,
+                &joined(owner, &node.name),
+                "MapForce ISA, GS, GE and IEA segments must be optional repeating segments",
+            ));
+        }
+        Ok(())
+    };
+    let root = children(schema);
+    if root.len() != 1 {
+        return Err(schema_error(
+            side,
+            &[],
+            "MapForce X12 schemas require one repeating interchange container below the root",
+        ));
+    }
+    let interchange = &root[0];
+    let interchange_path = vec![interchange.name.clone()];
+    owner(interchange, &interchange_path)?;
+    let members = children(interchange);
+    if members.len() != 3
+        || segment_id(&members[0].name) != Some("ISA")
+        || segment_id(&members[2].name) != Some("IEA")
+    {
+        return Err(schema_error(
+            side,
+            &interchange_path,
+            "MapForce interchanges require exactly ISA, one functional-group container and IEA",
+        ));
+    }
+    optional(&members[0], &interchange_path)?;
+    optional(&members[2], &interchange_path)?;
+    let group = &members[1];
+    let group_path = joined(&interchange_path, &group.name);
+    owner(group, &group_path)?;
+    let members = children(group);
+    if members.len() > 3
+        && segment_id(&members[0].name) == Some("GS")
+        && segment_id(&members[members.len() - 1].name) == Some("GE")
+        && members[1..members.len() - 1]
+            .iter()
+            .all(|member| segment_id(&member.name).is_none())
+    {
+        return Err(schema_error(
+            side,
+            &group_path,
+            "MapForce functional groups permit exactly one message container",
+        ));
+    }
+    if members.len() != 3
+        || segment_id(&members[0].name) != Some("GS")
+        || segment_id(&members[2].name) != Some("GE")
+    {
+        return Err(schema_error(
+            side,
+            &group_path,
+            "MapForce functional groups require exactly GS, one message container and GE",
+        ));
+    }
+    optional(&members[0], &group_path)?;
+    optional(&members[2], &group_path)?;
+    let message = &members[1];
+    let message_path = joined(&group_path, &message.name);
+    owner(message, &message_path)?;
+    let members = children(message);
+    if members.len() < 2
+        || segment_id(&members[0].name) != Some("ST")
+        || segment_id(&members[members.len() - 1].name) != Some("SE")
+        || members[0].repeating
+        || members[members.len() - 1].repeating
+    {
+        return Err(schema_error(
+            side,
+            &message_path,
+            "MapForce messages require singular ST first and singular SE last",
+        ));
+    }
+    let mut pending = members[1..members.len() - 1]
+        .iter()
+        .map(|member| (member, joined(&message_path, &member.name)))
+        .collect::<Vec<_>>();
+    while let Some((node, path)) = pending.pop() {
+        if let Some(id) = segment_id(&node.name) {
+            if ENVELOPE_SEGMENTS.contains(&id) {
+                return Err(schema_error(
+                    side,
+                    &path,
+                    "MapForce message bodies cannot contain envelope segments",
+                ));
+            }
+            continue;
+        }
+        pending.extend(
+            children(node)
+                .iter()
+                .map(|child| (child, joined(&path, &child.name))),
+        );
+    }
+    Ok(())
 }
 
 fn validate_grouped_grammar(
@@ -749,9 +1034,13 @@ fn visit_schema<'a>(
                 "a segment permits at most 1024 elements",
             ));
         }
-        if ["ISA", "GS", "ST", "SE", "GE", "IEA"].contains(&id) {
-            if node.repeating
-                || repeated_ancestor && envelope_profile == X12EnvelopeProfile::SingleTransaction
+        if ENVELOPE_SEGMENTS.contains(&id) {
+            // The MapForce grammar admits its optional repeating envelope
+            // segments and their repeating owners before this traversal.
+            if envelope_profile != X12EnvelopeProfile::MapForceInterchanges
+                && (node.repeating
+                    || repeated_ancestor
+                        && envelope_profile == X12EnvelopeProfile::SingleTransaction)
             {
                 return Err(schema_error(
                     side,

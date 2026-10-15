@@ -300,6 +300,7 @@ mod tests {
             for selection in [
                 X12EnvelopeProfile::SingleTransaction,
                 X12EnvelopeProfile::GroupedTransactions,
+                X12EnvelopeProfile::MapForceInterchanges,
             ] {
                 let json_result = selected_boundary(
                     &schema(),
@@ -403,6 +404,7 @@ mod tests {
             for selection in [
                 X12EnvelopeProfile::SingleTransaction,
                 X12EnvelopeProfile::GroupedTransactions,
+                X12EnvelopeProfile::MapForceInterchanges,
             ] {
                 let result = crate::generate_project_with_x12_envelope_profiles(
                     &input,

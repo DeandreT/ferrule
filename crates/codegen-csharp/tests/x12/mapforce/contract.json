@@ -1,0 +1,307 @@
+{
+  "scope": "Self-authored MapForce Envelope.Config interchanges with a synthetic 945-like message. Native format-edi reading, writing and completion define every positive value and byte oracle; generated C# also enforces declared ownership, counts and controls. A case marked native \"accepts\" is an explicit negative-parity claim: native succeeds where the generated boundary refuses.",
+  "versions": [
+    { "isa": "00401", "version": "004010" },
+    { "isa": "00501", "version": "005010" },
+    { "isa": "00604", "version": "006040" }
+  ],
+  "completion_context": "2030-06-15T09:45:01Z",
+  "zero_controls_strict_error": {
+    "type": "FerruleX12Exception",
+    "error": "Envelope",
+    "message": "ISA requires its declared ASCII widths.",
+    "segment_index": 0,
+    "field_path": "Interchange[0]/ISA"
+  },
+  "read_errors": [
+    {
+      "label": "later-isa-version",
+      "version": "005010",
+      "replace": [["*00501*100000322*", "*00401*100000322*"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "UnsupportedProfile", "message": "X12 envelope versions do not match the selected profile.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
+    },
+    {
+      "label": "later-isa-component",
+      "version": "005010",
+      "replace": [["*1*P*:~", "*1*P*>~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Syntax", "message": "ISA16 must match the selected component separator.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
+    },
+    {
+      "label": "missing-first-iea",
+      "version": "005010",
+      "replace": [["IEA*2*100000321~\n", ""]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange envelope ordering is invalid.", "segment_index": 31, "field_path": "Interchange[0]/IEA" }
+    },
+    {
+      "label": "missing-final-iea",
+      "version": "005010",
+      "replace": [["IEA*1*100000322~\n", ""]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange envelope ordering is invalid.", "segment_index": 41, "field_path": "Interchange[1]/IEA" }
+    },
+    {
+      "label": "two-ge",
+      "version": "005010",
+      "replace": [["GE*2*42~\n", "GE*2*42~\nGE*2*42~\n"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange envelope ordering is invalid.", "segment_index": 17, "field_path": "Interchange[0]/IEA" }
+    },
+    {
+      "label": "non-digit-gs06",
+      "version": "005010",
+      "replace": [["*094501*0042*X*", "*094501*00A2*X*"]],
+      "native": "refuses",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 control numbers have invalid lexical shapes.", "segment_index": 1, "field_path": "Interchange[0]/Group[0]/GS" }
+    },
+    {
+      "label": "ge02-mismatch",
+      "version": "005010",
+      "replace": [["GE*2*00007~", "GE*2*00008~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 functional group trailer count or control does not match its owner.", "segment_index": 30, "field_path": "Interchange[0]/Group[1]/GE" }
+    },
+    {
+      "label": "iea02-mismatch",
+      "version": "005010",
+      "replace": [["IEA*1*100000322~", "IEA*1*100000323~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange trailer count or control does not match its owner.", "segment_index": 41, "field_path": "Interchange[1]/IEA" }
+    },
+    {
+      "label": "se01-count",
+      "version": "005010",
+      "replace": [["SE*0008*0001~", "SE*0009*0001~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 transaction trailer count or control does not match its owner.", "segment_index": 9, "field_path": "Interchange[0]/Group[0]/Message_945[0]/SE" }
+    },
+    {
+      "label": "se02-text",
+      "version": "005010",
+      "replace": [["SE*6*0002~", "SE*6*002~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 transaction trailer count or control does not match its owner.", "segment_index": 15, "field_path": "Interchange[0]/Group[0]/Message_945[1]/SE" }
+    },
+    {
+      "label": "zero-groups",
+      "version": "005010",
+      "replace": [["GS*SW*SENDER-C*RECEIVER-C*20300617*113000*9*X*005010~\nST*945*0005*945-IMPL-C~\nW06*F*SHIP-0005*20300617~\nLX*1~\nW12*CC*7*7*EA~\nW03*7*14*LB~\nSE*6*0005~\nGE*1*9~\n", ""]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange requires at least one functional group.", "segment_index": 33, "field_path": "Interchange[1]/Group" }
+    },
+    {
+      "label": "zero-transactions",
+      "version": "005010",
+      "replace": [["ST*945*0005*945-IMPL-C~\nW06*F*SHIP-0005*20300617~\nLX*1~\nW12*CC*7*7*EA~\nW03*7*14*LB~\nSE*6*0005~\n", ""]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 functional group requires at least one transaction.", "segment_index": 34, "field_path": "Interchange[1]/Group[0]/Message_945" }
+    },
+    {
+      "label": "undeclared-st03",
+      "version": "004010",
+      "replace": [["ST*945*0001~", "ST*945*0001*945-IMPL-A~"]],
+      "native": "accepts",
+      "expected": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 envelope element counts are invalid.", "segment_index": 2, "field_path": "Interchange[0]/Group[0]/Message_945[0]/ST" }
+    }
+  ],
+  "write_cases": [
+    {
+      "label": "strict-full-width-isa13",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/ISA/0/FI12", "value": 100000123.0 },
+        { "op": "set", "path": "/Interchange/0/IEA/0/FI12", "value": 100000123.0 }
+      ],
+      "expected_wire": [["*100000321*0*T*", "*100000123*0*T*"], ["IEA*2*100000321~", "IEA*2*100000123~"]]
+    },
+    {
+      "label": "strict-short-isa13",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/ISA/0/FI12", "value": 123.0 },
+        { "op": "set", "path": "/Interchange/0/IEA/0/FI12", "value": 123.0 }
+      ],
+      "native": "refuses",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "ISA requires its declared ASCII widths.", "segment_index": 0, "field_path": "Interchange[0]/ISA" }
+    },
+    {
+      "label": "strict-missing-trailer",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/0/Group/0/GE", "value": [] }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange envelope ordering is invalid.", "segment_index": 16, "field_path": "Interchange[0]/Group[0]/GE" }
+    },
+    {
+      "label": "strict-two-ge",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "duplicate", "path": "/Interchange/0/Group/0/GE/0" }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "MapForce X12 output permits at most one trailer per owner.", "segment_index": 16, "field_path": "Interchange[0]/Group[0]/GE" }
+    },
+    {
+      "label": "strict-missing-isa",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/1/ISA", "value": [] }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "MapForce X12 output requires exactly one header per owner.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
+    },
+    {
+      "label": "strict-empty-group",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/0/Group/1/Message_945", "value": [] }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 functional group requires at least one transaction.", "segment_index": 18, "field_path": "Interchange[0]/Group[1]/Message_945" }
+    },
+    {
+      "label": "strict-zero-groups",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/1/Group", "value": [] }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 interchange requires at least one functional group.", "segment_index": 33, "field_path": "Interchange[1]/Group" }
+    },
+    {
+      "label": "strict-later-isa-version",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/1/ISA/0/FI11", "value": "00401" }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "UnsupportedProfile", "message": "X12 envelope versions do not match the selected profile.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
+    },
+    {
+      "label": "strict-negative-control",
+      "version": "005010",
+      "completion": false,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/Group/0/GS/0/F28", "value": -42.0 },
+        { "op": "set", "path": "/Interchange/0/Group/0/GE/0/F28", "value": -42.0 }
+      ],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Value", "message": "MapForce X12 numeric envelope controls require non-negative integers.", "segment_index": null, "field_path": "Interchange[0]/Group[0]/GS[0]/F28" }
+    },
+    {
+      "label": "completion-null-controls",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/ISA/0/FI12", "value": null },
+        { "op": "set", "path": "/Interchange/0/IEA/0/FI12", "value": null },
+        { "op": "set", "path": "/Interchange/1/Group/0/GS/0/F28", "value": null },
+        { "op": "set", "path": "/Interchange/1/Group/0/GE/0/F28", "value": null },
+        { "op": "set", "path": "/Interchange/0/Group/1/Message_945/1/ST/F329", "value": null },
+        { "op": "set", "path": "/Interchange/0/Group/1/Message_945/1/SE/F329", "value": null }
+      ],
+      "expected_wire": [
+        ["*100000321*0*T*", "*000000000*0*T*"],
+        ["IEA*2*100000321~", "IEA*2*000000000~"],
+        ["*20300617*113000*9*X*", "*20300617*113000*3*X*"],
+        ["GE*1*9~", "GE*1*3~"]
+      ]
+    },
+    {
+      "label": "completion-empty-trailer-collections",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/Group/0/GE", "value": [] },
+        { "op": "set", "path": "/Interchange/0/Group/1/GE", "value": [] },
+        { "op": "set", "path": "/Interchange/1/Group/0/GE", "value": [] },
+        { "op": "set", "path": "/Interchange/0/IEA", "value": [] },
+        { "op": "set", "path": "/Interchange/1/IEA", "value": [] },
+        { "op": "remove", "path": "/Interchange/0/Group/0/Message_945/1/SE" }
+      ],
+      "expected_wire": []
+    },
+    {
+      "label": "completion-float-isa13-supplied-iea02",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/ISA/0/FI12", "value": 123.0 },
+        { "op": "set", "path": "/Interchange/0/IEA/0/FI12", "value": 123.0 }
+      ],
+      "expected_wire": [["*100000321*0*T*", "*000000123*0*T*"], ["IEA*2*100000321~", "IEA*2*000000123~"]]
+    },
+    {
+      "label": "completion-float-isa13-created-iea",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/1/ISA/0/FI12", "value": 123.0 },
+        { "op": "set", "path": "/Interchange/1/IEA", "value": [] }
+      ],
+      "expected_wire": [["*100000322*1*P*", "*000000123*1*P*"], ["IEA*1*100000322~", "IEA*1*000000123~"]]
+    },
+    {
+      "label": "completion-empty-isa12-uses-version",
+      "version": "006040",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/1/ISA/0/FI11", "value": null },
+        { "op": "set", "path": "/Interchange/1/ISA/0/FI15", "value": "" }
+      ],
+      "expected_wire": []
+    },
+    {
+      "label": "completion-wrong-count-preserved",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/0/Group/0/Message_945/0/SE/F96", "value": 9.0 }],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 transaction trailer count or control does not match its owner.", "segment_index": 9, "field_path": "Interchange[0]/Group[0]/Message_945[0]/SE" }
+    },
+    {
+      "label": "completion-fractional-isa13",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [{ "op": "set", "path": "/Interchange/0/ISA/0/FI12", "value": 1.5 }],
+      "native": "refuses",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Value", "message": "MapForce X12 numeric envelope controls require non-negative integers.", "segment_index": null, "field_path": "Interchange[0]/ISA[0]/FI12" }
+    },
+    {
+      "label": "completion-two-ge",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [{ "op": "duplicate", "path": "/Interchange/0/Group/0/GE/0" }],
+      "native": "refuses",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "MapForce X12 output permits at most one trailer per owner.", "segment_index": 16, "field_path": "Interchange[0]/Group[0]/GE" }
+    },
+    {
+      "label": "completion-empty-group",
+      "version": "005010",
+      "completion": true,
+      "values": "input",
+      "edits": [
+        { "op": "set", "path": "/Interchange/0/Group/1/Message_945", "value": [] },
+        { "op": "set", "path": "/Interchange/0/Group/1/GE", "value": [] }
+      ],
+      "native": "accepts",
+      "expected_error": { "type": "FerruleX12Exception", "error": "Envelope", "message": "X12 functional group requires at least one transaction.", "segment_index": 18, "field_path": "Interchange[0]/Group[1]/Message_945" }
+    }
+  ]
+}

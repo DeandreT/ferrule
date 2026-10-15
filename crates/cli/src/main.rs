@@ -35,6 +35,8 @@ enum CodegenLanguage {
 enum CodegenX12EnvelopeProfile {
     SingleTransaction,
     GroupedTransactions,
+    #[value(name = "mapforce-interchanges")]
+    MapForceInterchanges,
 }
 
 impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
@@ -42,6 +44,7 @@ impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
         match profile {
             CodegenX12EnvelopeProfile::SingleTransaction => Self::SingleTransaction,
             CodegenX12EnvelopeProfile::GroupedTransactions => Self::GroupedTransactions,
+            CodegenX12EnvelopeProfile::MapForceInterchanges => Self::MapForceInterchanges,
         }
     }
 }
@@ -158,6 +161,11 @@ enum Command {
         project: PathBuf,
     },
     /// Generate a standalone Rust or C# mapping library.
+    #[command(group(
+        clap::ArgGroup::new("x12_envelope_host")
+            .args(["x12_adapters", "static_document_adapters"])
+            .multiple(true)
+    ))]
     Generate {
         #[arg(long)]
         project: PathBuf,
@@ -178,11 +186,13 @@ enum Command {
         /// Include supported raw X12 text and strict UTF-8 C# methods.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
         x12_adapters: bool,
-        /// Explicit ownership grammar for the primary X12 source.
-        #[arg(long, value_enum, requires = "x12_adapters")]
+        /// Explicit ownership grammar for the primary X12 source. Requires
+        /// --x12-adapters or --static-document-adapters.
+        #[arg(long, value_enum, requires = "x12_envelope_host")]
         x12_source_envelope_profile: Option<CodegenX12EnvelopeProfile>,
-        /// Explicit ownership grammar for the primary X12 target.
-        #[arg(long, value_enum, requires = "x12_adapters")]
+        /// Explicit ownership grammar for the primary X12 target. Requires
+        /// --x12-adapters or --static-document-adapters.
+        #[arg(long, value_enum, requires = "x12_envelope_host")]
         x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
         /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
@@ -735,7 +745,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     csv_x12_target_envelope_profile.map(Into::into),
                 )?
             } else if static_document_adapters {
-                cli::generate_project_with_static_document_adapters(&project, &out, target)?
+                cli::generate_project_with_static_document_envelope_profiles(
+                    &project,
+                    &out,
+                    target,
+                    x12_source_envelope_profile.map(Into::into),
+                    x12_target_envelope_profile.map(Into::into),
+                )?
             } else if x12_adapters {
                 cli::generate_project_with_x12_envelope_profiles(
                     &project,
@@ -954,7 +970,11 @@ mod x12_envelope_flag_tests {
                 result.err().unwrap().kind(),
                 ErrorKind::MissingRequiredArgument
             );
-            for value in ["single-transaction", "grouped-transactions"] {
+            for value in [
+                "single-transaction",
+                "grouped-transactions",
+                "mapforce-interchanges",
+            ] {
                 let mut accepted = base.to_vec();
                 accepted.extend(["--x12-adapters", flag, value]);
                 let result = Cli::try_parse_from(&accepted);
@@ -971,6 +991,55 @@ mod x12_envelope_flag_tests {
                 "arguments={invalid:?}; original outcome={:?}",
                 result.as_ref().err()
             );
+            assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidValue);
+        }
+    }
+
+    #[test]
+    fn mapforce_envelope_value_selects_mapforce_interchanges_on_each_side() {
+        for (flag, source) in [
+            ("--x12-source-envelope-profile", true),
+            ("--x12-target-envelope-profile", false),
+        ] {
+            let arguments = [
+                "ferrule",
+                "generate",
+                "--project",
+                "unused.json",
+                "--language",
+                "csharp",
+                "--out",
+                "unused-output",
+                "--x12-adapters",
+                flag,
+                "mapforce-interchanges",
+            ];
+            let parsed = Cli::try_parse_from(arguments);
+            eprintln!(
+                "arguments={arguments:?}; original outcome={:?}",
+                parsed.as_ref().err()
+            );
+            let Command::Generate {
+                x12_source_envelope_profile,
+                x12_target_envelope_profile,
+                ..
+            } = parsed.unwrap().command
+            else {
+                panic!("generate subcommand");
+            };
+            let (selected, other) = if source {
+                (x12_source_envelope_profile, x12_target_envelope_profile)
+            } else {
+                (x12_target_envelope_profile, x12_source_envelope_profile)
+            };
+            assert_eq!(
+                selected.map(codegen::X12EnvelopeProfile::from),
+                Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+            );
+            assert!(other.is_none());
+            let mut misspelled = arguments;
+            misspelled[10] = "map-force-interchanges";
+            let result = Cli::try_parse_from(misspelled);
             assert_eq!(result.err().unwrap().kind(), ErrorKind::InvalidValue);
         }
     }
@@ -1037,6 +1106,42 @@ mod static_document_flag_tests {
             eprintln!("arguments={args:?}; original clap error={error}");
             assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
         }
+    }
+
+    #[test]
+    fn envelope_profiles_require_an_x12_or_static_document_adapter() {
+        let base = [
+            "ferrule",
+            "generate",
+            "--project",
+            "unused.json",
+            "--language",
+            "csharp",
+            "--out",
+            "unused-output",
+            "--x12-target-envelope-profile",
+            "mapforce-interchanges",
+        ];
+        let result = Cli::try_parse_from(base);
+        assert_eq!(
+            result.err().unwrap().kind(),
+            ErrorKind::MissingRequiredArgument
+        );
+        let mut static_documents = base.to_vec();
+        static_documents.push("--static-document-adapters");
+        let Command::Generate {
+            x12_target_envelope_profile,
+            static_document_adapters,
+            ..
+        } = Cli::try_parse_from(static_documents).unwrap().command
+        else {
+            panic!("generate subcommand");
+        };
+        assert!(static_document_adapters);
+        assert_eq!(
+            x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from),
+            Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+        );
     }
 
     #[test]
