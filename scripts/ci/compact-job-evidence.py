@@ -84,15 +84,38 @@ def owned_directory(path, *, parent=None):
     return fd
 
 
-def reject_mounts(root, *, mountinfo=None):
+def decode_mount_path(encoded):
+    require(encoded.startswith("/") and "\x00" not in encoded
+            and "\\" not in re.sub(r"\\(?:040|011|012|134)", "", encoded),
+            "Mount inventory is malformed")
+    return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), encoded)
+
+
+def reject_mounts(root, *, mountinfo=None, descendants=True):
     # Device checks alone miss bind mounts on the same filesystem.
     path = os.readlink(f"/proc/self/fd/{root}")
+    require(path.startswith("/") and not path.endswith(" (deleted)"),
+            "Evidence descriptor path is unavailable")
     mountinfo = (Path("/proc/self/mountinfo").read_text()
                  if mountinfo is None else mountinfo)
+    require(isinstance(mountinfo, str) and mountinfo.strip(),
+            "Mount inventory is unavailable")
     for line in mountinfo.splitlines():
-        point = line.split()[4]
-        point = re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), point)
-        require(point != path and not point.startswith(path + "/"),
+        fields = line.split()
+        require(len(fields) >= 10 and "-" in fields[6:], "Mount inventory is malformed")
+        separator = fields.index("-", 6)
+        require(len(fields) == separator + 4
+                and re.fullmatch(r"[0-9]+", fields[0]) is not None
+                and re.fullmatch(r"[0-9]+", fields[1]) is not None
+                and re.fullmatch(r"[0-9]+:[0-9]+", fields[2]) is not None,
+                "Mount inventory is malformed")
+        # Namespace labels are valid roots only for nsfs. Their absolute mount
+        # points still participate in the same exact-root and descendant veto.
+        if not (fields[separator + 1] == "nsfs" and re.fullmatch(
+                r"(?:cgroup|ipc|mnt|net|pid|time|user|uts):\[[0-9]+\]", fields[3])):
+            decode_mount_path(fields[3])
+        point = decode_mount_path(fields[4])
+        require(point != path and not (descendants and point.startswith(path + "/")),
                 "Mounted evidence requires inspection")
 
 
@@ -294,12 +317,16 @@ def compact(home, goal_gib, *, available, closed=producer_closure):
         held.callback(os.close, home_fd)
         scratch = owned_directory("ci-tmp", parent=home_fd)
         held.callback(os.close, scratch)
+        # Candidate inventories cannot detect a mount at their containing root.
+        # Check these exact parents before creating archives or taking a lease.
+        reject_mounts(scratch, descendants=False)
         try:
             os.mkdir("ci-evidence", 0o700, dir_fd=home_fd)
         except FileExistsError:
             pass
         archives = owned_directory("ci-evidence", parent=home_fd)
         held.callback(os.close, archives)
+        reject_mounts(archives, descendants=False)
         require(os.fstat(archives).st_dev == os.fstat(scratch).st_dev,
                 "Archives use another filesystem")
         flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC
