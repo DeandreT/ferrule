@@ -179,3 +179,6 @@ These are serialized-boundary limits, not a process-memory ceiling or a streamin
 The public API does not expose the intermediate normalized buffer. These limits concern document bytes, not whole-process memory.
 
 <a id="increment-checklist"></a>
+
+The [allocation fixtures](../examples/performance/json5-allocations/README.md)
+exercise the exact and one-byte-over original, normalized and output limits.
