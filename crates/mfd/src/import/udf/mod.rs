@@ -12,6 +12,7 @@ use super::schema::{parse_u32, read_schema_component_with_resources, schema_node
 use crate::resource::ResourceResolver;
 
 mod libraries;
+mod limits;
 mod scalar;
 mod sequence;
 pub(super) mod structured;
@@ -185,7 +186,6 @@ impl ScalarExpr {
     }
 }
 
-#[derive(Clone)]
 pub(super) struct Definition {
     parameters: BTreeSet<u32>,
     structured_parameters: BTreeSet<u32>,
@@ -214,6 +214,7 @@ struct ScalarInterface {
     // None preserves the embedded importer contract. Some is an external
     // owner contract, including the zero-required-parameter case.
     external_required: Option<BTreeSet<u32>>,
+    construction: Option<limits::ConstructionBudget>,
 }
 
 #[derive(Default)]
@@ -225,6 +226,7 @@ pub(super) struct Registry {
     // External documents never enter schema/resource recognizers, even if a
     // scalar recognizer fails. Each is resolved in its own registry first.
     external_owner: bool,
+    construction: Option<limits::ConstructionBudget>,
     origins: BTreeMap<usize, crate::resource::MappingLibraryDefinitionRecordV1>,
     declared_mapping_libraries: bool,
 }
@@ -252,7 +254,14 @@ impl Registry {
             // to search for a historical/similarly named function body.
             warnings.push(format!("declared mapping library unresolved: {reason}"));
         }
-        registry.read_declarations(mapping, resources.mapping_path(), Some(resources), warnings);
+        if registry.finish_construction().is_ok() {
+            registry.read_declarations(
+                mapping,
+                resources.mapping_path(),
+                Some(resources),
+                warnings,
+            );
+        }
         for warning in &warnings[library_warning_start..] {
             resources.record_refusal(warning.clone());
         }
@@ -311,6 +320,9 @@ impl Registry {
                 .insert(key, "conflicting exact declarations in one owner".into());
         }
         for (key, _) in &declarations {
+            if self.external_owner && self.finish_construction().is_err() {
+                break;
+            }
             let _ = self.resolve(
                 key,
                 &declaration_by_key,
@@ -421,12 +433,15 @@ impl Registry {
                     return Err("recursive imported scalar definition is unsupported".into());
                 }
                 scalar::read(&component, self)
-                    .map(|mut definition| {
+                    .and_then(|mut definition| {
+                        if definition.first_class_parts().is_none() {
+                            return Err(scalar::ReadError::Nested("imported signature requires inline adaptation; typed/default/multi-output conversion is not supported".into()));
+                        }
                         if let Some(interface) = &mut definition.scalar_interface {
                             interface.external_required =
-                                Some(libraries::required_parameters(component));
+                                Some(libraries::required_parameters(component).map_err(scalar::ReadError::Nested)?);
                         }
-                        (definition, None, Vec::new())
+                        Ok((definition, None, Vec::new()))
                     })
                     .map_err(|error| match error {
                         scalar::ReadError::Shape(reason) | scalar::ReadError::Nested(reason) => {
@@ -471,19 +486,43 @@ impl Registry {
     }
 
     pub(super) fn supported(&self, library: &str, name: &str) -> Option<usize> {
-        self.supported
-            .get(&(library.to_string(), name.to_string()))
-            .copied()
+        if !self.external_owner && !self.declared_mapping_libraries {
+            return self
+                .supported
+                .get(&(library.to_string(), name.to_string()))
+                .copied();
+        }
+        self.supported.iter().find_map(|((owner, symbol), index)| {
+            (owner == library && symbol == name).then_some(*index)
+        })
     }
 
     pub(super) fn has_declared_mapping_libraries(&self) -> bool {
         self.declared_mapping_libraries
     }
 
+    pub(super) fn refuses_reserved_call(&self, library: &str, kind: Option<&str>) -> bool {
+        self.declared_mapping_libraries && kind == Some("19") && libraries::reserved_owner(library)
+    }
+
+    pub(super) fn finish_construction(&self) -> Result<(), String> {
+        self.construction
+            .as_ref()
+            .map_or(Ok(()), limits::ConstructionBudget::finish)
+    }
+
     pub(super) fn unsupported_reason(&self, library: &str, name: &str) -> Option<&str> {
+        if !self.external_owner && !self.declared_mapping_libraries {
+            return self
+                .unsupported
+                .get(&(library.to_string(), name.to_string()))
+                .map(String::as_str);
+        }
         self.unsupported
-            .get(&(library.to_string(), name.to_string()))
-            .map(String::as_str)
+            .iter()
+            .find_map(|((owner, symbol), reason)| {
+                (owner == library && symbol == name).then_some(reason.as_str())
+            })
     }
 
     pub(super) fn definition(&self, idx: usize) -> Option<&Definition> {
@@ -501,6 +540,9 @@ impl Registry {
         name: &str,
     ) -> Option<(BTreeSet<u32>, ScalarExpr)> {
         let definition = self.definition_named(library, name)?;
+        if definition.is_external() {
+            return None;
+        }
         let mut outputs = definition.outputs.values();
         let OutputExpr::Scalar(expression) = outputs.next()? else {
             return None;
@@ -534,6 +576,11 @@ fn function_id(idx: usize) -> Option<FunctionId> {
 }
 
 impl Definition {
+    fn is_external(&self) -> bool {
+        self.scalar_interface
+            .as_ref()
+            .is_some_and(|i| i.external_required.is_some())
+    }
     fn first_class_parts(&self) -> Option<(&[ScalarParameter], &ScalarOutput, &ScalarExpr)> {
         let interface = self.scalar_interface.as_ref()?;
         let [output] = interface.outputs.as_slice() else {
@@ -552,7 +599,7 @@ impl Definition {
             && interface.parameters.iter().all(|parameter| {
                 parameter.ty.is_some()
                     && !parameter.name.trim().is_empty()
-                    && parameter_names.insert(parameter.name.clone())
+                    && parameter_names.insert(parameter.name.as_str())
                     && self.parameters.contains(&parameter.component_id)
             }))
         .then_some((interface.parameters.as_slice(), output, expression))
@@ -560,6 +607,11 @@ impl Definition {
 
     fn as_user_function(&self, library: &str, name: &str) -> Option<UserFunction> {
         let (interface_parameters, output, expression) = self.first_class_parts()?;
+        if let Some(budget) = self.scalar_interface.as_ref()?.construction.as_ref() {
+            libraries::reserve_helper(self, library, name, budget)
+                .map_err(|reason| budget.refuse(reason))
+                .ok()?;
+        }
         let parameters = interface_parameters
             .iter()
             .map(|parameter| {
@@ -722,6 +774,19 @@ impl Call {
         definition: usize,
         shape: &Definition,
     ) -> Result<Self, String> {
+        if shape.is_external() {
+            let budget = shape
+                .scalar_interface
+                .as_ref()
+                .and_then(|i| i.construction.as_ref())
+                .ok_or("imported call has no construction authority")?;
+            libraries::validate_call(component, budget)?;
+            if shape.first_class_parts().is_none() {
+                return Err(
+                    "imported call cannot preserve typed eager UserFunctionCall boundary".into(),
+                );
+            }
+        }
         let mut inputs = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut structured_inputs = BTreeMap::new();
@@ -1178,6 +1243,9 @@ impl GraphBuilder<'_> {
         let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
         let call = self.udf_calls.get(call_idx)?;
         let definition = self.udf_registry.definition(call.definition)?;
+        if definition.is_external() {
+            return None;
+        }
         let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
             return None;
         };
@@ -1190,6 +1258,9 @@ impl GraphBuilder<'_> {
         let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
         let call = self.udf_calls.get(call_idx)?;
         let definition = self.udf_registry.definition(call.definition)?;
+        if definition.is_external() {
+            return None;
+        }
         let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
             return None;
         };
@@ -1296,6 +1367,10 @@ impl GraphBuilder<'_> {
             });
             self.udf_nodes.insert(output_key, node);
             return Some(node);
+        }
+        if external {
+            self.warnings.push("imported call requires unsupported inline signature adaptation; no recipe clone was made".into());
+            return None;
         }
         let definition = self.udf_registry.definition(call.definition)?;
         let expression = definition.outputs.get(&component_id)?.clone();

@@ -1568,6 +1568,9 @@ fn import_resolved(
     let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
     let mut udf_calls = Vec::new();
     let mut external_udf_candidates = Vec::new();
     let mut external_scalar_recipes = Vec::new();
@@ -1583,6 +1586,9 @@ fn import_resolved(
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if matches!(selection, StageSelection::Ordinary)
+        // Imported regular calls must pass the consumption census below;
+        // a specialized early return must not discard an unused/failing call.
+        && !udf_registry.has_declared_mapping_libraries()
         && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
@@ -1618,8 +1624,15 @@ fn import_resolved(
             .children()
             .filter(|n| n.is_element() && n.tag_name().name() == "component")
         {
+            udf_registry
+                .finish_construction()
+                .map_err(MfdError::Resource)?;
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
+            if udf_registry.refuses_reserved_call(library, component.attribute("kind")) {
+                warnings.push(format!("declared kind-19 function `{name}` has reserved owner `{library}`; refused before built-in/schema/HTTP dispatch"));
+                continue;
+            }
             match library {
                 "xml" => {
                     let root_view_findings = root_view_inventory.inspect(component);
@@ -2034,6 +2047,9 @@ fn import_resolved(
         )));
     }
     let user_functions = udf_registry.user_functions();
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
     // UDF-owned static catalogs are secondary to ordinary mapping sources.
     // Keeping them last also preserves the document source as the default in
     // scalar-only mappings, where repetition-based primary scoring is tied.

@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use sha2::{Digest, Sha256};
 
-use super::{Definition, OutputExpr, Registry, ScalarExpr, nested_definition_keys};
+use super::{Definition, OutputExpr, Registry, ScalarExpr, limits};
 use crate::resource::{
     BoundResource, MappingLibraryDefinitionRecordV1, MappingLibraryFunctionIdentityV1,
     ResourceResolver,
@@ -23,9 +23,25 @@ const MAX_DEPTH: usize = 16;
 const MAX_IMPORTS: usize = 128;
 const MAX_NODES: usize = 131_072;
 const MAX_DEFINITIONS: usize = 512;
-const MAX_EXPANSION_NODES: usize = 65_536;
 const MAX_SYMBOL_BYTES: usize = 256;
 const MAX_LITERAL_BYTES: usize = 1024;
+
+pub(super) fn reserved_owner(library: &str) -> bool {
+    matches!(
+        library,
+        "core"
+            | "lang"
+            | "xml"
+            | "json"
+            | "text"
+            | "db"
+            | "ferrule"
+            | "xpath2"
+            | "mapforce_nodefunction"
+            | "webservice"
+            | "wsdl"
+    )
+}
 
 pub(super) fn has_mapping_imports(mapping: roxmltree::Node<'_, '_>) -> bool {
     mapping
@@ -39,7 +55,6 @@ pub(super) fn has_mapping_imports(mapping: roxmltree::Node<'_, '_>) -> bool {
         })
 }
 
-#[derive(Clone)]
 struct Export {
     key: Key,
     definition: Result<Definition, String>,
@@ -53,7 +68,7 @@ struct Budget {
     imports: usize,
     nodes: usize,
     definitions: usize,
-    expansion_nodes: usize,
+    construction: limits::ConstructionBudget,
     evidence_bytes: usize,
     active: Vec<PathBuf>,
 }
@@ -67,6 +82,7 @@ pub(super) fn read(
     let references = imports(*mapping)?;
     let origin_sha256 = Sha256::digest(mapping.document().input_text().as_bytes()).into();
     let mut budget = Budget::default();
+    registry.construction = Some(budget.construction.clone());
     let mut exports = Vec::new();
     for reference in references {
         let reader = resources.mapping_library(&reference, origin_sha256)?;
@@ -184,21 +200,43 @@ fn read_document(
     if budget.nodes > MAX_NODES {
         return Err("mapping-library XML/graph node budget exceeded".into());
     }
+    let declaration_count = mapping
+        .children()
+        .filter(|n| {
+            n.has_tag_name("component") && n.attribute("library").is_some_and(|l| !l.is_empty())
+        })
+        .count();
+    budget.definitions = budget.definitions.saturating_add(declaration_count);
+    if budget.definitions > MAX_DEFINITIONS {
+        return Err("mapping-library definition count budget exceeded".into());
+    }
+    budget
+        .construction
+        .claim(declaration_count.saturating_mul(8), 0, 0)?;
     let declarations = mapping
         .children()
         .filter(|n| {
             n.has_tag_name("component") && n.attribute("library").is_some_and(|l| !l.is_empty())
         })
         .collect::<Vec<_>>();
-    budget.definitions += declarations.len();
-    if budget.definitions > MAX_DEFINITIONS {
-        return Err("mapping-library definition count budget exceeded".into());
+    // Namespace keys, saved XML/evidence copies and graph metadata are bounded
+    // before the registry creates any owned declarations. Recursive expression
+    // work has a separate per-construction charge against this SAME quota.
+    for declaration in &declarations {
+        budget.construction.claim(
+            declaration.descendants().count().saturating_mul(8),
+            limits::decoded_bytes(*declaration)
+                .saturating_mul(16)
+                .saturating_add(declaration.range().len().saturating_mul(2)),
+            0,
+        )?;
     }
 
     budget.active.push(path.to_path_buf());
     let result = (|| {
         let mut registry = Registry {
             external_owner: true,
+            construction: Some(budget.construction.clone()),
             ..Registry::default()
         };
         let mut imported = Vec::new();
@@ -217,6 +255,16 @@ fn read_document(
         }
         merge(&mut registry, imported, warnings);
         registry.read_declarations(&mapping, path, None, warnings);
+        registry.finish_construction()?;
+        // Transfer recipes; never clone a complete expanded Definition just to
+        // export it from its temporary owner registry.
+        budget
+            .construction
+            .claim(registry.definitions.len(), 0, 0)?;
+        let mut definitions = std::mem::take(&mut registry.definitions)
+            .into_iter()
+            .map(Some)
+            .collect::<Vec<_>>();
 
         // Only this document's own declarations are exported. Transitive
         // re-export visibility is not established by the saved format/docs;
@@ -231,8 +279,8 @@ fn read_document(
                 component.attribute("name").unwrap_or_default().to_string(),
             );
             let definition = registry
-                .definition_named(&key.0, &key.1)
-                .cloned()
+                .supported(&key.0, &key.1)
+                .and_then(|index| definitions.get_mut(index).and_then(Option::take))
                 .ok_or_else(|| {
                     registry
                         .unsupported_reason(&key.0, &key.1)
@@ -245,24 +293,6 @@ fn read_document(
                     key.1, key.0
                 ));
             }
-            if let Ok(definition) = &definition {
-                claim_definition(definition, budget)?;
-            }
-            let mut dependencies = Vec::new();
-            let mut active = BTreeSet::new();
-            collect_dependencies(
-                component,
-                &mapping,
-                &registry,
-                path,
-                sha256,
-                &mut active,
-                &mut dependencies,
-            );
-            dependencies.sort_by(|a, b| {
-                (&a.document, &a.library, &a.name).cmp(&(&b.document, &b.library, &b.name))
-            });
-            dependencies.dedup();
             let origin = MappingLibraryDefinitionRecordV1 {
                 declaring_document: declaring_document.into(),
                 declaring_sha256,
@@ -274,7 +304,9 @@ fn read_document(
                     name: key.1.clone(),
                 },
                 declaration_xml: text[component.range()].into(),
-                dependencies,
+                // v2 accepts only leaf call boundaries. A refused declaration's
+                // raw XML records unresolved references, not an admitted closure.
+                dependencies: Vec::new(),
                 refusal: definition.as_ref().err().cloned(),
             };
             budget.evidence_bytes = budget
@@ -298,37 +330,75 @@ fn read_document(
     result
 }
 
-fn claim_definition(definition: &Definition, budget: &mut Budget) -> Result<(), String> {
-    budget.expansion_nodes += definition
+pub(super) fn reserve_helper(
+    definition: &Definition,
+    library: &str,
+    name: &str,
+    budget: &limits::ConstructionBudget,
+) -> Result<(), String> {
+    let interface = definition
         .scalar_interface
         .as_ref()
-        .map_or(0, |i| i.parameters.len());
-    let mut stack = Vec::new();
+        .ok_or("imported scalar interface absent")?;
+    budget.claim(
+        8usize.saturating_add(interface.parameters.len().saturating_mul(4)),
+        library
+            .len()
+            .saturating_add(name.len())
+            .saturating_add(
+                interface
+                    .parameters
+                    .iter()
+                    .map(|p| p.name.len())
+                    .sum::<usize>(),
+            )
+            .saturating_add(
+                interface
+                    .outputs
+                    .iter()
+                    .map(|p| p.name.len())
+                    .sum::<usize>(),
+            ),
+        0,
+    )?;
     for output in definition.outputs.values() {
         let OutputExpr::Scalar(expression) = output else {
             return Err("imported non-scalar output recipe refused".into());
         };
-        stack.push(expression);
-    }
-    while let Some(expression) = stack.pop() {
-        budget.expansion_nodes += 1;
-        if budget.expansion_nodes > MAX_EXPANSION_NODES {
-            return Err("mapping-library aggregate expression graph budget exceeded".into());
-        }
-        match expression {
-            ScalarExpr::Parameter(_) | ScalarExpr::Const(_) => {}
-            ScalarExpr::DefaultedParameter { default, .. } => stack.push(default),
-            ScalarExpr::Call { args, .. } => stack.extend(args),
-            ScalarExpr::If {
-                condition,
-                then,
-                else_,
-            } => stack.extend([condition.as_ref(), then.as_ref(), else_.as_ref()]),
-            ScalarExpr::ValueMap { input, .. } => stack.push(input),
-            _ => return Err("imported runtime/sequence effect closure is unsupported".into()),
-        }
+        reserve_expression(expression, budget, 0)?;
     }
     Ok(())
+}
+
+fn reserve_expression(
+    expression: &ScalarExpr,
+    budget: &limits::ConstructionBudget,
+    depth: usize,
+) -> Result<(), String> {
+    budget.claim(1, 0, depth)?;
+    match expression {
+        ScalarExpr::Parameter(_) => Ok(()),
+        ScalarExpr::Const(value) => budget.claim(0, limits::scalar_text(value)?, depth),
+        ScalarExpr::Call { function, args } => {
+            budget.claim(args.len(), function.len(), depth)?;
+            for arg in args {
+                reserve_expression(arg, budget, depth + 1)?;
+            }
+            Ok(())
+        }
+        ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } => {
+            budget.claim(3, 0, depth)?;
+            for arg in [condition.as_ref(), then.as_ref(), else_.as_ref()] {
+                reserve_expression(arg, budget, depth + 1)?;
+            }
+            Ok(())
+        }
+        _ => Err("imported inline/default/runtime/sequence recipe is unsupported".into()),
+    }
 }
 
 fn merge(registry: &mut Registry, exports: Vec<Export>, warnings: &mut Vec<String>) {
@@ -350,42 +420,6 @@ fn merge(registry: &mut Registry, exports: Vec<Export>, warnings: &mut Vec<Strin
             Err(reason) => {
                 registry.unsupported.insert(export.key, reason);
             }
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn collect_dependencies(
-    component: roxmltree::Node<'_, '_>,
-    mapping: &roxmltree::Node<'_, '_>,
-    registry: &Registry,
-    path: &Path,
-    sha256: [u8; 32],
-    active: &mut BTreeSet<Key>,
-    dependencies: &mut Vec<MappingLibraryFunctionIdentityV1>,
-) {
-    for key in nested_definition_keys(component) {
-        if !active.insert(key.clone()) {
-            continue;
-        }
-        if let Some(local) = mapping.children().find(|n| {
-            n.has_tag_name("component")
-                && n.attribute("library") == Some(key.0.as_str())
-                && n.attribute("name") == Some(key.1.as_str())
-        }) {
-            dependencies.push(MappingLibraryFunctionIdentityV1 {
-                document: path.into(),
-                sha256,
-                library: key.0,
-                name: key.1,
-            });
-            collect_dependencies(local, mapping, registry, path, sha256, active, dependencies);
-        } else if let Some(origin) = registry
-            .supported(&key.0, &key.1)
-            .and_then(|i| registry.origins.get(&i))
-        {
-            dependencies.push(origin.identity.clone());
-            dependencies.extend(origin.dependencies.clone());
         }
     }
 }
@@ -423,20 +457,7 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
     }) {
         return Err(refuse("missing/oversized qualified function identity"));
     }
-    if matches!(
-        component.attribute("library"),
-        Some(
-            "core"
-                | "lang"
-                | "xml"
-                | "json"
-                | "text"
-                | "db"
-                | "ferrule"
-                | "xpath2"
-                | "mapforce_nodefunction"
-        )
-    ) {
+    if reserved_owner(component.attribute("library").unwrap_or_default()) {
         return Err(refuse(
             "reserved/built-in/node-function library ownership is unsupported",
         ));
@@ -464,6 +485,11 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
         || component.attribute("kind").is_some_and(|v| v != "19")
     {
         return Err(refuse("unknown declaration kind/inline contract"));
+    }
+    if component.attribute("inline") == Some("1") {
+        return Err(refuse(
+            "inline declaration needs declared type adapters and call-consumption proof; v2 supports regular first-class boundaries only",
+        ));
     }
     let structures = component
         .children()
@@ -502,6 +528,11 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
         let library = child.attribute("library").unwrap_or_default();
         let name = child.attribute("name").unwrap_or_default();
         let kind = child.attribute("kind").unwrap_or_default();
+        if kind == "19" {
+            return Err(refuse(
+                "nested call needs declared input/output type adaptation and eager regular-call consumption boundary; unsupported before expansion",
+            ));
+        }
         if name.len() > MAX_SYMBOL_BYTES || library.len() > MAX_SYMBOL_BYTES {
             return Err(refuse("scalar component symbol byte budget exceeded"));
         }
@@ -513,7 +544,6 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
             ));
         }
         let allowed = match (library, kind) {
-            (_, "19") => true,
             ("core", "2" | "3" | "4" | "6" | "7") => true,
             ("core" | "lang", "5") => {
                 !matches!(
@@ -525,8 +555,9 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
                         | "mfd-filepath"
                         | "main-mfd-filepath"
                         | "resolve-filepath"
+                        | "set-xsi-nil"
                 ) && (super::super::function::map_name(name).is_some()
-                    || matches!(name, "set-empty" | "set-xsi-nil" | "not-exists"))
+                    || matches!(name, "set-empty" | "not-exists"))
             }
             _ => false,
         };
@@ -573,9 +604,35 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
                     None => Some(index),
                 }
                 .ok_or_else(|| refuse("invalid scalar pin position"))?;
-                if position >= 256 || !positions.insert(position) {
+                if position >= 64 || !positions.insert(position) {
                     return Err(refuse(
-                        "scalar pin position count/collision budget exceeded",
+                        "scalar pin position must be unique and below the reader's 64-slot bound; no child-index fallback",
+                    ));
+                }
+                if container.has_tag_name("targets") && kind != "3" && (position != 0 || index != 0)
+                {
+                    return Err(refuse(
+                        "scalar producer supports only its primary output at position 0",
+                    ));
+                }
+                if kind == "3" && position >= 2
+                    || kind == "4" && container.has_tag_name("sources") && position >= 3
+                {
+                    return Err(refuse(
+                        "saved control port is not consumed by the supported scalar reader",
+                    ));
+                }
+                if kind == "2"
+                    && container.has_tag_name("sources")
+                    && pin.attribute("key").is_some()
+                {
+                    return Err(refuse(
+                        "constant trigger/context input consumption is unsupported",
+                    ));
+                }
+                if matches!(kind, "6" | "7") && (position != 0 || index != 0) {
+                    return Err(refuse(
+                        "parameter default/output supports exactly one scalar slot at position 0",
                     ));
                 }
             }
@@ -756,11 +813,19 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
                     "conflicting scalar parameter identity/direction metadata",
                 ));
             }
+            if parameters
+                .iter()
+                .any(|p| p.attribute("optional") == Some("1"))
+            {
+                return Err(refuse(
+                    "optional/defaulted signature needs declared type adaptation; unsupported before scalar construction",
+                ));
+            }
         }
     }
-    if output_names.len() > 1 && component.attribute("inline") != Some("1") {
+    if output_names.len() > 1 {
         return Err(refuse(
-            "multiple scalar outputs require an explicitly inline declaration",
+            "multiple scalar outputs require unsupported inline signature adaptation",
         ));
     }
     for node in structure
@@ -809,15 +874,60 @@ pub(super) fn validate_definition(component: roxmltree::Node<'_, '_>) -> Result<
             "legacy imported connection ownership is unsupported",
         ));
     }
+    let feeds = super::read_edges(structure, Some(&component));
+    for input in children
+        .children()
+        .filter(|n| n.has_tag_name("component") && n.attribute("kind") == Some("6"))
+    {
+        if supported_default_port(input)?.is_some_and(|port| feeds.contains_key(&port)) {
+            return Err(refuse(
+                "connected typed default requires inline input/output adaptation; unsupported before scalar construction",
+            ));
+        }
+    }
     Ok(())
 }
 
-pub(super) fn required_parameters(component: roxmltree::Node<'_, '_>) -> BTreeSet<u32> {
+fn supported_default_port(input: roxmltree::Node<'_, '_>) -> Result<Option<u32>, String> {
+    let mut sources = input.children().filter(|n| n.has_tag_name("sources"));
+    let Some(source) = sources.next() else {
+        return Ok(None);
+    };
+    if sources.next().is_some() {
+        return Err(
+            "duplicate default source containers are ambiguous; no alternate container selection"
+                .into(),
+        );
+    }
+    let mut points = source.children().filter(|n| n.is_element());
+    let Some(point) = points.next() else {
+        return Ok(None);
+    };
+    if !point.has_tag_name("datapoint")
+        || points.next().is_some()
+        || point.attribute("pos").is_some_and(|p| p != "0")
+    {
+        return Err("imported parameter default supports only a single position-0 slot; ambiguous/default slot selection refused".into());
+    }
+    // With this exact shape the raw point is precisely read_function's
+    // inputs.first().flatten(), never 'any connected source'.
+    match point.attribute("key") {
+        Some(key) => super::parse_u32(Some(key))
+            .map(Some)
+            .ok_or_else(|| "invalid default-slot key".into()),
+        None => Ok(None),
+    }
+}
+
+pub(super) fn required_parameters(
+    component: roxmltree::Node<'_, '_>,
+) -> Result<BTreeSet<u32>, String> {
     let Some(structure) = component.children().find(|n| n.has_tag_name("structure")) else {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     };
     let feeds = super::read_edges(&structure, Some(&component));
-    structure
+    let mut required = BTreeSet::new();
+    for input in structure
         .children()
         .find(|n| n.has_tag_name("children"))
         .into_iter()
@@ -831,15 +941,244 @@ pub(super) fn required_parameters(component: roxmltree::Node<'_, '_>) -> BTreeSe
             !n.descendants()
                 .any(|p| p.has_tag_name("parameter") && p.attribute("optional") == Some("1"))
         })
-        .filter(|n| {
-            !super::super::function::read(n)
-                .inputs
-                .iter()
-                .flatten()
-                .any(|key| feeds.contains_key(key))
+    {
+        if supported_default_port(input)?.is_none_or(|key| !feeds.contains_key(&key)) {
+            if let Some(id) = super::parse_u32(input.attribute("uid")) {
+                required.insert(id);
+            }
+        }
+    }
+    Ok(required)
+}
+
+/// v2 refuses unproved consumption roles rather than moving a fallible eager
+/// call beneath an inline/default/failure/filename/root-ABI expression.
+pub(super) fn validate_call(
+    component: &roxmltree::Node<'_, '_>,
+    budget: &limits::ConstructionBudget,
+) -> Result<(), String> {
+    let refuse = |reason: &str| format!("imported call consumption refused: {reason}");
+    if component.attribute("kind") != Some("19") {
+        return Err(refuse(
+            "only the exact saved kind-19 call contract is supported",
+        ));
+    }
+    let structure = component
+        .ancestors()
+        .find(|n| n.has_tag_name("structure"))
+        .ok_or_else(|| refuse("no owning graph"))?;
+    let owner = structure
+        .parent()
+        .ok_or_else(|| refuse("no owning mapping"))?;
+    if owner.attribute("library").is_some_and(|l| !l.is_empty())
+        || owner.parent().is_none_or(|n| !n.has_tag_name("mapping"))
+    {
+        return Err(refuse(
+            "nested regular-call boundary/type adaptation is unsupported; no flattening or unused-argument pruning",
+        ));
+    }
+    // Includes two owning-graph feed censuses plus call-port vectors/maps and
+    // materializer argument slots, reserved before either parser allocates.
+    budget.claim(
+        512usize.saturating_add(structure.descendants().count().saturating_mul(8)),
+        limits::decoded_bytes(*component).saturating_mul(8),
+        0,
+    )?;
+    if component.tag_name().namespace().is_some()
+        || component.attributes().any(|a| {
+            a.namespace().is_some() || !matches!(a.name(), "name" | "library" | "kind" | "uid")
         })
-        .filter_map(|n| super::parse_u32(n.attribute("uid")))
-        .collect()
+    {
+        return Err(refuse(
+            "unproved call-site inline/context/ownership attributes",
+        ));
+    }
+    for node in component
+        .descendants()
+        .filter(|n| n.is_element() && *n != *component)
+    {
+        let attributes: &[&str] = match node.tag_name().name() {
+            "data" => &[],
+            "root" => &["rootindex"],
+            "entry" => &["name", "componentid", "inpkey", "outkey"],
+            "properties" if !node.children().any(|n| n.is_element()) => &[],
+            _ => return Err(refuse("unproved scalar call-site metadata/namespace")),
+        };
+        if node.tag_name().namespace().is_some()
+            || node
+                .attributes()
+                .any(|a| a.namespace().is_some() || !attributes.contains(&a.name()))
+        {
+            return Err(refuse(
+                "unproved scalar call-site metadata/namespace attributes",
+            ));
+        }
+    }
+    let children = structure
+        .children()
+        .find(|n| n.has_tag_name("children"))
+        .ok_or_else(|| refuse("no owning component list"))?;
+    if children
+        .children()
+        .filter(|n| n.has_tag_name("component"))
+        .any(|n| {
+            n.attribute("library") == Some("core") && matches!(n.attribute("kind"), Some("6" | "7"))
+                || n.descendants().any(|p| {
+                    p.has_tag_name("properties") && p.attribute("UsageKind").is_some()
+                        || p.has_tag_name("parameter") && p.attribute("usageKind").is_some()
+                })
+        })
+    {
+        return Err(refuse(
+            "RootFunctionABI parameter consumption has no external admission proof",
+        ));
+    }
+    for entry in component.descendants().filter(|n| n.has_tag_name("entry")) {
+        if entry.parent().is_none_or(|n| !n.has_tag_name("root"))
+            || entry.children().any(|n| n.is_element())
+            || entry
+                .attribute("name")
+                .is_none_or(|n| n.len() > MAX_SYMBOL_BYTES)
+        {
+            return Err(refuse("only bounded flat scalar call ports are supported"));
+        }
+    }
+    let feeds = super::read_edges(&structure, Some(&owner));
+    for output in component
+        .descendants()
+        .filter_map(|n| super::parse_u32(n.attribute("outkey")))
+    {
+        let mut consumers = 0;
+        for (input, _) in feeds.iter().filter(|(_, from)| **from == output) {
+            consumers += 1;
+            let count = children
+                .children()
+                .filter(|n| {
+                    n.has_tag_name("component")
+                        && n.attribute("library") == Some("xml")
+                        && n.attribute("kind") == Some("14")
+                })
+                .flat_map(|n| n.children().filter(|n| n.has_tag_name("data")))
+                .flat_map(|n| n.descendants().filter(|n| n.has_tag_name("entry")))
+                .filter(|n| {
+                    super::parse_u32(n.attribute("inpkey")) == Some(*input)
+                        && n.attribute("outkey").is_none()
+                        && !n.children().any(|n| n.has_tag_name("entry"))
+                        && ordinary_content_entry(*n)
+                })
+                .count();
+            if count != 1 {
+                return Err(refuse(
+                    "only direct ordinary XML scalar target entries are supported; failure/predicate/filename/forwarded calls require separate proof",
+                ));
+            }
+        }
+        if consumers == 0 {
+            return Err(refuse(
+                "unused call output has no proven eager consumption boundary",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn ordinary_content_entry(entry: roxmltree::Node<'_, '_>) -> bool {
+    let Some(data) = entry.ancestors().find(|n| n.has_tag_name("data")) else {
+        return false;
+    };
+    if data.children().filter(|n| n.has_tag_name("root")).count() != 1 {
+        return false;
+    }
+    let Some(saved_root) = data.children().find(|n| n.has_tag_name("root")) else {
+        return false;
+    };
+    if saved_root
+        .attribute("rootindex")
+        .is_some_and(|index| index != "0")
+    {
+        return false;
+    }
+    if let Some(header) = saved_root.children().find(|n| n.has_tag_name("header")) {
+        let zero = header
+            .children()
+            .find(|n| n.has_tag_name("namespaces"))
+            .and_then(|namespaces| namespaces.children().find(|n| n.has_tag_name("namespace")));
+        if zero.is_none_or(|namespace| {
+            namespace
+                .attribute("uid")
+                .is_some_and(|uri| !uri.is_empty())
+        }) {
+            return false;
+        }
+    }
+    let mut documents = data.children().filter(|n| n.has_tag_name("document"));
+    let Some(document) = documents.next() else {
+        return false;
+    };
+    let Some(root_name) = document
+        .attribute("instanceroot")
+        .and_then(|name| name.strip_prefix("{}"))
+    else {
+        return false;
+    };
+    if documents.next().is_some()
+        || root_name.is_empty()
+        || document.attribute("schema").is_none_or(str::is_empty)
+        || document
+            .attribute("inputinstance")
+            .is_some_and(|name| !name.is_empty())
+    {
+        return false;
+    }
+    let Some(content_root) = entry.ancestors().find(|n| {
+        n.has_tag_name("entry")
+            && n.attribute("name") == Some(root_name)
+            && matches!(n.attribute("ns"), None | Some("0"))
+    }) else {
+        return false;
+    };
+    if content_root == entry {
+        return false;
+    } // not a root/protocol socket
+    let Some(parent) = content_root.parent() else {
+        return false;
+    };
+    if parent.has_tag_name("root") {
+        return parent.parent() == Some(data);
+    }
+    // The existing exporter wraps content under FileInstance/document ns=1.
+    // These protocol entries themselves are never scalar target consumers.
+    let Some(file) = parent.parent() else {
+        return false;
+    };
+    let Some(root) = file
+        .parent()
+        .filter(|root| root.has_tag_name("root") && root.parent() == Some(data))
+    else {
+        return false;
+    };
+    let namespace = root
+        .children()
+        .find(|node| node.has_tag_name("header"))
+        .and_then(|header| {
+            header
+                .children()
+                .find(|node| node.has_tag_name("namespaces"))
+        })
+        .and_then(|namespaces| {
+            namespaces
+                .children()
+                .filter(|node| node.has_tag_name("namespace"))
+                .nth(1)
+        });
+    parent.has_tag_name("entry")
+        && parent.attribute("name") == Some("document")
+        && parent.attribute("ns") == Some("1")
+        && file.has_tag_name("entry")
+        && file.attribute("name") == Some("FileInstance")
+        && file.attribute("ns") == Some("1")
+        && namespace.and_then(|node| node.attribute("uid"))
+            == Some("http://www.altova.com/mapforce")
 }
 
 #[cfg(test)]
@@ -914,6 +1253,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "v2 pending capability: nested typed/eager call boundaries are explicitly refused; retain the stronger v1 positive oracle"]
     fn transitive_calls_resolve_in_owner_scope_and_do_not_reexport() {
         let dir = Directory::new();
         dir.write(
@@ -1076,5 +1416,182 @@ mod tests {
         .err()
         .unwrap();
         assert!(error.contains("before resource read"));
+    }
+
+    fn identity_with_default_slots(slots: &str) -> String {
+        format!(
+            r#"<component library="helpers" name="Identity"><structure><children>
+        <component library="core" kind="6" uid="1" name="value"><sources>{slots}</sources><targets><datapoint pos="0" key="10"/></targets><data><input datatype="string"/><parameter usageKind="input" name="value"/></data></component>
+        <component library="core" kind="7" uid="2" name="result"><sources><datapoint pos="0" key="30"/></sources><data><output datatype="string"/></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex></vertices></graph></structure></component>"#
+        )
+    }
+
+    #[test]
+    fn default_slot_selection_and_parameter_output_positions_never_rebase() {
+        for slots in ["", r#"<datapoint pos="0" key="20"/>"#] {
+            let xml = identity_with_default_slots(slots);
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            validate_definition(document.root_element()).unwrap();
+            assert_eq!(
+                required_parameters(document.root_element()).unwrap(),
+                BTreeSet::from([1])
+            );
+        }
+        for position in [1, 63, 64] {
+            let xml =
+                identity_with_default_slots(&format!(r#"<datapoint pos="{position}" key="20"/>"#));
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            assert!(validate_definition(document.root_element()).is_err());
+            assert!(required_parameters(document.root_element()).is_err());
+            let xml = constant("helpers", "Output", "x").replace(
+                "<datapoint key=\"30\"/>",
+                &format!("<datapoint pos=\"{position}\" key=\"30\"/>"),
+            );
+            assert!(
+                validate_definition(roxmltree::Document::parse(&xml).unwrap().root_element())
+                    .is_err()
+            );
+        }
+        let xml = identity_with_default_slots(
+            r#"<datapoint pos="0" key="20"/><datapoint pos="1" key="21"/>"#,
+        );
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        assert!(validate_definition(document.root_element()).is_err());
+        assert!(required_parameters(document.root_element()).is_err());
+    }
+
+    #[test]
+    fn ordinary_argument_63_is_sparse_64_is_refused_before_reader_fallback() {
+        for position in [63, 64] {
+            let xml = constant("helpers", "Arguments", "x")
+                .replace("</children>", &format!(r#"<component library="core" kind="5" uid="3" name="concat"><sources><datapoint pos="{position}" key="20"/></sources><targets><datapoint key="21"/></targets></component></children>"#))
+                .replace("<edge vertexkey=\"30\"/>", "<edge vertexkey=\"20\"/>")
+                .replace("</vertices>", "<vertex vertexkey=\"21\"><edges><edge vertexkey=\"30\"/></edges></vertex></vertices>");
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            if position == 63 {
+                validate_definition(document.root_element()).unwrap();
+                let component = document
+                    .descendants()
+                    .find(|n| n.attribute("name") == Some("concat"))
+                    .unwrap();
+                let function = super::super::super::function::read(&component);
+                assert_eq!(function.inputs.len(), 64);
+                assert_eq!(function.inputs[0], None);
+                assert_eq!(function.inputs[63], Some(20));
+            } else {
+                assert!(
+                    validate_definition(document.root_element())
+                        .unwrap_err()
+                        .contains("64-slot")
+                );
+            }
+            let output = xml.replace(
+                "<datapoint key=\"21\"/>",
+                &format!("<datapoint pos=\"{position}\" key=\"21\"/>"),
+            );
+            assert!(
+                validate_definition(roxmltree::Document::parse(&output).unwrap().root_element())
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn nested_typed_and_failing_unused_argument_bodies_are_explicitly_refused() {
+        let dir = Directory::new();
+        // The regular callee has an unused *typed* argument. Its connected
+        // parse-date producer must fail eagerly, not vanish during flattening.
+        let leaf = constant("helpers", "Leaf", "unused-argument")
+            .replace("</children>", r#"<component library="core" kind="6" uid="100" name="unused"><targets><datapoint key="100"/></targets><data><input datatype="integer"/><parameter usageKind="input" name="unused"/></data></component></children>"#);
+        let outer = forward("Outer")
+            .replace(r#"<root rootindex="1">"#, r#"<root><entry name="unused" componentid="100" inpkey="45"/></root><root rootindex="1">"#)
+            .replace("</children>", r#"<component library="core" kind="2" uid="3" name="bad"><targets><datapoint key="40"/></targets><data><constant datatype="string" value="not-a-date"/></data></component><component library="core" kind="2" uid="4" name="picture"><targets><datapoint key="41"/></targets><data><constant datatype="string" value="[Y]-[M]-[D]"/></data></component><component library="core" kind="5" uid="5" name="parse-date"><sources><datapoint pos="0" key="42"/><datapoint pos="1" key="43"/></sources><targets><datapoint key="44"/></targets></component></children>"#)
+            .replace("</vertices>", r#"<vertex vertexkey="40"><edges><edge vertexkey="42"/></edges></vertex><vertex vertexkey="41"><edges><edge vertexkey="43"/></edges></vertex><vertex vertexkey="44"><edges><edge vertexkey="45"/></edges></vertex></vertices>"#);
+        dir.write("outer.mfd", &mapping(&[], &(leaf + &outer)));
+        let (registry, warnings) = dir.read(&mapping(
+            &["outer.mfd"],
+            &constant("helpers", "Leaf", "must-not-be-borrowed"),
+        ));
+        assert!(registry.supported("helpers", "Outer").is_none());
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("eager regular-call consumption boundary")),
+            "{warnings:?}"
+        );
+        for owner in ["webservice", "wsdl"] {
+            let xml = constant(owner, "NotHttp", "x");
+            assert!(
+                validate_definition(roxmltree::Document::parse(&xml).unwrap().root_element())
+                    .unwrap_err()
+                    .contains("reserved")
+            );
+        }
+    }
+
+    #[test]
+    fn unproved_root_abi_failure_filename_and_nested_roles_are_refused() {
+        for role in ["target", "root-abi", "failure", "filename", "nested"] {
+            let owner = if role == "nested" {
+                " library=\"wrapper\""
+            } else {
+                ""
+            };
+            let consumer = match role {
+                "failure" => {
+                    r#"<component library="core" name="exception" kind="40"><sources><datapoint key="20"/></sources></component>"#
+                }
+                "filename" => {
+                    r#"<component library="xml" name="Document" kind="14"><sources><datapoint key="20"/></sources><data><root><entry name="Result"/></root></data></component>"#
+                }
+                _ => {
+                    r#"<component library="xml" name="Document" kind="14"><data><root><entry name="Result"><entry name="Value" inpkey="20"/></entry></root><document schema="generic.xsd" instanceroot="{}Result"/></data></component>"#
+                }
+            };
+            let root = if role == "root-abi" {
+                r#"<component library="core" name="root-input" kind="6"/>"#
+            } else {
+                ""
+            };
+            let xml = format!(
+                r#"<mapping><component name="main"{owner}><structure><children><component library="helpers" kind="19" name="Leaf"><data><root rootindex="1"><entry name="result" componentid="2" outkey="10"/></root></data></component>{consumer}{root}</children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#
+            );
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let call = document
+                .descendants()
+                .find(|n| n.attribute("kind") == Some("19"))
+                .unwrap();
+            let result = validate_call(&call, &limits::ConstructionBudget::default());
+            if role == "target" {
+                result.unwrap();
+            } else {
+                assert!(result.unwrap_err().contains("consumption refused"));
+            }
+        }
+    }
+
+    #[test]
+    fn file_protocol_namespace_and_root_are_not_target_field_aliases() {
+        let xml = r#"<data><root><header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header><entry name="FileInstance" ns="1" inpkey="1"><entry name="document" ns="1"><entry name="Result"><entry name="Value" inpkey="2"/></entry></entry></entry></root><document schema="generic.xsd" instanceroot="{}Result"/></data>"#;
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let file = document
+            .descendants()
+            .find(|n| n.attribute("inpkey") == Some("1"))
+            .unwrap();
+        let value = document
+            .descendants()
+            .find(|n| n.attribute("inpkey") == Some("2"))
+            .unwrap();
+        assert!(!ordinary_content_entry(file));
+        assert!(ordinary_content_entry(value));
+        let collision = xml.replace("http://www.altova.com/mapforce", "urn:unproved-owner");
+        let document = roxmltree::Document::parse(&collision).unwrap();
+        assert!(!ordinary_content_entry(
+            document
+                .descendants()
+                .find(|n| n.attribute("inpkey") == Some("2"))
+                .unwrap()
+        ));
     }
 }
