@@ -72,7 +72,7 @@ fn rebase_required(path: &mut String, from: &Path, to: &Path) -> std::io::Result
     Ok(())
 }
 
-fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
+pub(super) fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
     if stored.trim().is_empty() || stored.contains("://") {
         return Ok(None);
     }
