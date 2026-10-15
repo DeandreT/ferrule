@@ -43,8 +43,8 @@ internal static class Program
 
     private static string Text(string file) => File.ReadAllText(Path.Combine(fixtures, file), Utf8);
     private static byte[] Bytes(string file) => File.ReadAllBytes(Path.Combine(fixtures, file));
-    // JSON fixture files have a framing LF; generated compact JSON has no LF.
-    private static string Json(string file) => Text(file).TrimEnd('\r', '\n');
+    // The production JSON writer emits two-space indentation and a final LF.
+    private static string Json(string file) => Text(file);
     private static void Require(bool condition, string detail)
     {
         checks++;

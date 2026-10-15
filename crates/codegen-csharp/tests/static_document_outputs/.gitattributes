@@ -1,2 +1,3 @@
 # Physical wire oracles include literal LF formatting bytes on every host.
 *.x12 text eol=lf
+*.expected.json text eol=lf

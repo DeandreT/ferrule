@@ -42,9 +42,9 @@ an explicit profile are distinct from document iteration.
 ## Literal fixtures and focused tests
 
 The fixtures are invented and self-contained. No expected output is computed
-by another backend or by a selected-target call. JSON expected files have one
-framing LF that is not part of the compact JSON result; X12 fixtures include
-every output LF and are compared byte-for-byte.
+by another backend or by a selected-target call. JSON expected files retain the
+production writer's two-space indentation and final LF. JSON and X12 fixtures
+preserve every output byte; neither expected nor actual outputs are normalized.
 
 - Mixed: JSON primary, named JSON/X12/JSON in `Zeta`, `Wire`, `Alpha` order;
   reversed supplied input order; context/parameters; custom 005010 syntax and
