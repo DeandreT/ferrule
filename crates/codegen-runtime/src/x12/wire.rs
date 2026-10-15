@@ -204,16 +204,10 @@ impl<'a> Document<'a> {
     }
 
     fn declared(profile: &Profile) -> BTreeSet<&str> {
-        let mut ids = BTreeSet::new();
-        let mut pending: Vec<_> = children(&profile.schema).iter().collect();
-        while let Some(node) = pending.pop() {
-            if let Some(id) = segment_id(&node.name) {
-                ids.insert(id);
-            } else {
-                pending.extend(children(node));
-            }
-        }
-        ids
+        SchemaCursor::root(&profile.schema)
+            .segments()
+            .filter_map(SchemaCursor::segment_id)
+            .collect()
     }
 
     pub(super) fn native_input(&self, profile: &Profile) -> Result<String, X12BoundaryError> {
@@ -253,7 +247,12 @@ impl<'a> Document<'a> {
             budget: Budget::default(),
             name_limit,
         };
-        reader.node(&profile.schema, &mut Vec::new(), &mut Vec::new(), 0, true)?;
+        reader.node(
+            SchemaCursor::root(&profile.schema),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            0,
+        )?;
         if reader.position != reader.selected.len() {
             return Err(reader.failure("unconsumed declared segment or fixed qualifier mismatch"));
         }
@@ -449,10 +448,10 @@ impl<'a> Document<'a> {
 }
 
 fn st_width(schema: &SchemaNode) -> Option<usize> {
-    if segment_id(&schema.name) == Some("ST") {
-        return Some(children(schema).len());
-    }
-    children(schema).iter().find_map(st_width)
+    SchemaCursor::root(schema)
+        .segments()
+        .find(|node| node.segment_id() == Some("ST"))
+        .map(|node| children(node.schema()).len())
 }
 
 fn owner_path(
@@ -558,11 +557,12 @@ impl Reader<'_, '_> {
             reason,
         }
     }
-    fn matches(&self, schema: &SchemaNode) -> bool {
+    fn matches(&self, node: SchemaCursor<'_>) -> bool {
+        let schema = node.schema();
         let Some((_, segment)) = self.selected.get(self.position) else {
             return false;
         };
-        if let Some(id) = segment_id(&schema.name) {
+        if let Some(id) = node.segment_id() {
             return id == segment.id
                 && children(schema).iter().enumerate().all(|(index, element)| {
                     match &element.kind {
@@ -586,11 +586,11 @@ impl Reader<'_, '_> {
                     }
                 });
         }
-        for child in children(schema) {
+        for child in node.children() {
             if self.matches(child) {
                 return true;
             }
-            if !child.repeating {
+            if !child.schema().repeating {
                 break;
             }
         }
@@ -598,15 +598,15 @@ impl Reader<'_, '_> {
     }
     fn node(
         &mut self,
-        schema: &SchemaNode,
+        node: SchemaCursor<'_>,
         path: &mut Vec<String>,
         owner: &mut Vec<String>,
         depth: usize,
-        root: bool,
     ) -> Result<(), X12BoundaryError> {
+        let schema = node.schema();
         self.budget.node(depth)?;
-        if !root && segment_id(&schema.name).is_some() {
-            if !self.matches(schema) {
+        if node.segment_id().is_some() {
+            if !self.matches(node) {
                 return Err(self.failure("missing declared segment or fixed qualifier mismatch"));
             }
             let segment = self.selected[self.position].1;
@@ -638,7 +638,8 @@ impl Reader<'_, '_> {
             self.position += 1;
             return Ok(());
         }
-        for child in children(schema) {
+        for child_node in node.children() {
+            let child = child_node.schema();
             // The container slot exists even when its repeating collection is
             // empty. Charge once for this occurrence, not once per schema.
             self.budget.name(&child.name, self.name_limit)?;
@@ -646,7 +647,7 @@ impl Reader<'_, '_> {
             if child.repeating {
                 self.budget.node(depth + 1)?;
                 let mut count = 0;
-                while self.matches(child) {
+                while self.matches(child_node) {
                     if self.profile.is_acknowledgment(path) {
                         return Err(self.failure(
                             "acknowledgment content is outside the MapForce source profile",
@@ -655,7 +656,7 @@ impl Reader<'_, '_> {
                     self.budget.loops(1)?;
                     owner.push(format!("{}[{count}]", child.name));
                     let before = self.position;
-                    self.node(child, path, owner, depth + 1, false)?;
+                    self.node(child_node, path, owner, depth + 1)?;
                     owner.pop();
                     if self.position == before {
                         return Err(self.failure("loop made no progress"));
@@ -665,7 +666,7 @@ impl Reader<'_, '_> {
                 cardinality(child, count, owner)?;
             } else {
                 owner.push(child.name.clone());
-                self.node(child, path, owner, depth + 1, false)?;
+                self.node(child_node, path, owner, depth + 1)?;
                 owner.pop();
             }
             path.pop();

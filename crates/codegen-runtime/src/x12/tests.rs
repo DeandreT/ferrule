@@ -282,3 +282,117 @@ fn positive_minimum_proves_a_required_container_cannot_be_zero_width() {
         })
     ));
 }
+
+#[test]
+fn created_repeating_trailers_reserve_exact_text_ids_and_nodes_before_writer() {
+    let simple = test_profile(fields("NTE", 1).repeating());
+    let parsed = native(WIRE, &simple.schema, wire::Syntax::output(&simple).native()).unwrap();
+    let field = |name: &str| parsed.field(name).unwrap().clone();
+    let mut gs = field("GS");
+    if let Instance::Group(fields) = &mut gs {
+        fields[4].1 = Instance::Scalar(Value::String("094500".into()));
+    }
+    let repeated = |value| Instance::Repeated(vec![value]);
+    let group = |fields: Vec<(&str, Instance)>| {
+        Instance::Group(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name.into(), value))
+                .collect::<Vec<_>>()
+                .into(),
+        )
+    };
+    let mut profile = test_profile(fields("NTE", 1).repeating());
+    profile.envelope = EnvelopeProfile::MapForce;
+    profile.autocomplete = Some(X12Autocomplete {
+        request_acknowledgement: false,
+        transaction_set: Some("850".into()),
+    });
+    profile.schema = SchemaNode::group(
+        "ST",
+        vec![
+            SchemaNode::group(
+                "Interchanges",
+                vec![
+                    fields("ISA", 16).repeating(),
+                    SchemaNode::group(
+                        "Groups",
+                        vec![
+                            fields("GS", 8).repeating(),
+                            SchemaNode::group(
+                                "Messages",
+                                vec![
+                                    fields("ST", 2),
+                                    fields("NTE", 1).repeating(),
+                                    fields("SE", 2).repeating(),
+                                ],
+                            )
+                            .repeating(),
+                            fields("GE", 2).repeating(),
+                        ],
+                    )
+                    .repeating(),
+                    fields("IEA", 2).repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let execution = ExecutionContext::new(std::path::Path::new("authored.mfd"))
+        .with_current_datetime("2030-06-15T09:45:00Z");
+    for present in [false, true] {
+        let mut message = vec![("ST", field("ST")), ("NTE", field("NTE"))];
+        let mut groups = vec![("GS", repeated(gs.clone()))];
+        if present {
+            message.push(("SE", Instance::Repeated(Vec::new())));
+        }
+        groups.push(("Messages", repeated(group(message))));
+        if present {
+            groups.push(("GE", Instance::Repeated(Vec::new())));
+        }
+        let mut interchange = vec![
+            ("ISA", repeated(field("ISA"))),
+            ("Groups", repeated(group(groups))),
+        ];
+        if present {
+            interchange.push(("IEA", Instance::Repeated(Vec::new())));
+        }
+        let value = group(vec![("Interchanges", repeated(group(interchange)))]);
+        // 132 supplied/padded scalar bytes + 5(SE) + 2(GE) + 10(IEA).
+        let limits = output::OutputLimits {
+            names: 4096,
+            projected: 149,
+        };
+        assert_eq!(
+            output::completion_stats(&profile, &value, limits).unwrap(),
+            (149, 17, 9, 7)
+        );
+        let entered = Cell::new(false);
+        let refused = output::serialize_with(
+            &profile,
+            &value,
+            Some(&execution),
+            output::OutputLimits {
+                projected: 148,
+                ..limits
+            },
+            |_, _, _| {
+                entered.set(true);
+                panic!("writer entered beyond projected ceiling")
+            },
+        );
+        assert!(!entered.get());
+        assert!(matches!(
+            refused,
+            Err(X12BoundaryError::Resource {
+                resource: "x12_projected_scalar_bytes",
+                observed: 149,
+                maximum: 148
+            })
+        ));
+        assert_eq!(
+            output::serialize(&profile, &value, Some(&execution)).unwrap(),
+            WIRE.replace("*20300615*0945*", "*20300615*094500*")
+        );
+    }
+}

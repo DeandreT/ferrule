@@ -1,5 +1,7 @@
 use super::*;
 mod reserve;
+#[cfg(test)]
+pub(super) use reserve::completion_stats;
 pub(super) use reserve::{OutputLimits, preflight};
 
 pub(super) fn serialize(
@@ -36,13 +38,13 @@ where
     // Inspect before cloning or calling the eager native formatter/writer.
     let mut view = private_view(
         profile,
-        &profile.schema,
+        SchemaCursor::root(&profile.schema),
         document,
         &mut Budget::default(),
         &mut 0,
         0,
         &mut Vec::new(),
-        true,
+        false,
     )?;
     format_edi::apply_output_lexical_formats(&mut view, &profile.lexical)?;
     let text = write(profile, &view, execution)?;
@@ -57,54 +59,55 @@ fn native_write(
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<String, X12BoundaryError> {
     let syntax = wire::Syntax::output(profile).native();
-    let text = if let Some(completion) = &profile.autocomplete {
-        let datetime = execution.and_then(|context| context.value(RuntimeValue::CurrentDateTime));
-        let Some(Value::String(datetime)) = datetime else {
+    let datetime = profile
+        .autocomplete
+        .as_ref()
+        .and(execution)
+        .and_then(|context| context.value(RuntimeValue::CurrentDateTime));
+    let autocomplete = if let Some(completion) = &profile.autocomplete {
+        let Some(Value::String(datetime)) = datetime.as_ref() else {
             return Err(X12BoundaryError::Envelope {
                 segment: 0,
                 path: "autocomplete".into(),
                 reason: "completion requires the host execution-context current dateTime",
             });
         };
-        format_edi::x12::to_string_with_syntax_and_autocomplete(
-            &profile.schema,
-            view,
-            syntax,
-            Some(profile.version),
-            format_edi::x12::Autocomplete {
-                current_datetime: &datetime,
-                request_acknowledgement: completion.request_acknowledgement,
-                transaction_set: completion.transaction_set.as_deref(),
-            },
-        )?
+        Some(format_edi::x12::Autocomplete {
+            current_datetime: datetime,
+            request_acknowledgement: completion.request_acknowledgement,
+            transaction_set: completion.transaction_set.as_deref(),
+        })
     } else {
-        format_edi::x12::to_string_with_syntax(
-            &profile.schema,
-            view,
-            syntax,
-            Some(profile.version),
-        )?
+        None
     };
-    Ok(text)
+    format_edi::x12::to_document_string_with_syntax(
+        &profile.schema,
+        view,
+        syntax,
+        Some(profile.version),
+        autocomplete,
+    )
+    .map_err(X12BoundaryError::Native)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn private_view(
     profile: &Profile,
-    schema: &SchemaNode,
+    node: SchemaCursor<'_>,
     instance: &Instance,
     budget: &mut Budget,
     text: &mut usize,
     depth: usize,
     path: &mut Vec<String>,
-    root: bool,
+    item: bool,
 ) -> Result<Instance, X12BoundaryError> {
+    let schema = node.schema();
     budget.node(depth)?;
     let fail = |reason| X12BoundaryError::Value {
         path: path.join("/"),
         reason,
     };
-    if schema.repeating && !root {
+    if schema.repeating && node.role() != SchemaRole::Root && !item {
         let items = match instance {
             Instance::Repeated(items) | Instance::MappedSequence(items) => items,
             _ => return Err(fail("repeating output requires a collection")),
@@ -112,7 +115,7 @@ fn private_view(
         budget.loops(items.len())?;
         wire::cardinality(schema, items.len(), path)?;
         if profile.envelope == EnvelopeProfile::MapForce {
-            match segment_id(&schema.name) {
+            match node.segment_id() {
                 Some("ISA" | "GS") if items.len() != 1 => {
                     return Err(fail("each MapForce owner requires exactly one header"));
                 }
@@ -122,12 +125,9 @@ fn private_view(
                 _ => {}
             }
         }
-        let mut single = schema.clone();
-        single.repeating = false;
-        single.item_count_range = None;
         return items
             .iter()
-            .map(|item| private_view(profile, &single, item, budget, text, depth + 1, path, false))
+            .map(|value| private_view(profile, node, value, budget, text, depth + 1, path, true))
             .collect::<Result<Vec<_>, _>>()
             .map(Instance::Repeated);
     }
@@ -151,18 +151,28 @@ fn private_view(
                     return Err(fail("undeclared or duplicate output field"));
                 }
             }
-            let segment = !root && segment_id(&schema.name).is_some();
+            let segment = node.segment_id().is_some();
             let mut output = Vec::new();
-            for child in children {
+            for child_node in node.children() {
+                let child = child_node.schema();
                 path.push(child.name.clone());
                 let value = instance.field(&child.name);
-                let id = segment_id(&child.name);
+                let id = child_node.segment_id();
                 let completion_trailer =
                     profile.autocomplete.is_some() && matches!(id, Some("SE" | "GE" | "IEA"));
                 match value {
                     Some(value) => output.push((
                         child.name.clone(),
-                        private_view(profile, child, value, budget, text, depth + 1, path, false)?,
+                        private_view(
+                            profile,
+                            child_node,
+                            value,
+                            budget,
+                            text,
+                            depth + 1,
+                            path,
+                            false,
+                        )?,
                     )),
                     None if child.repeating => {
                         if profile.envelope == EnvelopeProfile::MapForce

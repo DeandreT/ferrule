@@ -14,6 +14,7 @@ use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autoco
 use serde_json::Value as Json;
 
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
+use format_edi::x12::{SchemaCursor, SchemaRole};
 
 mod output;
 #[cfg(test)]
@@ -257,7 +258,7 @@ impl Profile {
                 pending.extend(children.iter().map(|child| (child, depth + 1)));
             }
         }
-        validate_native_schema(&schema, true)?;
+        validate_native_schema(SchemaCursor::root(&schema))?;
         Ok(Self {
             schema,
             version,
@@ -382,17 +383,7 @@ fn children(schema: &SchemaNode) -> &[SchemaNode] {
 }
 
 fn segment_id(name: &str) -> Option<&str> {
-    let name = name.strip_prefix("MF_").unwrap_or(name);
-    let name = name
-        .rsplit_once('_')
-        .filter(|(_, n)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-        .map_or(name, |(id, _)| id);
-    ((2..=3).contains(&name.len())
-        && name.as_bytes()[0].is_ascii_uppercase()
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()))
-    .then_some(name)
+    format_edi::x12::schema_segment_id(name)
 }
 
 #[derive(Default)]
@@ -426,22 +417,23 @@ impl Budget {
     }
 }
 
-fn validate_native_schema(schema: &SchemaNode, root: bool) -> Result<(), X12BoundaryError> {
+fn validate_native_schema(node: SchemaCursor<'_>) -> Result<(), X12BoundaryError> {
     fn empty_fixed(schema: &SchemaNode) -> bool {
         schema.fixed.as_deref() == Some("") || children(schema).iter().any(empty_fixed)
     }
-    fn nullable(schema: &SchemaNode) -> bool {
-        segment_id(&schema.name).is_none()
-            && matches!(schema.kind, SchemaKind::Group { .. })
-            && children(schema).iter().all(|child| {
-                child.repeating
+    fn nullable(node: SchemaCursor<'_>) -> bool {
+        node.segment_id().is_none()
+            && matches!(node.schema().kind, SchemaKind::Group { .. })
+            && node.children().all(|child| {
+                child.schema().repeating
                     && child
+                        .schema()
                         .item_count_range
                         .is_none_or(|range| range.minimum() == 0)
                     || nullable(child)
             })
     }
-    if !root && let Some(id) = segment_id(&schema.name) {
+    if let Some(id) = node.segment_id() {
         if id
             .strip_prefix("SG")
             .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
@@ -450,20 +442,20 @@ fn validate_native_schema(schema: &SchemaNode, root: bool) -> Result<(), X12Boun
                 "SGn wire segment IDs reserved for containers by the native EDI codec",
             ));
         }
-        if empty_fixed(schema) {
+        if empty_fixed(node.schema()) {
             return Err(descriptor(
                 "empty fixed positional qualifiers in the native EDI reader",
             ));
         }
         return Ok(());
     }
-    if !root && !schema.repeating && nullable(schema) {
+    if node.role() != SchemaRole::Root && !node.schema().repeating && nullable(node) {
         return Err(descriptor(
             "required containers capable of consuming zero physical segments in the native EDI reader",
         ));
     }
-    for child in children(schema) {
-        validate_native_schema(child, false)?;
+    for child in node.children() {
+        validate_native_schema(child)?;
     }
     Ok(())
 }

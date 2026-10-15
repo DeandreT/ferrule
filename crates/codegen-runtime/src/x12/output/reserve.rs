@@ -23,6 +23,13 @@ struct Reservation<'a> {
     raw: usize,
     groups: usize,
     transactions: usize,
+    segments: usize,
+    transaction: Option<(usize, usize)>,
+    group: Option<(usize, usize)>,
+    interchange_groups: usize,
+    created_scalar_bytes: usize,
+    created_nodes: usize,
+    created_names: usize,
 }
 
 pub(in super::super) fn preflight(
@@ -30,6 +37,14 @@ pub(in super::super) fn preflight(
     document: &Instance,
     limits: OutputLimits,
 ) -> Result<(), X12BoundaryError> {
+    reserve(profile, document, limits).map(|_| ())
+}
+
+fn reserve<'a>(
+    profile: &'a Profile,
+    document: &Instance,
+    limits: OutputLimits,
+) -> Result<Reservation<'a>, X12BoundaryError> {
     let mut reservation = Reservation {
         profile,
         limits,
@@ -38,15 +53,38 @@ pub(in super::super) fn preflight(
         raw: 0,
         groups: 0,
         transactions: 0,
+        segments: 0,
+        transaction: None,
+        group: None,
+        interchange_groups: 0,
+        created_scalar_bytes: 0,
+        created_nodes: 0,
+        created_names: 0,
     };
     reservation.node(
-        &profile.schema,
+        SchemaCursor::root(&profile.schema),
         Some(document),
         &mut Vec::new(),
         0,
-        true,
         false,
-    )
+    )?;
+    Ok(reservation)
+}
+
+#[cfg(test)]
+pub(in super::super) fn completion_stats(
+    profile: &Profile,
+    document: &Instance,
+    limits: OutputLimits,
+) -> Result<(usize, usize, usize, usize), X12BoundaryError> {
+    let reservation = reserve(profile, document, limits)?;
+    // Native completion owns short segment IDs, not schema field-name clones.
+    Ok((
+        reservation.projected,
+        reservation.created_scalar_bytes,
+        reservation.created_nodes,
+        reservation.created_names,
+    ))
 }
 
 fn charge(
@@ -80,62 +118,105 @@ impl Reservation<'_> {
 
     fn node(
         &mut self,
-        schema: &SchemaNode,
+        node: SchemaCursor<'_>,
         value: Option<&Instance>,
         path: &mut Vec<String>,
         depth: usize,
-        root: bool,
         item: bool,
     ) -> Result<(), X12BoundaryError> {
+        let schema = node.schema();
         self.budget.node(depth)?;
-        if schema.repeating && !root && !item {
+        if schema.repeating && node.role() != SchemaRole::Root && !item {
             let items = match value {
                 None => &[][..],
+                Some(Instance::Scalar(Value::Null | Value::JsonNull(_)))
+                    if matches!(
+                        node.role(),
+                        SchemaRole::Element { .. } | SchemaRole::Component
+                    ) =>
+                {
+                    &[][..]
+                }
                 Some(Instance::Repeated(items) | Instance::MappedSequence(items)) => items,
                 _ => return Err(self.bad(path, "repeating output requires a collection")),
             };
             self.budget.loops(items.len())?;
+            if items.is_empty()
+                && self.profile.autocomplete.is_some()
+                && matches!(node.segment_id(), Some("SE" | "GE" | "IEA"))
+            {
+                return self.created_trailer(node, path, depth);
+            }
             for value in items {
-                self.node(schema, Some(value), path, depth + 1, false, true)?;
+                self.node(node, Some(value), path, depth + 1, true)?;
             }
             return Ok(());
         }
         match &schema.kind {
             SchemaKind::Scalar { .. } => {
-                self.scalar(schema, value.and_then(Instance::as_scalar), path, 0)
+                let minimum = self.physical_minimum(node.role());
+                let length =
+                    self.scalar(schema, value.and_then(Instance::as_scalar), path, minimum)?;
+                match node.role() {
+                    SchemaRole::Element {
+                        segment: "ST",
+                        index: 1,
+                    } => {
+                        if let Some(owner) = self.transaction.as_mut() {
+                            owner.1 = length;
+                        }
+                    }
+                    SchemaRole::Element {
+                        segment: "GS",
+                        index: 5,
+                    } => {
+                        if let Some(owner) = self.group.as_mut() {
+                            owner.1 = length;
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(())
             }
             SchemaKind::Group { .. } => {
-                let id = (!root).then(|| segment_id(&schema.name)).flatten();
+                let id = node.segment_id();
                 if value.is_none() {
                     if self.profile.autocomplete.is_some()
                         && matches!(id, Some("SE" | "GE" | "IEA"))
                     {
-                        self.add(18)?;
+                        return self.created_trailer(node, path, depth);
                     }
-                    return Ok(());
+                    if matches!(
+                        node.role(),
+                        SchemaRole::Root | SchemaRole::Container | SchemaRole::Segment(_)
+                    ) {
+                        return Ok(());
+                    }
                 }
-                let Some(Instance::Group(_)) = value else {
+                if value.is_some_and(|value| !matches!(value, Instance::Group(_))) {
                     return Err(self.bad(path, "output group requires a group instance"));
-                };
+                }
                 if id == Some("GS") {
                     self.groups += 1;
                 }
                 if id == Some("ST") {
                     self.transactions += 1;
                 }
-                for (index, child) in children(schema).iter().enumerate() {
+                if let Some(id) = id {
+                    self.begin_segment(id);
+                }
+                for child_node in node.children() {
+                    let child = child_node.schema();
                     let supplied = value.and_then(|value| value.field(&child.name));
                     if supplied.is_some() {
                         self.budget.name(&child.name, self.limits.names)?;
                     }
                     path.push(child.name.clone());
-                    let minimum = self.physical_minimum(id, index);
-                    if id.is_some() {
-                        self.element(child, supplied, path, depth + 1, minimum, false)?;
-                    } else {
-                        self.node(child, supplied, path, depth + 1, false, false)?;
-                    }
+                    self.node(child_node, supplied, path, depth + 1, false)?;
                     path.pop();
+                }
+                if let Some(id) = id {
+                    self.finish_segment(id);
                 }
                 Ok(())
             }
@@ -150,46 +231,11 @@ impl Reservation<'_> {
         }
     }
 
-    fn element(
-        &mut self,
-        schema: &SchemaNode,
-        value: Option<&Instance>,
-        path: &mut Vec<String>,
-        depth: usize,
-        minimum: usize,
-        item: bool,
-    ) -> Result<(), X12BoundaryError> {
-        self.budget.node(depth)?;
-        if schema.repeating && !item {
-            let items = match value {
-                None | Some(Instance::Scalar(Value::Null | Value::JsonNull(_))) => &[][..],
-                Some(Instance::Repeated(items) | Instance::MappedSequence(items)) => items,
-                _ => return Err(self.bad(path, "repeating element requires a collection")),
-            };
-            self.budget.loops(items.len())?;
-            for item in items {
-                self.element(schema, Some(item), path, depth + 1, minimum, true)?;
-            }
-            return Ok(());
-        }
-        if matches!(schema.kind, SchemaKind::Scalar { .. }) {
-            return self.scalar(schema, value.and_then(Instance::as_scalar), path, minimum);
-        }
-        // Missing composites still cause native fixed/default materialization of
-        // every declared component; unlike absent structural groups they write.
-        for child in children(schema) {
-            let supplied = value.and_then(|value| value.field(&child.name));
-            if supplied.is_some() {
-                self.budget.name(&child.name, self.limits.names)?;
-            }
-            path.push(child.name.clone());
-            self.element(child, supplied, path, depth + 1, 0, false)?;
-            path.pop();
-        }
-        Ok(())
-    }
-
-    fn physical_minimum(&self, id: Option<&str>, index: usize) -> usize {
+    fn physical_minimum(&self, role: SchemaRole<'_>) -> usize {
+        let SchemaRole::Element { segment, index } = role else {
+            return 0;
+        };
+        let id = Some(segment);
         if id == Some("ISA") {
             return [2, 10, 2, 10, 2, 15, 2, 15, 6, 4, 1, 5, 9, 1, 1, 1]
                 .get(index)
@@ -219,7 +265,7 @@ impl Reservation<'_> {
         value: Option<&Value>,
         path: &[String],
         minimum: usize,
-    ) -> Result<(), X12BoundaryError> {
+    ) -> Result<usize, X12BoundaryError> {
         if let Some(Value::String(text)) = value {
             charge(
                 &mut self.raw,
@@ -297,6 +343,93 @@ impl Reservation<'_> {
             };
             length = length.max(size);
         }
-        self.add(length.max(minimum))
+        let length = length.max(minimum);
+        self.add(length)?;
+        Ok(length)
+    }
+
+    fn begin_segment(&mut self, id: &str) {
+        match id {
+            "ISA" => self.interchange_groups = 0,
+            "GS" => self.group = Some((0, self.groups.to_string().len())),
+            "ST" => {
+                self.transaction = Some((self.segments, self.transactions.to_string().len().max(4)))
+            }
+            _ => {}
+        }
+        self.segments += 1;
+    }
+
+    fn finish_segment(&mut self, id: &str) {
+        match id {
+            "SE" => {
+                self.transaction = None;
+                if let Some(group) = self.group.as_mut() {
+                    group.0 += 1;
+                }
+            }
+            "GE" => {
+                self.group = None;
+                self.interchange_groups += 1;
+            }
+            _ => {}
+        }
+    }
+
+    fn created_trailer(
+        &mut self,
+        node: SchemaCursor<'_>,
+        path: &[String],
+        depth: usize,
+    ) -> Result<(), X12BoundaryError> {
+        let id = node
+            .segment_id()
+            .ok_or_else(|| self.bad(path, "completion requires a physical trailer"))?;
+        let (count, control) = match id {
+            "SE" => {
+                let (start, control) = self
+                    .transaction
+                    .ok_or_else(|| self.bad(path, "completion trailer has no transaction owner"))?;
+                let count = self
+                    .segments
+                    .checked_sub(start)
+                    .and_then(|count| count.checked_add(1))
+                    .ok_or_else(|| self.bad(path, "completion count overflow"))?;
+                (count, control)
+            }
+            "GE" => self
+                .group
+                .ok_or_else(|| self.bad(path, "completion trailer has no group owner"))?,
+            "IEA" => (self.interchange_groups, 9),
+            _ => return Err(self.bad(path, "unsupported completion trailer")),
+        };
+        // Native completion creates a wire Segment with two scalar slots, not
+        // a schema-shaped Instance. Reserve exactly its ID name and text.
+        self.budget.name(id, self.limits.names)?;
+        self.budget.node(depth)?;
+        self.budget.node(depth + 1)?;
+        self.budget.node(depth + 1)?;
+        charge(
+            &mut self.created_names,
+            id.len(),
+            "x12_materialized_name_bytes",
+            self.limits.names,
+        )?;
+        charge(&mut self.created_nodes, 3, "x12_nodes", MAX_X12_NODES)?;
+        let bytes = count
+            .to_string()
+            .len()
+            .checked_add(control)
+            .ok_or_else(|| self.bad(path, "completion text overflow"))?;
+        charge(
+            &mut self.created_scalar_bytes,
+            bytes,
+            "x12_projected_scalar_bytes",
+            self.limits.projected,
+        )?;
+        self.add(bytes)?;
+        self.begin_segment(id);
+        self.finish_segment(id);
+        Ok(())
     }
 }
