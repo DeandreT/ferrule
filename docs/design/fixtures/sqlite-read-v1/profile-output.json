@@ -1,0 +1,6 @@
+{
+  "repeated": [
+    {"group": [["id", ["int", 10]], ["label", ["string", "alpha"]], ["score", ["int", 20]], ["active", ["bool", true]], ["ratio", ["float", 1.5]]]},
+    {"group": [["id", ["int", 30]], ["label", ["string", "alpha"]], ["score", ["int", 20]], ["active", ["bool", false]], ["ratio", ["float", 2.5]]]}
+  ]
+}

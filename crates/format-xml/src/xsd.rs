@@ -48,6 +48,7 @@ mod restriction;
 mod substitution;
 
 use resources::SchemaReader;
+pub use resources::XmlSchemaByteReader;
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
@@ -125,16 +126,16 @@ impl ParsedComplexType {
 }
 
 impl ParseState {
-    fn declaration(path: &Path, kind: &'static str, name: &str) -> ActiveDeclaration {
+    fn declaration(&self, path: &Path, kind: &'static str, name: &str) -> ActiveDeclaration {
         ActiveDeclaration {
-            path: normalized_path(path),
+            path: self.reader.identity(path),
             kind,
             name: name.to_string(),
         }
     }
 
     fn enter(&mut self, path: &Path, kind: &'static str, name: &str) -> bool {
-        let declaration = Self::declaration(path, kind, name);
+        let declaration = self.declaration(path, kind, name);
         if self.active.contains(&declaration) {
             return false;
         }
@@ -179,7 +180,7 @@ impl ParseState {
         qname: &str,
     ) -> Option<PathBuf> {
         let query = DeclarationQuery {
-            path: normalized_path(schema_path),
+            path: self.reader.identity(schema_path),
             kind,
             qname: qname.to_string(),
         };
@@ -268,11 +269,26 @@ pub fn read_text(path: &Path, max_bytes: u64) -> std::io::Result<String> {
     let mut bytes = Vec::with_capacity(max_bytes.min(8_192) as usize);
     file.take(max_bytes.saturating_add(1))
         .read_to_end(&mut bytes)?;
-    if u64::try_from(bytes.len()).map_or(true, |length| length > max_bytes) {
+    decode_owned_schema_bytes(bytes, max_bytes)
+}
+
+/// Decodes the exact supplied raw bytes without opening a resource pathname.
+pub fn decode_schema_bytes(bytes: &[u8], max_bytes: u64) -> std::io::Result<String> {
+    check_schema_size(bytes.len(), max_bytes)?;
+    decode_owned_schema_bytes(bytes.to_vec(), max_bytes)
+}
+
+fn check_schema_size(length: usize, max_bytes: u64) -> std::io::Result<()> {
+    if u64::try_from(length).map_or(true, |length| length > max_bytes) {
         return Err(invalid_xml_encoding(&format!(
             "XML Schema exceeds the {max_bytes}-byte input limit"
         )));
     }
+    Ok(())
+}
+
+fn decode_owned_schema_bytes(bytes: Vec<u8>, max_bytes: u64) -> std::io::Result<String> {
+    check_schema_size(bytes.len(), max_bytes)?;
     if bytes.starts_with(&[0x00, 0x00, 0xfe, 0xff]) || bytes.starts_with(&[0xff, 0xfe, 0x00, 0x00])
     {
         return Err(invalid_xml_encoding("UTF-32 schemas are not supported"));
@@ -339,6 +355,20 @@ pub fn import_root_with_resource_root(
     reader.finish(import_root_with_reader(path, root, &reader))
 }
 
+/// Imports from host-authorized immutable bytes, including every dependency.
+/// `path` and `resource_root` are approved absolute identities, not paths this
+/// entry point may reopen. Reader failures are authoritative, even in optional
+/// declaration searches. Existing path-based APIs retain their behavior.
+pub fn import_root_with_byte_reader(
+    path: &Path,
+    root: Option<&str>,
+    resource_root: &Path,
+    reader: std::rc::Rc<dyn XmlSchemaByteReader>,
+) -> Result<SchemaNode, XmlFormatError> {
+    let reader = SchemaReader::supplied(resource_root, reader)?;
+    reader.finish(import_root_with_reader(path, root, &reader))
+}
+
 fn import_root_with_reader(
     path: &Path,
     root: Option<&str>,
@@ -347,6 +377,14 @@ fn import_root_with_reader(
     let text = reader.read(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
+    if reader.is_supplied()
+        && (schema_el.tag_name().name() != "schema"
+            || schema_el.tag_name().namespace() != Some("http://www.w3.org/2001/XMLSchema"))
+    {
+        return Err(reader
+            .refuse("supplied XML Schema resource is not an XSD document")
+            .into());
+    }
     let root_local =
         root.map(|name| expanded_name(name).map_or(local_name(name), |(_, local)| local));
     let root_namespace = root.and_then(expanded_name).map(|(namespace, _)| namespace);
@@ -430,6 +468,17 @@ pub fn import_type_with_resource_root(
     reader.finish(import_type_with_reader(path, type_name, &reader))
 }
 
+/// Named-type counterpart to [`import_root_with_byte_reader`].
+pub fn import_type_with_byte_reader(
+    path: &Path,
+    type_name: &str,
+    resource_root: &Path,
+    reader: std::rc::Rc<dyn XmlSchemaByteReader>,
+) -> Result<SchemaNode, XmlFormatError> {
+    let reader = SchemaReader::supplied(resource_root, reader)?;
+    reader.finish(import_type_with_reader(path, type_name, &reader))
+}
+
 fn import_type_with_reader(
     path: &Path,
     type_name: &str,
@@ -456,7 +505,7 @@ fn import_type_with_reader(
         }
         Some(namespace) => {
             let mut visited = BTreeSet::new();
-            visited.insert(normalized_path(path));
+            visited.insert(reader.identity(path));
             let effective_namespace = schema_el.attribute("targetNamespace");
             search_dependencies(
                 &schema_el,
@@ -505,6 +554,17 @@ pub fn import_type_base_with_resource_root(
     resource_root: &Path,
 ) -> Result<Option<String>, XmlFormatError> {
     let reader = SchemaReader::confined(resource_root)?;
+    reader.finish(import_type_base_with_reader(path, type_name, &reader))
+}
+
+/// Base-type counterpart to [`import_root_with_byte_reader`].
+pub fn import_type_base_with_byte_reader(
+    path: &Path,
+    type_name: &str,
+    resource_root: &Path,
+    reader: std::rc::Rc<dyn XmlSchemaByteReader>,
+) -> Result<Option<String>, XmlFormatError> {
+    let reader = SchemaReader::supplied(resource_root, reader)?;
     reader.finish(import_type_base_with_reader(path, type_name, &reader))
 }
 
@@ -1210,7 +1270,7 @@ fn collect_derived_type_declarations(
     if index.limit_reached {
         return;
     }
-    let path = normalized_path(schema_path);
+    let path = reader.identity(schema_path);
     let effective_namespace = schema_el
         .attribute("targetNamespace")
         .or(inherited_namespace);
@@ -1256,13 +1316,9 @@ fn collect_derived_type_declarations(
         let Some(location) = link.attribute("schemaLocation") else {
             continue;
         };
-        if location.contains("://") {
+        let Some(dependency) = reader.dependency(&path, location) else {
             continue;
-        }
-        let dependency = path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(location);
+        };
         let Ok(text) = reader.read(&dependency) else {
             continue;
         };
@@ -1663,7 +1719,7 @@ fn parse_complex_type_declaration(
     state: &mut ParseState,
     occurrence_anchor: Option<&str>,
 ) -> Option<ComplexTypeResolution> {
-    let identity = ParseState::declaration(schema_path, "complexType", name);
+    let identity = state.declaration(schema_path, "complexType", name);
     if let Some(cached) = state.complex_types.get(&identity).cloned() {
         let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
         let mut group = cached.group;
@@ -1773,7 +1829,7 @@ fn find_external_declaration(
         .map(str::to_string);
     let effective_namespace = schema_el.attribute("targetNamespace").map(str::to_string);
     let mut visited = BTreeSet::new();
-    visited.insert(normalized_path(schema_path));
+    visited.insert(reader.identity(schema_path));
     search_dependencies(
         schema_el,
         schema_path,
@@ -1815,13 +1871,9 @@ fn search_dependencies(
         let Some(location) = link.attribute("schemaLocation") else {
             continue;
         };
-        if location.contains("://") {
+        let Some(path) = reader.dependency(schema_path, location) else {
             continue;
-        }
-        let path = schema_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(location);
+        };
         let inherited_namespace = (!is_import).then_some(effective_namespace).flatten();
         if let Some(found) = search_schema_file(
             &path,
@@ -1847,7 +1899,7 @@ fn search_schema_file(
     visited: &mut BTreeSet<PathBuf>,
     reader: &SchemaReader,
 ) -> Option<PathBuf> {
-    let path = normalized_path(schema_path);
+    let path = reader.identity(schema_path);
     if !visited.insert(path.clone()) {
         return None;
     }

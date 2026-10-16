@@ -17,6 +17,7 @@ pub(super) struct BoundaryWitness<'a, 'input> {
     pub(super) schema: SchemaNode,
     pub(super) schema_file_authoritative: bool,
     pub(super) authoritative_schema_path: Option<PathBuf>,
+    pub(super) authoritative_schema_bytes: Option<std::sync::Arc<[u8]>>,
     pub(super) no_port_warning_index: Option<usize>,
 }
 
@@ -292,17 +293,29 @@ fn plain_physical_schema(boundary: &BoundaryWitness<'_, '_>) -> bool {
     let Some((field, ty)) = plain_scalar_document(&boundary.schema) else {
         return false;
     };
-    let Some(path) = &boundary.authoritative_schema_path else {
-        return false;
+    let mut disk_bytes = Vec::new();
+    let bytes = if let Some(bytes) = &boundary.authoritative_schema_bytes {
+        bytes.as_ref()
+    } else {
+        let Some(path) = &boundary.authoritative_schema_path else {
+            return false;
+        };
+        let Ok(file) = std::fs::File::open(path) else {
+            return false;
+        };
+        if file
+            .take(MAX_BYTES + 1)
+            .read_to_end(&mut disk_bytes)
+            .is_err()
+        {
+            return false;
+        }
+        &disk_bytes
     };
-    let Ok(file) = std::fs::File::open(path) else {
-        return false;
-    };
-    let mut bytes = Vec::new();
-    if file.take(MAX_BYTES + 1).read_to_end(&mut bytes).is_err() || bytes.len() as u64 > MAX_BYTES {
+    if bytes.len() as u64 > MAX_BYTES {
         return false;
     }
-    let Ok(text) = std::str::from_utf8(&bytes) else {
+    let Ok(text) = std::str::from_utf8(bytes) else {
         return false;
     };
     // Do not enable DTD/entity loading, even for an otherwise plain projection.
