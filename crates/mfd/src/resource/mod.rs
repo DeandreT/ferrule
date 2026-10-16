@@ -1,5 +1,6 @@
 //! Canonical, package-confined resource resolution for `.mfd` imports.
 
+mod bindings;
 mod manifest;
 
 use std::cell::RefCell;
@@ -7,7 +8,14 @@ use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::MfdError;
+use sha2::{Digest, Sha256};
 
+pub(crate) use bindings::validate as validate_bindings;
+pub(crate) use bindings::{BindingSession, BoundResource};
+pub use bindings::{
+    MAX_RESOURCE_BINDINGS_V1, ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1,
+    ResourceReadSetV1,
+};
 pub use manifest::PackageManifest;
 
 /// Filesystem boundary shared by every resource referenced from one mapping.
@@ -20,6 +28,8 @@ pub(crate) struct ResourceResolver {
     edi_catalog_roots: Vec<PathBuf>,
     json_schema_catalog_roots: Vec<PathBuf>,
     resource_refusals: RefCell<BTreeSet<String>>,
+    bindings: Option<BindingSession>,
+    design_snapshot: Option<String>,
 }
 
 impl ResourceResolver {
@@ -63,7 +73,52 @@ impl ResourceResolver {
             edi_catalog_roots: Vec::new(),
             json_schema_catalog_roots: Vec::new(),
             resource_refusals: RefCell::default(),
+            bindings: None,
+            design_snapshot: None,
         })
+    }
+
+    pub(crate) fn with_bindings(
+        mut self,
+        bindings: &[ResourceBindingV1],
+        readset: Option<ResourceReadSetV1>,
+    ) -> Result<Self, MfdError> {
+        if !bindings.is_empty() {
+            let snapshot = crate::design::read(&self.mapping_path)?;
+            self.bindings = Some(BindingSession::new(
+                &self.mapping_path,
+                bindings,
+                readset,
+                Sha256::digest(snapshot.as_bytes()).into(),
+            )?);
+            self.design_snapshot = Some(snapshot);
+        }
+        Ok(self)
+    }
+
+    pub(crate) fn read_design(&self) -> Result<String, MfdError> {
+        match &self.design_snapshot {
+            Some(text) => Ok(text.clone()),
+            None => crate::design::read(&self.mapping_path),
+        }
+    }
+
+    pub(crate) fn bound_resource(
+        &self,
+        kind: ResourceBindingKindV1,
+        reference: &str,
+    ) -> Result<Option<std::rc::Rc<BoundResource>>, String> {
+        match &self.bindings {
+            Some(session) => session.lookup(kind, reference),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) fn finish_bindings(&self) -> Result<(), MfdError> {
+        match &self.bindings {
+            Some(session) => session.finish(),
+            None => Ok(()),
+        }
     }
 
     pub(crate) fn with_edi_catalog_roots(mut self, roots: &[PathBuf]) -> Result<Self, MfdError> {
@@ -212,6 +267,9 @@ impl ResourceResolver {
     /// trusted catalogs. The returned root is the boundary that authorized
     /// the path and must also confine the schema's local-file references.
     pub(crate) fn resolve_json_schema(&self, declared: &str) -> Result<(PathBuf, PathBuf), String> {
+        if let Some(session) = &self.bindings {
+            session.guard_untyped(declared)?;
+        }
         let package_error = match self.resolve_file(declared, "JSON Schema") {
             Ok(path) => return Ok((path, self.package_root.clone())),
             Err(error) => error,
@@ -358,6 +416,9 @@ impl ResourceResolver {
         description: &str,
         retain: bool,
     ) -> Result<PathBuf, String> {
+        if let Some(session) = &self.bindings {
+            session.guard_untyped(declared)?;
+        }
         if declared.is_empty() || declared.contains('\0') {
             return Err(format!("{description} path is empty or contains NUL"));
         }

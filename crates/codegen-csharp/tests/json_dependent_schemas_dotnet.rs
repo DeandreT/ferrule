@@ -269,6 +269,7 @@ fn emitted_package_enforces_dependent_schemas_across_json_boundaries()
     write_harness(directory.path())?;
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -281,6 +282,7 @@ fn emitted_package_enforces_dependent_schemas_across_json_boundaries()
     assert_command_succeeded("dotnet build", &build);
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",

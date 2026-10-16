@@ -122,7 +122,12 @@ fn read_column(
     if root.is_empty() {
         return Err("document root name is missing".to_string());
     }
-    let schema_path = resources.resolve_file(schema_file, "database XML column schema")?;
+    let schema_path = super::resolve_xml_resource(
+        resources.mapping_path(),
+        Some(resources),
+        schema_file,
+        "database XML column schema",
+    )?;
     let schema = read_xml_schema_file(&schema_path, Some(root), Some(resources))
         .map_err(|error| error.to_string())?;
     let namespace = metadata

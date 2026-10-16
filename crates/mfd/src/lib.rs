@@ -68,6 +68,10 @@ pub use import::{
     import_with_options, import_with_profile,
 };
 pub use resource::PackageManifest;
+pub use resource::{
+    MAX_RESOURCE_BINDINGS_V1, ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1,
+    ResourceReadSetV1,
+};
 
 use thiserror::Error;
 

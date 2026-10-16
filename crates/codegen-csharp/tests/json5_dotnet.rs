@@ -263,6 +263,7 @@ fn generated_json5_all_four_routes_match17_literals_and6_mapping_context_cases()
     .unwrap();
     let original = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut build = Command::new("dotnet");
+        build.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
         build
             .args([
                 "msbuild",
@@ -292,6 +293,7 @@ fn generated_json5_all_four_routes_match17_literals_and6_mapping_context_cases()
             root.display()
         );
         let mut run = Command::new("dotnet");
+        run.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
         run.arg(root.join("Host/bin/Debug/net10.0/Host.dll"))
             .arg(&root)
             .current_dir(&root);

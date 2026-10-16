@@ -32,8 +32,9 @@ pub(super) use xml_attribute_required::validate_xml_attribute_required_metadata;
 pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
 pub(super) use shared::{
-    XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
-    read_xsd_metadata_text, resolve_xml_schema_reference, retain_xsd_resource_refusal,
+    XmlSchemaReadError, XmlSchemaResource, entry_key_sets, is_default_output, parse_u32,
+    read_xml_schema_file, read_xsd_metadata_text, resolve_xml_resource,
+    resolve_xml_schema_reference,
 };
 
 pub(super) use port_declarations::PortDeclarationCensus;
@@ -409,6 +410,7 @@ pub(super) struct XmlSchemaComponentRead {
     pub(super) entry_tree_fallback: bool,
     pub(super) schema_file_authoritative: bool,
     pub(super) authoritative_schema_path: Option<std::path::PathBuf>,
+    pub(super) authoritative_schema_bytes: Option<std::sync::Arc<[u8]>>,
     pub(super) no_port_warning_index: Option<usize>,
 }
 
@@ -551,27 +553,31 @@ fn read_schema_component_resolved(
         .map(instance_root_segments)
         .unwrap_or_default();
     let mut authoritative_schema_path = None;
+    let mut authoritative_schema_bytes = None;
     let schema_from_file = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
-            let schema_path =
-                match resolve_resource_reference(mfd_path, resources, rel, "XML Schema") {
-                    Ok(path) => path,
-                    Err(error) => {
-                        warnings.push(format!(
-                            "component `{name}`: could not read schema `{rel}` ({error}); \
+            let schema_path = match resolve_xml_resource(mfd_path, resources, rel, "XML Schema") {
+                Ok(path) => path,
+                Err(error) => {
+                    warnings.push(format!(
+                        "component `{name}`: could not read schema `{rel}` ({error}); \
                          falling back to the entry tree (no types, no repeating info)"
-                        ));
-                        return None;
-                    }
-                };
+                    ));
+                    return None;
+                }
+            };
             match read_xml_schema_file(
                 &schema_path,
                 instance_root.first().map(String::as_str),
                 resources,
             ) {
                 Ok(schema) => {
-                    authoritative_schema_path = Some(schema_path.clone());
+                    // A physical unused-source witness must not reopen a bound
+                    // pathname behind its immutable-byte reader.
+                    authoritative_schema_path =
+                        (!schema_path.is_bound()).then(|| schema_path.to_path_buf());
+                    authoritative_schema_bytes = schema_path.witness_bytes();
                     if instance_root.len() <= 1 {
                         Some(schema)
                     } else {
@@ -607,19 +613,21 @@ fn read_schema_component_resolved(
     let schema_file_authoritative = schema_from_file.is_some();
     if !schema_file_authoritative {
         authoritative_schema_path = None;
+        authoritative_schema_bytes = None;
     }
     let schema_from_entry_tree = schema_from_file.is_none() && typed_entry_schema.is_none();
     let mut schema = schema_from_file
         .or(typed_entry_schema)
         .unwrap_or_else(|| entry_tree_schema(&entry));
     if let Some(rel) = document.and_then(|document| document.attribute("schema"))
-        && let Ok(schema_path) = resolve_resource_reference(mfd_path, resources, rel, "XML Schema")
-        && !schema_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd"))
+        && let Ok(schema_path) = resolve_xml_resource(mfd_path, resources, rel, "XML Schema")
+        && (schema_path.is_bound()
+            || !schema_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd")))
     {
-        super::alternatives::merge_conditioned_xml_types(
+        super::alternatives::merge_conditioned_xml_resource_types(
             &entry,
             &mut schema,
             &schema_path,
@@ -722,6 +730,7 @@ fn read_schema_component_resolved(
         entry_tree_fallback: schema_from_entry_tree,
         schema_file_authoritative,
         authoritative_schema_path,
+        authoritative_schema_bytes,
         no_port_warning_index,
     })
 }

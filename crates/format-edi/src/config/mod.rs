@@ -17,7 +17,8 @@ mod tests;
 use std::path::{Path, PathBuf};
 
 use definitions::{Definitions, compiled_config, load_definitions};
-use files::{Files, parse_document, resolve_message_config, resolve_sibling};
+pub use files::EdiConfigByteReader;
+use files::{Files, parse_document};
 use ir::SchemaNode;
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint};
 use parser::{MessageName, build_envelope, build_message};
@@ -75,7 +76,33 @@ pub fn import_config_confined(
     authorization_root: &Path,
     selected_messages: &[String],
 ) -> Result<CompiledConfig, ConfigError> {
-    let mut files = Files::new(authorization_root)?;
+    import_config_with_files(path, selected_messages, Files::new(authorization_root)?)
+}
+
+/// Imports the exact host-supplied immutable bytes for the root, definitions,
+/// and selected messages. No filesystem reopen or content-discovery fallback
+/// occurs in this mode. The host reader owns root authorization and hash pins.
+pub fn import_config_with_byte_reader(
+    path: &Path,
+    authorization_root: &Path,
+    selected_messages: &[String],
+    reader: std::rc::Rc<dyn EdiConfigByteReader>,
+) -> Result<CompiledConfig, ConfigError> {
+    if selected_messages.len() > 32 {
+        return Err(ConfigError::Limit("selected message count"));
+    }
+    import_config_with_files(
+        path,
+        selected_messages,
+        Files::supplied(authorization_root, reader)?,
+    )
+}
+
+fn import_config_with_files(
+    path: &Path,
+    selected_messages: &[String],
+    mut files: Files,
+) -> Result<CompiledConfig, ConfigError> {
     let path = files.confined_file(path)?;
     let mut definitions = Definitions::default();
     load_definitions(&path, &mut files, &mut definitions)?;
@@ -107,7 +134,7 @@ pub fn import_config_confined(
             message.name = message_type.to_string();
             return Ok(compiled_config(message, &definitions));
         }
-        let envelope_path = resolve_sibling(&path, "Envelope.Config", files.root())?;
+        let envelope_path = files.resolve_sibling(&path, "Envelope.Config")?;
         load_definitions(&envelope_path, &mut files, &mut definitions)?;
         let envelope_text = files.read(&envelope_path)?;
         let envelope_doc = parse_document(&envelope_path, &envelope_text)?;
@@ -140,7 +167,7 @@ pub fn import_config_confined(
     let discriminator = select.attribute("field").map(str::to_string);
     let mut messages = Vec::with_capacity(selected_messages.len());
     for selected in selected_messages {
-        let message_path = resolve_message_config(&path, selected, files.root())?;
+        let message_path = files.resolve_message(&path, selected)?;
         load_definitions(&message_path, &mut files, &mut definitions)?;
         let message_text = files.read(&message_path)?;
         let message_doc = parse_document(&message_path, &message_text)?;

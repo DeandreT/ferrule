@@ -1,40 +1,25 @@
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::path::Path;
 
-use super::schema::retain_xsd_resource_refusal;
+use super::schema::XmlSchemaResource;
 use crate::resource::ResourceResolver;
 use ir::{GroupAlternative, SchemaKind, SchemaNode};
 
 fn import_type(
-    path: &Path,
+    path: &XmlSchemaResource,
     name: &str,
     resources: Option<&ResourceResolver>,
 ) -> Result<SchemaNode, format_xml::XmlFormatError> {
-    let result = match resources {
-        Some(resources) => {
-            format_xml::xsd::import_type_with_resource_root(path, name, resources.package_root())
-        }
-        None => format_xml::xsd::import_type(path, name),
-    };
-    retain_xsd_resource_refusal(resources, &result);
-    result
+    path.import_type(name, resources)
 }
 
 fn import_type_base(
-    path: &Path,
+    path: &XmlSchemaResource,
     name: &str,
     resources: Option<&ResourceResolver>,
 ) -> Result<Option<String>, format_xml::XmlFormatError> {
-    let result = match resources {
-        Some(resources) => format_xml::xsd::import_type_base_with_resource_root(
-            path,
-            name,
-            resources.package_root(),
-        ),
-        None => format_xml::xsd::import_type_base(path, name),
-    };
-    retain_xsd_resource_refusal(resources, &result);
-    result
+    path.import_type_base(name, resources)
 }
 
 pub(super) fn conditioned_port_types(structure: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, String> {
@@ -57,10 +42,29 @@ pub(super) fn conditioned_port_types(structure: &roxmltree::Node<'_, '_>) -> BTr
     types
 }
 
+#[cfg(test)]
 pub(super) fn merge_conditioned_xml_types(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
     xsd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    schema_from_entry_tree: bool,
+    warnings: &mut Vec<String>,
+) {
+    merge_conditioned_xml_resource_types(
+        entry,
+        schema,
+        &XmlSchemaResource::unbound(xsd_path),
+        resources,
+        schema_from_entry_tree,
+        warnings,
+    );
+}
+
+pub(super) fn merge_conditioned_xml_resource_types(
+    entry: &roxmltree::Node,
+    schema: &mut SchemaNode,
+    xsd_path: &XmlSchemaResource,
     resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
@@ -88,7 +92,7 @@ pub(super) fn merge_conditioned_xml_types(
 fn merge_selected_roots(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
-    xsd_path: &Path,
+    xsd_path: &XmlSchemaResource,
     resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
@@ -127,15 +131,7 @@ fn merge_selected_roots(
                 ));
                 continue;
             };
-            let selected = match resources {
-                Some(resources) => format_xml::xsd::import_root_with_resource_root(
-                    xsd_path,
-                    Some(qname),
-                    resources.package_root(),
-                ),
-                None => format_xml::xsd::import_root(xsd_path, Some(qname)),
-            };
-            retain_xsd_resource_refusal(resources, &selected);
+            let selected = xsd_path.import_root(Some(qname), resources);
             match selected {
                 Ok(mut selected_schema) => {
                     // A concrete QName selected from `xs:any` is still a
@@ -389,7 +385,7 @@ fn display_child_path(path: &[String], child: &str) -> String {
 fn merge_entry_children(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
-    xsd_path: &Path,
+    xsd_path: &XmlSchemaResource,
     resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
     warnings: &mut Vec<String>,
@@ -448,7 +444,7 @@ fn merge_alternatives_at(
     schema: &mut SchemaNode,
     path: &[String],
     entries: &[roxmltree::Node<'_, '_>],
-    xsd_path: &Path,
+    xsd_path: &XmlSchemaResource,
     resources: Option<&ResourceResolver>,
     schema_from_entry_tree: bool,
 ) -> Result<(), String> {
