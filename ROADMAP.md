@@ -254,10 +254,6 @@ their refusals.
 
 ### E. Product, Packaging, and Automation
 
-- [ ] Diagnose and repair the actual Pages deployment HTTP 404 in the available
-  [#247](https://github.com/DeandreT/ferrule/issues/247) lane. The successful site build
-  does not establish publication; workflow/configuration work stays separate from
-  site content and mapping implementation.
 - [ ] Package reproducible runtimes and examples with clear host boundaries.
 - [ ] Design reusable libraries, projects, configuration, and automation without
   implying compatibility with another product's proprietary package format.
