@@ -23,6 +23,7 @@ fn generated_dotnet_mapping_matches_ordered_dynamic_target_semantics() {
     fs::write(harness.join("Program.cs"), HARNESS).expect("harness is written");
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args(["run", "--project", "Harness.csproj", "--nologo"])
         .current_dir(&harness)
         .env("DOTNET_CLI_HOME", directory.path().join(".dotnet-home"))

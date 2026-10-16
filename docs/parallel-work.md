@@ -36,8 +36,6 @@ choose a lane and avoid conflicting changes.
   owned-window proof. Native 180-second timeout, #285 diagnostics and #291 presentation refusal
   remain negatives; modeled 16 query checks and helper source do not prove live ownership.
 - [ ] Settle #241's explicit competing-feed contract before admission and execution.
-- [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
-  successful site compilation alone is insufficient.
 - [ ] Review and publish #336's scoped main 4d32a3a two-document refresh;
   preserve unrelated lanes and the same historical fences.
 
