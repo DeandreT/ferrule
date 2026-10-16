@@ -50,6 +50,27 @@ def guard(records):
             raise RuntimeError(f"source/tool/artifact guard changed: {record['path']}")
 
 
+def child_environment(inherited, root, short_tmp, host_target):
+    env = inherited.copy()
+    # Refuse hidden changes to the CLR allocation/JIT/GC profile or profiler.
+    # The global-tools PATH opt-out is launcher policy, not a CLR override:
+    # accept a caller's setting, then enforce it for every campaign child.
+    forbidden = [key for key in env
+                 if key.upper().startswith(("COMPLUS_", "CORECLR_", "DOTNET_"))
+                 and key.upper() != "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"]
+    if forbidden:
+        raise RuntimeError(f"remove inherited CLR overrides: {forbidden}")
+    env.update({"DOTNET_NOLOGO": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+                "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+                "DOTNET_CLI_HOME": str(root / ".dotnet-home"),
+                "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH": "false",
+                "MSBUILDDISABLENODEREUSE": "1", "NUGET_PACKAGES": str(root / ".nuget"),
+                "TMPDIR": str(short_tmp), "CARGO_INCREMENTAL": "0",
+                "FERRULE_CODEGEN_JSON5_EVIDENCE_DIR": str(root / "small"),
+                "FERRULE_CODEGEN_HOST_TARGET_DIR": str(host_target)})
+    return env
+
+
 def child_measurement(args):
     """One wrapper, one child: wait4's ru_maxrss belongs to this .NET process.
 
@@ -202,18 +223,7 @@ def main():
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), "PR_SET_CHILD_SUBREAPER failed")
-    env = os.environ.copy()
-    # Refuse hidden changes to the CLR allocation/JIT/GC profile or profiler.
-    forbidden = [key for key in env if key.startswith(("COMPlus_", "CORECLR_", "DOTNET_"))]
-    if forbidden:
-        raise RuntimeError(f"remove inherited CLR overrides: {forbidden}")
-    env.update({"DOTNET_NOLOGO": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
-                "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
-                "DOTNET_CLI_HOME": str(args.root / ".dotnet-home"),
-                "MSBUILDDISABLENODEREUSE": "1", "NUGET_PACKAGES": str(args.root / ".nuget"),
-                "TMPDIR": str(short_tmp), "CARGO_INCREMENTAL": "0",
-                "FERRULE_CODEGEN_JSON5_EVIDENCE_DIR": str(args.root / "small"),
-                "FERRULE_CODEGEN_HOST_TARGET_DIR": str(args.host_target)})
+    env = child_environment(os.environ, args.root, short_tmp, args.host_target)
     # Keep the complete effective environment privately in local evidence;
     # the checked-in report contains only relevant non-secret settings.
     campaign = Campaign(args.root, env)

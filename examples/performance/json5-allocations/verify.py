@@ -1,6 +1,11 @@
 import csv, hashlib, itertools, json, sys
 from pathlib import Path
 
+# Assertions include evidence reads as well as acceptance gates. Refuse before
+# touching either the evidence tree or the fresh audit destination.
+if sys.flags.optimize:
+    raise SystemExit("Python optimization is not supported; remove -O/-OO and PYTHONOPTIMIZE")
+
 root = Path(sys.argv[1]).resolve()
 destination = Path(sys.argv[2])
 destination.mkdir()
