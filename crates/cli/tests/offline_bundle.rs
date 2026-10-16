@@ -480,6 +480,109 @@ fn all_descendant_symlinks_and_nonregular_resources_refuse() -> anyhow::Result<(
 }
 
 #[test]
+fn cancelled_symlink_components_never_substitute_lexical_input_bytes() -> anyhow::Result<()> {
+    use std::os::unix::fs::symlink;
+    let temp = Temp::new()?;
+    let original = temp.0.join("source");
+    source(&original)?;
+    write(&original, "data/input.json", br#"{"Value":"LEXICAL"}"#)?;
+    write(
+        &original,
+        "alternate/data/input.json",
+        br#"{"Value":"TRAVERSED"}"#,
+    )?;
+    std::fs::create_dir(original.join("alternate/nested"))?;
+    symlink("alternate/nested", original.join("link"))?;
+    let mut p = project();
+    p.source_path = Some("../link/../data/input.json".into());
+    let document = original.join("maps/mapper.json");
+    write(
+        &original,
+        "maps/mapper.json",
+        mapping::project_file::encode_pretty(&p)?,
+    )?;
+    // The ordinary runner follows the original traversal, not its lexical
+    // normalization. Both candidate files exist and contain different values.
+    cli::run_project_with_paths(&document, None, None)?;
+    let output: Json =
+        serde_json::from_slice(&std::fs::read(original.join("out/result.json"))?)?;
+    assert_eq!(output["Value"], "TRAVERSED");
+    let lexical: Json =
+        serde_json::from_slice(&std::fs::read(original.join("data/input.json"))?)?;
+    assert_eq!(lexical["Value"], "LEXICAL");
+
+    for owner in ["primary", "named", "output", "named-output"] {
+        let mut p = project();
+        match owner {
+            "primary" => p.source_path = Some("../link/../data/input.json".into()),
+            "named" => p.extra_sources[0].path = "../link/../data/catalog.json".into(),
+            "output" => p.target_path = Some("../link/../out/result.json".into()),
+            "named-output" => {
+                p.extra_targets[0].path = Some("../link/../out/audit.json".into());
+            }
+            _ => unreachable!(),
+        }
+        write(
+            &original,
+            "maps/mapper.json",
+            mapping::project_file::encode_pretty(&p)?,
+        )?;
+        for include_inputs in [false, true] {
+            let out = temp.0.join(format!("{owner}-{include_inputs}"));
+            let error = bundle_project(&original, &out, &options(include_inputs)).unwrap_err();
+            assert!(error.to_string().contains("cancels a normal component"));
+            assert!(!out.exists());
+        }
+    }
+    assert_eq!(std::fs::read_dir(&temp.0)?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn existing_win32_device_aliases_refuse_without_publication() -> anyhow::Result<()> {
+    let temp = Temp::new()?;
+    let original = temp.0.join("source");
+    source(&original)?;
+    for name in [
+        "CONIN$",
+        "conout$.txt",
+        "NUL .txt",
+        "CON  .json",
+        "COM1 .dat",
+        "lpt9 .json",
+        "COM¹ .txt",
+    ] {
+        // These are real ordinary files on the producer host, so a missing-file
+        // error cannot accidentally satisfy the alias refusal regression.
+        let path = format!("resources/{name}");
+        write(&original, &path, b"SYNTHETIC DEVICE ALIAS")?;
+        let mut request = options(false);
+        request.resources.push(path);
+        let out = temp.0.join("refused");
+        let error = bundle_project(&original, &out, &request).unwrap_err();
+        assert!(error.to_string().contains("not a portable file name"));
+        assert!(!out.exists());
+        let mut p = project();
+        p.source_path = Some(format!("../resources/{name}"));
+        write(
+            &original,
+            "maps/mapper.json",
+            mapping::project_file::encode_pretty(&p)?,
+        )?;
+        let error = bundle_project(&original, &out, &options(false)).unwrap_err();
+        assert!(error.to_string().contains("not a portable file name"));
+        assert!(!out.exists());
+        write(
+            &original,
+            "maps/mapper.json",
+            mapping::project_file::encode_pretty(&project())?,
+        )?;
+    }
+    assert_eq!(std::fs::read_dir(&temp.0)?.count(), 1);
+    Ok(())
+}
+
+#[test]
 fn default_data_exclusion_root_escapes_and_limits_refuse_without_publication() -> anyhow::Result<()>
 {
     let temp = Temp::new()?;
@@ -547,21 +650,19 @@ fn preexisting_destinations_and_dangling_links_remain_exact() -> anyhow::Result<
 }
 
 #[test]
-fn offline_profile_refuses_dynamic_http_and_database_snapshot_requirements() -> anyhow::Result<()> {
+fn offline_profile_refuses_dynamic_and_http_sources() -> anyhow::Result<()> {
     let temp = Temp::new()?;
     let original = temp.0.join("source");
     source(&original)?;
-    for mode in ["dynamic", "http", "sqlite"] {
+    for mode in ["dynamic", "http"] {
         let mut p = project();
         if mode == "dynamic" {
             p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
                 node: 0,
                 iteration: Vec::new(),
             });
-        } else if mode == "http" {
-            p.source_options.http_get = Some(serde_json::from_str("{}")?);
         } else {
-            p.source_path = Some("../data/live.sqlite".into());
+            p.source_options.http_get = Some(serde_json::from_str("{}")?);
         }
         write(
             &original,
@@ -572,16 +673,92 @@ fn offline_profile_refuses_dynamic_http_and_database_snapshot_requirements() -> 
         let result = bundle_project(&original, &out, &options(true));
         eprintln!("complete {mode} profile refusal: {result:#?}");
         let error = result.unwrap_err().to_string();
-        assert!(
-            if mode == "sqlite" {
-                error.contains("snapshot")
-            } else {
-                error.contains("static local sources")
-            },
-            "{error}"
-        );
+        assert!(error.contains("static local sources"), "{error}");
         assert!(!out.exists());
     }
+    Ok(())
+}
+
+#[test]
+fn actual_sqlite_inputs_require_snapshots_even_with_shared_paths() -> anyhow::Result<()> {
+    let temp = Temp::new()?;
+    let original = temp.0.join("source");
+    source(&original)?;
+    let database = original.join("data/live.sqlite");
+    format_db::write(
+        &database,
+        &project().source,
+        &[ir::Instance::Group(vec![(
+            "Value".into(),
+            ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE".into())),
+        )])],
+    )?;
+    format_db::write(
+        &database,
+        &project().extra_sources[0].schema,
+        &[ir::Instance::Group(vec![(
+            "Label".into(),
+            ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE LOOKUP".into())),
+        )])],
+    )?;
+    let before = std::fs::read(&database)?;
+    assert!(before.starts_with(b"SQLite format 3\0"));
+    for owner in ["primary", "named", "shared"] {
+        let mut p = project();
+        if owner == "primary" {
+            p.source_path = Some("../data/live.sqlite".into());
+            p.source_options = FormatOptions::default();
+        } else {
+            p.extra_sources[0].path = "../data/live.sqlite".into();
+            p.extra_sources[0].options = FormatOptions::default();
+            if owner == "shared" {
+                // A JSON primary sharing the path must not hide the named
+                // source's SQLite adapter when the inputs are deduplicated.
+                p.source_path = Some("../data/live.sqlite".into());
+            }
+        }
+        write(
+            &original,
+            "maps/mapper.json",
+            mapping::project_file::encode_pretty(&p)?,
+        )?;
+        let out = temp.0.join(format!("refused-{owner}"));
+        let error = bundle_project(&original, &out, &options(true)).unwrap_err();
+        assert!(error.to_string().contains("snapshot"), "{error:#}");
+        assert!(!out.exists());
+        assert_eq!(std::fs::read(&database)?, before);
+    }
+    assert_eq!(std::fs::read_dir(&temp.0)?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn json_document_inputs_with_sqlite_suffixes_bundle_and_run() -> anyhow::Result<()> {
+    let temp = Temp::new()?;
+    let original = temp.0.join("source");
+    source(&original)?;
+    let mut p = project();
+    p.source_path = Some("../data/input.sqlite".into());
+    p.extra_sources[0].path = "../data/catalog.db".into();
+    let primary = br#"{"Value":"JSON NOT SQLITE"}"#;
+    let named = br#"{"Label":"JSON LOOKUP"}"#;
+    write(&original, "data/input.sqlite", primary)?;
+    write(&original, "data/catalog.db", named)?;
+    write(
+        &original,
+        "maps/mapper.json",
+        mapping::project_file::encode_pretty(&p)?,
+    )?;
+    let out = temp.0.join("bundle");
+    let outcome = bundle_project(&original, &out, &options(true))?;
+    assert_eq!(outcome.input_files, 2);
+    assert_eq!(std::fs::read(out.join("data/input.sqlite"))?, primary);
+    assert_eq!(std::fs::read(out.join("data/catalog.db"))?, named);
+    std::fs::remove_dir_all(&original)?;
+    cli::run_project_with_paths(&out.join("project.json"), None, None)?;
+    let output: Json = serde_json::from_slice(&std::fs::read(out.join("out/result.json"))?)?;
+    assert_eq!(output["Value"], "JSON NOT SQLITE");
+    assert_eq!(output["Label"], "JSON LOOKUP");
     Ok(())
 }
 

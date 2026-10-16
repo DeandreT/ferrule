@@ -181,7 +181,7 @@ fn ordinary_component_spelling(name: &OsStr) -> bool {
         })
 }
 
-fn dos_device_name(name: &OsStr) -> bool {
+pub(super) fn dos_device_name(name: &OsStr) -> bool {
     let stem = name
         .as_encoded_bytes()
         .split(|&byte| byte == b'.')
