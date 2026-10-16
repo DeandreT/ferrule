@@ -243,6 +243,7 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
     }
     write_harness(directory.path());
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -255,6 +256,7 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
         .expect("dotnet build starts");
     assert_command_succeeded("dotnet build", &build);
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",
