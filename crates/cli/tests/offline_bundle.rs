@@ -686,18 +686,24 @@ fn actual_sqlite_inputs_require_snapshots_even_with_shared_paths() -> anyhow::Re
     format_db::write(
         &database,
         &project().source,
-        &[ir::Instance::Group(vec![(
-            "Value".into(),
-            ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE".into())),
-        )])],
+        &[ir::Instance::Group(
+            vec![(
+                "Value".into(),
+                ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE".into())),
+            )]
+            .into(),
+        )],
     )?;
     format_db::write(
         &database,
         &project().extra_sources[0].schema,
-        &[ir::Instance::Group(vec![(
-            "Label".into(),
-            ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE LOOKUP".into())),
-        )])],
+        &[ir::Instance::Group(
+            vec![(
+                "Label".into(),
+                ir::Instance::Scalar(Value::String("SYNTHETIC DATABASE LOOKUP".into())),
+            )]
+            .into(),
+        )],
     )?;
     let before = std::fs::read(&database)?;
     assert!(before.starts_with(b"SQLite format 3\0"));
