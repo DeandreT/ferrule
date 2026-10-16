@@ -27,6 +27,7 @@ fn generated_raise_preserves_lazy_messages_and_item_error_order() {
     fs::write(harness.join("Harness.csproj"), HARNESS_PROJECT).unwrap();
     fs::write(harness.join("Program.cs"), HOST).unwrap();
     let built = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "Harness.csproj",
@@ -68,6 +69,7 @@ fn generated_raise_preserves_lazy_messages_and_item_error_order() {
         "actual successful build did not produce the host assembly"
     );
     let launched = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .arg(&assembly)
         .current_dir(&harness)
         .output();
