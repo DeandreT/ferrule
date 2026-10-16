@@ -1,10 +1,19 @@
 //! Bounded file loading and portable sibling configuration resolution.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use super::ConfigError;
+
+/// Immutable raw bytes for an exact host-authorized resource identity. The
+/// implementation owns confinement and digest checks; supplied imports never
+/// reopen the returned identity or scan for a replacement configuration.
+pub trait EdiConfigByteReader {
+    fn read(&self, resource: &Path) -> std::io::Result<Arc<[u8]>>;
+}
 
 const MAX_FILES: usize = 32;
 const MAX_TOTAL_BYTES: usize = 8 * 1024 * 1024;
@@ -15,6 +24,8 @@ pub(super) struct Files {
     root: PathBuf,
     paths: BTreeSet<PathBuf>,
     total_bytes: usize,
+    supplied: Option<Rc<dyn EdiConfigByteReader>>,
+    cache: BTreeMap<PathBuf, Arc<[u8]>>,
 }
 
 impl Files {
@@ -33,14 +44,46 @@ impl Files {
             root,
             paths: BTreeSet::new(),
             total_bytes: 0,
+            supplied: None,
+            cache: BTreeMap::new(),
         })
     }
 
-    pub(super) fn root(&self) -> &Path {
-        &self.root
+    pub(super) fn supplied(
+        root: &Path,
+        reader: Rc<dyn EdiConfigByteReader>,
+    ) -> Result<Self, ConfigError> {
+        if !root.is_absolute()
+            || root.as_os_str().len() > 4096
+            || root.as_os_str().as_encoded_bytes().contains(&0)
+            || root.components().any(|c| matches!(c, Component::ParentDir))
+        {
+            return Err(ConfigError::Invalid(
+                "supplied EDI root must be an approved absolute identity".into(),
+            ));
+        }
+        Ok(Self {
+            root: root.to_path_buf(),
+            paths: BTreeSet::new(),
+            total_bytes: 0,
+            supplied: Some(reader),
+            cache: BTreeMap::new(),
+        })
     }
 
     pub(super) fn confined_file(&self, path: &Path) -> Result<PathBuf, ConfigError> {
+        if self.supplied.is_some() {
+            let path = lexical_path(path);
+            if path.as_os_str().len() > 4096
+                || path.as_os_str().as_encoded_bytes().contains(&0)
+                || !path.starts_with(&self.root)
+            {
+                return Err(ConfigError::Invalid(
+                    "supplied EDI resource escapes its authorized root".into(),
+                ));
+            }
+            return Ok(path);
+        }
         confined_file(&self.root, path)
     }
 
@@ -50,6 +93,44 @@ impl Files {
 
     pub(super) fn read(&mut self, path: &Path) -> Result<String, ConfigError> {
         let canonical = self.confined_file(path)?;
+        if let Some(reader) = &self.supplied {
+            let bytes = match self.cache.get(&canonical) {
+                Some(bytes) => bytes.clone(),
+                None => {
+                    if self.cache.len() >= MAX_FILES {
+                        return Err(ConfigError::Limit("included file count"));
+                    }
+                    let bytes = reader.read(&canonical).map_err(|source| ConfigError::Io {
+                        path: canonical.clone(),
+                        source,
+                    })?;
+                    let total = self
+                        .total_bytes
+                        .checked_add(bytes.len())
+                        .ok_or(ConfigError::Limit("total input size"))?;
+                    if total > MAX_TOTAL_BYTES {
+                        return Err(ConfigError::Limit("total input size"));
+                    }
+                    self.total_bytes = total;
+                    self.paths.insert(canonical.clone());
+                    self.cache.insert(canonical, bytes.clone());
+                    bytes
+                }
+            };
+            let text = String::from_utf8(bytes.to_vec()).map_err(|source| {
+                ConfigError::Invalid(format!("supplied EDI resource is not UTF-8: {source}"))
+            })?;
+            {
+                let doc = parse_document(path, &text)?;
+                let root = doc.root_element();
+                if root.tag_name().name() != "Config" || root.tag_name().namespace().is_some() {
+                    return Err(ConfigError::Invalid(
+                        "supplied EDI resource is not an EDI Config document".into(),
+                    ));
+                }
+            }
+            return Ok(text);
+        }
         let text = read_bounded_text(&canonical, MAX_TOTAL_BYTES, "total input size")?;
         if self.paths.insert(canonical) {
             if self.paths.len() > MAX_FILES {
@@ -65,6 +146,68 @@ impl Files {
         }
         Ok(text)
     }
+
+    pub(super) fn resolve_sibling(
+        &self,
+        path: &Path,
+        relative: &str,
+    ) -> Result<PathBuf, ConfigError> {
+        if self.supplied.is_none() {
+            return resolve_sibling(path, relative, &self.root);
+        }
+        if relative.is_empty()
+            || relative.len() > 4096
+            || relative.contains(['\0', ':'])
+            || relative.starts_with(['/', '\\'])
+        {
+            return Err(ConfigError::Invalid(
+                "supplied EDI include is not a bounded relative reference".into(),
+            ));
+        }
+        self.confined_file(
+            &path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(relative.replace('\\', "/")),
+        )
+    }
+
+    pub(super) fn resolve_message(
+        &self,
+        envelope: &Path,
+        message: &str,
+    ) -> Result<PathBuf, ConfigError> {
+        if self.supplied.is_none() {
+            return resolve_message_config(envelope, message, &self.root);
+        }
+        if message.is_empty()
+            || message.len() > 128
+            || !message
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        {
+            return Err(ConfigError::Invalid(
+                "supplied EDI selected-message identity is invalid".into(),
+            ));
+        }
+        // This is the format's exact selected-message convention, not a scan.
+        // Failure must not discover a different file by its MessageType content.
+        self.resolve_sibling(envelope, &format!("{message}.Config"))
+    }
+}
+
+fn lexical_path(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                result.pop();
+            }
+            other => result.push(other.as_os_str()),
+        }
+    }
+    result
 }
 
 fn confined_file(root: &Path, path: &Path) -> Result<PathBuf, ConfigError> {

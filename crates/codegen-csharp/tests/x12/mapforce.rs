@@ -484,6 +484,7 @@ fn mapforce_profiles_compiled_public_boundaries_match_complete_oracles() {
                 &root,
                 &format!("{name}-build"),
                 Command::new("dotnet")
+                    .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
                     .args([
                         "build",
                         &format!("{name}/Ferrule.Generated.csproj"),
@@ -539,6 +540,7 @@ fn mapforce_profiles_compiled_public_boundaries_match_complete_oracles() {
         &root,
         "host-build",
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -559,6 +561,7 @@ fn mapforce_profiles_compiled_public_boundaries_match_complete_oracles() {
         &root,
         "host-run",
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "run",
                 "--project",
