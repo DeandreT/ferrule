@@ -271,7 +271,7 @@ def main():
     write_new(out / "NuGet.Config", b"<configuration><packageSources><clear /></packageSources></configuration>\n")
     generated = out / "generated"
     cargo_env = {"CARGO_TARGET_DIR": args.target, "CARGO_BUILD_JOBS": "1", "CARGO_INCREMENTAL": "0", "CARGO_TERM_COLOR": "never"}
-    dotnet_env = {"DOTNET_CLI_USE_MSBUILD_SERVER": "0", "MSBUILDDISABLENODEREUSE": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1", "DOTNET_NOLOGO": "1"}
+    dotnet_env = {"DOTNET_CLI_USE_MSBUILD_SERVER": "0", "MSBUILDDISABLENODEREUSE": "1", "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1", "DOTNET_NOLOGO": "1", "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH": "false"}
     steps = []
 
     def step(name, argv, env):
