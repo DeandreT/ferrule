@@ -1,0 +1,57 @@
+[
+  {
+    "id": "stable_ties_and_nulls",
+    "sql": "SELECT id,label,score,active,ratio FROM orders ORDER BY score DESC NULLS LAST,id ASC NULLS LAST",
+    "bindings": {},
+    "types": ["int", "string", "int", "bool", "float"],
+    "expected": [
+      [["int",50],["string","x' OR 1=1 --"],["int",30],["bool",false],["float",4.0]],
+      [["int",10],["string","alpha"],["int",20],["bool",true],["float",1.5]],
+      [["int",30],["string","alpha"],["int",20],["bool",false],["float",2.5]],
+      [["int",20],["string","Alpha"],["int",10],["bool",true],["float",3.0]],
+      [["int",40],["null"],["null"],["null"],["null"]]
+    ]
+  },
+  {
+    "id": "binary_comparison_and_duplicate_projection",
+    "sql": "SELECT label,score FROM orders WHERE score >= :minimum AND label COLLATE BINARY = :label ORDER BY score DESC NULLS LAST,id ASC NULLS LAST",
+    "bindings": {"minimum": 10, "label": "alpha"},
+    "types": ["string", "int"],
+    "expected": [[["string","alpha"],["int",20]],[["string","alpha"],["int",20]]]
+  },
+  {
+    "id": "nulls_first",
+    "sql": "SELECT id FROM orders ORDER BY score ASC NULLS FIRST,id ASC NULLS LAST",
+    "bindings": {},
+    "types": ["int"],
+    "expected": [[["int",40]],[["int",20]],[["int",10]],[["int",30]],[["int",50]]]
+  },
+  {
+    "id": "explicit_null_test",
+    "sql": "SELECT id,label FROM orders WHERE label IS NULL ORDER BY id ASC NULLS LAST",
+    "bindings": {},
+    "types": ["int", "string"],
+    "expected": [[["int",40],["null"]]]
+  },
+  {
+    "id": "parameter_is_data",
+    "sql": "SELECT id FROM orders WHERE label COLLATE BINARY = :label ORDER BY id ASC NULLS LAST",
+    "bindings": {"label": "x' OR 1=1 --"},
+    "types": ["int"],
+    "expected": [[["int",50]]]
+  },
+  {
+    "id": "boolean_and_float_parameters",
+    "sql": "SELECT id,active,ratio FROM orders WHERE active = :active AND ratio >= :ratio ORDER BY id ASC NULLS LAST",
+    "bindings": {"active": 1, "ratio": 2.0},
+    "types": ["int", "bool", "float"],
+    "expected": [[["int",20],["bool",true],["float",3.0]]]
+  },
+  {
+    "id": "empty_result",
+    "sql": "SELECT id FROM orders WHERE score > :minimum ORDER BY id ASC NULLS LAST",
+    "bindings": {"minimum": 100},
+    "types": ["int"],
+    "expected": []
+  }
+]

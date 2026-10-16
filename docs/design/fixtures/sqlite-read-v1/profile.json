@@ -1,0 +1,24 @@
+{
+  "kind": "sqlite_read_v1",
+  "table": "orders",
+  "key": "id",
+  "projection": [
+    {"field": "id", "column": "id"},
+    {"field": "label", "column": "label"},
+    {"field": "score", "column": "score"},
+    {"field": "active", "column": "active"},
+    {"field": "ratio", "column": "ratio"}
+  ],
+  "parameters": [
+    {"name": "minimum", "type": "int", "runtime_parameter": "minimum"},
+    {"name": "label", "type": "string", "runtime_parameter": "label"}
+  ],
+  "all": [
+    {"op": "ge", "column": "score", "type": "int", "parameter": "minimum"},
+    {"op": "eq", "column": "label", "type": "string", "parameter": "label"}
+  ],
+  "order_by": [
+    {"column": "score", "type": "int", "direction": "desc", "nulls": "last"},
+    {"column": "id", "type": "int", "direction": "asc", "nulls": "last"}
+  ]
+}
