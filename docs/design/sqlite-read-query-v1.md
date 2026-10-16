@@ -233,9 +233,12 @@ row, a typed kind, SQLite codes and the original cause. Runtime errors do not
 invent graph node IDs. Field/value order and the logical failure protocol above
 are the cross-host contract; OS-specific error text is retained separately.
 
-The CLI filesystem loader dispatches only when the explicit profile is present,
-for primary and static named SQLite inputs. Existing `RunOptions` supplies
-resolved parameters and cancellation through the existing run context. Named
+The proposed CLI filesystem loader dispatches only when the explicit profile is
+present, for primary and static named SQLite inputs. Existing `RunOptions` can
+supply resolved parameters, but acquisition cancellation requires new or extended
+host-control plumbing: the current execution context is created after inputs are
+loaded, and `before_publish` is not an acquisition cancellation token. The query
+control must reach the acquisition owner before opening the database. Named
 inputs keep existing host acquisition order. All-target and selected-target
 runs use the same query input acquisition; output selection does not widen
 required-source closure. Filesystem Preview must use the same acquisition owner

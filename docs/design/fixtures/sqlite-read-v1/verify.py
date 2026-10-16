@@ -7,6 +7,10 @@ import sqlite3
 import tempfile
 
 
+if not __debug__:
+    raise RuntimeError("verification requires Python assertions; do not use optimized execution")
+
+
 def tagged(value, kind):
     if value is None:
         return ["null"]
