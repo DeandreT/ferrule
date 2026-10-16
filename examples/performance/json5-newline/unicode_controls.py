@@ -12,11 +12,32 @@ import sys
 from xml.sax.saxutils import escape
 
 
+def control_environment(root):
+    env = os.environ.copy()
+    overrides = sorted(key for key in env
+        if key.upper().startswith(("COMPLUS_", "CORECLR_", "DOTNET_"))
+        and key.upper() != "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH")
+    if overrides:
+        raise ValueError("CLR/profiler overrides are not permitted: " + ", ".join(overrides))
+    env.update({"DOTNET_NOLOGO": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+        "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH": "false",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
+        "MSBUILDDISABLENODEREUSE": "1", "DOTNET_CLI_HOME": str(root / ".dotnet-home"),
+        "NUGET_PACKAGES": str(root / ".nuget"), "TMPDIR": str(root / ".tmp")})
+    return env
+
+
 def main():
+    # The prerequisite, source-closure and observation assertions below are
+    # acceptance gates. Refuse -O/-OO/PYTHONOPTIMIZE before any preparation.
+    if not __debug__:
+        raise SystemExit("Unicode controls require Python assertions; optimized execution is not permitted")
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("repo", "baseline_library", "candidate_library", "prerequisite", "root", "dotnet"):
         parser.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
     args = parser.parse_args()
+    root = args.root.absolute()
+    env = control_environment(root)
     for name in vars(args):
         if name != "root":
             setattr(args, name, getattr(args, name).resolve(strict=True))
@@ -61,18 +82,11 @@ def main():
         remaining -= count
     digest.update(b'aa"\n}\n')
     expected = digest.hexdigest()
-    root = args.root.absolute()
     root.mkdir()  # Refuse overwrite/resume of any original evidence.
     for name in ("commands", ".tmp", ".dotnet-home", ".nuget", "observations"):
         (root / name).mkdir()
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), "PR_SET_CHILD_SUBREAPER failed")
-    env = os.environ.copy()
-    assert not [key for key in env if key.startswith(("COMPlus_", "CORECLR_", "DOTNET_"))]
-    env.update({"DOTNET_NOLOGO": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
-        "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_CLI_USE_MSBUILD_SERVER": "0",
-        "MSBUILDDISABLENODEREUSE": "1", "DOTNET_CLI_HOME": str(root / ".dotnet-home"),
-        "NUGET_PACKAGES": str(root / ".nuget"), "TMPDIR": str(root / ".tmp")})
     campaign = module.Campaign(root, env)
     module.save(root / "binding.json", {"sources": records, "differences": sorted(differences),
         "prerequisite_receipt": module.identity(receipts[0]), "expected_output_sha256": expected})
