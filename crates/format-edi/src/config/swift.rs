@@ -477,7 +477,7 @@ fn capture(format: &str, path: Vec<String>) -> Result<SwiftValueExpr, SwiftConfi
         'a' => SwiftCharset::Alphabetic,
         'c' | 'h' => SwiftCharset::Alphanumeric,
         'd' => SwiftCharset::Decimal,
-        'x' | 'y' | 'z' => SwiftCharset::Text,
+        'x'..='z' => SwiftCharset::Text,
         other => {
             return Err(SwiftConfigError::Invalid(format!(
                 "unsupported SwiftFormat charset `{other}`"
