@@ -1368,7 +1368,9 @@ mod prelaunch_exhaustion_tests {
                 .components()
                 .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
         {
-            return Err(io::Error::other("literal normalized absolute root required"));
+            return Err(io::Error::other(
+                "literal normalized absolute root required",
+            ));
         }
         Dir::trusted(
             root.parent()
@@ -1401,7 +1403,10 @@ mod prelaunch_exhaustion_tests {
         )
         .unwrap();
         assert_eq!(refusal["complete"], false);
-        assert_eq!(refusal["reason"], "operation journal capture budget exhausted");
+        assert_eq!(
+            refusal["reason"],
+            "operation journal capture budget exhausted"
+        );
         assert_eq!(refusal["charged"]["records"], records);
         let trigger = &refusal["triggering_original"];
         assert_eq!(trigger["sequence"], records + 1);
