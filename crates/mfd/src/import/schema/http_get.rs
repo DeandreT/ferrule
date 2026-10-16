@@ -161,7 +161,7 @@ fn read_get(
         .filter(|root| !root.is_empty())
         .unwrap_or_else(|| payload.attribute("name").unwrap_or("root"));
     let schema =
-        resolve_resource_reference(mfd_path, resources, schema_file, "HTTP response XML Schema")
+        super::resolve_xml_resource(mfd_path, resources, schema_file, "HTTP response XML Schema")
             .and_then(|schema_path| {
                 read_xml_schema_file(&schema_path, Some(root_name), resources)
                     .map_err(|error| error.to_string())
