@@ -51,6 +51,8 @@ layout sidecars, compiled programs or system dependencies. An update-existing
 workbook template can be an explicitly declared resource. A configured SQLite
 instance cannot be copied through `--include-inputs`: it requires a separate
 database snapshot/backup contract, including live journal state.
+This restriction follows the effective input adapter: an explicit JSON document
+whose filename ends in `.sqlite`, for example, remains a copyable JSON input.
 
 This profile accepts static local sources. HTTP transport and dynamic source
 loading refuse before publication; they cannot establish a finite offline input
@@ -114,8 +116,10 @@ Selected resource/project/catalog names use normalized relative paths with
 forward slashes. Absolute paths, drive/URI spellings, parent/current/empty
 components, nonportable reserved names and filename characters refuse.
 Configured project input/output references may use safe parent components to
-reach another location inside the chosen source root; traversal outside it
-refuses. Case and Unicode-normalization aliases, file/directory collisions,
+reach another location inside the chosen source root. Only leading parent
+components are accepted; cancelling a configured normal component with `..`
+refuses because that component could be a symlink. Traversal outside the root
+also refuses. Case and Unicode-normalization aliases, file/directory collisions,
 duplicate resource declarations, missing files and nonregular files refuse.
 Bundle metadata names are reserved. Existing intentional selected-target output
 path sharing remains part of the project.
@@ -148,6 +152,7 @@ application payload/metadata budgets, not a process RSS bound.
 Acquisition and publication materialize the declared files; this is not a
 streaming export. The existing package manifest also retains its 64 KiB limit.
 
-The filename policy includes the ordinary reserved device spellings and their
-superscript-digit forms documented in
+The filename policy includes the ordinary reserved device spellings, `CONIN$`,
+`CONOUT$`, reserved stems with spaces before an extension, and superscript-digit
+forms documented in
 [Microsoft's filename conventions](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).

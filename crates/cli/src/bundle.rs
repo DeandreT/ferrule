@@ -162,10 +162,14 @@ pub fn bundle_project(
         .map_or("", |(parent, _)| parent);
     let mut rebases = Vec::new();
     let mut inputs = BTreeSet::new();
+    let mut database_inputs = BTreeSet::new();
     let mut outputs = Vec::new();
     if let Some(path) = &mut project.source_path {
         rebase(path, project_parent, "source_path", &mut rebases)?;
         inputs.insert(path.clone());
+        if is_database(path, &project.source_options) {
+            database_inputs.insert(path.clone());
+        }
     }
     if let Some(path) = &mut project.target_path {
         rebase(path, project_parent, "target_path", &mut rebases)?;
@@ -179,6 +183,9 @@ pub fn bundle_project(
             &mut rebases,
         )?;
         inputs.insert(source.path.clone());
+        if is_database(&source.path, &source.options) {
+            database_inputs.insert(source.path.clone());
+        }
     }
     for (i, target) in project.extra_targets.iter_mut().enumerate() {
         if let Some(path) = &mut target.path {
@@ -242,7 +249,7 @@ pub fn bundle_project(
         for input in &inputs {
             // A live SQLite database cannot be copied correctly as one main
             // file without a snapshot/backup contract. Never guess at sidecars.
-            if is_database(input) {
+            if database_inputs.contains(input) {
                 bail!(
                     "SQLite instance copying needs a database snapshot; bundle resources and supply the database at runtime"
                 );
@@ -315,7 +322,25 @@ pub fn bundle_project(
     })
 }
 
-fn is_database(path: &str) -> bool {
+fn is_database(path: &str, options: &mapping::FormatOptions) -> bool {
+    // Match read_instance's explicit-adapter precedence before its suffix
+    // fallback. A JSON document named input.sqlite is not a SQLite instance.
+    if options.xbrl.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.external_source.is_some()
+        || options.pdf.is_some()
+        || options.flextext.is_some()
+        || options.protobuf.is_some()
+        || options.edi_kind.is_some()
+        || options.xml_document
+        || options.json_document
+        || options.json5
+        || options.json_lines
+        || options.fixed_width.is_some()
+    {
+        return false;
+    }
     Path::new(path)
         .extension()
         .and_then(|p| p.to_str())
@@ -349,10 +374,17 @@ fn rebase(
     } else {
         parent.split('/').collect::<Vec<_>>()
     };
+    let mut normal_seen = false;
     for component in forward.split('/') {
         match component {
             "." | "" => {}
             ".." => {
+                // Only ancestors of the already no-follow-opened project can
+                // be cancelled safely. A configured normal component may be a
+                // symlink, so normal/.. must not be normalized away unseen.
+                if normal_seen {
+                    bail!("configured path `{before}` cancels a normal component before `..`");
+                }
                 if components.pop().is_none() {
                     bail!("configured path `{before}` traverses outside the bundle source root");
                 }
@@ -360,6 +392,7 @@ fn rebase(
             value => {
                 portable(value)?;
                 components.push(value);
+                normal_seen = true;
             }
         }
     }
@@ -383,20 +416,11 @@ fn portable(path: &str) -> anyhow::Result<()> {
         bail!("bundle path exceeds {MAX_PATH_COMPONENTS} components");
     }
     for component in path.split('/') {
-        let stem = component
-            .split('.')
-            .next()
-            .unwrap_or("")
-            .to_ascii_uppercase();
         if component.ends_with(['.', ' '])
             || component
                 .chars()
                 .any(|c| c.is_control() || "<>:\"|?*".contains(c))
-            || ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
-            || ["COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³"].contains(&stem.as_str())
-            || (stem.len() == 4
-                && (stem.starts_with("COM") || stem.starts_with("LPT"))
-                && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+            || super::project_paths::dos_device_name(std::ffi::OsStr::new(component))
         {
             bail!("bundle path `{path}` is not a portable file name");
         }
@@ -647,6 +671,79 @@ fn same_metadata(a: &Metadata, b: &Metadata) -> anyhow::Result<bool> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn configured_paths_refuse_cancelled_normal_components() {
+        for stored in [
+            "link/../input.json",
+            "../link/../data/input.json",
+            r"..\link\..\data\input.json",
+            "../link/./../data/input.json",
+        ] {
+            let mut path = stored.to_owned();
+            let error = rebase(&mut path, "maps", "source_path", &mut Vec::new())
+                .expect_err("normal components must not disappear before no-follow validation");
+            assert!(error.to_string().contains("cancels a normal component"));
+            assert_eq!(path, stored);
+        }
+    }
+
+    #[test]
+    fn portable_names_refuse_all_win32_device_aliases() {
+        for name in [
+            "CONIN$",
+            "conout$.txt",
+            "NUL .txt",
+            "con  .json",
+            "COM1 .dat",
+            "lpt9 .json",
+            "COM¹ .txt",
+            "LPT³.log",
+        ] {
+            assert!(portable(&format!("resources/{name}")).is_err(), "{name}");
+        }
+        for name in ["CONIN$-safe.txt", "NUL-file.txt", "COM0.txt", "LPT10.json"] {
+            assert!(portable(&format!("resources/{name}")).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn database_snapshot_policy_respects_explicit_document_adapters() {
+        let default = mapping::FormatOptions::default();
+        for path in ["input.db", "input.sqlite", "input.SQLITE3"] {
+            assert!(is_database(path, &default));
+            // Tabular identity is only a fallback for unrecognized suffixes;
+            // it does not override a recognized SQLite filename.
+            assert!(is_database(
+                path,
+                &mapping::FormatOptions {
+                    tabular_kind: Some(mapping::TabularBoundaryKind::Csv),
+                    ..Default::default()
+                }
+            ));
+            for options in [
+                mapping::FormatOptions {
+                    json_document: true,
+                    ..Default::default()
+                },
+                mapping::FormatOptions {
+                    json5: true,
+                    ..Default::default()
+                },
+                mapping::FormatOptions {
+                    json_lines: true,
+                    ..Default::default()
+                },
+                mapping::FormatOptions {
+                    xml_document: true,
+                    ..Default::default()
+                },
+            ] {
+                assert!(!is_database(path, &options));
+            }
+        }
+        assert!(!is_database("input.json", &default));
+    }
 
     struct Temp(PathBuf);
     impl Temp {
