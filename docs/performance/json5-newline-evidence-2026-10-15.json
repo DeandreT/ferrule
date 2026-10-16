@@ -1,0 +1,900 @@
+{
+  "source_base": "60ff0466a4d1e7fbefbaf428b8b3bb95f18ce833",
+  "baseline_report_sha256": "44bff9f0dff395c2af346352a33eca92960a1ddaaca06a9b4e5f6c5fccad4ed7",
+  "baseline_csv_sha256": "e5ab7030e1c88e0812ceb7b49e003d7297776cc87cbc8cda402a4e1fcf5b8e57",
+  "runtime_files": 96,
+  "runtime_manifest": [
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Ferrule.Runtime.csproj",
+      "bytes": 452,
+      "sha256": "89c5d841b70544c9f88079f34db0fa1da147f240480963d43d528a63bfa87767"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleAdjacencyTree.cs",
+      "bytes": 9565,
+      "sha256": "0141fbb88f75d3a8705e924cd17332599d294ff754c50a1faa96ff6ae07c8ea6"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleAggregates.cs",
+      "bytes": 12411,
+      "sha256": "71b1bf56ca4cf0c4625bad0546ae9d13bba20161e37a0ff69c44cfdb11154c83"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleCsv.cs",
+      "bytes": 19795,
+      "sha256": "7a135c675699c404d3ff36c073be8dec6441020ee96cde748ef440516387af6e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs",
+      "bytes": 22058,
+      "sha256": "d68ef26ef5bd1d74ef1e63682e5d4bd142d581284b03723ceb1c0e284037e030"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleDelimitedText.cs",
+      "bytes": 14576,
+      "sha256": "d56102106da46c8e4b3bbfdf687d72b1b31f628faf48dce5aaac2125fd6e7f5c"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleDynamicDocuments.cs",
+      "bytes": 1480,
+      "sha256": "a4c2c01a32b7d42951726c3ce79738a38dc099494d402510f6505708b65304d2"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleDynamicSources.cs",
+      "bytes": 5687,
+      "sha256": "b9b398e0649a34a295cd464d3b7db58739bdca5eba7e1566ef24958f024d8525"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleDynamicTargets.cs",
+      "bytes": 2204,
+      "sha256": "8b6f3ed2862b8fb7f80212f704e636be71286b403eb8130fcd8fd6b39d96ad77"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleEmbeddedSchema.cs",
+      "bytes": 8977,
+      "sha256": "57f8d95ff71dd78af54ecdc1c40adae985ed9e244484e152f3eaa9f7a9c7f533"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleExecutionContext.cs",
+      "bytes": 7072,
+      "sha256": "2f68ef69d803ee83c608525b14a5fae4c84a936f393c817e3bc5e9eeb7e6f15b"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFailures.cs",
+      "bytes": 1314,
+      "sha256": "77a9292ecf363a16a90cf1abe97f059442d8192b2d6d10ffdf23d14b7994f909"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFilterMap.cs",
+      "bytes": 15476,
+      "sha256": "b41c18c6b35b391d2dc36be2edc594d1f3b5f1659c30b04ce46e6c74d4fc7765"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.DateTime.cs",
+      "bytes": 26657,
+      "sha256": "47c3ef5265b1240d42cf1c57f7e9230876f0ccb11fc267956e9396c6bb231b27"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.DateTimeAdd.cs",
+      "bytes": 18184,
+      "sha256": "774acdde0e4a3235c1b095e4a6c8bca305cbae626372a583fb7bfbe2a3672319"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.DateTimeFormatting.cs",
+      "bytes": 10608,
+      "sha256": "d45a8282828c2ca63bea8b7341e797c1406760e7ad9ac159774baf2323a9928e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.DateTimePictures.cs",
+      "bytes": 24705,
+      "sha256": "7a66dfad41bbcbfd09eca8259c22724f48fa66bdd3a63e3abc00f59866a552c1"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.EdifactDateTime.cs",
+      "bytes": 4743,
+      "sha256": "50642fa63e6db7a1eb9db747c129a1d452ce404dc63df0fa526f3f94032ea5d9"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.FormatNumber.cs",
+      "bytes": 14969,
+      "sha256": "35dbdef8dd1a36d73f53b234386b6efb8f2331324c9cbddede5da2b6681da32b"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.Json.cs",
+      "bytes": 15639,
+      "sha256": "0ba0e8eed500c2eaecb46fba311e8cda7ad20be6231707f79b557f0f0475b3d1"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.Numeric.cs",
+      "bytes": 22719,
+      "sha256": "1ad770653771be1b881e25e8e0be6bf17acf4884d98baec14f87cab365c2417f"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.Regex.cs",
+      "bytes": 8249,
+      "sha256": "61c011340793d2407bb8caa75009452f608bfa35699deebef00f89a18765b289"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.Strings.cs",
+      "bytes": 18835,
+      "sha256": "7a86b8234ce533d294f2a4f1066e80f00b121a2e20563891ba115caf7abef044"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleFunctions.cs",
+      "bytes": 11819,
+      "sha256": "645b1f25f4c6f050af0a09dbba3f976b8a1a0e089af16e096156e9b97422fa29"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleGrouping.cs",
+      "bytes": 10897,
+      "sha256": "3a6f1f590f98b4019bc96d90f69857a4c3e748cb1d0df42b17dc9de68e2cf7de"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleInstance.cs",
+      "bytes": 8588,
+      "sha256": "6231ccde0d49761039a28584de2dbb95903edc7f5edba90e89ff6212bb03c5a6"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleJoins.cs",
+      "bytes": 10530,
+      "sha256": "8c50e757a37a6976ec2c8b5029c12a21b0e1b6ef01fd7def3c3a028afa1168aa"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerrulePathHierarchy.cs",
+      "bytes": 6362,
+      "sha256": "ab611b191ebb0bb80769ef397c2e9a83e370b7a9d1845f25f22aa8eb959dd2d8"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerrulePrimaryRoot.cs",
+      "bytes": 10174,
+      "sha256": "57b539574a4f9d40603723d4c95d82c79caae0bebe3e7539aa522f5c55e1c70a"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleRecursiveFilter.cs",
+      "bytes": 11188,
+      "sha256": "45af38f65a1423b16a4288efcff904bc3e0cffd31429d30c07979eff0f38b0b1"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleRuntimeException.cs",
+      "bytes": 8524,
+      "sha256": "ae161dcfbbfc60d4fdbd00516f3c4cf33152c153f9aae90d67ccaad046a25dd0"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.BinaryTables.cs",
+      "bytes": 208650,
+      "sha256": "186d94840cd752c11ca16f403b16d540616ee6c3f5a59ee29acec97c5a01a0b4"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.BoundaryCompiler.cs",
+      "bytes": 7789,
+      "sha256": "a377a431a027b3672d5f1b6e8d4dd464055283dd1fdb225136cf189125e5a0b4"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.BoundaryParser.cs",
+      "bytes": 21282,
+      "sha256": "e49100bf775bd456e82e7ab088dd1ab19ece6a7e4d4e48da1943c6f08b0b25a2"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.GraphemeTables.cs",
+      "bytes": 29987,
+      "sha256": "d0396ecd163250864b8ccafc6ece472a9f431e364c3e762269e90337fc087108"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.Program.cs",
+      "bytes": 16651,
+      "sha256": "c1ed8dcbd2acf6e6a6547f12b5522d94c816a18d32f7ad7a6275dac37c90730b"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.Properties.cs",
+      "bytes": 13039,
+      "sha256": "737f339ca048e4b3893151bccff586933b3a03647cc5f28877103d15abc8fd2e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.ScriptTables.cs",
+      "bytes": 75368,
+      "sha256": "db8a2a90d817a1c0b3f3d145361b2f0e2e9b722cfdbae3dceaebb14749ae121b"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleScalarRegex.cs",
+      "bytes": 50443,
+      "sha256": "3e3d34eb7fa5e5ed35cfbcfef9e3303842c0d92a6807bfb6fc8eb46f15026661"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleSequences.cs",
+      "bytes": 33836,
+      "sha256": "6bc361ecd9a72be9e4eaa4740e388b7d9515e78fd390ef7865fe12c1d9f5deef"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleTargetSelection.cs",
+      "bytes": 646,
+      "sha256": "a92ce6a79e70e51253c7958041bfb767b0c8228ae0e5d08b14db809226e433c7"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleUserFunctions.cs",
+      "bytes": 4382,
+      "sha256": "1da4507e3660753a1e42a71f74fa9ac8f085530f2777540629b061a6bf129e12"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleValue.cs",
+      "bytes": 6612,
+      "sha256": "9ad3454c0d27f4ee029aa9cfed14ab231b9bb79986f507a5033eecdacbd1b383"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleValueMaps.cs",
+      "bytes": 7736,
+      "sha256": "5cea0db904036772d1e26e6d51122bb482e95145033258ab3a2a8ea5c4c0a572"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Boundary.cs",
+      "bytes": 879,
+      "sha256": "47310e99fc5f6d1b309ca85b8963add11b0ed12045612571b4c53407d9f7d41d"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.DocumentOutputs.cs",
+      "bytes": 5312,
+      "sha256": "9b2f5eaf2e38c96a2aa01b69452a1753059459f83ca0fd85563635a94abbc526"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.DocumentSet.cs",
+      "bytes": 2879,
+      "sha256": "7aea259b8e43e1a273c9d7808c04d0d88e31169cd4a02c965244747229ce471b"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.DynamicInputDocumentOutputs.cs",
+      "bytes": 3289,
+      "sha256": "56ec1ba8b4a59f42a8f849534450243aa083b1509c0bc74e6b93dc0d9dc3a913"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.DynamicInputDocumentSet.cs",
+      "bytes": 2791,
+      "sha256": "2d51d4edcc4f92e1dc2c5a79ff392ae09699d486fb19a009d5cdf810204f70f4"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.DynamicSources.cs",
+      "bytes": 6626,
+      "sha256": "636156adeba9530369c7fc7cdd4396af85747edf3f419212a82f96b6e10832db"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Input.Structured.cs",
+      "bytes": 17572,
+      "sha256": "c462aaf14f6e1aa1d2a6ffb24a73c34773bcfa7a6226337e5b90eaccbfd1f150"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Input.StructuredProjection.cs",
+      "bytes": 10208,
+      "sha256": "6b8f66a656d277d950178062bdddecf982bdc9c1a8d3c7857cb838d8020be486"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Input.StructuredSchema.cs",
+      "bytes": 10660,
+      "sha256": "45340b5774c1a9341ca892d99f31b32aa91416de8e55941613f4071db13ffe28"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Input.cs",
+      "bytes": 33110,
+      "sha256": "906dbd804af4b24bcba51daaece3ef7ac6ee142b3cb3e0b71edc429af590befb"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.InputDocumentOutputs.cs",
+      "bytes": 2336,
+      "sha256": "301bdd726dc72c6c0ac3c9f418da127ce802a60641f969a13ceefa07f592f9c8"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.InputDocumentSet.cs",
+      "bytes": 2068,
+      "sha256": "096f5d086fa3a5a80d6bebae6994c85b1868175e1da95daaef30660ba71b7553"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.InputSet.cs",
+      "bytes": 8327,
+      "sha256": "78381d4e0402f43e30668f12b28994b6382b8af1090f1d77da81c78000530ed4"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.Output.cs",
+      "bytes": 12139,
+      "sha256": "1ee810d88dae43206e9ce472dd39da02b3082b4b7104ad310148e42c35aa0df9"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.OutputSet.cs",
+      "bytes": 3035,
+      "sha256": "99fbd9043d9064dad66c2442c8371133386f5febed8eb1cb6e50d7793eafffa4"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXml.cs",
+      "bytes": 62593,
+      "sha256": "858442df9a3a7cc790a78a4d70ad3e4cea0c403f4fa6baf5681d8d8ded9921d3"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXmlMixedContent.cs",
+      "bytes": 9265,
+      "sha256": "9001a1c18cf5ef11ca91bfbb48e1187c06f6a3530aa84ab5515a18ca348d3b45"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/FerruleXmlTypeOrigin.cs",
+      "bytes": 1428,
+      "sha256": "dda3035f09d37d1b17a380e0ff73ef245eef1621492d5966e02ae51a6612aa32"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.AllowedValues.cs",
+      "bytes": 13877,
+      "sha256": "de3b489aa00df94fcb798be4eca33d4f5fba90044ede0aa43db789643cc65246"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Canonical.cs",
+      "bytes": 23395,
+      "sha256": "75f03f351243d00bddfe1c6f5f16ed9ba711c7d7e05ea82dba073a988673fea6"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Contains.cs",
+      "bytes": 13252,
+      "sha256": "da8dcee6f7ce8b58e42494bbdc2bd3974e4a752a83e90fb85becd12eca288d1e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.DependentSchemas.cs",
+      "bytes": 9200,
+      "sha256": "21fcfd35f9941de7f695d2d3d2680c507e2ffc9ee246f2911d7cf2115db49d09"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.MultipleOf.cs",
+      "bytes": 12169,
+      "sha256": "172045bdb5e1ef50894afb4faeacd6d88d4dfa029eefa3f34e5c9592a5a65249"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.ObjectOpenness.cs",
+      "bytes": 570,
+      "sha256": "b609c95a73e0baadea5e8e19c44284f58f66dc5fdc4c09bc74bfd7344fb93c2e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PatternProperties.cs",
+      "bytes": 16525,
+      "sha256": "0ebbb0d0ef66475194dbb661b8440726acc4aeab5480349e903389562823580f"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Patterns.cs",
+      "bytes": 32471,
+      "sha256": "b9e931cb66c9282f1d25983a0e21d476b16f538839f6e6af913da0550f9f26b5"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PropertyCounts.cs",
+      "bytes": 4464,
+      "sha256": "1dd74f181a538913c59cec5a0cddf777831e94e1e9d44a979f1a2029c3c9498d"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PropertyDependencies.cs",
+      "bytes": 10564,
+      "sha256": "74b02aa4bad7320d2f9d785d4bdaef00ba2a1c37f1be8624c3ebe01b854c84c0"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PropertyNames.cs",
+      "bytes": 23317,
+      "sha256": "70901a9c415f23c3e6e2fb9478273c54a76d587c7b101d9951963e8bdcce08be"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.UniqueItems.cs",
+      "bytes": 10683,
+      "sha256": "8ef99ae09db9acc5f680ac6fba7b84d0c92e6130754b97a9c00e948c671aa108"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.cs",
+      "bytes": 137564,
+      "sha256": "e49a2ce07960970a8183b408d43e529d5504b47852ae0b9e60869acb4adc6b52"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Codec.cs",
+      "bytes": 5476,
+      "sha256": "bbcacd2017eebb7e9e8dc02088a27870c5310b61d9c7b845697e81ae8ace0577"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Schema.cs",
+      "bytes": 12583,
+      "sha256": "66a5778f38d012cc19fd2a85e8b8782187d1d8b27d7b58f001ab3ec584c4f4a5"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5.Boundary.Errors.cs",
+      "bytes": 4212,
+      "sha256": "d163aa778bbc25417307be2818e50ddb5865f84a7045e15661d79739d88758e2"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5.Boundary.cs",
+      "bytes": 2269,
+      "sha256": "600954f82473662db82d69b179e7a52c720c48ee1a7354af2c50d981e7ef7a3e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Boundary.cs",
+      "bytes": 832,
+      "sha256": "e33cd35006ec590c694516f8ec84da4fe533d92aa97915baef754ad1aec98c1f"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Errors.cs",
+      "bytes": 2461,
+      "sha256": "1d8b9261123980c20f81834f418861564bcaa31c1a26a764e2bce78356b290fa"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Numbers.cs",
+      "bytes": 5773,
+      "sha256": "d16b42893d104249251e5a8910e4223e49f09cbd353656363836305d2dee9f6d"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.Strings.cs",
+      "bytes": 7967,
+      "sha256": "4ba0d9d391445ed215cfc013a74408afaa9b97149922dca90d892c9f82c910aa"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson5Syntax.cs",
+      "bytes": 14118,
+      "sha256": "0042d935c7ee4aa6f11cd15ab1b7156035b948c0211965af70b8ae6c61c49dbd"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/Json5/Json5Identifiers.cs",
+      "bytes": 48930,
+      "sha256": "f6ba3bd7d8e181244da86f26f87e8e8ba5a9384f0fd8957d443507a6af29fb2c"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/ScalarPathResolver.cs",
+      "bytes": 3224,
+      "sha256": "66fbf26ab88520253b3c2ecdfca028e8e97f23f36a49a5f7f9d40a5cffb293cc"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/ScopeContext.CollectionFind.cs",
+      "bytes": 3008,
+      "sha256": "46d5ced229319d4249b8b93a5e3c1131941b39cf3bec6332652fc6bf312ef790"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/ScopeContext.cs",
+      "bytes": 169588,
+      "sha256": "5c85cd5b2811020cc8e275684bb6de73726cabefe7be44e600f52307063b4c23"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Completion.cs",
+      "bytes": 31817,
+      "sha256": "34508a0db56fb619c570c60a62ea373524e1f8de70a71ad43f5c2ac44dab2785"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Lexical.cs",
+      "bytes": 9840,
+      "sha256": "cbee4272a40d4f8d435371b3a2263f7c61312d1a6322ce22e5e3ba31296e96df"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Numeric.cs",
+      "bytes": 1019,
+      "sha256": "ec457027d2275a213efa9bc17f9e23754ac8522c6b940a20d1eead717be6be02"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Reader.cs",
+      "bytes": 10421,
+      "sha256": "b709596d2f181c6d8ae20af844e48625f524246e8377e0f160a9020c7f660098"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Schema.cs",
+      "bytes": 36081,
+      "sha256": "648fc7aaa876256889033ff7f16ed76977c820aeb07fa0d088321f90512c8cbb"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.Writer.cs",
+      "bytes": 14315,
+      "sha256": "b1ea47d666cdd29a381a4fa56297d875cfdd9c11aae4411e0a5f8fadfde6e02a"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12.cs",
+      "bytes": 42623,
+      "sha256": "718230a8b97f3f32ea9d940634d9eb84c2316462537901f1209917461ff3430e"
+    },
+    {
+      "path": "runtime/csharp/Ferrule.Runtime/X12/FerruleX12Exception.cs",
+      "bytes": 759,
+      "sha256": "2dc111883b414b4531ca317de84a1339c8ee6495d4568d128cf9f11f5283b998"
+    }
+  ],
+  "runtime_manifest_sha256": "e56b6846c6d7eac6de64bffe73cbf327107d8ec194fd9d0d93945c21001b9436",
+  "runtime_manifest_serialization": "UTF8 json.dumps(runtime_manifest, indent=2) with final LF",
+  "runtime_differences": [
+    "runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Canonical.cs",
+    "runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Codec.cs"
+  ],
+  "sources": {
+    "crates/codegen-csharp/examples/json5_allocation_fixture.rs": "44a41cf4e53c7b3946a31ecd910a118a31031d84df8ae4f9c1869222f722666b",
+    "crates/cli/tests/json5_resources/corpus.rs": "318dd379159f2b5850134b2f54cac4169f95045a836269efb4ddb6acf5e20a42",
+    "crates/cli/tests/fixtures/json5_resources_csharp.cs.txt": "693f78cea1c2867a347cb9b366220288aa7c0ad9ac02b451e6740eb7cb9b11c1",
+    "examples/performance/json5-allocations/Program.cs": "3e03987c6aa1fc725a4a2fe619b9cfe270668aaf06bab8a87b0c1b88b32bee41",
+    "examples/performance/json5-allocations/campaign.py": "ff8fce9724e8b86efd49b3d922141e56f8295372d6e9cc445ddc183df1182253",
+    "examples/performance/json5-allocations/packages.lock.json": "82e694238eb24a132e8f7173603ec5fd5fef18dadd70962facf9bef4dfc23be0",
+    "examples/performance/json5-allocations/verify.py": "0e34e7625d1023976d370d8c118811b1233b37845ad1ffdde89e16660520e5e2",
+    "examples/performance/json5-newline/UnicodeLimitHost.cs": "a97989953b0d531a19cf91fa40a14a78314a4338d4e4ed8a570a2d6baf6dbb99",
+    "examples/performance/json5-newline/unicode_controls.py": "d406920676bfeea551489c37b19c23ab3d9bf18db6da71aeb034c0e695bc9ff0",
+    "runtime/csharp/Ferrule.Runtime.SmokeTests/Json5FinalNewlineTests.cs": "2ba7b487f2b427d16643df3eab8dfcb16f90af8974a49fd7442312abe78ab7a1",
+    "runtime/csharp/Ferrule.Runtime.SmokeTests/Program.cs": "f058a34e9a41d35277c66f8b0abee949a5803dd89dffd6e28050502ce847283f"
+  },
+  "generated_cs_closure_comparison": {
+    "original": {
+      "cs_sources": 87,
+      "differences": [
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json5/FerruleJson.Json5Codec.cs"
+      ]
+    },
+    "normalized": {
+      "cs_sources": 87,
+      "differences": [
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json5/FerruleJson.Json5Codec.cs"
+      ]
+    },
+    "output-exact": {
+      "cs_sources": 87,
+      "differences": [
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json5/FerruleJson.Json5Codec.cs"
+      ]
+    },
+    "output-plus1": {
+      "cs_sources": 87,
+      "differences": [
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json5/FerruleJson.Json5Codec.cs"
+      ]
+    }
+  },
+  "host_dlls": {
+    "original": "f8d473b0d20c5258b6b7b6ef6da0b888f585958387168957f4b3750dde57292e",
+    "normalized": "12eca899760895116c6ead7980e22172e9162bcfc4587dd79f0876cd02e4ac09",
+    "output-exact": "7f17bd86866d6d0581565d1871c749773813a13012bfcef5961404b734762098",
+    "output-plus1": "d21ad5f8dc32dcd262e26784cb08f35418f32506f1f1854c2c4d07c29344c4c2"
+  },
+  "mapping_dlls": {
+    "original": "6f71eaabd7c9b2caddc9b69558824bf898c73993d14bbc90f8af2916d1a8ccf2",
+    "normalized": "6cb7f526ed4f8b03a301cd33d64bf5208c6686d3c5cf5d284fc71e8591611b02",
+    "output-exact": "dd8094c484c8a45640e2371be9645ac77e1a2a666d062bad8023d3bc1a64c96b",
+    "output-plus1": "cdd76b4e54d35bc99eeb1c7de9e045b7e560e5dc54bf0b83fca7e72f5a8a82e9"
+  },
+  "qualification": {
+    "calls": 96,
+    "successes": 48,
+    "expected_refusals": 48,
+    "closed_commands": 154,
+    "traces": 48,
+    "ticks": 31928,
+    "missing_stacks": 0,
+    "events_lost": 0,
+    "reported_bytes": 33362702088,
+    "unresolved_reported_bytes": 0,
+    "heap_events": 672,
+    "min_available_memory": 7178145792,
+    "min_available_disk": 63754149888,
+    "max_campaign_logical_bytes": 1681632034,
+    "binding_sha256": "f94b1e1bc48b5aee0e737e243d1ef8db69dd1e0e3ff20bd8d734eba25d166807",
+    "artifact_binding_sha256": "2495f62029385c11e975673e01efaa5158575643cec6ed2ffd0906133cb76195",
+    "small_receipt_sha256": "5acada2ab12ee1a82c8a01e139bcc7abf843b538d77f1ad2a02ec1338630900f",
+    "csv_sha256": "1f78ce752aebb9eff8df1bb18f5b6efe696648e0d01b0bcfda6dc228207a57fd"
+  },
+  "large_final_concat_samples_per_output_exact_profile": {
+    "before": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "after": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "comparison": {
+    "original-exact": {
+      "control": {
+        "before_rss_mib": [
+          300.29296875,
+          302.84375
+        ],
+        "after_rss_mib": [
+          300.73828125,
+          302.75390625
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.39453125,
+          2.2421875
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          303.56640625,
+          305.99609375
+        ],
+        "after_rss_mib": [
+          303.3671875,
+          305.97265625
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.25390625,
+          2.25
+        ],
+        "before_serialization_reported_mib": [
+          0.0,
+          0.0
+        ],
+        "after_serialization_reported_mib": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "original-plus1": {
+      "control": {
+        "before_rss_mib": [
+          173.52734375,
+          303.90625
+        ],
+        "after_rss_mib": [
+          172.69140625,
+          303.37109375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -1.1015625,
+          2.2890625
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          176.1796875,
+          306.859375
+        ],
+        "after_rss_mib": [
+          175.99609375,
+          306.609375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -1.01953125,
+          0.48828125
+        ],
+        "before_serialization_reported_mib": [
+          0.0,
+          0.0
+        ],
+        "after_serialization_reported_mib": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "normalized-exact": {
+      "control": {
+        "before_rss_mib": [
+          449.2265625,
+          449.66015625
+        ],
+        "after_rss_mib": [
+          449.16015625,
+          449.58984375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.5,
+          0.33203125
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          452.1171875,
+          453.11328125
+        ],
+        "after_rss_mib": [
+          451.9609375,
+          452.9375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -1.15234375,
+          0.6484375
+        ],
+        "before_serialization_reported_mib": [
+          0.0,
+          0.0
+        ],
+        "after_serialization_reported_mib": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "normalized-plus1": {
+      "control": {
+        "before_rss_mib": [
+          218.34375,
+          219.19140625
+        ],
+        "after_rss_mib": [
+          218.78125,
+          219.32421875
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.37890625,
+          0.734375
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          221.65625,
+          222.12890625
+        ],
+        "after_rss_mib": [
+          221.46484375,
+          221.984375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.515625,
+          0.23828125
+        ],
+        "before_serialization_reported_mib": [
+          0.0,
+          0.0
+        ],
+        "after_serialization_reported_mib": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "output-exact": {
+      "control": {
+        "before_rss_mib": [
+          1351.265625,
+          1355.53125
+        ],
+        "after_rss_mib": [
+          1222.984375,
+          1227.6875
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -128.6171875,
+          -123.59375
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          1352.39453125,
+          1359.1953125
+        ],
+        "after_rss_mib": [
+          1226.05078125,
+          1231.12109375
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -128.38671875,
+          -124.07421875
+        ],
+        "before_serialization_reported_mib": [
+          704.0003051757812,
+          704.0003051757812
+        ],
+        "after_serialization_reported_mib": [
+          576.0002822875977,
+          576.1120986938477
+        ]
+      }
+    },
+    "output-plus1": {
+      "control": {
+        "before_rss_mib": [
+          1154.3828125,
+          1156.07421875
+        ],
+        "after_rss_mib": [
+          1155.82421875,
+          1162.01171875
+        ],
+        "matched_after_minus_before_rss_mib": [
+          0.03125,
+          6.37109375
+        ]
+      },
+      "gc-verbose": {
+        "before_rss_mib": [
+          1158.7734375,
+          1159.44921875
+        ],
+        "after_rss_mib": [
+          1158.96484375,
+          1163.61328125
+        ],
+        "matched_after_minus_before_rss_mib": [
+          -0.40234375,
+          4.4375
+        ],
+        "before_serialization_reported_mib": [
+          576.0002822875977,
+          576.0002822875977
+        ],
+        "after_serialization_reported_mib": [
+          576.0002822875977,
+          576.1081085205078
+        ]
+      }
+    }
+  },
+  "unicode_controls": {
+    "calls": 8,
+    "successes": 4,
+    "expected_refusals": 4,
+    "closed_commands": 10,
+    "failures": 0,
+    "expected_output_sha256": "6f4f7d5fe62cb098c5dcb641a07be07424ddd84d90f6d8bd31a4671808188f35",
+    "binding_sha256": "1841bd869fa8117d9c1280bc064446a93a49ed31bc0c47ca42f8c2a64b8c91ba",
+    "built_binding_sha256": "b63d051762bc5a595510b0078e397bc0d94e2353ab47d2da718fc2f5e63c97ff",
+    "min_available_memory": 8235184128,
+    "min_available_disk": 63744684032,
+    "max_campaign_logical_bytes": 272537014,
+    "observations": [
+      {
+        "variant": "baseline",
+        "case": "exact",
+        "route": "text",
+        "assembly_sha256": "8c20451e5ab3614e25953269e8d5641cef7599ed156df445fde40a4717f24950",
+        "original_sha256": "0710d59feea92b6bc643ab79ffce5c9cfb1fd7a9e0ea886d3efcb4db3a20c162",
+        "output_sha256": "6f4f7d5fe62cb098c5dcb641a07be07424ddd84d90f6d8bd31a4671808188f35"
+      },
+      {
+        "variant": "baseline",
+        "case": "exact",
+        "route": "bytes",
+        "assembly_sha256": "8c20451e5ab3614e25953269e8d5641cef7599ed156df445fde40a4717f24950",
+        "original_sha256": "52bc4278022c19e82db77633e5d8f7ad1f547600952e77709920d73375564ce1",
+        "output_sha256": "6f4f7d5fe62cb098c5dcb641a07be07424ddd84d90f6d8bd31a4671808188f35"
+      },
+      {
+        "variant": "baseline",
+        "case": "plus1",
+        "route": "text",
+        "assembly_sha256": "8c20451e5ab3614e25953269e8d5641cef7599ed156df445fde40a4717f24950",
+        "original_sha256": "1f9bc9a8480f4e4de07b26f002c5f37c21174a9e1e69471d8410d2e69d8b3b13",
+        "output_sha256": null
+      },
+      {
+        "variant": "baseline",
+        "case": "plus1",
+        "route": "bytes",
+        "assembly_sha256": "8c20451e5ab3614e25953269e8d5641cef7599ed156df445fde40a4717f24950",
+        "original_sha256": "7cb1f0063580bacea919e16fecbcccaae50a6223deb6507f6723d969a35c6a12",
+        "output_sha256": null
+      },
+      {
+        "variant": "candidate",
+        "case": "exact",
+        "route": "text",
+        "assembly_sha256": "dd8094c484c8a45640e2371be9645ac77e1a2a666d062bad8023d3bc1a64c96b",
+        "original_sha256": "9ec7f6e73a8c71cbfa9f60f2be8f38ad23ccc3520247650f6a775a9fe7a87d22",
+        "output_sha256": "6f4f7d5fe62cb098c5dcb641a07be07424ddd84d90f6d8bd31a4671808188f35"
+      },
+      {
+        "variant": "candidate",
+        "case": "exact",
+        "route": "bytes",
+        "assembly_sha256": "dd8094c484c8a45640e2371be9645ac77e1a2a666d062bad8023d3bc1a64c96b",
+        "original_sha256": "a08297817080dba6d05aa10c35ca7d318308274a29753a6cf311321890fbf658",
+        "output_sha256": "6f4f7d5fe62cb098c5dcb641a07be07424ddd84d90f6d8bd31a4671808188f35"
+      },
+      {
+        "variant": "candidate",
+        "case": "plus1",
+        "route": "text",
+        "assembly_sha256": "dd8094c484c8a45640e2371be9645ac77e1a2a666d062bad8023d3bc1a64c96b",
+        "original_sha256": "5de974e4ebaee2c067e6c88e503b96453a79552596103536fa21ecb8282ff30e",
+        "output_sha256": null
+      },
+      {
+        "variant": "candidate",
+        "case": "plus1",
+        "route": "bytes",
+        "assembly_sha256": "dd8094c484c8a45640e2371be9645ac77e1a2a666d062bad8023d3bc1a64c96b",
+        "original_sha256": "f1349d7345cf2f9af5e921c4ee8f1157c6f4a0c54f8737cb2652cf75d36649a5",
+        "output_sha256": null
+      }
+    ]
+  }
+}
