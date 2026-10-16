@@ -61,6 +61,22 @@ and explicitly selected companions.
 
 ## C#
 
+### Build and test environment
+
+C# test and conformance launchers set
+`DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` explicitly in each .NET child
+environment. Preserve this setting when constructing an environment allowlist
+or clearing inherited variables. A fresh `DOTNET_CLI_HOME` otherwise lets SDK
+first-run setup append the temporary home's global-tools directory to the
+persistent Windows User PATH. Removing the temporary directory does not remove
+that entry. Keep sandbox tool paths local to the child process and preserve the
+ordinary user global-tools directory.
+
+`DOTNET_SKIP_FIRST_TIME_EXPERIENCE` is unsupported in .NET Core 3.0 and later;
+`DOTNET_NOLOGO` controls messages. Neither substitutes for the PATH opt-out.
+
+### Generate the library
+
 ```sh
 cargo +nightly run -p cli -- generate \
   --project project.json \
