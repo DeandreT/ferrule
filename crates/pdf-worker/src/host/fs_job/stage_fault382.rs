@@ -749,6 +749,12 @@ fn stage_case(j: Rc<Journal>, case: &Value) -> io::Result<Value> {
         "elapsed_before_call_micros":start.elapsed().as_micros().to_string(),"cancelled":cancel.is_cancelled(),"controlled_old_instant":case["expired"]}));
     let mut before = None;
     let mut after = None;
+    // Setup and argument records can exhaust capture after the fixture checkpoint.
+    if !j.checkpoint() || j.require_capture().is_err() {
+        return Err(io::Error::other(
+            "stage refused after incomplete prelaunch capture",
+        ));
+    }
     let result = stage(
         &dir,
         id,
@@ -830,6 +836,12 @@ fn manager_case(j: Rc<Journal>, case: &Value, cli: &Path) -> io::Result<Value> {
         "actual begin call arguments",
         json!({"source":path,"cancelled":cancel.is_cancelled(),"repair":repair,"cli":cli}),
     );
+    // No active job exists yet: refuse if any setup/argument capture failed.
+    if !j.checkpoint() || j.require_capture().is_err() {
+        return Err(io::Error::other(
+            "manager refused after incomplete prelaunch capture",
+        ));
+    }
     let begin = manager.begin(&path, &layout, &cancel);
     j.debug("complete actual manager begin return/error", &begin);
     let reached = observer_reached();
@@ -1341,6 +1353,143 @@ fn compare(j: &Journal, case: &Value, actual: &Value, frozen: &Value) -> Vec<Str
         }
     }
     differences.into_inner()
+}
+
+#[cfg(test)]
+mod prelaunch_exhaustion_tests {
+    use super::*;
+
+    fn journal(records: u64) -> io::Result<Rc<Journal>> {
+        let root = std::env::var_os("FERRULE_PDF_382_EVIDENCE_ROOT")
+            .map(PathBuf::from)
+            .ok_or_else(|| io::Error::other("fresh absolute evidence root required"))?;
+        if !root.is_absolute()
+            || root
+                .components()
+                .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
+        {
+            return Err(io::Error::other("literal normalized absolute root required"));
+        }
+        Dir::trusted(
+            root.parent()
+                .ok_or_else(|| io::Error::other("evidence parent"))?,
+        )?;
+        std::fs::create_dir(&root)?;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
+        let j = Rc::new(Journal::new(root, Campaign::new())?);
+        j.log.borrow_mut().lower_record_limit(records)?;
+        Ok(j)
+    }
+
+    fn assert_refused_before_call(
+        j: &Journal,
+        result: io::Result<Value>,
+        records: u64,
+        operation: &str,
+        error: &str,
+    ) -> Value {
+        assert_eq!(result.unwrap_err().to_string(), error);
+        assert!(j.require_capture().is_err());
+        assert!(j.observer_original.borrow().is_none());
+        OBSERVER.with(|slot| assert!(slot.borrow().is_none()));
+        assert!(!j.checkpoint());
+        assert!(j.finish().is_err());
+        assert!(!j.root.join("raw-summary.original.json").exists());
+
+        let refusal: Value = serde_json::from_slice(
+            &std::fs::read(j.root.join("raw-refusal.original.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(refusal["complete"], false);
+        assert_eq!(refusal["reason"], "operation journal capture budget exhausted");
+        assert_eq!(refusal["charged"]["records"], records);
+        let trigger = &refusal["triggering_original"];
+        assert_eq!(trigger["sequence"], records + 1);
+        assert_eq!(trigger["operation"], operation);
+        assert_eq!(trigger["raw"]["source"], json!(j.root.join("source.pdf")));
+        assert_eq!(trigger["raw"]["cancelled"], false);
+
+        // Refusal retains the unflushed setup prefix separately; do not flush or
+        // seal a failed log merely to make the test's observations look complete.
+        let mut prefix = std::fs::read(j.root.join("raw.jsonl")).unwrap();
+        let pending: Vec<u8> =
+            serde_json::from_value(refusal["pending_original_jsonl_bytes"].clone()).unwrap();
+        prefix.extend(pending);
+        let prefix = std::str::from_utf8(&prefix)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(prefix.len() as u64, records);
+        for (index, record) in prefix.iter().enumerate() {
+            assert_eq!(record["sequence"], index as u64 + 1);
+            for unreached in [
+                "complete actual stage call return/error",
+                "complete actual manager begin return/error",
+                "comparison after complete actual capture",
+                "complete concrete row comparison result",
+            ] {
+                assert_ne!(record["operation"], unreached);
+            }
+        }
+        assert_eq!(
+            prefix.last().unwrap()["operation"],
+            "one-shot staging observer registration"
+        );
+        assert_eq!(
+            std::fs::read(j.root.join("source-before-call.original")).unwrap(),
+            Vec::<u8>::new()
+        );
+        trigger["raw"].clone()
+    }
+
+    #[test]
+    #[ignore = "root-only exact selector and fresh absolute evidence root required"]
+    fn stage_argument_quota_exhaustion_stops_before_stage() -> io::Result<()> {
+        // The empty source's complete original and layout consume 30 records;
+        // scratch/job setup and observer registration consume another five.
+        let j = journal(35)?;
+        let case = json!({"length":0,"hook":"cancel","expired":false});
+        let result = stage_case(j.clone(), &case);
+        let arguments = assert_refused_before_call(
+            &j,
+            result,
+            35,
+            "actual stage call arguments",
+            "stage refused after incomplete prelaunch capture",
+        );
+        let jobs = std::fs::read_dir(j.root.join("scratch"))?.collect::<io::Result<Vec<_>>>()?;
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(arguments["job"], json!(jobs[0].path()));
+        // An unguarded stage reaches the cancel hook and creates input.pdf.
+        assert_eq!(std::fs::read_dir(jobs[0].path())?.count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "root-only exact selector, coherent package and fresh absolute evidence root required"]
+    fn begin_argument_quota_exhaustion_stops_before_begin() -> io::Result<()> {
+        let cli = std::env::var_os("FERRULE_PDF_382_CLI")
+            .map(PathBuf::from)
+            .ok_or_else(|| io::Error::other("qualified coherent packaged CLI required"))?;
+        // Thirty source/layout records, then eight worker/scratch/manager and
+        // observer setup records. The next record is the actual begin arguments.
+        let j = journal(38)?;
+        let case = json!({"length":0,"hook":"cancel","initial_cancel":false});
+        let result = manager_case(j.clone(), &case, &cli);
+        let arguments = assert_refused_before_call(
+            &j,
+            result,
+            38,
+            "actual begin call arguments",
+            "manager refused after incomplete prelaunch capture",
+        );
+        assert_eq!(arguments["cli"], json!(cli));
+        // An unguarded begin creates an owned job before the cancel hook. The
+        // hook prevents spawning even when this regression is tested unfixed.
+        assert_eq!(std::fs::read_dir(j.root.join("scratch"))?.count(), 0);
+        Ok(())
+    }
 }
 
 #[test]
