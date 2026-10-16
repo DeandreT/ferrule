@@ -1264,10 +1264,12 @@ their refusals.
   executable import admission is available in [#235](https://github.com/DeandreT/ferrule/issues/235)/
   [#240](https://github.com/DeandreT/ferrule/pull/240). Static admission is distinct
   from execution parity; pipeline profile combinations remain refused.
-- [ ] Diagnose and repair the actual Pages deployment HTTP 404 in the available
-  [#247](https://github.com/DeandreT/ferrule/issues/247) lane. The successful site build
-  does not establish publication; workflow/configuration work stays separate from
-  site content and mapping implementation.
+- [x] Repair [#247](https://github.com/DeandreT/ferrule/issues/247)'s disabled Pages
+  configuration and verify [main deployment attempt 2](https://github.com/DeandreT/ferrule/actions/runs/38785376772/attempts/2).
+  All 13 published files match the actual artifact byte for byte; landing/docs
+  navigation and the default WebAssembly demo were observed in the browser.
+  [Deployment record and procedure](docs/pages-deployment.md); site content and
+  mapping implementation are unchanged.
 - [ ] Package reproducible runtimes and examples with clear host boundaries.
 - [ ] Design reusable libraries, projects, configuration, and automation without
   implying compatibility with another product's proprietary package format.

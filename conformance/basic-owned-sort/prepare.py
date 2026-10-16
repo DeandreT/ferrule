@@ -277,7 +277,7 @@ def prepare(args):
     cargo_env = {'CARGO_TARGET_DIR': args.target, 'CARGO_BUILD_JOBS': '1', 'CARGO_INCREMENTAL': '0', 'CARGO_TERM_COLOR': 'never'}
     capture_env = {'FERRULE_CONFORMANCE_CAPTURE_ONLY': '1', 'FERRULE_CONFORMANCE_CAPTURE_DIR': str(out / 'captures')}
     cargo_env.update(capture_env)
-    dotnet_env = {'DOTNET_CLI_USE_MSBUILD_SERVER': '0', 'MSBUILDDISABLENODEREUSE': '1', 'DOTNET_CLI_TELEMETRY_OPTOUT': '1', 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE': '1', 'DOTNET_NOLOGO': '1'}
+    dotnet_env = {'DOTNET_CLI_USE_MSBUILD_SERVER': '0', 'MSBUILDDISABLENODEREUSE': '1', 'DOTNET_CLI_TELEMETRY_OPTOUT': '1', 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE': '1', 'DOTNET_NOLOGO': '1', 'DOTNET_ADD_GLOBAL_TOOLS_TO_PATH': 'false'}
     dotnet_env.update(capture_env)
     steps = []
 
