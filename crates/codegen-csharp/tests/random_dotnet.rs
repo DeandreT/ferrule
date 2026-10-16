@@ -135,6 +135,7 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
 
 fn command(root: &Path, label: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     let mut command = Command::new("dotnet");
+    command.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
     command.args(args).current_dir(root);
     execute(root, label, &mut command)?;
     Ok(())

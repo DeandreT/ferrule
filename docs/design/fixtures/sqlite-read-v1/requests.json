@@ -1,0 +1,265 @@
+{
+  "status": "PROSPECTIVE_FERRULE_HOST_ORACLES_NOT_EXECUTED",
+  "profile": "profile.json",
+  "declaration_order": [
+    "minimum",
+    "label"
+  ],
+  "schema": {
+    "root": "orders",
+    "repeating": true,
+    "fields": [
+      [
+        "id",
+        "int"
+      ],
+      [
+        "label",
+        "string"
+      ],
+      [
+        "score",
+        "int"
+      ],
+      [
+        "active",
+        "bool"
+      ],
+      [
+        "ratio",
+        "float"
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "id": "missing_before_null",
+      "bindings": [
+        [
+          "label",
+          [
+            "null"
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "MissingParameter",
+        "parameter": "minimum"
+      }
+    },
+    {
+      "id": "null_before_later_missing",
+      "bindings": [
+        [
+          "minimum",
+          [
+            "null"
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "NullParameter",
+        "parameter": "minimum"
+      }
+    },
+    {
+      "id": "wrong_tag_before_later_missing",
+      "bindings": [
+        [
+          "minimum",
+          [
+            "string",
+            "10"
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "ParameterType",
+        "parameter": "minimum",
+        "expected": "int",
+        "found": "string"
+      }
+    },
+    {
+      "id": "duplicate_before_missing",
+      "bindings": [
+        [
+          "label",
+          [
+            "string",
+            "alpha"
+          ]
+        ],
+        [
+          "label",
+          [
+            "string",
+            "Alpha"
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "DuplicateParameter",
+        "parameter": "label"
+      }
+    },
+    {
+      "id": "unknown_before_missing",
+      "bindings": [
+        [
+          "other",
+          [
+            "int",
+            1
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "UnknownParameter",
+        "parameter": "other"
+      }
+    },
+    {
+      "id": "duplicate_before_unknown",
+      "bindings": [
+        [
+          "other",
+          [
+            "int",
+            1
+          ]
+        ],
+        [
+          "other",
+          [
+            "int",
+            2
+          ]
+        ]
+      ],
+      "database": "absent.db",
+      "expected": {
+        "kind": "DuplicateParameter",
+        "parameter": "other"
+      }
+    },
+    {
+      "id": "filesystem_primary",
+      "route": "filesystem_primary",
+      "bindings": [
+        [
+          "minimum",
+          [
+            "int",
+            10
+          ]
+        ],
+        [
+          "label",
+          [
+            "string",
+            "alpha"
+          ]
+        ]
+      ],
+      "expected": {
+        "sql_case": "binary_comparison_and_duplicate_projection",
+        "connection_closed_before_mapping": true,
+        "instance_original": "profile-output.json"
+      }
+    },
+    {
+      "id": "filesystem_named",
+      "route": "filesystem_static_named",
+      "bindings": [
+        [
+          "minimum",
+          [
+            "int",
+            10
+          ]
+        ],
+        [
+          "label",
+          [
+            "string",
+            "alpha"
+          ]
+        ]
+      ],
+      "expected": {
+        "owner": "named",
+        "connection_closed_before_mapping": true,
+        "instance_original": "profile-output.json"
+      }
+    },
+    {
+      "id": "preview",
+      "route": "filesystem_preview",
+      "bindings": [
+        [
+          "minimum",
+          [
+            "int",
+            10
+          ]
+        ],
+        [
+          "label",
+          [
+            "string",
+            "alpha"
+          ]
+        ]
+      ],
+      "expected": {
+        "connection_closed_before_mapping": true,
+        "published_files": [],
+        "instance_original": "profile-output.json"
+      }
+    },
+    {
+      "id": "payload_refusal",
+      "route": "payload",
+      "expected": {
+        "kind": "UnsupportedInputProfile",
+        "database_opens": 0
+      }
+    },
+    {
+      "id": "stdio_refusal",
+      "route": "stdio",
+      "expected": {
+        "kind": "UnsupportedInputProfile",
+        "database_opens": 0
+      }
+    },
+    {
+      "id": "rest_refusal",
+      "route": "rest_payload",
+      "expected": {
+        "kind": "UnsupportedInputProfile",
+        "database_opens": 0
+      }
+    },
+    {
+      "id": "codegen_refusal",
+      "route": "portable_codegen",
+      "expected": {
+        "kind": "UnsupportedInputProfile"
+      }
+    },
+    {
+      "id": "mfd_refusal",
+      "route": "mfd_export",
+      "expected": {
+        "kind": "UnsupportedInputProfile"
+      }
+    }
+  ]
+}

@@ -80,6 +80,7 @@ fn generated_integer_json_output_normalizes_exact_decimal_strings() {
     std::fs::write(harness.join("Program.cs"), HARNESS).unwrap();
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -92,6 +93,7 @@ fn generated_integer_json_output_normalizes_exact_decimal_strings() {
         .unwrap();
     assert_succeeded("dotnet build", &build);
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",

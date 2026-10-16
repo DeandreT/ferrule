@@ -425,6 +425,11 @@ can require or create shared-memory and WAL sidecars. Hosts that require an
 offline filesystem boundary must also confine readable resources and enforce
 read-only access to their input filesystem.
 
+The [declared read-only query proposal](design/sqlite-read-query-v1.md) specifies
+a separate typed single-table acquisition profile and prospective host fixtures.
+It is a design for review; it does not enable a query option or change existing
+table reads and imported query lowering.
+
 ### Native X12 ISA encoding
 
 Native X12 output encodes a complete 16-position ISA as fixed-width ASCII.

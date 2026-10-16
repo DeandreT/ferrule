@@ -60,6 +60,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
     )?;
     std::fs::write(harness.join("Program.cs"), HARNESS)?;
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -78,6 +79,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
         String::from_utf8_lossy(&build.stderr)
     );
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .arg(directory.0.join("Harness/bin/Release/net10.0/Harness.dll"))
         .current_dir(&directory.0)
         .output()?;
