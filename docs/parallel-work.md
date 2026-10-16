@@ -630,7 +630,7 @@ resumed, and pending jobs are not passes.
 | [#241 Singular-target multiple feeds](https://github.com/DeandreT/ferrule/issues/241) | DeandreT; contract preparation | Independent cardinality/order/null/error contract before admission or execution | Same-scope competing feeds remain refused; distinct expressions preserved; #239 ancestor branches are separate |
 | [#242 Linux memory-study guard](https://github.com/DeandreT/ferrule/issues/242) | Complete; merged in [#249](https://github.com/DeandreT/ferrule/pull/249) | Linux host warning-denied build and six recorder controls pass; publication complete | Source guards exclude Linux observations elsewhere; no actual other-platform compilation or generated portability change |
 | [#246 Memory-study Rust workspace packaging](https://github.com/DeandreT/ferrule/issues/246) | Complete; merged in [#249](https://github.com/DeandreT/ferrule/pull/249) | Corrected offline composition/build and full #207 campaign pass; initial lock failure retained | Only composed member manifests lose standalone workspace markers; raw emitted artifact sets unchanged |
-| [#247 Pages deployment HTTP 404](https://github.com/DeandreT/ferrule/issues/247) | Unassigned; available | Actual cause/configuration repair and successful main deployment pending | Repository Pages/workflow only; successful site build is separate; no dependency on mapping or memory work |
+| [#247 Pages deployment HTTP 404](https://github.com/DeandreT/ferrule/issues/247) | DeandreT; repaired 2026-10-15 | Pages was disabled; Actions publishing enabled, main attempt 2 succeeded, all 13 public files matched the artifact; landing/docs/default demo observed | [Configuration/evidence record](pages-deployment.md); site content, workflow and mapping code unchanged; broader GUI qualification separate |
 | [#248 C# large-string allocation attribution](https://github.com/DeandreT/ferrule/issues/248) | Complete; [#279](https://github.com/DeandreT/ferrule/pull/279) merged | Eight measurements, eight independent output verifiers and four trace decoders accepted; report source/data and one full diagram reviewed; three hosted jobs succeed | #207 fixtures; samples/stacks and trace perturbation separate from RSS; owned cleanup/viewport scroll retained; no exact ledger, phase-clock, capture-cause, optimization or new budget claim |
 | [#250 Generated C# X12 format options](https://github.com/DeandreT/ferrule/issues/250) | Complete; [#265](https://github.com/DeandreT/ferrule/pull/265) merged | Bounded directional 004010 option qualification and all three hosted jobs pass | Parsing/numeric/lexical/completion contracts preserve supplied contexts, strict defaults and typed/JSON APIs; external certification and other versions excluded |
 | [#252 Earlier roadmap and lane refresh](https://github.com/DeandreT/ferrule/issues/252) | Complete; [#255](https://github.com/DeandreT/ferrule/pull/255) merged | Dated two-doc source/link/render review, strict/fmt and three hosted jobs pass; diagrams retain zoom/cleanup limits | Only ROADMAP.md and this map; historical graphs preserved; current refresh is #336 |
@@ -1000,8 +1000,9 @@ diagram check establishes additional product execution.
 - [x] Qualify #250's bounded generated C# 004010 options, merged in #265; supplied
   contexts, strict defaults and ordinary typed/JSON APIs remain preserved.
 - [ ] Settle #241's explicit competing-feed contract before admission and execution.
-- [ ] Diagnose #247's actual Pages 404 and verify a successful deployed artifact;
-  successful site compilation alone is insufficient.
+- [x] Repair #247's disabled Pages configuration and verify the successful main
+  deployment, complete 13-file public readback and landing/docs/default-demo
+  observations; [dated evidence and procedure](pages-deployment.md).
 - [x] Publish #252's dated two-doc/source/link/render review in #255, with three
   hosted jobs successful; historical diagram cleanup and zoom limits remain.
 - [x] Publish #271's dated two-doc status refresh in #280, with three successful hosted jobs.

@@ -1,0 +1,262 @@
+{
+  "observed_utc": "2026-10-15T22:18:09.537507+00:00",
+  "issue": 247,
+  "source_commit": "4c1aa3805a012886d19dcc8730dff424f25b6ef5",
+  "workflow": ".github/workflows/site.yml",
+  "run_id": 38785376772,
+  "successful_attempt": 2,
+  "deploy_job_id": 116700168331,
+  "run_url": "https://github.com/DeandreT/ferrule/actions/runs/38785376772/attempts/2",
+  "site_url": "https://deandret.github.io/ferrule/",
+  "before": {
+    "repository_has_pages": false,
+    "pages_api_status": 404,
+    "website_http_status": 404,
+    "main_build": "success",
+    "deployment_creation_status": 404
+  },
+  "configuration_change": {
+    "method": "POST",
+    "endpoint": "/repos/DeandreT/ferrule/pages",
+    "request_body": {
+      "build_type": "workflow"
+    }
+  },
+  "after": {
+    "build_type": "workflow",
+    "public": true,
+    "https_enforced": true,
+    "workflow_conclusion": "success",
+    "deployment_status": "succeed"
+  },
+  "artifact": {
+    "artifact_id": 11998061699,
+    "source_commit": "4c1aa3805a012886d19dcc8730dff424f25b6ef5",
+    "zip_sha256": "945daaa89e52be79b8f4e4c6e946b764852976464b7a6f58b84ca572b682dd1b",
+    "tar_sha256": "0f05397ee7454ce46ad52b1298ebf01fdeac05f2de304c594981e39da3ac8f22",
+    "members": [
+      {
+        "path": "demo/index.html",
+        "bytes": 2370,
+        "sha256": "81184b9f236f6644e415d0f9a3f4f8a9c3bbc9eed0fa974514f78874104d7088"
+      },
+      {
+        "path": "demo/web-demo-ef5967df52c33126.js",
+        "bytes": 144462,
+        "sha256": "e0a5cc8545c82dea0effe21278970c562ce062a81f6e8b7d8d2ee47d90cf7e4b"
+      },
+      {
+        "path": "demo/web-demo-ef5967df52c33126_bg.wasm",
+        "bytes": 19309168,
+        "sha256": "7d171740cb93f5907a9f93eb14d9dc125ab39fcacf2ae758fbd48044448f5d0a"
+      },
+      {
+        "path": "index.html",
+        "bytes": 9812,
+        "sha256": "b3738e62132f65bddfed73c1428e792c0cc17020812d2f1b60c560bd189f34fa"
+      },
+      {
+        "path": "style.css",
+        "bytes": 5293,
+        "sha256": "34f37b305721eba4443a41bd73372a18e7b0ce305ecf7a1ebbeb1fc401afe4fc"
+      },
+      {
+        "path": "docs/mfd.html",
+        "bytes": 16535,
+        "sha256": "cfaf2c7ee23b5a943cf7af81b63602cc5f8871ed19c0404d45f829412d931591"
+      },
+      {
+        "path": "docs/codegen.html",
+        "bytes": 21103,
+        "sha256": "6b26a805c5fb3e243b80e320eeeeccf37ecb0e6eb9e749d507c3e59ba621ebfb"
+      },
+      {
+        "path": "docs/formats.html",
+        "bytes": 20735,
+        "sha256": "2f09cc47b3afddb41f6982efe233be09260518c81ed1a7070928371bc6b72c09"
+      },
+      {
+        "path": "docs/getting-started.html",
+        "bytes": 6809,
+        "sha256": "e7116337f0848a1dfefaf3be82e369e824d3c5cbdbbb826a555cf21afd7488d2"
+      },
+      {
+        "path": "docs/index.html",
+        "bytes": 5853,
+        "sha256": "cbdbdec61d9755e777079b9f9120460b794554ad90569df67b781f65505069e7"
+      },
+      {
+        "path": "docs/definitions.html",
+        "bytes": 14849,
+        "sha256": "e9eedd37a9e2cee5b8ccd2ee6f7902fef7f9155fdee89d24cf5c35f96db1f959"
+      },
+      {
+        "path": "docs/docs.css",
+        "bytes": 17416,
+        "sha256": "942e1317384742c93d205ce3355d60d6d085d28df98b1394ffca63579f85b4d1"
+      },
+      {
+        "path": "docs/architecture.html",
+        "bytes": 8199,
+        "sha256": "6af9226d822fab53b20bc6fa274f8b40d43ce3e8ff1a6aae02975316b1e7f464"
+      }
+    ]
+  },
+  "public_readback": {
+    "all_bytes_equal": true,
+    "total_members": 13,
+    "total_bytes": 19582604,
+    "members": [
+      {
+        "path": "demo/index.html",
+        "url": "https://deandret.github.io/ferrule/demo/index.html",
+        "http_status": 200,
+        "bytes": 2370,
+        "sha256": "81184b9f236f6644e415d0f9a3f4f8a9c3bbc9eed0fa974514f78874104d7088"
+      },
+      {
+        "path": "demo/web-demo-ef5967df52c33126.js",
+        "url": "https://deandret.github.io/ferrule/demo/web-demo-ef5967df52c33126.js",
+        "http_status": 200,
+        "bytes": 144462,
+        "sha256": "e0a5cc8545c82dea0effe21278970c562ce062a81f6e8b7d8d2ee47d90cf7e4b"
+      },
+      {
+        "path": "demo/web-demo-ef5967df52c33126_bg.wasm",
+        "url": "https://deandret.github.io/ferrule/demo/web-demo-ef5967df52c33126_bg.wasm",
+        "http_status": 200,
+        "bytes": 19309168,
+        "sha256": "7d171740cb93f5907a9f93eb14d9dc125ab39fcacf2ae758fbd48044448f5d0a"
+      },
+      {
+        "path": "index.html",
+        "url": "https://deandret.github.io/ferrule/index.html",
+        "http_status": 200,
+        "bytes": 9812,
+        "sha256": "b3738e62132f65bddfed73c1428e792c0cc17020812d2f1b60c560bd189f34fa"
+      },
+      {
+        "path": "style.css",
+        "url": "https://deandret.github.io/ferrule/style.css",
+        "http_status": 200,
+        "bytes": 5293,
+        "sha256": "34f37b305721eba4443a41bd73372a18e7b0ce305ecf7a1ebbeb1fc401afe4fc"
+      },
+      {
+        "path": "docs/mfd.html",
+        "url": "https://deandret.github.io/ferrule/docs/mfd.html",
+        "http_status": 200,
+        "bytes": 16535,
+        "sha256": "cfaf2c7ee23b5a943cf7af81b63602cc5f8871ed19c0404d45f829412d931591"
+      },
+      {
+        "path": "docs/codegen.html",
+        "url": "https://deandret.github.io/ferrule/docs/codegen.html",
+        "http_status": 200,
+        "bytes": 21103,
+        "sha256": "6b26a805c5fb3e243b80e320eeeeccf37ecb0e6eb9e749d507c3e59ba621ebfb"
+      },
+      {
+        "path": "docs/formats.html",
+        "url": "https://deandret.github.io/ferrule/docs/formats.html",
+        "http_status": 200,
+        "bytes": 20735,
+        "sha256": "2f09cc47b3afddb41f6982efe233be09260518c81ed1a7070928371bc6b72c09"
+      },
+      {
+        "path": "docs/getting-started.html",
+        "url": "https://deandret.github.io/ferrule/docs/getting-started.html",
+        "http_status": 200,
+        "bytes": 6809,
+        "sha256": "e7116337f0848a1dfefaf3be82e369e824d3c5cbdbbb826a555cf21afd7488d2"
+      },
+      {
+        "path": "docs/index.html",
+        "url": "https://deandret.github.io/ferrule/docs/index.html",
+        "http_status": 200,
+        "bytes": 5853,
+        "sha256": "cbdbdec61d9755e777079b9f9120460b794554ad90569df67b781f65505069e7"
+      },
+      {
+        "path": "docs/definitions.html",
+        "url": "https://deandret.github.io/ferrule/docs/definitions.html",
+        "http_status": 200,
+        "bytes": 14849,
+        "sha256": "e9eedd37a9e2cee5b8ccd2ee6f7902fef7f9155fdee89d24cf5c35f96db1f959"
+      },
+      {
+        "path": "docs/docs.css",
+        "url": "https://deandret.github.io/ferrule/docs/docs.css",
+        "http_status": 200,
+        "bytes": 17416,
+        "sha256": "942e1317384742c93d205ce3355d60d6d085d28df98b1394ffca63579f85b4d1"
+      },
+      {
+        "path": "docs/architecture.html",
+        "url": "https://deandret.github.io/ferrule/docs/architecture.html",
+        "http_status": 200,
+        "bytes": 8199,
+        "sha256": "6af9226d822fab53b20bc6fa274f8b40d43ce3e8ff1a6aae02975316b1e7f464"
+      }
+    ]
+  },
+  "browser_observations": {
+    "landing_title": "ferrule \u2014 open-source data mapping in Rust",
+    "docs_title": "ferrule docs",
+    "demo_title": "ferrule playground",
+    "demo_loading_finished": true,
+    "demo_status": "Mapping completed",
+    "demo_visible_output": {
+      "AllIds": "A-1, B-2",
+      "orders": [
+        {
+          "Id": "A-1",
+          "ItemCount": 2,
+          "Total": 4
+        },
+        {
+          "Id": "B-2",
+          "ItemCount": 1,
+          "Total": 10
+        }
+      ]
+    },
+    "scope": "Landing/docs link navigation and default demo load/output observed; no general GUI or mapping parity qualification.",
+    "landing_screenshot_sha256": "b6177ccdf6008308371bdf18b0c948d95c5608ccc6701008fe4f339a9d2c448d",
+    "demo_screenshot_sha256": "f5bbbab31aee911e88a2accf6006787b4c3f79b2a8aef2b80b0f1474d3210c16"
+  },
+  "retained_original_sha256": {
+    "pages-before.json": "563d97060c2459a0ff950c9fdf8d97e70237ccbc433002dd0c4bd5be7680f166",
+    "repository-before.json": "41bca49525561f7365da3c32f4266e6543512f64850457b0f202b446f10f46a8",
+    "deploy-job-original.log": "f14da55e60c0679a1da5c46f4db51e262815ce04db45237f397f5e3eb65024f6",
+    "pages-create-request.json": "ebf711e4a5c9f5622151ab989370e73c4c62538e332eb9d15a9b1e0ee2423f77",
+    "pages-create-response.json": "04bcffc5f872885cd2c1579554555faa646ce6514abaadf0fc7ddad900eb8426",
+    "run-success.json": "579394a2988a648f41d00a6b860fd23582f80819a40da2f475c6f4efde2b661b",
+    "jobs-success.json": "a84feca86779cf82c19e2da5c7a63ad9f5259c7fe25ea5eda5915b0daa5314a3",
+    "deploy-success.log": "6dc5afa959dcc362e7e91a972e4360aa029d43f4b4149c6b4397849dae377489",
+    "pages-success.json": "04bcffc5f872885cd2c1579554555faa646ce6514abaadf0fc7ddad900eb8426",
+    "pages-deployment-success.json": "8cc0328527a1d637509f858988bf8e1350c66737bc720dea6050763d952e5365",
+    "artifact-inventory.json": "56d3368b2aec9dba53f701df9ad21066714afb2a95de04be51ae7b4fa33fd2da",
+    "http-after/complete-readback.json": "60f54f00d0cfa4093702bb37d2663a6e162ef6d05e53b63205b995e072d39f9b"
+  },
+  "public_route_readback": [
+    {
+      "url": "https://deandret.github.io/ferrule/",
+      "artifact_member": "index.html",
+      "http_status": 200,
+      "sha256": "b3738e62132f65bddfed73c1428e792c0cc17020812d2f1b60c560bd189f34fa"
+    },
+    {
+      "url": "https://deandret.github.io/ferrule/docs/",
+      "artifact_member": "docs/index.html",
+      "http_status": 200,
+      "sha256": "cbdbdec61d9755e777079b9f9120460b794554ad90569df67b781f65505069e7"
+    },
+    {
+      "url": "https://deandret.github.io/ferrule/demo/",
+      "artifact_member": "demo/index.html",
+      "http_status": 200,
+      "sha256": "81184b9f236f6644e415d0f9a3f4f8a9c3bbc9eed0fa974514f78874104d7088"
+    }
+  ]
+}
