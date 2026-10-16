@@ -504,11 +504,9 @@ fn cancelled_symlink_components_never_substitute_lexical_input_bytes() -> anyhow
     // The ordinary runner follows the original traversal, not its lexical
     // normalization. Both candidate files exist and contain different values.
     cli::run_project_with_paths(&document, None, None)?;
-    let output: Json =
-        serde_json::from_slice(&std::fs::read(original.join("out/result.json"))?)?;
+    let output: Json = serde_json::from_slice(&std::fs::read(original.join("out/result.json"))?)?;
     assert_eq!(output["Value"], "TRAVERSED");
-    let lexical: Json =
-        serde_json::from_slice(&std::fs::read(original.join("data/input.json"))?)?;
+    let lexical: Json = serde_json::from_slice(&std::fs::read(original.join("data/input.json"))?)?;
     assert_eq!(lexical["Value"], "LEXICAL");
 
     for owner in ["primary", "named", "output", "named-output"] {
