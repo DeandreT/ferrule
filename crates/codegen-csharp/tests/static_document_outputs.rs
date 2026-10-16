@@ -298,6 +298,7 @@ fn generated_static_document_outputs_match_literals_and_refuse_whole_bundles() {
         for label in ["MIXED", "PRIMARY", "GROUPED", "SINGLE"] {
             let directory = root.join(label);
             let mut build = Command::new("dotnet");
+            build.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
             build
                 .current_dir(&directory)
                 .args([
@@ -321,6 +322,7 @@ fn generated_static_document_outputs_match_literals_and_refuse_whole_bundles() {
                 .env("MSBUILDDISABLENODEREUSE", "1");
             run(&directory, "BUILD", &mut build);
             let mut host = Command::new("dotnet");
+            host.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
             host.current_dir(&directory)
                 .arg(directory.join("Host/bin/Debug/net10.0/Host.dll"))
                 .arg(&fixtures)

@@ -21,6 +21,7 @@ fn generated_collection_find_preserves_runtime_semantics() {
     write_harness(directory.path());
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -34,6 +35,7 @@ fn generated_collection_find_preserves_runtime_semantics() {
     assert_command_succeeded("dotnet build", &build);
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",

@@ -286,6 +286,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
 
     let build = recorded_command(
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "build",
                 "-warnaserror",
@@ -301,6 +302,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
 
     let run = recorded_command(
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "run",
                 "--project",

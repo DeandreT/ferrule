@@ -149,6 +149,7 @@ fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
     write_harness(directory.path())?;
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -161,6 +162,7 @@ fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
     assert_command_succeeded("dotnet build", &build);
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",
