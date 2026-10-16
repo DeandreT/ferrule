@@ -43,6 +43,20 @@ with package sources cleared, then runs one fresh CLR per call without profiling
 forced collections or GC overrides. These extra controls establish output/error
 semantics; their execution is separate from the allocation/RSS comparison.
 
+Optimized Python execution (`-O`, `-OO`, or `PYTHONOPTIMIZE`) is refused before
+argument parsing or preparation so that prerequisite, source-closure and result
+assertions cannot be skipped. Inherited CLR/profiler overrides are refused before
+evidence creation. The constructed child environment explicitly sets
+`DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` for its isolated .NET CLI home, overriding
+an inherited setting. Other inherited `DOTNET_` settings remain forbidden.
+
+Portable launcher regression tests do not launch .NET, the allocation campaign,
+or native workloads:
+
+```sh
+python -B examples/performance/json5-newline/test_unicode_controls.py
+```
+
 `RESULT.json` must report no failure and ten completed commands (two builds and
 eight calls). Each observation must have `COMPLETE.json` with zero failures;
 successful calls retain their entire `ORIGINAL-RETURNED-UTF8.bin`. The binding
