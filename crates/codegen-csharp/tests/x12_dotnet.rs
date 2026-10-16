@@ -781,6 +781,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
             &root,
             &format!("{name}-build"),
             Command::new("dotnet")
+                .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
                 .args([
                     "build",
                     &format!("{name}/Ferrule.Generated.csproj"),
@@ -817,6 +818,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
         &root,
         "build",
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -847,6 +849,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
         &root,
         "host",
         Command::new("dotnet")
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .args([
                 "run",
                 "--project",

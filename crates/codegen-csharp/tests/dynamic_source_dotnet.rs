@@ -238,6 +238,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
     write_harness(directory.path());
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -251,6 +252,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
     assert_command_succeeded("dotnet build", &build);
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",
@@ -280,6 +282,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
     write_dynamic_loader_harness(directory.path());
 
     let build = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "build",
             "-warnaserror",
@@ -293,6 +296,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
     assert_command_succeeded("dotnet build", &build);
 
     let run = Command::new("dotnet")
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .args([
             "run",
             "--project",
