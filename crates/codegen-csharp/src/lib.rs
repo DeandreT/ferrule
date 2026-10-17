@@ -108,6 +108,18 @@ pub fn emit_with_basic_owned_sort(program: &Program) -> Result<ArtifactSet, Emit
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits ordered static Basic windows with optional filters and sorting.
+///
+/// Bounds use the parent context once; window scopes finish their predicate pass
+/// before targets. Existing emitter families retain their current admission.
+pub fn emit_with_basic_owned_windows(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_windows(program)?;
+    codegen::validate_basic_owned_window_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_window_mapping(program)?;
+    // The completed static Basic inventory excludes dynamic documents in all targets.
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

@@ -1,3 +1,6 @@
+#[path = "basic_window_tests.rs"]
+mod windows;
+
 use super::super::{OwnedSourceIdentity, SourcePathError};
 use super::*;
 use super::{
