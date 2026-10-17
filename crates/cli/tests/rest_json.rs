@@ -9,6 +9,9 @@ use cli::{
     RestExecutionPolicy, RestJsonError, RestJsonHeader, RestJsonMappingOptions, RestJsonRequest,
 };
 
+#[path = "rest_json/owned_basic.rs"]
+mod owned_basic;
+
 const GRANT: RestExecutionPolicy = RestExecutionPolicy::AllowSingleRequest {
     allow_insecure_http: true,
 };
