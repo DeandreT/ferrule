@@ -10,6 +10,10 @@ use codegen::{
 };
 use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
+#[path = "owned_basic_windows.rs"]
+mod windows;
+pub(crate) use windows::render_public_basic_owned_window_source;
+
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
     render_basic_owned_source_with_nodes(program, false, false)
 }

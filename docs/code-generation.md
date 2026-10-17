@@ -59,6 +59,40 @@ directory. To generate directly onto a Windows filesystem, use a Windows build
 of the CLI. The same publication requirement applies to ordinary generation
 and explicitly selected companions.
 
+## Explicit Basic owned-source windows
+
+Library hosts can select the static Basic owned-source window profile with
+`codegen::lower_with_basic_owned_windows`, followed by
+`codegen_rust::emit_with_basic_owned_windows(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_windows(&program)`. The profile supports
+ordinary static primary/named `Source` and `OwnedSource` iterations over Group
+or Scalar values, optional boolean filtering, stable multi-key sorting, and
+ordered `SkipFirst`, `First`, `From`, inclusive `FromTo`, and `Last` windows.
+Implicit First output applies to nonrepeating Group targets; repeated Scalar
+targets can use explicit windows.
+
+Bounds evaluate once in the parent context, in declaration order, after the
+selected filter/sort phases. Every required predicate runs before selection or
+target construction. Later bounds still evaluate when an earlier window empties
+the cohort. Implicit First appends a final `First(1)` operation. Raw positions
+are visible to sort keys and pre-sort predicates, sorted positions to post-sort
+predicates, and compact final positions to target bindings and children. Outer
+iteration positions remain attached to their original frames.
+
+Generated calls use `execute_with_basic_owned_sources` /
+`execute_selected_with_basic_owned_sources` in Rust and
+`ExecuteWithBasicOwnedSources` / `ExecuteSelectedWithBasicOwnedSources` in C#.
+Each call supplies an explicit owned-source policy bounding roots, active frames,
+path segments, metadata bytes, and walk contexts. Window processing validates
+the complete source-cohort witness and charges retained contexts, sort keys,
+and selection storage to the same cumulative operation budget. Typed predicate,
+key, bound, and target errors preserve their evaluation order and original cause.
+
+The window companion has its own admission gate. Grouping, joins, generated or
+document iteration, dynamic sources, user functions, and special construction
+are outside this Basic profile. Ordinary generation and the narrower
+owned-source, filter, and sort companions retain their respective contracts.
+
 ## C#
 
 ### Build and test environment
