@@ -7850,3 +7850,5 @@ fn public_basic_sort_keeps_first_windows_other_families_and_uint_boundaries() {
     assert!(source.contains("error.WithOwnedSourceNode(4294967295U)"));
     assert!(source.contains("Node_4294967295(candidate)"));
 }
+
+include!("owned_windows.rs");

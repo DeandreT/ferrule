@@ -978,6 +978,145 @@ impl<'ctx> BasicScopeContext<'ctx> {
         Ok(accepted)
     }
 
+    /// One complete window operation uses the authentic original witness and
+    /// one cumulative metadata ledger. Bounds run once in the parent, after
+    /// native pre-window controls, including on an empty or later emptied walk.
+    /// N == 0 means no sorting; the older sorting helper's key gate is unchanged.
+    pub fn visit_windowed_source_cohort<const N: usize, const W: usize, E, P, K, B, O>(
+        &self,
+        original: &RetainedSourceCohort<'ctx>,
+        sort: ([crate::SortDirection; N], bool),
+        mut predicate: P,
+        mut keys: K,
+        mut bounds: B,
+        mut output: O,
+    ) -> Result<usize, E>
+    where
+        E: From<RuntimeError>,
+        P: FnMut(&BasicScopeContext<'ctx>) -> Result<bool, E>,
+        K: FnMut(&BasicScopeContext<'ctx>) -> Result<[Value; N], E>,
+        B: FnMut(&BasicScopeContext<'ctx>) -> Result<[crate::SequenceWindow; W], E>,
+        O: FnMut(&BasicScopeContext<'ctx>) -> Result<(), E>,
+    {
+        let (directions, filter_before_sort) = sort;
+        let count = original.len();
+        let (mut budget, mut prepayment) = (|| -> Result<_, RuntimeError> {
+            phase_count(count, self.owned.registry.limits.max_walk_contexts)?;
+            let (mut budget, ordinary) = self.budget(SourceOwnerRef::Primary, &[], None, false)?;
+            let limits = retained_phase_bounds(self.owned.registry.limits)?;
+            budget.maximum = limits.total;
+            budget.phase_slots(
+                limits
+                    .core
+                    .checked_sub(ordinary.core)
+                    .ok_or_else(phase_overflow)?,
+            )?;
+            validate_sort_original(self, original)?;
+            paired_capacity::<crate::SortDirection>(N)?;
+            paired_capacity::<(usize, [Value; N])>(count)?;
+            paired_capacity::<usize>(count)?;
+            paired_capacity::<Instance>(count)?;
+            paired_capacity::<crate::SequenceWindow>(W)?;
+            // Conservative whole-operation reservations cover ID/sort/key
+            // storage, outputs, directions and every three-cell window enum.
+            budget.phase_slots(7)?;
+            budget.phase_slots(N)?;
+            budget.phase_slots(W.checked_mul(3).ok_or_else(phase_overflow)?)?;
+            let cells = N
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(5))
+                .and_then(|n| n.checked_mul(count))
+                .ok_or_else(phase_overflow)?;
+            budget.phase_slots(cells)?;
+            for candidate in &original.candidates {
+                candidate.context.seed_phase_metadata(&mut budget)?;
+            }
+            let copies = if N != 0 && !filter_before_sort { 2 } else { 1 };
+            let remaining = count.checked_mul(copies).ok_or_else(phase_overflow)?;
+            for candidate in &original.candidates {
+                for _ in 0..copies {
+                    candidate.reserve_sort_phase_copy(&mut budget)?;
+                }
+            }
+            Ok((budget, SortPhasePrepayment { remaining }))
+        })()
+        .map_err(E::from)?;
+
+        let mut ordered;
+        let windows;
+        if N == 0 {
+            // Acquisition is already complete. All parent bounds precede the
+            // complete raw predicate pass, even First(0) or an empty cohort.
+            windows = bounds(self)?;
+            ordered = Vec::with_capacity(count);
+            for (index, candidate) in original.candidates.iter().enumerate() {
+                if predicate(candidate.context())? {
+                    ordered.push(index);
+                }
+            }
+        } else {
+            let mut selected = Vec::with_capacity(count);
+            for (index, candidate) in original.candidates.iter().enumerate() {
+                if !filter_before_sort || predicate(candidate.context())? {
+                    selected.push(index);
+                }
+            }
+            let mut keyed = Vec::with_capacity(selected.len());
+            for index in selected {
+                let values = keys(original.candidates[index].context())?;
+                for value in &values {
+                    if let Value::String(text) = value {
+                        budget.bytes(text.len()).map_err(E::from)?;
+                    }
+                }
+                keyed.push((index, values));
+            }
+            ordered = crate::sort_candidates(keyed, directions);
+            windows = bounds(self)?;
+            if !filter_before_sort {
+                // Predicates see sorted ranks, not filtered or windowed ranks.
+                // Complete the whole predicate batch before selecting targets.
+                let mut kept = 0usize;
+                for rank in 0..ordered.len() {
+                    let index = ordered[rank];
+                    let sorted = original.candidates[index]
+                        .sort_phase_prepaid(rank + 1, &mut prepayment)
+                        .map_err(E::from)?;
+                    if predicate(sorted.context())? {
+                        ordered[kept] = index;
+                        kept += 1;
+                    }
+                }
+                ordered.truncate(kept);
+            }
+        }
+        // Apply the already evaluated bounds in place: no second backing or
+        // ledger, and an early zero cannot suppress a later bound evaluation.
+        for window in windows {
+            let (skip, take) = match window {
+                crate::SequenceWindow::SkipFirst(n) => (n, usize::MAX),
+                crate::SequenceWindow::First(n) => (0, n),
+                crate::SequenceWindow::From(n) => (n.saturating_sub(1), usize::MAX),
+                crate::SequenceWindow::FromTo { first, last } => {
+                    let skip = first.saturating_sub(1);
+                    (skip, last.saturating_sub(skip))
+                }
+                crate::SequenceWindow::Last(n) => (ordered.len().saturating_sub(n), usize::MAX),
+            };
+            let skip = skip.min(ordered.len());
+            drop(ordered.drain(..skip));
+            ordered.truncate(take.min(ordered.len()));
+        }
+        let selected = ordered.len();
+        for (rank, index) in ordered.into_iter().enumerate() {
+            let current = original.candidates[index]
+                .sort_phase_prepaid(rank + 1, &mut prepayment)
+                .map_err(E::from)?;
+            output(current.context())?;
+        }
+        Ok(selected)
+    }
+
     /// One boundary covers the parent, complete original, complete current and
     /// new output metadata. Additional caller-retained phase sets are outside it.
     /// An empty selection still validates and charges both complete input sets.
