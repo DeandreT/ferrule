@@ -25,9 +25,107 @@ pub(super) struct ValueMapData {
     pub(super) table: Vec<(Value, Value)>,
     pub(super) default: Option<Value>,
     pub(super) input_type: Option<ScalarType>,
+    /// Retains an unsupported native fallback mode until import admission.
+    pub(super) unsupported_input_mode: bool,
     /// Exact bounded raw metadata for total enclosing-frame String maps.
     /// General value-map parsing keeps its independent compatibility rules.
     pub(super) total_string: Option<TotalStringValueMap>,
+}
+
+const VALUE_MAP_INPUT_MODE_UNSUPPORTED: &str =
+    "value-map defaultValueMode=\"input\" is unsupported; input fallback is not imported";
+
+impl ValueMapData {
+    pub(super) fn unsupported_reason(&self) -> Option<&'static str> {
+        self.unsupported_input_mode
+            .then_some(VALUE_MAP_INPUT_MODE_UNSUPPORTED)
+    }
+}
+
+/// Only physical native components own value-map semantics, not preview or
+/// schema metadata containing similarly named elements.
+pub(super) fn unsupported_value_map_input_mode(
+    component: &roxmltree::Node<'_, '_>,
+) -> Option<&'static str> {
+    (component.has_tag_name("component")
+        && component.tag_name().namespace().is_none()
+        && component.attribute("library") == Some("core")
+        && parse_u32(component.attribute("kind")) == Some(23)
+        && component
+            .children()
+            .filter(|node| node.has_tag_name("data") && node.tag_name().namespace().is_none())
+            .flat_map(|data| data.children())
+            .any(|node| {
+                node.has_tag_name("valuemap")
+                    && node.tag_name().namespace().is_none()
+                    && node.attributes().any(|attribute| {
+                        attribute.namespace().is_none()
+                            && attribute.name() == "defaultValueMode"
+                            && attribute.value() == "input"
+                    })
+            }))
+    .then_some(VALUE_MAP_INPUT_MODE_UNSUPPORTED)
+}
+
+fn body_components<'a, 'input>(
+    owner: &roxmltree::Node<'a, 'input>,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'input>> {
+    owner
+        .children()
+        .filter(|node| node.has_tag_name("structure") && node.tag_name().namespace().is_none())
+        .flat_map(|structure| structure.children())
+        .filter(|node| node.has_tag_name("children") && node.tag_name().namespace().is_none())
+        .flat_map(|children| children.children())
+        .filter(|node| node.has_tag_name("component") && node.tag_name().namespace().is_none())
+}
+
+pub(super) fn unsupported_value_map_input_mode_in_definition(
+    component: &roxmltree::Node<'_, '_>,
+) -> Option<&'static str> {
+    body_components(component).find_map(|child| unsupported_value_map_input_mode(&child))
+}
+
+pub(super) fn value_map_input_mode_warning(library: &str, name: &str) -> String {
+    format!("function `{name}` ({library}): {VALUE_MAP_INPUT_MODE_UNSUPPORTED}")
+}
+
+/// Census only the wrapper's actual body and the declaration bodies already
+/// examined by the UDF registry. This also retains diagnostics for unused
+/// definitions and specialized lowering routes which never call fn_node.
+pub(super) fn warn_unsupported_value_map_input_modes(
+    mapping: &roxmltree::Node<'_, '_>,
+    warnings: &mut Vec<String>,
+) {
+    if let Some(wrapper) = mapping
+        .children()
+        .find(|node| node.has_tag_name("component") && node.tag_name().namespace().is_none())
+    {
+        for component in body_components(&wrapper) {
+            if unsupported_value_map_input_mode(&component).is_some() {
+                let name = component.attribute("name").unwrap_or_default();
+                let warning = value_map_input_mode_warning("core", name);
+                if !warnings.contains(&warning) {
+                    warnings.push(warning);
+                }
+            }
+        }
+    }
+    for component in mapping
+        .children()
+        .filter(|node| node.has_tag_name("component") && node.tag_name().namespace().is_none())
+    {
+        let library = component.attribute("library").unwrap_or_default();
+        if !library.is_empty()
+            && let Some(reason) = unsupported_value_map_input_mode_in_definition(&component)
+        {
+            let name = component.attribute("name").unwrap_or_default();
+            let warning =
+                format!("user-defined function `{name}` ({library}) is unsupported: {reason}");
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -324,6 +422,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .find(|n| n.is_element() && n.tag_name().name() == "valuemap")
         })
         .map(|vm| {
+            let unsupported_input_mode = unsupported_value_map_input_mode(component).is_some();
             let input_type = vm
                 .descendants()
                 .find(|node| node.has_tag_name("input"))
@@ -358,13 +457,15 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .and_then(|r| r.attribute("defaultValue"))
                 .map(|value| parse_constant(value, scalar_type_name(result_type)))
                 .filter(|_| {
-                    vm.attribute("defaultValueMode") == Some("custom")
-                        || vm.attribute("enableDefaultValue") == Some("1")
+                    !unsupported_input_mode
+                        && (vm.attribute("defaultValueMode") == Some("custom")
+                            || vm.attribute("enableDefaultValue") == Some("1"))
                 });
             ValueMapData {
                 table,
                 default,
                 input_type,
+                unsupported_input_mode,
                 total_string: exact_total_string_value_map(component, vm),
             }
         });
@@ -1289,8 +1390,10 @@ mod tests {
     use ir::{ScalarType, Value};
 
     use super::{
-        is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component,
-        map_component_name, map_name, produces_scalar, read, read_isbn_converter_component,
+        VALUE_MAP_INPUT_MODE_UNSUPPORTED, is_db_function_component, is_isbn_converter_component,
+        is_xbrl_measure_component, map_component_name, map_name, produces_scalar, read,
+        read_isbn_converter_component, unsupported_value_map_input_mode,
+        value_map_input_mode_warning, warn_unsupported_value_map_input_modes,
     };
 
     #[test]
@@ -1520,6 +1623,189 @@ mod tests {
 
         let value_map = read(&document.root_element()).valuemap.unwrap();
         assert_eq!(value_map.default, Some(Value::Bool(false)));
+    }
+
+    #[test]
+    fn value_map_input_mode_retains_refusal_without_enabling_a_stale_default() {
+        for legacy_flag in ["", " enableDefaultValue=\"0\"", " enableDefaultValue=\"1\""] {
+            let xml = format!(
+                r#"<component name="value-map" library="core" kind="23">
+                    <sources><datapoint pos="0" key="1"/></sources>
+                    <targets><datapoint pos="0" key="2"/></targets>
+                    <data><valuemap defaultValueMode="input"{legacy_flag}>
+                        <valuemapTable><entry from="7" to="8"/></valuemapTable>
+                        <input name="input" type="integer"/>
+                        <result name="result" type="integer" defaultValue="9"/>
+                    </valuemap></data>
+                </component>"#
+            );
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let value_map = read(&document.root_element()).valuemap.unwrap();
+            assert!(value_map.unsupported_input_mode);
+            assert_eq!(
+                value_map.unsupported_reason(),
+                Some(VALUE_MAP_INPUT_MODE_UNSUPPORTED)
+            );
+            assert_eq!(value_map.input_type, Some(ScalarType::Int));
+            assert_eq!(value_map.table, [(Value::Int(7), Value::Int(8))]);
+            assert_eq!(value_map.default, None);
+            assert!(value_map.total_string.is_none());
+        }
+    }
+
+    #[test]
+    fn value_map_input_mode_does_not_widen_the_total_string_proof() {
+        let document = roxmltree::Document::parse(
+            r#"<component name="renamed" library="core" kind="23">
+                <sources><datapoint pos="0" key="1"/></sources>
+                <targets><datapoint pos="0" key="2"/></targets>
+                <data><valuemap defaultValueMode="input">
+                    <valuemapTable><entry from="a" to="b"/></valuemapTable>
+                    <input name="input" type="string"/>
+                    <result name="result" type="string" defaultValue="stale"/>
+                </valuemap></data>
+            </component>"#,
+        )
+        .unwrap();
+        let value_map = read(&document.root_element()).valuemap.unwrap();
+        assert!(value_map.unsupported_input_mode);
+        assert!(value_map.total_string.is_none());
+    }
+
+    #[test]
+    fn value_map_input_mode_uses_the_lowerers_parsed_kind() {
+        for kind in ["23", "023", "+23"] {
+            let xml = format!(
+                r#"<component name="value-map" library="core" kind="{kind}">
+                    <data><valuemap defaultValueMode="input" enableDefaultValue="1">
+                        <valuemapTable><entry from="A" to="B"/></valuemapTable>
+                        <input name="input" type="string"/>
+                        <result name="result" type="string" defaultValue="stale"/>
+                    </valuemap></data>
+                </component>"#
+            );
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let component = document.root_element();
+            let function = read(&component);
+            assert_eq!(function.kind, 23, "{kind}");
+            assert_eq!(
+                unsupported_value_map_input_mode(&component),
+                Some(VALUE_MAP_INPUT_MODE_UNSUPPORTED),
+                "{kind}"
+            );
+            let value_map = function.valuemap.unwrap();
+            assert_eq!(
+                value_map.unsupported_reason(),
+                Some(VALUE_MAP_INPUT_MODE_UNSUPPORTED),
+                "{kind}"
+            );
+            assert_eq!(value_map.default, None, "{kind}");
+        }
+    }
+
+    #[test]
+    fn value_map_other_default_modes_keep_existing_compatibility() {
+        for (attributes, expected) in [
+            ("", None),
+            (r#"defaultValueMode="none""#, None),
+            (r#"defaultValueMode="unknown""#, None),
+            (r#"defaultValueMode="custom""#, Some(Value::Null)),
+            (r#"enableDefaultValue="1""#, Some(Value::Null)),
+            (
+                r#"defaultValueMode="custom" enableDefaultValue="0""#,
+                Some(Value::Null),
+            ),
+            (
+                r#"defaultValueMode="unknown" enableDefaultValue="1""#,
+                Some(Value::Null),
+            ),
+        ] {
+            let xml = format!(
+                r#"<component name="value-map" library="core" kind="23">
+                    <data><valuemap {attributes}>
+                        <valuemapTable/>
+                        <input name="input" type="string"/>
+                        <result name="result" type="integer" defaultValue="not-an-integer"/>
+                    </valuemap></data>
+                </component>"#
+            );
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let value_map = read(&document.root_element()).valuemap.unwrap();
+            assert_eq!(value_map.unsupported_reason(), None, "{attributes}");
+            assert_eq!(value_map.default, expected, "{attributes}");
+        }
+    }
+
+    #[test]
+    fn value_map_input_mode_census_keeps_body_and_definition_ownership() {
+        let document = roxmltree::Document::parse(
+            r#"<mapping>
+                <component name="main"><structure><children>
+                    <component name="value-map" library="core" kind="23">
+                        <data><valuemap defaultValueMode="input"/></data>
+                    </component>
+                </children></structure></component>
+                <component name="unused" library="example"><structure><children>
+                    <component name="value-map" library="core" kind="23">
+                        <data><valuemap defaultValueMode="input"/></data>
+                    </component>
+                </children></structure></component>
+            </mapping>"#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        warn_unsupported_value_map_input_modes(&document.root_element(), &mut warnings);
+        assert_eq!(
+            warnings,
+            [
+                value_map_input_mode_warning("core", "value-map"),
+                format!(
+                    "user-defined function `unused` (example) is unsupported: {VALUE_MAP_INPUT_MODE_UNSUPPORTED}"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn value_map_input_mode_census_ignores_preview_and_foreign_metadata() {
+        let document = roxmltree::Document::parse(
+            r#"<mapping xmlns:foreign="urn:foreign">
+                <component name="main">
+                    <properties><preview><structure><children>
+                        <component name="value-map" library="core" kind="23">
+                            <data><valuemap defaultValueMode="input"/></data>
+                        </component>
+                    </children></structure></preview></properties>
+                    <structure><children>
+                        <component name="constant" library="core" kind="2">
+                            <data><valuemap defaultValueMode="input"/></data>
+                        </component>
+                        <component name="value-map" library="foreign" kind="23">
+                            <data><valuemap defaultValueMode="input"/></data>
+                        </component>
+                        <component name="value-map" library="core" kind="5">
+                            <data><valuemap defaultValueMode="input"/></data>
+                        </component>
+                        <component name="value-map" library="core" kind="23">
+                            <data><preview><valuemap defaultValueMode="input"/></preview></data>
+                        </component>
+                        <foreign:component name="value-map" library="core" kind="23">
+                            <data><valuemap defaultValueMode="input"/></data>
+                        </foreign:component>
+                        <component name="value-map" library="core" kind="23">
+                            <data><foreign:valuemap defaultValueMode="input"/></data>
+                        </component>
+                        <component name="value-map" library="core" kind="23">
+                            <data><valuemap foreign:defaultValueMode="input"/></data>
+                        </component>
+                    </children></structure>
+                </component>
+            </mapping>"#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        warn_unsupported_value_map_input_modes(&document.root_element(), &mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]
