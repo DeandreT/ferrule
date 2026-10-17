@@ -312,6 +312,7 @@ internal static partial class Program
         BasicNamedOwnedLegacyProjectionNativePaths();
         BasicBoundedOwnedSortControls();
         BasicFreshNamedSingletonLegacyProjection();
+        BasicBoundedOwnedWindowControls();
     }
 
     private static void BasicNamedOwnedLegacyProjectionNativePaths()

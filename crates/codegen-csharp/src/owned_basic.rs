@@ -16,7 +16,7 @@ use codegen::{
 use std::collections::BTreeSet;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false, false, false)
+    render_basic_owned_mapping_profile(program, false, false, false, false)
 }
 
 fn render_basic_owned_mapping_profile(
@@ -24,8 +24,11 @@ fn render_basic_owned_mapping_profile(
     public_owned_nodes: bool,
     allow_filters: bool,
     allow_sort: bool,
+    allow_windows: bool,
 ) -> Result<String, EmitError> {
-    if allow_sort {
+    if allow_windows {
+        codegen::validate_program_with_basic_owned_windows(program)?;
+    } else if allow_sort {
         codegen::validate_program_with_basic_owned_sort(program)?;
     } else if allow_filters {
         codegen::validate_program_with_basic_owned_filters(program)?;
@@ -33,9 +36,13 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program(program)?;
     }
     let retained = retained_expressions(program);
-    validate_private_inventory(program, &retained, allow_filters, allow_sort)?;
+    validate_private_inventory(program, &retained, allow_filters, allow_sort, allow_windows)?;
     let mut body = String::new();
-    let (primary, extras) = mapping::render_basic_scopes(program, &mut body)?;
+    let (primary, extras) = if allow_windows {
+        mapping::render_basic_scopes_with_windows(program, &mut body)?
+    } else {
+        mapping::render_basic_scopes(program, &mut body)?
+    };
     let mut output = String::from(
         "namespace Ferrule.Generated;\n\npublic sealed record NamedOutput(string Name, global::Ferrule.Runtime.FerruleInstance Instance);\npublic sealed record ExecutionOutputs(global::Ferrule.Runtime.FerruleInstance Primary, global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
     );
@@ -94,6 +101,9 @@ fn render_basic_owned_mapping_profile(
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
         if retained.contains(&node.id) {
+            if allow_windows && !expression_needs_owned_sources(program, node.id) {
+                mapping::render_legacy_basic_expression(node.id, &node.expression, &mut output)?;
+            }
             if public_owned_nodes {
                 mapping::render_public_basic_expression(node.id, &node.expression, &mut output)?;
             } else {
@@ -176,6 +186,7 @@ fn check_scope(
     route: SourceScopeLocation,
     allow_filters: bool,
     allow_sort: bool,
+    allow_windows: bool,
 ) -> Result<(), EmitError> {
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
@@ -192,8 +203,9 @@ fn check_scope(
             || (!allow_sort && iteration.sort().is_some())
             || iteration.grouping().is_some()
             || iteration.post_group_filter().is_some()
-            || !iteration.windows().is_empty()
-            || iteration.output() != IterationOutput::Repeated
+            || (!allow_windows && !iteration.windows().is_empty())
+            || (iteration.output() != IterationOutput::Repeated
+                && !(allow_windows && iteration.output() == IterationOutput::First))
         {
             return Err(scope_error(scope, route, Reason::ScopeControl));
         }
@@ -225,6 +237,7 @@ fn check_scope(
             route.clone().descendant(SourceScopeStep::Child(index)),
             allow_filters,
             allow_sort,
+            allow_windows,
         )?;
     }
     Ok(())
@@ -256,6 +269,18 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
             pending.extend(iteration.filter());
             if let Some(sort) = iteration.sort() {
                 pending.extend(sort.keys().map(|key| key.expression));
+            }
+            for window in iteration.windows() {
+                match *window {
+                    codegen::SequenceWindow::SkipFirst { count }
+                    | codegen::SequenceWindow::First { count }
+                    | codegen::SequenceWindow::Last { count } => pending.push(count),
+                    codegen::SequenceWindow::From { position } => pending.push(position),
+                    codegen::SequenceWindow::FromTo { first, last } => {
+                        pending.push(first);
+                        pending.push(last);
+                    }
+                }
             }
         }
         for child in &scope.children {
@@ -360,6 +385,7 @@ fn validate_private_inventory(
     retained: &BTreeSet<NodeId>,
     allow_filters: bool,
     allow_sort: bool,
+    allow_windows: bool,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     check_scope(
@@ -368,6 +394,7 @@ fn validate_private_inventory(
         SourceScopeLocation::root(SourceScopeTarget::Primary),
         allow_filters,
         allow_sort,
+        allow_windows,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         check_scope(
@@ -379,6 +406,7 @@ fn validate_private_inventory(
             }),
             allow_filters,
             allow_sort,
+            allow_windows,
         )?;
     }
     validate_basic_failures(program)?;
@@ -701,7 +729,7 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false, false, false)
+    render_checked_basic_owned_mapping_profile(program, false, false, false, false)
 }
 
 fn render_checked_basic_owned_mapping_profile(
@@ -709,13 +737,16 @@ fn render_checked_basic_owned_mapping_profile(
     public_owned_nodes: bool,
     allow_filters: bool,
     allow_sort: bool,
+    allow_windows: bool,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
-        render_basic_owned_mapping_profile(program, true, allow_filters, allow_sort)?
+        render_basic_owned_mapping_profile(program, true, allow_filters, allow_sort, allow_windows)?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if allow_sort {
+    let plan = if allow_windows {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+    } else if allow_sort {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?
     } else if allow_filters {
         codegen::legacy_named_input_admission_plan_with_basic_owned_filters(program)?
@@ -862,7 +893,8 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, false, false)?;
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, false, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -870,7 +902,7 @@ pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<Str
 pub(crate) fn render_public_basic_owned_filter_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -878,7 +910,7 @@ pub(crate) fn render_public_basic_owned_filter_mapping(
 pub(crate) fn render_public_basic_owned_sort_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true)?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -902,3 +934,76 @@ public static partial class GeneratedMapping
         => ExecuteSelectedCheckedOwnedBasic(source, selection, supplied, limits, execution);
 }
 "#;
+
+// Owned demand is per scope, including potential branches and descendants. An
+// unrelated legacy subtree keeps the existing legacy renderer and context rules.
+fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
+    let mut pending = vec![root];
+    let mut seen = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(node) = program.expressions.iter().find(|node| node.id == id) {
+            if matches!(
+                node.expression,
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+            ) {
+                return true;
+            }
+            pending.extend(retained_expression_inputs(&node.expression));
+        }
+    }
+    false
+}
+
+pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) -> bool {
+    if scope
+        .iteration
+        .as_ref()
+        .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)))
+    {
+        return true;
+    }
+    let mut roots = scope
+        .bindings
+        .iter()
+        .map(|binding| binding.expression)
+        .collect::<Vec<_>>();
+    if let TargetConstruction::Scalar { expression, .. } = scope.construction {
+        roots.push(expression);
+    }
+    if let Some(iteration) = &scope.iteration {
+        roots.extend(iteration.filter());
+        if let Some(sort) = iteration.sort() {
+            roots.extend(sort.keys().map(|key| key.expression));
+        }
+        for window in iteration.windows() {
+            match *window {
+                codegen::SequenceWindow::SkipFirst { count }
+                | codegen::SequenceWindow::First { count }
+                | codegen::SequenceWindow::Last { count } => roots.push(count),
+                codegen::SequenceWindow::From { position } => roots.push(position),
+                codegen::SequenceWindow::FromTo { first, last } => {
+                    roots.push(first);
+                    roots.push(last);
+                }
+            }
+        }
+    }
+    roots
+        .into_iter()
+        .any(|root| expression_needs_owned_sources(program, root))
+        || scope
+            .children
+            .iter()
+            .any(|child| scope_needs_owned_sources(program, child))
+}
+
+pub(crate) fn render_public_basic_owned_window_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true, true)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}

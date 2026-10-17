@@ -2412,6 +2412,21 @@ pub(super) fn render_basic_scopes<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(program, output, false)
+}
+
+pub(super) fn render_basic_scopes_with_windows<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(program, output, true)
+}
+
+fn render_basic_scopes_profile<'a>(
+    program: &'a Program,
+    output: &mut String,
+    allow_windows: bool,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
     let extras = program
@@ -2419,8 +2434,22 @@ pub(super) fn render_basic_scopes<'a>(
         .iter()
         .map(|target| (target.name.as_str(), add_scope(&target.root, &mut scopes)))
         .collect();
+    let mut owned_routes = Vec::new();
+    if allow_windows {
+        collect_basic_window_routes(program, &program.root, false, &mut owned_routes);
+        for target in &program.extra_targets {
+            collect_basic_window_routes(program, &target.root, false, &mut owned_routes);
+        }
+    }
     for (index, scope) in scopes.iter().enumerate() {
         output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
+        if allow_windows && !owned_routes[index] {
+            output.push_str(&format!(
+                "        return Scope_{index}(context.LegacyView);\n    }}\n"
+            ));
+            render_basic_window_legacy_scope(program, index, scope, output)?;
+            continue;
+        }
         if let Some(iteration) = scope.iteration {
             output.push_str(&format!("        var cohort_{index} = context."));
             match iteration.input() {
@@ -2436,7 +2465,11 @@ pub(super) fn render_basic_scopes<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if let Some(sort) = iteration.sort() {
+            if allow_windows
+                && (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
+            {
+                render_basic_window_operation(index, iteration, output);
+            } else if let Some(sort) = iteration.sort() {
                 output.push_str(&format!(");\n        var sort_keys_{index} = new global::Ferrule.Runtime.FerruleSortKey<global::Ferrule.Runtime.FerruleBasicScopeContext>[]\n        {{\n"));
                 for key in sort.keys() {
                     output.push_str(&format!(
@@ -2484,4 +2517,119 @@ pub(super) fn render_basic_scopes<'a>(
         }
     }
     Ok((primary, extras))
+}
+
+// Use context overloads, not textual identifier replacement: paths and literal
+// values may themselves contain Node_, Scope_, or ScopeItem_.
+pub(super) fn render_legacy_basic_expression(
+    node: NodeId,
+    expression: &Expression,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    render_expression(
+        node,
+        expression,
+        &BTreeMap::new(),
+        false,
+        ExpressionContext::Legacy,
+        output,
+    )
+}
+
+fn collect_basic_window_routes(
+    program: &Program,
+    scope: &TargetScope,
+    inherited: bool,
+    routes: &mut Vec<bool>,
+) {
+    let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
+    routes.push(owned);
+    let own_source = scope
+        .iteration
+        .as_ref()
+        .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)));
+    for child in &scope.children {
+        collect_basic_window_routes(program, child, inherited || own_source, routes);
+    }
+}
+
+fn render_basic_window_legacy_scope(
+    program: &Program,
+    index: usize,
+    scope: &ScopePlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(global::Ferrule.Runtime.ScopeContext context)\n    {{\n"));
+    if let Some(iteration) = scope.iteration {
+        render_iteration_scope(program, index, iteration, false, output)?;
+    } else if scope.repeating {
+        output.push_str(&format!("        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ ScopeItem_{index}(context) }});\n"));
+    } else {
+        output.push_str(&format!("        return ScopeItem_{index}(context);\n"));
+    }
+    output.push_str(&format!("    }}\n    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{index}(global::Ferrule.Runtime.ScopeContext context)\n    {{\n"));
+    if let TargetConstruction::Scalar {
+        expression,
+        target_domain,
+    } = scope.construction
+    {
+        output.push_str(&format!(
+            "        return TargetBuilder.Scalar(Node_{expression}(context), {});\n    }}\n",
+            render_target_domain(*target_domain)
+        ));
+    } else {
+        render_bound_group(index, scope, output);
+    }
+    Ok(())
+}
+
+fn render_basic_window_operation(index: usize, iteration: &IterationPlan, output: &mut String) {
+    output.push_str(&format!(");\n        var sort_keys_{index} = new global::Ferrule.Runtime.FerruleSortKey<global::Ferrule.Runtime.FerruleBasicScopeContext>[]\n        {{\n"));
+    if let Some(sort) = iteration.sort() {
+        for key in sort.keys() {
+            output.push_str(&format!(
+                "            new(candidate => Node_{}(candidate), {}),\n",
+                key.expression,
+                if key.descending { "true" } else { "false" }
+            ));
+        }
+    }
+    output.push_str(&format!("        }};\n        var window_bounds_{index} = new global::System.Func<global::Ferrule.Runtime.FerruleBasicScopeContext, global::Ferrule.Runtime.FerruleSequenceWindow>[]\n        {{\n"));
+    for window in iteration.windows() {
+        let value = |node| {
+            format!(
+                "global::Ferrule.Runtime.FerruleSequences.ItemCount({node}U, Node_{node}(parent))"
+            )
+        };
+        let factory = match *window {
+            SequenceWindow::SkipFirst { count } => format!("SkipFirst({})", value(count)),
+            SequenceWindow::First { count } => format!("First({})", value(count)),
+            SequenceWindow::From { position } => format!("From({})", value(position)),
+            SequenceWindow::Last { count } => format!("Last({})", value(count)),
+            SequenceWindow::FromTo { first, last } => {
+                format!("FromTo({}, {})", value(first), value(last))
+            }
+        };
+        output.push_str(&format!(
+            "            parent => global::Ferrule.Runtime.FerruleSequenceWindow.{factory},\n"
+        ));
+    }
+    let filter_before_sort = iteration
+        .sort()
+        .is_some_and(|sort| sort.filter_order() == SortFilterOrder::FilterThenSort);
+    output.push_str(&format!("        }};\n        var items_{index} = context.VisitWindowedSourceCohort(cohort_{index}, sort_keys_{index}, {},\n            ", if filter_before_sort { "true" } else { "false" }));
+    if let Some(filter) = iteration.filter() {
+        output.push_str(&format!("candidate => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{filter}(candidate), {filter}U),\n"));
+    } else {
+        output.push_str("null,\n");
+    }
+    output.push_str(&format!("            window_bounds_{index}, {}, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n", if iteration.output() == IterationOutput::First { "true" } else { "false" }));
+    if iteration.output() == IterationOutput::First {
+        // The common validator restricts First to a nonrepeating Group target.
+        output.push_str(&format!("        return items_{index}.Count == 0 ? new global::Ferrule.Runtime.FerruleGroup(global::System.Array.Empty<global::Ferrule.Runtime.FerruleField>()) : items_{index}[0];\n"));
+    } else {
+        output.push_str(&format!(
+            "        return new global::Ferrule.Runtime.FerruleRepeated(items_{index});\n"
+        ));
+    }
 }
