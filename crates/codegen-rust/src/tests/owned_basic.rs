@@ -1,3 +1,5 @@
+#[path = "owned_basic_rows.rs"]
+mod primary_failures;
 #[path = "owned_basic_windows.rs"]
 mod windows;
 

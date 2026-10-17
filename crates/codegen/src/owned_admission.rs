@@ -84,6 +84,15 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_windows(
     Ok(admission_plan(program))
 }
 
+/// Plan named-input admission for the explicit primary-row failure companion.
+/// Owned reads remain lazy; ordinary alias requirements retain their contract.
+pub fn legacy_named_input_admission_plan_with_basic_owned_row_failures(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_basic_owned_row_failure_emission(program)?;
+    Ok(admission_plan(program))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     let primary_required = analyze(program, &program.root, Root::Primary).required;
     let primary = catalogue(program, &primary_required);

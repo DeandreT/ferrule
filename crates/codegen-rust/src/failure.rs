@@ -75,9 +75,21 @@ fn render_selection(selection: FailureSelection, output: &mut String) {
 // The ordinary renderer above stays byte-exact. This private test-only bridge
 // retains complete paired legacy cohorts until every reached rule returns.
 pub(super) fn render_basic(program: &Program) -> Result<String, EmitError> {
+    render_basic_profile(program, false)
+}
+
+pub(super) fn render_basic_with_row_failures(program: &Program) -> Result<String, EmitError> {
+    render_basic_profile(program, true)
+}
+
+fn render_basic_profile(program: &Program, primary_rows: bool) -> Result<String, EmitError> {
     let mut output = String::new();
     for (index, rule) in program.failure_rules.iter().enumerate() {
-        output.push_str(&render_basic_rule(index, rule)?);
+        if primary_rows && codegen::is_basic_owned_primary_row_failure(program, rule) {
+            output.push_str(&render_primary_row_rule(index, rule));
+        } else {
+            output.push_str(&render_basic_rule(index, rule)?);
+        }
     }
     output.push_str("fn evaluate_basic_failure_rules(context: &BasicScopeContext<'_>) -> Result<(), RuntimeError> {\n");
     if program.failure_rules.is_empty() {
@@ -135,4 +147,40 @@ fn render_basic_rule(index: usize, rule: &FailureRule) -> Result<String, EmitErr
     output.push_str(&format!("        let failure = codegen_runtime::mapping_failure({number}, message);\n        #[cfg(test)]\n        eprintln!(\"RAW PRIVATE_BASIC_FAILURE_RESULT module={{}} rule={number} error={{failure:#?}} cause={{:?}}\", module_path!(), std::error::Error::source(&failure));\n        return Err(failure);\n"));
     output.push_str("    }\n    Ok(())\n}\n\n");
     Ok(output)
+}
+
+fn render_primary_row_rule(index: usize, rule: &FailureRule) -> String {
+    let FailureIteration::Source(source) = &rule.iteration else {
+        unreachable!("validated primary row rule")
+    };
+    let path = render_string_path(source.path());
+    let mut output = format!(
+        "fn evaluate_basic_failure_rule_{index}(context: &BasicScopeContext<'_>) -> Result<(), RuntimeError> {{\n    context.visit_primary_failure_rows(&[{path}], |item_context| -> Result<(), RuntimeError> {{\n"
+    );
+    if rule.selection.predicate().is_none() && rule.message.is_none() {
+        output.push_str("        let _ = item_context;\n");
+    }
+    match rule.selection {
+        FailureSelection::All => output.push_str("        let selected = true;\n"),
+        FailureSelection::WhenTrue(predicate) | FailureSelection::WhenFalse(predicate) => {
+            let invert = if matches!(rule.selection, FailureSelection::WhenFalse(_)) {
+                "!"
+            } else {
+                ""
+            };
+            output.push_str(&format!("        let predicate = expression_{predicate}(item_context)?;\n        let selected = {invert}require_bool({predicate}, predicate)?;\n"));
+        }
+    }
+    output.push_str("        if !selected { return Ok(()); }\n");
+    match rule.message {
+        Some(message) => output.push_str(&format!(
+            "        let message = Some(expression_{message}(item_context)?);\n"
+        )),
+        None => output.push_str("        let message = None;\n"),
+    }
+    output.push_str(&format!(
+        "        Err(codegen_runtime::mapping_failure({}, message))\n    }})\n}}\n\n",
+        index + 1
+    ));
+    output
 }
