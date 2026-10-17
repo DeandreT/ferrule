@@ -1,7 +1,9 @@
 use ir::{ScalarType, Value};
 use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
-use super::function::{aggregate_op, map_component_name, parse_constant};
+use super::function::{
+    aggregate_op, map_component_name, parse_constant, value_map_input_mode_warning,
+};
 use super::graph::GraphBuilder;
 use super::iteration::split_at_innermost_repeating;
 use super::schema::{JsonDynamicPort, split_json_dynamic_port};
@@ -149,6 +151,12 @@ impl GraphBuilder<'_> {
             ("if-else", _) => self.if_else_node(&input_ids),
             ("value-map", _) => {
                 let value_map = fc.valuemap.clone().unwrap_or_default();
+                if value_map.unsupported_reason().is_some() {
+                    let warning = value_map_input_mode_warning(&fc.library, &fc.name);
+                    if !self.warnings.contains(&warning) {
+                        self.warnings.push(warning);
+                    }
+                }
                 Node::ValueMap {
                     input: input_or_null(self, 0),
                     input_type: value_map.input_type,

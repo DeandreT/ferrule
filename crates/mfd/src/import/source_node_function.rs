@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::{ScalarType, Value};
 use mapping::{Node, NodeId};
 
-use super::function::{FnComponent, map_component_name, parse_constant, read as read_function};
+use super::function::{
+    FnComponent, map_component_name, parse_constant, read as read_function,
+    unsupported_value_map_input_mode_in_definition,
+};
 use super::graph::{GraphBuilder, read_edge_inputs};
 use super::schema::parse_u32;
 
@@ -115,6 +118,9 @@ fn read_registered_definition(
     component: roxmltree::Node<'_, '_>,
     registry: &super::udf::Registry,
 ) -> Option<Expr> {
+    if unsupported_value_map_input_mode_in_definition(&component).is_some() {
+        return None;
+    }
     let name = component.attribute("name")?;
     let (parameters, expression) =
         registry.scalar_expression_named("mapforce_nodefunction", name)?;
@@ -319,6 +325,9 @@ fn scalar_type(value: &str) -> Option<ScalarType> {
 }
 
 fn read_definition(component: roxmltree::Node<'_, '_>, allow_target_context: bool) -> Option<Expr> {
+    if unsupported_value_map_input_mode_in_definition(&component).is_some() {
+        return None;
+    }
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))?;
