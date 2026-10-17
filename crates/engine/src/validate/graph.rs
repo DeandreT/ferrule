@@ -122,18 +122,17 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     ));
                 }
             }
-            Node::SourceDocumentPath => {
+            Node::SourceDocumentPath
                 if !project.source_options.local_xml_file_set
                     && !project
                         .extra_sources
                         .iter()
-                        .any(|source| source.options.local_xml_file_set)
-                {
-                    issues.push(ValidationIssue::new(
-                        &location,
-                        "source document path requires a local XML file-set boundary",
-                    ));
-                }
+                        .any(|source| source.options.local_xml_file_set) =>
+            {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "source document path requires a local XML file-set boundary",
+                ));
             }
             Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. } => {
                 validate_runtime_parameter_name(&location, name, issues);
