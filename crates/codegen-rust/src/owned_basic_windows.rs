@@ -31,7 +31,42 @@ fn render_public_basic_owned_source_profile(
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
-    let retained = expression_usage(program, &scopes);
+    let mut basic = BTreeSet::new();
+    mark_basic_scopes(program, &program.root, "scope_root", false, &mut basic);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        mark_basic_scopes(
+            program,
+            &target.root,
+            &format!("scope_extra_{index}"),
+            false,
+            &mut basic,
+        );
+    }
+    let basic_scopes = scopes
+        .iter()
+        .filter(|(name, _, _, _)| basic.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let legacy_scopes = scopes
+        .iter()
+        .filter(|(name, _, _, _)| !basic.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    // Failures execute in the paired context, but legacy-only target nodes do
+    // not. Retain each expression only in the contexts that actually call it.
+    let basic_retained = expression_usage(program, &basic_scopes);
+    let legacy_retained = rows::target_expression_usage(program, &legacy_scopes);
+    let mut basic_call_targets = BTreeSet::from(["scope_root".to_owned()]);
+    basic_call_targets.extend(
+        program
+            .extra_targets
+            .iter()
+            .enumerate()
+            .map(|(index, _)| format!("scope_extra_{index}")),
+    );
+    for (_, _, children, _) in &basic_scopes {
+        basic_call_targets.extend(children.iter().cloned());
+    }
     let functions = BTreeMap::new();
     let mut source = String::from(
         "// Basic owned-source entry points require an explicit native policy per call.\n\
@@ -43,7 +78,7 @@ fn render_public_basic_owned_source_profile(
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
     if program.expressions.iter().any(|node| {
-        retained.contains(&node.id)
+        basic_retained.contains(&node.id)
             && matches!(&node.expression, Expression::OwnedSourceField(field)
                 if field.frame.as_ref().is_some_and(Vec::is_empty))
     }) {
@@ -77,7 +112,7 @@ fn render_public_basic_owned_source_profile(
         );
     source.push_str(&entries);
     for node in &program.expressions {
-        if retained.contains(&node.id) {
+        if basic_retained.contains(&node.id) {
             source.push_str(&render_expression_in_context(
                 node.id,
                 &node.expression,
@@ -100,27 +135,6 @@ fn render_public_basic_owned_source_profile(
             failure::render_basic(program)?
         });
     }
-    let mut basic = BTreeSet::new();
-    mark_basic_scopes(program, &program.root, "scope_root", false, &mut basic);
-    for (index, target) in program.extra_targets.iter().enumerate() {
-        mark_basic_scopes(
-            program,
-            &target.root,
-            &format!("scope_extra_{index}"),
-            false,
-            &mut basic,
-        );
-    }
-    let legacy_scopes = scopes
-        .iter()
-        .filter(|(name, _, _, _)| !basic.contains(name))
-        .cloned()
-        .collect::<Vec<_>>();
-    let legacy_retained = if primary_row_failures {
-        rows::target_expression_usage(program, &legacy_scopes)
-    } else {
-        expression_usage(program, &legacy_scopes)
-    };
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
         for node in &program.expressions {
@@ -156,7 +170,11 @@ fn render_public_basic_owned_source_profile(
                 scope,
                 &legacy_children,
             )?);
-            source.push_str(&format!("fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    {legacy_name}(context.legacy_view())\n}}\n\n"));
+            // A legacy parent calls its legacy children directly. Only entry
+            // roots and children called by paired scopes need a Basic adapter.
+            if basic_call_targets.contains(&name) {
+                source.push_str(&format!("fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    {legacy_name}(context.legacy_view())\n}}\n\n"));
+            }
         }
     }
     let plan = if primary_row_failures {
