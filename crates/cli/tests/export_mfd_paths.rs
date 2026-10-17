@@ -271,9 +271,21 @@ fn relocated_export_rebases_wildcard_hints_without_reading_members() -> Result {
 #[test]
 fn relocated_export_preserves_url_and_absolute_hints() -> Result {
     let temp = TempDir::new()?;
+    let native_source = if cfg!(windows) {
+        "C:/data/source.xml"
+    } else {
+        "/data/source.xml"
+    };
+    let native_audit = if cfg!(windows) {
+        "C:/results/audit.xml"
+    } else {
+        "/results/audit.xml"
+    };
+    assert!(Path::new(native_source).is_absolute());
+    assert!(Path::new(native_audit).is_absolute());
     for (index, source) in [
         "https://example.test/source.xml?x=1&y=2",
-        "/data/source.xml",
+        native_source,
         r"C:\Data\source.xml",
         r"\\server\share\source.xml",
     ]
@@ -284,7 +296,7 @@ fn relocated_export_preserves_url_and_absolute_hints() -> Result {
         project.source_path = Some(source.into());
         project.target_path = Some(r"D:\Results\target.xml".into());
         project.extra_sources[0].path = "https://example.test/catalog.xml".into();
-        project.extra_targets[0].path = Some("/results/audit.xml".into());
+        project.extra_targets[0].path = Some(native_audit.into());
         let saved = temp.project(&project)?;
         let before = snapshot(&saved)?;
         let design = temp.0.join(format!("exports/deep/preserved-{index}.mfd"));
@@ -302,7 +314,7 @@ fn relocated_export_preserves_url_and_absolute_hints() -> Result {
         );
         assert_eq!(
             imported.project.extra_targets[0].path.as_deref(),
-            Some("/results/audit.xml")
+            Some(native_audit)
         );
         assert_eq!(snapshot(&saved)?, before);
     }

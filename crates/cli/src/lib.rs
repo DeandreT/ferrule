@@ -28,6 +28,7 @@ const MAX_HTTP_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_HTTP_RESPONSE_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_REDIRECTS: u32 = 5;
 
+mod bundle;
 mod code_generation;
 mod filesystem_pdf_reader;
 #[cfg(test)]
@@ -39,6 +40,7 @@ mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
 mod project_paths;
+pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 pub use filesystem_pdf_reader::FilesystemPdfReader;
 pub use pdf_worker_policy::FilesystemRunPolicy;
 mod rest_json;
