@@ -391,23 +391,42 @@ pub(super) fn read(
 
 struct ExpansionBudget {
     remaining: usize,
+    depth: usize,
 }
 
 impl ExpansionBudget {
     fn new() -> Self {
         Self {
             remaining: MAX_SCALAR_EXPANSION_NODES,
+            depth: 0,
         }
     }
 
     fn claim(&mut self, depth: usize) -> Result<(), String> {
-        if depth >= MAX_SCALAR_EXPANSION_DEPTH || self.remaining == 0 {
+        if depth >= MAX_SCALAR_EXPANSION_DEPTH.saturating_sub(self.depth) || self.remaining == 0 {
             return Err(format!(
                 "scalar expression expansion exceeds the {MAX_SCALAR_EXPANSION_NODES}-node or {MAX_SCALAR_EXPANSION_DEPTH}-level limit"
             ));
         }
         self.remaining -= 1;
         Ok(())
+    }
+
+    fn at_depth<T>(
+        &mut self,
+        additional: usize,
+        build: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let previous = self.depth;
+        if additional >= MAX_SCALAR_EXPANSION_DEPTH.saturating_sub(previous) {
+            return Err(format!(
+                "scalar expression expansion exceeds the {MAX_SCALAR_EXPANSION_NODES}-node or {MAX_SCALAR_EXPANSION_DEPTH}-level limit"
+            ));
+        }
+        self.depth += additional;
+        let result = build(self);
+        self.depth = previous;
+        result
     }
 }
 
@@ -427,7 +446,7 @@ impl DefinitionContext<'_> {
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
     ) -> Result<ScalarExpr, String> {
-        self.expression_with_sequence_items(feed, active, budget, &[])
+        self.expression_at_depth(feed, active, budget, &[])
     }
 
     fn expression_with_sequence_items(
@@ -437,6 +456,19 @@ impl DefinitionContext<'_> {
         budget: &mut ExpansionBudget,
         sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
+        budget.at_depth(1, |budget| {
+            self.expression_at_depth(feed, active, budget, sequence_items)
+        })
+    }
+
+    fn expression_at_depth(
+        &self,
+        feed: u32,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
+    ) -> Result<ScalarExpr, String> {
+        budget.claim(0)?;
         if sequence_items.contains(&feed) {
             return Ok(ScalarExpr::SequenceItem(feed));
         }
@@ -620,23 +652,7 @@ impl DefinitionContext<'_> {
                     .unwrap_or_default();
                 Ok(ScalarExpr::Const(parse_constant(value, datatype)))
             }
-            (_, 4) => Ok(ScalarExpr::If {
-                condition: Box::new(self.function_input(
-                    function,
-                    0,
-                    active,
-                    budget,
-                    sequence_items,
-                )?),
-                then: Box::new(self.function_input(function, 1, active, budget, sequence_items)?),
-                else_: Box::new(self.function_input(
-                    function,
-                    2,
-                    active,
-                    budget,
-                    sequence_items,
-                )?),
-            }),
+            (_, 4) => self.if_else_expression(function, active, budget, sequence_items),
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(ScalarExpr::ValueMap {
@@ -718,6 +734,50 @@ impl DefinitionContext<'_> {
                 })
             }
         }
+    }
+
+    fn if_else_expression(
+        &self,
+        function: &FnComponent,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
+    ) -> Result<ScalarExpr, String> {
+        let paired_len = function.inputs.len() - function.inputs.len() % 2;
+        if paired_len < 2 {
+            return Ok(ScalarExpr::Const(Value::Null));
+        }
+        // Reserve the fallback depth before constructing a potentially long chain.
+        budget.claim(paired_len / 2)?;
+        let mut otherwise = if function.inputs.len() % 2 == 1 {
+            budget.at_depth(paired_len / 2 - 1, |budget| {
+                self.function_input(
+                    function,
+                    function.inputs.len() - 1,
+                    active,
+                    budget,
+                    sequence_items,
+                )
+            })?
+        } else {
+            ScalarExpr::Const(Value::Null)
+        };
+        for position in (0..paired_len).step_by(2).rev() {
+            budget.claim(position / 2)?;
+            let (condition, then) = budget.at_depth(position / 2, |budget| {
+                let condition =
+                    self.function_input(function, position, active, budget, sequence_items)?;
+                let then =
+                    self.function_input(function, position + 1, active, budget, sequence_items)?;
+                Ok((condition, then))
+            })?;
+            otherwise = ScalarExpr::If {
+                condition: Box::new(condition),
+                then: Box::new(then),
+                else_: Box::new(otherwise),
+            };
+        }
+        Ok(otherwise)
     }
 
     fn sequence_exists_expression(
@@ -1455,6 +1515,10 @@ fn clone_sequence_with_budget(
         },
     })
 }
+
+#[cfg(test)]
+#[path = "scalar_multi_case_tests.rs"]
+mod multi_case_tests;
 
 #[cfg(test)]
 mod tests {
