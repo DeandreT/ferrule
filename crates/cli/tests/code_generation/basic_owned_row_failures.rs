@@ -243,10 +243,6 @@ fn prepare_basic_owned_row808_three_models_ninety_three_calls() -> TestResult<()
         "[package]\nname = \"row808-public-host\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n[workspace]\n[dependencies]\ncodegen-runtime = {{ path = {} }}\nserde_json = \"=1.0.150\"\n{dependencies}",
         serde_json::to_string(&runtime.display().to_string())?
     ).as_bytes())?;
-    evidence.write(
-        "NuGet.Config",
-        b"<configuration><packageSources><clear /></packageSources></configuration>\n",
-    )?;
     evidence.debug("ALL3-COMPLETE-PREPARATION-OUTCOMES.txt", &preparation)?;
     evidence.debug("ALL93-COMPLETE-NATIVE-COMPARISONS.txt", &native_checks)?;
     if preparation.len() != 3

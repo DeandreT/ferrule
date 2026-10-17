@@ -455,3 +455,231 @@ fn owned_row_failures_keep_ordinary_value_maps_closed_in_inactive_branches_and_d
         assert_eq!(validate_basic_owned_window_emission(&p), Err(expected));
     }
 }
+
+fn collection_alias_program() -> Program {
+    let mut p = project();
+    p.extra_sources.push(mapping::NamedSource {
+        name: "Rows".into(),
+        path: "rows.json".into(),
+        schema: p.source.clone(),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    lower_with_basic_owned_row_failures(&p).unwrap()
+}
+
+fn alias_catalogue(
+    reference: NamedInputAvailability,
+    rows: NamedInputAvailability,
+) -> NamedInputCatalogue<'static> {
+    NamedInputCatalogue {
+        entries: vec![
+            NamedInputAdmission {
+                declaration_index: 0,
+                name: "Ref",
+                availability: reference,
+            },
+            NamedInputAdmission {
+                declaration_index: 1,
+                name: "Rows",
+                availability: rows,
+            },
+        ],
+    }
+}
+
+fn assert_alias_plan(
+    actual: NamedInputAdmissionPlan<'_>,
+    reference: NamedInputAvailability,
+    rows: [NamedInputAvailability; 3],
+) {
+    // Independent complete All / Primary / Other catalogue contracts, including
+    // the original declaration ordinals; no expected set is derived by analysis.
+    assert_eq!(
+        actual,
+        NamedInputAdmissionPlan {
+            all_outputs: alias_catalogue(reference, rows[0]),
+            primary: alias_catalogue(reference, rows[1]),
+            named_targets: vec![NamedTargetInputCatalogue {
+                target_index: 0,
+                name: "Other",
+                catalogue: alias_catalogue(reference, rows[2]),
+            }],
+        }
+    );
+}
+
+#[test]
+fn owned_row_failure_admission_keeps_primary_collection_and_owned_ref_optional() {
+    use NamedInputAvailability::Optional;
+    let base = collection_alias_program();
+    // Cover ownership in both predicate and message, including the position-
+    // only All rule. A named owned field is optional even when read directly,
+    // not just when it happens to occur in an inactive message branch.
+    for (selection, message) in [
+        (FailureSelection::WhenTrue(1), 3),
+        (FailureSelection::WhenTrue(1), 5),
+        (FailureSelection::All, 2),
+    ] {
+        let mut p = base.clone();
+        p.failure_rules[0].selection = selection;
+        p.failure_rules[0].message = Some(message);
+        assert_alias_plan(
+            legacy_named_input_admission_plan_with_basic_owned_row_failures(&p).unwrap(),
+            Optional,
+            [Optional; 3],
+        );
+    }
+}
+
+#[test]
+fn owned_row_failure_admission_preserves_ordinary_rules_and_old_companion_catalogues() {
+    use NamedInputAvailability::{Optional, RequiredLegacy};
+    let base = collection_alias_program();
+    for ordinary in [
+        FailureRule {
+            iteration: FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+            selection: FailureSelection::All,
+            message: None,
+        },
+        FailureRule {
+            iteration: FailureIteration::Source(SourceIteration::new(path(&["Rows"]))),
+            selection: FailureSelection::WhenTrue(4),
+            message: Some(10),
+        },
+    ] {
+        let mut p = base.clone();
+        p.failure_rules = vec![ordinary.clone()];
+        // Freeze complete pre-existing companion metadata, not just the new
+        // companion's behavior. Both ordinary rules keep the alias requirement.
+        for actual in [
+            legacy_named_input_admission_plan(&p).unwrap(),
+            legacy_named_input_admission_plan_with_basic_owned_filters(&p).unwrap(),
+            legacy_named_input_admission_plan_with_basic_owned_sort(&p).unwrap(),
+            legacy_named_input_admission_plan_with_basic_owned_windows(&p).unwrap(),
+            legacy_named_input_admission_plan_with_basic_owned_row_failures(&p).unwrap(),
+        ] {
+            assert_alias_plan(actual, Optional, [RequiredLegacy; 3]);
+        }
+        // A later, even statically false, ordinary rule remains a global eager
+        // requirement; an eligible owned rule must not erase it in either order.
+        for rules in [
+            vec![base.failure_rules[0].clone(), ordinary.clone()],
+            vec![ordinary.clone(), base.failure_rules[0].clone()],
+        ] {
+            p.failure_rules = rules;
+            assert_alias_plan(
+                legacy_named_input_admission_plan_with_basic_owned_row_failures(&p).unwrap(),
+                Optional,
+                [RequiredLegacy; 3],
+            );
+        }
+    }
+}
+
+#[test]
+fn owned_row_failure_admission_keeps_legacy_predicate_and_message_alias_dependencies() {
+    use NamedInputAvailability::{Optional, RequiredLegacy};
+    let base = collection_alias_program();
+    for predicate in [false, true] {
+        for kind in 0..3 {
+            let mut p = base.clone();
+            let field = if predicate { "Flag" } else { "Message" };
+            let leaf = match kind {
+                0 => Expression::SourceField {
+                    path: path(&["Rows", field]),
+                    frame: None,
+                },
+                1 => Expression::SourceField {
+                    path: path(&[field]),
+                    frame: Some(path(&["Rows"])),
+                },
+                _ => Expression::Position {
+                    collection: path(&["Rows"]),
+                },
+            };
+            expression(
+                &mut p,
+                49,
+                Expression::Const {
+                    value: Value::Int(0),
+                },
+            );
+            expression(&mut p, 50, leaf);
+            let direct = if predicate && kind == 2 {
+                expression(
+                    &mut p,
+                    51,
+                    Expression::Call {
+                        function: ScalarFunction::GreaterThan,
+                        args: vec![50, 49],
+                    },
+                );
+                51
+            } else {
+                50
+            };
+            let (ty, fallback) = if predicate {
+                (ScalarType::Bool, Value::Bool(false))
+            } else if kind == 2 {
+                (ScalarType::Int, Value::Int(0))
+            } else {
+                (ScalarType::String, Value::String("unused".into()))
+            };
+            expression(&mut p, 52, Expression::Const { value: fallback });
+            expression(
+                &mut p,
+                53,
+                Expression::If {
+                    condition: 4,
+                    then: direct,
+                    else_: 52,
+                },
+            );
+            expression(
+                &mut p,
+                54,
+                Expression::RuntimeParameterDefault {
+                    name: "legacy_input".into(),
+                    ty,
+                    default: 53,
+                },
+            );
+            expression(&mut p, 55, Expression::Raise { message: Some(54) });
+            for root in [direct, 55] {
+                if predicate {
+                    p.failure_rules[0].selection = FailureSelection::WhenTrue(root);
+                    p.failure_rules[0].message = Some(2);
+                } else {
+                    p.failure_rules[0].selection = FailureSelection::WhenTrue(1);
+                    p.failure_rules[0].message = Some(root);
+                }
+                // The ordinary leaf is part of an otherwise eligible owned
+                // rule. Its direct or inactive/default-wrapped dependency must
+                // independently preserve the existing legacy alias obligation.
+                assert!(is_basic_owned_primary_row_failure(&p, &p.failure_rules[0]));
+                assert_alias_plan(
+                    legacy_named_input_admission_plan_with_basic_owned_row_failures(&p).unwrap(),
+                    Optional,
+                    [RequiredLegacy; 3],
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn owned_row_failure_admission_keeps_target_aliases_selection_specific() {
+    use NamedInputAvailability::{Optional, RequiredLegacy};
+    let mut p = collection_alias_program();
+    p.root.repeating = true;
+    p.target.repeating = true;
+    p.root.iteration = Some(IterationPlan::source(path(&["Rows"])));
+    // Only the primary target has an ordinary Rows iteration. All includes it;
+    // the independently selected Other target has only the eligible row rules.
+    assert_alias_plan(
+        legacy_named_input_admission_plan_with_basic_owned_row_failures(&p).unwrap(),
+        Optional,
+        [RequiredLegacy, RequiredLegacy, Optional],
+    );
+}

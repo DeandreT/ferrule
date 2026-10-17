@@ -294,3 +294,41 @@ stack/assembly details are retained verbatim, not treated as portable literal
 oracles. Results qualify only this finite ordinary Basic cohort; full window,
 full-error and total-parity flags remain false and the canonical inventory is
 unchanged. Output directories are exclusive: use a fresh directory for each run.
+
+## Basic primary-row failures
+
+The CLI integration module
+[`basic_owned_row_failures.rs`](../crates/cli/tests/code_generation/basic_owned_row_failures.rs)
+qualifies genuine Projects with independently fixed inputs and typed outcomes
+through the native engine and compiled public Rust/C# callers. Preparation and
+consumer execution are separate ignored tests so a coordinator can serialize
+compiler use.
+
+Set `FERRULE_BASIC_ROW808_PREPARE_DIR` to a fresh absolute directory whose parent
+already exists, then run from the repository root:
+
+```sh
+cargo test -p cli --features codegen-tests --test code_generation --locked \
+  basic_owned_row_failures::prepare_basic_owned_row808_three_models_ninety_three_calls \
+  -- --exact --ignored --nocapture --test-threads=1
+cargo test -p cli --features codegen-tests --test code_generation --locked \
+  basic_owned_row_failures::qualify_basic_owned_row808_prepared_generated_consumers \
+  -- --exact --ignored --nocapture --test-threads=1
+```
+
+Preparation retains the complete model, case, target-selection and public API
+inventory before evaluating any mapping. It publishes `SUCCESSFUL-PREPARATION.json`
+only after every native comparison and paired public lowering/emission succeeds.
+The receipt binds source and artifact bytes with SHA256; changed sources or
+fixtures require fresh preparation. Consumer execution verifies that binding,
+records commands and raw outputs, and checks complete typed results rather than
+error text alone. It rejects missing results and preserves failed builds and
+comparisons. Use a fresh evidence directory for each attempt.
+
+Rust consumers compile with warnings denied. C# uses isolated CLI/package/temp
+directories and normal NuGet restore for any framework reference packs not
+installed with the SDK. Its builds disable build servers/shared compilation and
+run with one MSBuild worker and `DOTNET_PROCESSOR_COUNT=2`. Keep
+`DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` on every child. The finite cohort covers
+only the explicit static Primary Group row-failure profile; public observers and
+the deeper or specialized ownership profiles retain their separate admission.
