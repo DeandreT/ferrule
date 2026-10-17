@@ -11,6 +11,8 @@ mod auto_connect_item_reuse;
 mod pipeline_preview;
 #[path = "preview_inputs_tests.rs"]
 mod preview_inputs;
+#[path = "preview_layout_tests.rs"]
+mod preview_layout;
 
 fn canvas_position(snarl: &Snarl<CanvasNode>, wanted: CanvasNode) -> egui::Pos2 {
     snarl

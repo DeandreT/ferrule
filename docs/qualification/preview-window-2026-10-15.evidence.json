@@ -1,0 +1,238 @@
+{
+  "issue": 770,
+  "date": "2026-10-15",
+  "base_before_lint": "4c1aa3805a012886d19dcc8730dff424f25b6ef5",
+  "lint_parent_commit": "79641de6cd260c47a3b0e81e0a801a6a6064828d",
+  "lint_parent_pr": 772,
+  "production_preview_before_sha256": "33939923f2441f3abd22ffbe594ed841cfb29bd18a0873cd13ed0cb58694fa2d",
+  "production_preview_after_sha256": "a94e2a072d32b36c0aa16f884146b82e04a6cabeeab3110c04aab2965a0892cc",
+  "native_display": [
+    1280,
+    720
+  ],
+  "native_client": [
+    1280,
+    699
+  ],
+  "negative_control": {
+    "tests": 2,
+    "passed": 0,
+    "failed": 2,
+    "viewport_height": 699,
+    "window_height": 792,
+    "root": "target/qualification/770-preview-1/commands/before-fix-layout-tests-2"
+  },
+  "fixed_widget_tests": {
+    "tests": 2,
+    "viewports": [
+      [
+        1280,
+        699
+      ],
+      [
+        960,
+        560
+      ]
+    ],
+    "actions": [
+      "Preview",
+      "Cancel"
+    ],
+    "root": "target/qualification/770-final-checks-1/commands/preview-layout",
+    "result": {
+      "exit": 0,
+      "wall_seconds": 30.645602435004548,
+      "pgid": 170952,
+      "members_at_cleanup": [],
+      "remaining_members": [],
+      "original_failure": null
+    }
+  },
+  "full_gui_tests_before_equivalent_lint_helper_change": {
+    "passed": 800,
+    "failed": 0,
+    "ignored": 0,
+    "root": "target/qualification/770-gui-checks-2/commands/gui-tests",
+    "result": {
+      "exit": 0,
+      "wall_seconds": 179.4783732520009,
+      "pgid": 166264,
+      "members_at_cleanup": [],
+      "remaining_members": [],
+      "original_failure": null
+    }
+  },
+  "strict_gui_current_stack": {
+    "exit": 0,
+    "wall_seconds": 18.84872193999763,
+    "pgid": 171042,
+    "members_at_cleanup": [],
+    "remaining_members": [],
+    "original_failure": null
+  },
+  "normal_gui_build": {
+    "exit": 0,
+    "wall_seconds": 12.601721500002895,
+    "pgid": 171100,
+    "members_at_cleanup": [],
+    "remaining_members": [],
+    "original_failure": null
+  },
+  "native_gui_sha256": "3b7df7170d4e295b303c91a82bacea7f69dcdbade7226afbe54041639f780d43",
+  "bound_source_files": 3436,
+  "after_desktop_sources_and_binary_unchanged": true,
+  "fixture_input_expected_unchanged": true,
+  "input_text": "{}\n",
+  "expected_output": "{\n  \"Value\": \"complete preview result\"\n}\n",
+  "actual_copy_preview_output": {
+    "bytes": 41,
+    "sha256": "5970dcac0150b47c2acd351ade765693b0f55969b22d38c8cc97f683b436908f",
+    "complete_exact_match": true,
+    "route": "Actual native Copy preview button -> visible noVNC clipboard textarea"
+  },
+  "native_actions": [
+    "Open fixture through Zenity chooser on isolated bus/display",
+    "15 actual outer wheel events",
+    "Enter complete 3-byte primary input",
+    "Cancel and observe clean project",
+    "Reopen, enter complete 3-byte input, click Preview",
+    "Observe one record / one 41-byte in-memory output",
+    "Copy complete output through actual Copy preview button",
+    "Normal application close"
+  ],
+  "native_closure": {
+    "original_failure": null,
+    "processes": [
+      {
+        "label": "gui",
+        "pid": 171246,
+        "original_exit": 0,
+        "exit": 0,
+        "members_at_stop": [
+          {
+            "pid": 171247,
+            "state": "Z"
+          }
+        ],
+        "remaining_members": []
+      },
+      {
+        "label": "websockify",
+        "pid": 171225,
+        "original_exit": null,
+        "exit": 0,
+        "members_at_stop": [
+          {
+            "pid": 171225,
+            "state": "S"
+          },
+          {
+            "pid": 171236,
+            "state": "S"
+          },
+          {
+            "pid": 171237,
+            "state": "S"
+          },
+          {
+            "pid": 171291,
+            "state": "S"
+          },
+          {
+            "pid": 171292,
+            "state": "S"
+          },
+          {
+            "pid": 171293,
+            "state": "S"
+          },
+          {
+            "pid": 171294,
+            "state": "S"
+          },
+          {
+            "pid": 171295,
+            "state": "S"
+          },
+          {
+            "pid": 171296,
+            "state": "S"
+          },
+          {
+            "pid": 171301,
+            "state": "S"
+          }
+        ],
+        "remaining_members": []
+      },
+      {
+        "label": "openbox",
+        "pid": 171224,
+        "original_exit": null,
+        "exit": 0,
+        "members_at_stop": [
+          {
+            "pid": 171224,
+            "state": "S"
+          }
+        ],
+        "remaining_members": []
+      },
+      {
+        "label": "xvnc",
+        "pid": 171219,
+        "original_exit": null,
+        "exit": 0,
+        "members_at_stop": [
+          {
+            "pid": 171219,
+            "state": "S"
+          }
+        ],
+        "remaining_members": []
+      }
+    ],
+    "short_runtime": "/tmp/ferrule-770-yke_nvdp"
+  },
+  "retained_setup_failures": [
+    "Initial wheel-event test draft lacked phase and failed compilation",
+    "Three RAM-reserve interruptions; complete 4286021982 fixture bytes relocated from RAM-backed /tmp to disk with per-file SHA-256 checks",
+    "First disk-backed run interrupted by private monitoring race during normal temporary-file removal",
+    "Strict all-target lint found baseline helper warning, corrected separately in PR772"
+  ],
+  "private_roots": [
+    "target/qualification/108-desktop-1",
+    "target/qualification/770-preview-1",
+    "target/qualification/770-gui-checks-1",
+    "target/qualification/770-gui-checks-2",
+    "target/qualification/770-final-checks-1",
+    "target/qualification/771-lint-1"
+  ],
+  "public_artifacts": [
+    {
+      "path": "docs/qualification/preview-window-2026-10-15-before.jpg",
+      "original": "target/qualification/108-desktop-1/observations/session2-010-preview-actions-clipped-before-fix.jpg",
+      "bytes": 83950,
+      "sha256": "bc4231c7e452c930fc654ab52c5118f9958f1592fa0a4df7c8e8bce5cd6fc540"
+    },
+    {
+      "path": "docs/qualification/preview-window-2026-10-15-after.jpg",
+      "original": "target/qualification/770-preview-1/observations/021-complete-input-and-actions.jpg",
+      "bytes": 80915,
+      "sha256": "83b01bce50249b74319f87ea48f78c3a628da2fe82996fa9da59b80e7690ea77"
+    },
+    {
+      "path": "docs/qualification/preview-window-2026-10-15-output.jpg",
+      "original": "target/qualification/770-preview-1/observations/022-preview-execution-result.jpg",
+      "bytes": 63125,
+      "sha256": "75cca35f6e6bc7cc3bdd3903da630ebbc1cb19bc8f17b53bf50e4612ec2a5733"
+    },
+    {
+      "path": "docs/qualification/preview-window-2026-10-15.mapping.json",
+      "original": "target/qualification/770-preview-1/fixture.json",
+      "bytes": 841,
+      "sha256": "6788aeda582fd9751f9c838adca932dbeededa8cfde9ac67bb24da14ff9c4fc3"
+    }
+  ],
+  "boundary": "Preview setup reachability and the recorded tiny constant-output workflow only. #108 and broader desktop/Basic/observer qualification remain open."
+}
