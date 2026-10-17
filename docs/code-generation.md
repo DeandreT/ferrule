@@ -115,6 +115,11 @@ does not gain a repetition position. Named owned fields read immutable static
 roots with no frame pin or an explicit empty root pin; named positions and
 nonempty named pins are outside this profile.
 
+The authenticated collection path does not require a same-name named input.
+Legacy reads in the rule's predicate or message still contribute their eager
+named-input requirements. Ordinary rules retain the ordinary collection-alias
+requirement, including when mixed with authenticated rules.
+
 Rules run once in stored order before any selected or all-target output. Each
 complete row cohort's count and metadata are admitted before predicates; each
 reached terminal is checked before its predicate or message. An earlier selected

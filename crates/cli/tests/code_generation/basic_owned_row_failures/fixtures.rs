@@ -184,6 +184,11 @@ pub(super) fn projects() -> Vec<Project> {
     position.failure_rules = vec![rule(FailureSelection::All, Some(5))];
     let mut no_message = primary.clone();
     no_message.failure_rules = vec![rule(FailureSelection::All, None)];
+    // This rule has no owned expression and keeps the ordinary eager-alias
+    // contract. It does not exercise the independently declared Rows collision.
+    no_message
+        .extra_sources
+        .retain(|source| source.name != "Rows");
     vec![primary, position, no_message]
 }
 

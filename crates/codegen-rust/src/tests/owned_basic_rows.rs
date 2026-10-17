@@ -387,7 +387,7 @@ fn primary_row_failures_generated_public_consumers_preserve_full_contracts() {
         package_name: "ferrule_primary_row_failures".into(),
         runtime_dependency: RuntimeDependency::Path(runtime.to_str().unwrap().into()),
     };
-    let mut libraries = String::new();
+    let mut libraries = String::from("#![deny(warnings)]\n");
     let mut checks = String::new();
     for (name, p, check) in host_programs() {
         let files = emit_with_basic_owned_row_failures(&p, &options).unwrap();
