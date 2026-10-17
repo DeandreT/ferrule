@@ -194,6 +194,45 @@ fn primary_row_failures_do_not_contaminate_unrelated_legacy_target_demand() {
     assert!(source.contains("fn legacy_scope_root_0(context: &ScopeContext<'_>)"));
     assert!(source.contains("fn expression_1(context: &BasicScopeContext<'_>)"));
     assert!(!source.contains("fn legacy_expression_1("));
+    for node in [15, 30, 31] {
+        assert!(source.contains(&format!("fn legacy_expression_{node}(")));
+        assert!(!source.contains(&format!("fn expression_{node}(")));
+    }
+    assert!(source.contains("fn scope_root(context: &BasicScopeContext<'_>)"));
+    assert!(source.contains("fn scope_extra_0(context: &BasicScopeContext<'_>)"));
+    assert!(!source.contains("fn scope_root_0(context: &BasicScopeContext<'_>)"));
+    assert!(source.contains("field(\"Legacy\", legacy_scope_root_0(&item_context)?)"));
+}
+
+#[test]
+fn primary_row_failures_keep_required_adapters_and_shared_context_dependencies() {
+    let mut p = legacy_target_program();
+    // The owned root binding makes this parent paired, while its ordinary
+    // iteration does not give the legacy child inherited owned ancestry.
+    p.root.bindings[0].expression = 1;
+    let files = row_artifacts(&p);
+    let source = public519_source(&files);
+    assert!(source.contains("fn scope_root(context: &BasicScopeContext<'_>)"));
+    assert!(source.contains("fn scope_root_0(context: &BasicScopeContext<'_>)"));
+    assert!(source.contains("legacy_scope_root_0(context.legacy_view())"));
+    for prefix in ["expression_", "legacy_expression_"] {
+        assert!(source.contains(&format!("fn {prefix}31(")));
+    }
+    assert!(!source.contains("fn expression_15("));
+    assert!(!source.contains("fn legacy_expression_1("));
+
+    // Ordinary failures still need paired helpers even when all targets use
+    // the legacy view. Both companion APIs publish the same corrected artifact.
+    p.root.bindings[0].expression = 30;
+    p.failure_rules[0].message = Some(13);
+    let options = public519_options("ordinary_failure_retention");
+    let files = emit_with_basic_owned_row_failures(&p, &options).unwrap();
+    assert_eq!(files, emit_with_basic_owned_windows(&p, &options).unwrap());
+    let source = public519_source(&files);
+    assert!(source.contains("fn expression_13(context: &BasicScopeContext<'_>)"));
+    assert!(!source.contains("fn legacy_expression_13("));
+    assert!(!source.contains("fn expression_30("));
+    assert!(!source.contains("fn scope_root_0(context: &BasicScopeContext<'_>)"));
 }
 
 fn window_target_program(order: SortFilterOrder) -> Program {
