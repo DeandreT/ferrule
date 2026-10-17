@@ -312,6 +312,14 @@ fn generate_project_impl(
 }
 
 fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::Result<()> {
+    write_artifacts_validated(output_directory, artifacts, |_| Ok(()))
+}
+
+pub(crate) fn write_artifacts_validated(
+    output_directory: &Path,
+    artifacts: &ArtifactSet,
+    validate: impl FnOnce(&Path) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     if output_directory.exists() {
         bail!(
             "generated output directory {} already exists",
@@ -364,6 +372,7 @@ fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::
         fs::write(&path, &file.contents)
             .with_context(|| format!("writing generated artifact {}", path.display()))?;
     }
+    validate(staging)?;
     publish_directory(staging, output_directory)
         .map_err(|error| publication_error(staging, output_directory, error))?;
     pending.commit();

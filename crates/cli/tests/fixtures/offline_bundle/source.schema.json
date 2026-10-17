@@ -1,0 +1,7 @@
+{
+  "title": "Envelope",
+  "type": "object",
+  "properties": {"Code": {"type": "integer"}},
+  "required": ["Code"],
+  "additionalProperties": false
+}

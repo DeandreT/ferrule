@@ -66,6 +66,27 @@ impl From<MfdExportProfile> for mfd::ExportProfile {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Export a project and explicitly declared local resources as an offline bundle.
+    BundleProject {
+        /// Explicit source root. Every selected file path is relative to this directory.
+        #[arg(long)]
+        root: PathBuf,
+        #[arg(long, value_name = "RELATIVE_PROJECT")]
+        project: String,
+        /// One resource file relative to the source root; repeat as needed.
+        #[arg(long = "resource", value_name = "RELATIVE_FILE")]
+        resources: Vec<String>,
+        #[arg(long = "edi-catalog", value_name = "RELATIVE_DIRECTORY")]
+        edi_catalogs: Vec<String>,
+        #[arg(long = "json-schema-catalog", value_name = "RELATIVE_DIRECTORY")]
+        json_schema_catalogs: Vec<String>,
+        /// Include configured static local input files. Instance bytes are omitted by default.
+        #[arg(long)]
+        include_inputs: bool,
+        /// A directory that does not already exist.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Fetch one explicitly approved JSON response and map it to stdout.
     RunRestJson {
         #[arg(long, value_name = "PROJECT")]
@@ -282,6 +303,7 @@ enum Command {
 impl Command {
     fn name(&self) -> &'static str {
         match self {
+            Self::BundleProject { .. } => "bundle-project",
             Self::RunRestJson { .. } => "run-rest-json",
             Self::Run { .. } => "run",
             Self::RunPipeline { .. } => "run-pipeline",
@@ -409,7 +431,8 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 10] = [
+    const COMMANDS: [&str; 11] = [
+        "bundle-project",
         "run",
         "run-rest-json",
         "run-pipeline",
@@ -444,6 +467,48 @@ fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
 fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
     let diagnostics = cli.diagnostics;
     match cli.command {
+        Command::BundleProject {
+            root,
+            project,
+            resources,
+            edi_catalogs,
+            json_schema_catalogs,
+            include_inputs,
+            out,
+        } => {
+            let catalogs = edi_catalogs
+                .into_iter()
+                .map(|root| cli::BundleCatalog {
+                    kind: cli::BundleCatalogKind::EdiConfig,
+                    root,
+                })
+                .chain(
+                    json_schema_catalogs
+                        .into_iter()
+                        .map(|root| cli::BundleCatalog {
+                            kind: cli::BundleCatalogKind::JsonSchema,
+                            root,
+                        }),
+                )
+                .collect();
+            let outcome = cli::bundle_project(
+                &root,
+                &out,
+                &cli::BundleOptions {
+                    project,
+                    resources,
+                    catalogs,
+                    include_inputs,
+                },
+            )?;
+            println!(
+                "wrote {} file(s), including {} input file(s), to {}",
+                outcome.files_written,
+                outcome.input_files,
+                outcome.output_directory.display()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         Command::RunRestJson {
             project,
             request,

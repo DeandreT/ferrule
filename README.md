@@ -235,6 +235,7 @@ cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
 
 - [Your first mapping and flat workbook setup](docs/getting-started.md)
 - [Mapping model and workspace architecture](docs/architecture.md)
+- [Offline project bundles](docs/offline-bundles.md)
 - [Editable architecture and qualification diagrams](docs/architecture-parity.drawio)
 - [Mapping pipelines](docs/mapping-pipelines.md)
 - [Execution trace JSON Lines contract](docs/tracing.md)
