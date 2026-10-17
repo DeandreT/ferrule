@@ -38,6 +38,13 @@ Source fan-out and separately declared target occurrences retain their own
 cardinality and ordering rules; competing bindings to a singular target remain
 subject to executable validation.
 
+Native value-maps with `defaultValueMode="input"` retain an explicit unsupported-
+mode diagnostic, including in embedded function declarations. Executable import
+refuses that diagnostic rather than admitting a map with its fallback removed.
+Ordinary import retains a warned partial design; it does not implement input
+fallback. Explicit custom defaults, legacy enabled defaults and absent default
+metadata keep their existing behavior.
+
 A used scalar source output-node rule that names a missing or unsupported
 function definition produces a warning with the function name and source output
 key. Restore a supported definition or remove the rule before requesting an

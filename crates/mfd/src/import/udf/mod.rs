@@ -6,7 +6,10 @@ use mapping::{
     UserFunction,
 };
 
-use super::function::read as read_function;
+use super::function::{
+    read as read_function, unsupported_value_map_input_mode_in_definition,
+    warn_unsupported_value_map_input_modes,
+};
 use super::graph::{GraphBuilder, read_edge_inputs, read_edges};
 use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
 use crate::resource::ResourceResolver;
@@ -244,6 +247,7 @@ impl Registry {
         warnings: &mut Vec<String>,
     ) -> Self {
         let mut registry = Self::default();
+        warn_unsupported_value_map_input_modes(mapping, warnings);
         let declarations = mapping
             .children()
             .filter(|node| node.is_element() && node.has_tag_name("component"))
@@ -328,6 +332,11 @@ impl Registry {
                 self.unsupported.insert(key.clone(), reason.clone());
                 return Err(reason);
             }
+        }
+
+        if let Some(reason) = unsupported_value_map_input_mode_in_definition(&component) {
+            self.unsupported.insert(key.clone(), reason.to_string());
+            return Err(reason.to_string());
         }
 
         active.push(key.clone());
@@ -827,6 +836,9 @@ fn read_definition(
     ),
     String,
 > {
+    if let Some(reason) = unsupported_value_map_input_mode_in_definition(component) {
+        return Err(reason.to_string());
+    }
     match scalar::read(component, registry) {
         Ok(definition) => Ok((definition, None, Vec::new())),
         Err(scalar::ReadError::Nested(reason)) => Err(reason),
