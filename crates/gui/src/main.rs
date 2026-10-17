@@ -18,6 +18,7 @@ mod document;
 mod extra_sources;
 mod extra_targets;
 mod filter_map_editor;
+mod fonts;
 mod graph_viewer;
 mod icons;
 mod layout_store;
@@ -51,6 +52,7 @@ fn main() -> eframe::Result<()> {
         "ferrule",
         native_options,
         Box::new(move |creation| {
+            fonts::install(&creation.egui_ctx);
             icons::install(&creation.egui_ctx);
             Ok(Box::new(
                 app::FerruleApp::from_storage_with_saved_file_owner(
