@@ -1,3 +1,5 @@
+#[path = "basic_failure_tests.rs"]
+mod primary_failures;
 #[path = "basic_window_tests.rs"]
 mod windows;
 

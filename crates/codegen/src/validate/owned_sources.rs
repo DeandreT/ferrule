@@ -13,6 +13,11 @@ use crate::{
 use ir::{SchemaKind, SchemaNode};
 use mapping::{NodeId, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
+mod primary_row_failures;
+pub use primary_row_failures::{
+    is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
+};
+
 fn request(expression: &Expression) -> Option<Request> {
     match expression {
         Expression::OwnedSourceField(field) => Some(Request::Field {
@@ -768,6 +773,14 @@ pub(super) fn validate_closed_contexts_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_profiles(program, profile, false)
+}
+
+pub(super) fn validate_closed_contexts_with_profiles(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    primary_row_failures: bool,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -806,7 +819,9 @@ pub(super) fn validate_closed_contexts_with_profile(
         for node in roots {
             admission.expression(Visit {
                 namespace: Namespace::Main,
-                closed: Some(Closed {
+                closed: (!(primary_row_failures
+                    && is_basic_owned_primary_row_failure(program, rule)))
+                .then_some(Closed {
                     reason: Capability::FailureRule,
                     origin: Origin::Failure { index },
                 }),
@@ -967,7 +982,15 @@ fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_profile(program, profile)?;
+    validate_basic_owned_with_profiles(program, profile, false)
+}
+
+fn validate_basic_owned_with_profiles(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    primary_row_failures: bool,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_profiles(program, profile, primary_row_failures)?;
     basic_scope(
         program,
         &program.root,
@@ -1001,7 +1024,7 @@ fn validate_basic_owned_with_profile(
             },
         ));
     }
-    basic_failures(program)?;
+    basic_failures_with_profile(program, primary_row_failures)?;
     let retained = basic_target_expressions(program, profile);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
@@ -1265,8 +1288,14 @@ fn basic_failure_refusal(index: usize, reason: Capability) -> ProgramValidationE
     )
 }
 
-fn basic_failures(program: &Program) -> Result<(), ProgramValidationError> {
+fn basic_failures_with_profile(
+    program: &Program,
+    primary_row_failures: bool,
+) -> Result<(), ProgramValidationError> {
     for (index, rule) in program.failure_rules.iter().enumerate() {
+        if primary_row_failures && is_basic_owned_primary_row_failure(program, rule) {
+            continue;
+        }
         let FailureIteration::Source(source) = &rule.iteration else {
             return Err(basic_failure_refusal(index, Capability::FailureRule));
         };

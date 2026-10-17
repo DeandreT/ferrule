@@ -120,6 +120,17 @@ pub fn emit_with_basic_owned_windows(program: &Program) -> Result<ArtifactSet, E
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic windows and authenticated primary-row failure rules.
+///
+/// The failure permission is independent of target scope controls. Ordinary
+/// failure rules retain their legacy route; owned rules execute before targets.
+pub fn emit_with_basic_owned_row_failures(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_row_failures(program)?;
+    codegen::validate_basic_owned_row_failure_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_row_failure_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

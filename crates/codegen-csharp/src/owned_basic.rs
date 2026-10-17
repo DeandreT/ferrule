@@ -15,8 +15,10 @@ use codegen::{
 };
 use std::collections::BTreeSet;
 
+mod row_failures;
+
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false, false, false, false)
+    render_basic_owned_mapping_profile(program, false, false, false, false, false)
 }
 
 fn render_basic_owned_mapping_profile(
@@ -25,8 +27,11 @@ fn render_basic_owned_mapping_profile(
     allow_filters: bool,
     allow_sort: bool,
     allow_windows: bool,
+    allow_row_failures: bool,
 ) -> Result<String, EmitError> {
-    if allow_windows {
+    if allow_row_failures {
+        codegen::validate_program_with_basic_owned_row_failures(program)?;
+    } else if allow_windows {
         codegen::validate_program_with_basic_owned_windows(program)?;
     } else if allow_sort {
         codegen::validate_program_with_basic_owned_sort(program)?;
@@ -36,7 +41,14 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program(program)?;
     }
     let retained = retained_expressions(program);
-    validate_private_inventory(program, &retained, allow_filters, allow_sort, allow_windows)?;
+    validate_private_inventory(
+        program,
+        &retained,
+        allow_filters,
+        allow_sort,
+        allow_windows,
+        allow_row_failures,
+    )?;
     let mut body = String::new();
     let (primary, extras) = if allow_windows {
         mapping::render_basic_scopes_with_windows(program, &mut body)?
@@ -89,7 +101,7 @@ fn render_basic_owned_mapping_profile(
         output.push_str(&format!("        if (global::System.String.Equals(name, {}, global::System.StringComparison.Ordinal)) return {};\n", literal::string(name), index + 1));
     }
     output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
-    render_basic_failures(program, &mut output)?;
+    render_basic_failures(program, &mut output, allow_row_failures)?;
     if program.expressions.iter().any(|node| {
         retained.contains(&node.id)
             && matches!(&node.expression, Expression::OwnedSourceField(field)
@@ -386,6 +398,7 @@ fn validate_private_inventory(
     allow_filters: bool,
     allow_sort: bool,
     allow_windows: bool,
+    allow_row_failures: bool,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     check_scope(
@@ -409,7 +422,11 @@ fn validate_private_inventory(
             allow_windows,
         )?;
     }
-    validate_basic_failures(program)?;
+    if allow_row_failures {
+        codegen::validate_basic_owned_row_failure_emission(program)?;
+    } else {
+        validate_basic_failures(program)?;
+    }
     for node in &program.expressions {
         if !retained.contains(&node.id) {
             continue;
@@ -683,7 +700,11 @@ fn validate_basic_failures(program: &Program) -> Result<(), EmitError> {
     Ok(())
 }
 
-fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), EmitError> {
+fn render_basic_failures(
+    program: &Program,
+    output: &mut String,
+    allow_row_failures: bool,
+) -> Result<(), EmitError> {
     use codegen::{FailureIteration, FailureSelection};
     if program.failure_rules.is_empty() {
         return Ok(());
@@ -694,6 +715,10 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
     }
     output.push_str("    }\n");
     for (index, rule) in program.failure_rules.iter().enumerate() {
+        if allow_row_failures && row_failures::needs_owned_rows(program, rule) {
+            row_failures::render_rule(index, rule, output)?;
+            continue;
+        }
         let FailureIteration::Source(source) = &rule.iteration else {
             return Err(failure_refusal(index, Reason::FailureRule));
         };
@@ -729,7 +754,7 @@ fn render_basic_failures(program: &Program, output: &mut String) -> Result<(), E
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false, false, false, false)
+    render_checked_basic_owned_mapping_profile(program, false, false, false, false, false)
 }
 
 fn render_checked_basic_owned_mapping_profile(
@@ -738,13 +763,23 @@ fn render_checked_basic_owned_mapping_profile(
     allow_filters: bool,
     allow_sort: bool,
     allow_windows: bool,
+    allow_row_failures: bool,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
-        render_basic_owned_mapping_profile(program, true, allow_filters, allow_sort, allow_windows)?
+        render_basic_owned_mapping_profile(
+            program,
+            true,
+            allow_filters,
+            allow_sort,
+            allow_windows,
+            allow_row_failures,
+        )?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if allow_windows {
+    let plan = if allow_row_failures {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
+    } else if allow_windows {
         codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
     } else if allow_sort {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?
@@ -894,7 +929,7 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
     let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, false, false, false)?;
+        render_checked_basic_owned_mapping_profile(program, true, false, false, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -902,7 +937,8 @@ pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<Str
 pub(crate) fn render_public_basic_owned_filter_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, false, false)?;
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, true, false, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -910,7 +946,8 @@ pub(crate) fn render_public_basic_owned_filter_mapping(
 pub(crate) fn render_public_basic_owned_sort_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true, false)?;
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, true, true, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1003,7 +1040,17 @@ pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) 
 pub(crate) fn render_public_basic_owned_window_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(program, true, true, true, true)?;
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, true, true, true, false)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_row_failure_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
