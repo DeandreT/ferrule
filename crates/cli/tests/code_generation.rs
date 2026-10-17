@@ -134,6 +134,8 @@ mod string_int_range_boundaries;
 mod structured_xml_public;
 #[path = "code_generation/fixtures/structured_xml_snapshot.rs.txt"]
 mod structured_xml_snapshot;
+#[path = "code_generation/udf_multi_case_documents.rs"]
+mod udf_multi_case_documents;
 #[path = "code_generation/user_function_argument_order.rs"]
 mod user_function_argument_order;
 #[path = "code_generation/value_maps.rs"]

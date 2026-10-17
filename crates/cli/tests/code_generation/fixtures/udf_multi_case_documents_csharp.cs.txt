@@ -1,0 +1,61 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var utf8 = new UTF8Encoding(false, true);
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+if (cases.RootElement.GetArrayLength() != 6)
+    throw new InvalidOperationException("four Boolean combinations and two input failures required");
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var input = test.GetProperty("input").GetString()!;
+    Verify(() => utf8.GetBytes(GeneratedMapping.ExecuteXml(input)), test, "text");
+    Verify(() => GeneratedMapping.ExecuteXmlBytes(utf8.GetBytes(input)), test, "bytes");
+}
+
+static void Verify(Func<byte[]> run, JsonElement test, string api)
+{
+    if (test.TryGetProperty("mapping_error", out var expected))
+    {
+        byte[]? returned = null;
+        try { returned = run(); }
+        catch (FerruleXmlBoundaryException error)
+        {
+            if (returned is not null || error.Kind != FerruleXmlBoundaryErrorKind.Mapping ||
+                error.InnerException is not FerruleRuntimeException cause ||
+                cause.Error != FerruleRuntimeError.FunctionInvalidArgument ||
+                cause.Function != expected.GetProperty("function").GetString() ||
+                cause.Detail != expected.GetProperty("message").GetString())
+                throw new InvalidOperationException($"{api}: wrong original typed mapping cause: {test}", error);
+            return;
+        }
+        throw new InvalidOperationException($"{api}: selected invalid call returned a document: {test}");
+    }
+    if (test.TryGetProperty("input_error", out _))
+    {
+        byte[]? returned = null;
+        try { returned = run(); }
+        catch (FerruleXmlBoundaryException error)
+        {
+            if (returned is not null || error.Kind != FerruleXmlBoundaryErrorKind.Input ||
+                string.IsNullOrEmpty(error.Detail) || error.InnerException is FerruleRuntimeException)
+                throw new InvalidOperationException($"{api}: wrong typed input stage: {test}", error);
+            if (test.GetProperty("case").GetString() == "malformed-xml")
+            {
+                if (error.InnerException is not System.Xml.XmlException parser || parser.LineNumber != 1 || parser.LinePosition <= 0)
+                    throw new InvalidOperationException($"{api}: original XML parser cause was lost: {test}", error);
+            }
+            else if (error.InnerException is not null || error.Detail != "XML scalar 'Second' has an invalid lexical value")
+            {
+                throw new InvalidOperationException($"{api}: wrong Boolean lexical failure: {test}", error);
+            }
+            return;
+        }
+        throw new InvalidOperationException($"{api}: invalid input returned a document: {test}");
+    }
+    var actual = run();
+    var expectedBytes = new UTF8Encoding(false, true).GetBytes(test.GetProperty("expected_xml").GetString()!);
+    if (!actual.SequenceEqual(expectedBytes))
+        throw new InvalidOperationException($"{api}: whole literal XML bytes differ: {test}; actual: {Encoding.UTF8.GetString(actual)}");
+}
