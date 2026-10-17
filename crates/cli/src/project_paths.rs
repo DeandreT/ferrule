@@ -72,7 +72,7 @@ fn rebase_required(path: &mut String, from: &Path, to: &Path) -> std::io::Result
     Ok(())
 }
 
-fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
+pub(super) fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
     if stored.trim().is_empty() || stored.contains("://") {
         return Ok(None);
     }
@@ -181,7 +181,7 @@ fn ordinary_component_spelling(name: &OsStr) -> bool {
         })
 }
 
-fn dos_device_name(name: &OsStr) -> bool {
+pub(super) fn dos_device_name(name: &OsStr) -> bool {
     let stem = name
         .as_encoded_bytes()
         .split(|&byte| byte == b'.')
