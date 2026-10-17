@@ -71,8 +71,10 @@ ordered `SkipFirst`, `First`, `From`, inclusive `FromTo`, and `Last` windows.
 Implicit First output applies to nonrepeating Group targets; repeated Scalar
 targets can use explicit windows.
 
-Bounds evaluate once in the parent context, in declaration order, after the
-selected filter/sort phases. Every required predicate runs before selection or
+Bounds evaluate once in the parent context, in declaration order. Without
+sorting, bounds precede predicates. With filter-then-sort, bounds follow the
+predicate and key passes; with sort-then-filter, bounds follow the key pass and
+precede predicates. Every required predicate runs before window selection or
 target construction. Later bounds still evaluate when an earlier window empties
 the cohort. Implicit First appends a final `First(1)` operation. Raw positions
 are visible to sort keys and pre-sort predicates, sorted positions to post-sort
