@@ -1,0 +1,76 @@
+use codegen_runtime::{FunctionError, RuntimeError, XmlBoundaryError, XmlBoundaryErrorKind};
+use ferrule_generated_mapping::{execute_xml, execute_xml_bytes};
+use std::error::Error;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json"))?;
+    assert_eq!(
+        cases.len(),
+        6,
+        "four Boolean combinations and two input failures"
+    );
+    for case in &cases {
+        let input = case["input"].as_str().expect("literal complete XML input");
+        verify(execute_xml(input).map(String::into_bytes), case, "text");
+        verify(execute_xml_bytes(input.as_bytes()), case, "bytes");
+    }
+    Ok(())
+}
+
+fn verify(result: Result<Vec<u8>, XmlBoundaryError>, case: &serde_json::Value, api: &str) {
+    if let Some(expected) = case.get("mapping_error") {
+        let error =
+            result.expect_err("selected invalid call must not return a partial XML document");
+        assert_eq!(error.kind, XmlBoundaryErrorKind::Mapping, "{api}: {case}");
+        let runtime = error
+            .source()
+            .and_then(|source| source.downcast_ref::<RuntimeError>())
+            .expect("document boundary must own the original typed runtime cause");
+        let RuntimeError::Function(cause) = runtime else {
+            panic!("{api}: wrong original mapping cause for {case}: {runtime:?}");
+        };
+        assert!(
+            matches!(cause, FunctionError::InvalidArgument { function, message }
+            if *function == expected["function"].as_str().unwrap()
+                && *message == expected["message"].as_str().unwrap()),
+            "{api}: wrong function kind/detail for {case}: {cause:?}"
+        );
+        let original = runtime
+            .source()
+            .and_then(|source| source.downcast_ref::<FunctionError>())
+            .expect("original function cause must remain in the error chain");
+        assert!(
+            std::ptr::eq(original, cause),
+            "original function cause was replaced"
+        );
+    } else if case["input_error"] == true {
+        let error = result.expect_err("invalid XML input must not return a partial document");
+        assert_eq!(error.kind, XmlBoundaryErrorKind::Input, "{api}: {case}");
+        let source = error.source().expect("original input parser cause");
+        assert!(
+            source.downcast_ref::<RuntimeError>().is_none(),
+            "input failed in mapping instead"
+        );
+        if case["case"] == "malformed-xml" {
+            assert!(
+                source.source().is_some(),
+                "original XML parser cause was lost"
+            );
+        } else {
+            assert_eq!(
+                source.to_string(),
+                "cannot parse `not-a-boolean` as Bool for element `Second`"
+            );
+            assert!(
+                source.source().is_none(),
+                "wrong Boolean lexical failure cause"
+            );
+        }
+    } else {
+        let actual = result.unwrap_or_else(|error| panic!("{api}: {case}: {error:?}"));
+        let expected = case["expected_xml"]
+            .as_str()
+            .expect("whole literal XML oracle");
+        assert_eq!(actual, expected.as_bytes(), "{api}: {case}");
+    }
+}
