@@ -882,6 +882,7 @@ impl FerruleApp {
         egui::Window::new("Preview mapping")
             .collapsible(false)
             .resizable(true)
+            .vscroll(true)
             .default_size(egui::vec2(760.0, 620.0))
             .min_size(egui::vec2(520.0, 360.0))
             .show(ctx, |ui| {
@@ -1025,7 +1026,9 @@ impl FerruleApp {
                     );
                 } else {
                     let button_height = ui.spacing().interact_size.y;
-                    let editor_height = (ui.available_height() - button_height - 18.0).max(140.0);
+                    // The scrolling window can offer unbounded content height.
+                    let editor_height =
+                        (ui.available_height() - button_height - 18.0).clamp(140.0, 360.0);
                     egui::ScrollArea::both()
                         .id_salt("preview_primary_input_scroll")
                         .auto_shrink([false, false])
