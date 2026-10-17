@@ -215,3 +215,82 @@ mechanics; it does not qualify JSON mapping behavior. Before changing a cell to
 `supported`, retain fresh complete operation/API/profile-specific values and
 causes. Native export and vendor-backend support require separate release-bound
 execution records, not a source test or a successfully emitted library.
+
+## Ordinary Basic owned windows
+
+[`basic-owned-windows/`](basic-owned-windows/) is a portable, self-authored finite
+corpus for the explicit Basic-window lowering/emission APIs. Its ten genuine
+`mapping::Project` models produce twelve calls per backend: one `All` call per
+model, plus `Primary` and named-target selections for the operator model. The
+native engine and compiled public Rust/C# callers use typed instances, not JSON
+codecs or a replacement evaluator. All phase-sensitive scopes have explicit
+`OwnedSource` iteration; the nested identity control has proved owned ancestry.
+Unrelated wholly legacy identity routes and the singleton gap are outside this
+corpus.
+
+The frozen models cover all five window operators, composition order, parent
+bounds versus colliding item fields, nested positions/identity, stable ties under
+both filter/sort orders, zero/oversized/reversed windows, explicit repeated
+Scalar construction, and implicit `First` on nonrepeating Group targets. Scalar
+cardinality `First` remains invalid. Failure controls retain node zero and
+`u32::MAX`, eager bounds over empty/emptied cohorts, and predicate/key/bound/target
+priority.
+
+`expected.json` contains independent contract derivations and complete typed
+trees/errors. Its local `$ref` entries only deduplicate literal expected trees;
+the preparer expands them into explicit per-backend rows before execution. It
+never derives an oracle from a subject return. Backend-specific display text and
+CLR `FoundKind` are explicit rather than normalized away. Current native
+calibration is mandatory: even a generated/native agreement is not sufficient
+unless all three independently match these expectations. Review the source
+contract and all expanded expectations before running the corpus.
+
+Python 3.11+, the repository's Rust toolchain, and .NET 10 are required. Use the
+assigned serialized compiler lane and existing shared Cargo target. Preparation
+does not compile or run mappings; only the explicit `run` command executes its
+25-step plan. All paths below are absolute except the preparer:
+
+```sh
+P=conformance/basic-owned-windows/prepare.py
+python3 "$P" check
+python3 "$P" snapshot --source-root "$PWD" --out "$EVIDENCE/source.json"
+```
+
+Take the snapshot after the backend sources are stable, before their focused
+qualifications. Each successful qualification supplies a JSON receipt with
+`issue` (702 or 703), `qualified: true`, `source_fingerprint` from that snapshot,
+`checks: ["generated_windows", "preserved_sort_filter", "runtime"]`, and
+`commands` containing each actual `argv`, zero `exit_code`, and absolute
+`stdout`/`stderr` file paths. Include the complete current runtime tests (C#
+smoke tests as well as Rust runtime tests). The C# receipt additionally records
+`runtime_dll_sha256` for the freshly built matching `Ferrule.Runtime.dll`.
+Never substitute historical qualification results or a stale DLL.
+
+```sh
+python3 "$P" bind --snapshot "$EVIDENCE/source.json" \
+  --rust-evidence "$EVIDENCE/rust-qualified.json" \
+  --csharp-evidence "$EVIDENCE/csharp-qualified.json" \
+  --runtime-dll "$RUNTIME_DLL" --out "$EVIDENCE/binding.json"
+python3 "$P" prepare --out "$EVIDENCE/window36" --binding "$EVIDENCE/binding.json" \
+  --cargo "$CARGO" --dotnet "$DOTNET" --target "$CARGO_TARGET_DIR"
+python3 "$P" run --plan "$EVIDENCE/window36/COMMAND_PLAN.json"
+```
+
+The binding hashes the current transitive local Rust source closure and complete
+C# runtime/smoke sources, records retained qualification commands, and pins the
+fresh DLL. The runner checks source, fixture, tool and DLL pins before each
+step. Generated artifacts, real Project/Program representations, public
+admission/lowering/emission results, complete stdout/stderr and command receipts
+remain in the new output directory. Typed mapping errors are successful capture
+records, not harness failures; compiler/emission/launcher failures retain the
+reached results and explicitly list later unrun steps.
+
+No caller compares early. The final classifier first seals all 36 original
+capture descriptors in `ALL36_BEFORE_COMPARISON.json`, then compares complete
+outputs and typed error envelopes, including original causes and absent CLR
+metadata. `WINDOW36_CLASSIFICATION.json` separately reports native calibration
+and cross-backend differences. Missing captures cannot qualify. C# exception
+stack/assembly details are retained verbatim, not treated as portable literal
+oracles. Results qualify only this finite ordinary Basic cohort; full window,
+full-error and total-parity flags remain false and the canonical inventory is
+unchanged. Output directories are exclusive: use a fresh directory for each run.
