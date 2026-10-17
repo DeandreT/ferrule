@@ -293,7 +293,7 @@ fn host_programs() -> Vec<(&'static str, Program, &'static str)> {
  assert_eq!(all("exact-owner",&p,&supplied),Err(RuntimeError::MappingFailure{rule:1,message:Some("named immutable".into())}));
  assert_eq!(all("missing-owner",&p,&[]),Err(RuntimeError::OwnedSourceAtNode{node:11,source:OwnedSourceError::SourceUnavailable{name:"Ref".into()}}));
  let n=text("malformed named root"); let supplied=[BasicNamedSourceInput{name:"Ref",instance:&n}];
- assert_eq!(all("typed-cause",&p,&supplied),Err(RuntimeError::OwnedSourceAtNode{node:11,source:OwnedSourceError::MalformedOwnedTraversal{path:vec!["Value".into()],found:"a non-null scalar"}}));
+  assert_eq!(all("typed-cause",&p,&supplied),Err(RuntimeError::OwnedSourceAtNode{node:11,source:OwnedSourceError::Traversal{owner:OwnedSourceIdentity::Named("Ref".into()),source:codegen_runtime::SourcePathError::CannotTraverse{path:vec!["Value".into()],segment:0,found:codegen_runtime::InstanceKind::Scalar}}}));
 }
 "#,
         ),

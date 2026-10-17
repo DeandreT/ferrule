@@ -175,11 +175,11 @@ impl<'ctx> LegacyWalkObserver<'ctx> for PrimaryFailureObserver<'_, 'ctx> {
     fn publish(
         &mut self,
         frames: &[ScopeFrame<'ctx>],
-        terminal: &'ctx Instance,
+        _terminal: &'ctx Instance,
         path: &[String],
     ) -> Result<Self::Output, RuntimeError> {
         #[cfg(test)]
         TERMINALS.with(|n| n.set(n.get() + 1));
-        self.0.publish_terminal(frames, terminal, path)
+        self.0.publish_terminal(frames, path)
     }
 }

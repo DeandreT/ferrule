@@ -1875,7 +1875,7 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
         #[cfg(test)]
         TERMINALS.with(|n| n.set(n.get() + 1));
         supported(terminal)?;
-        self.publish_terminal(acc, terminal, terminal_path)
+        self.publish_terminal(acc, terminal_path)
     }
 }
 
@@ -1886,7 +1886,6 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
     fn publish_terminal(
         &mut self,
         acc: &[ScopeFrame<'ctx>],
-        terminal: &'ctx Instance,
         terminal_path: &[String],
     ) -> Result<BasicSourceCandidate<'ctx>, RuntimeError> {
         owned_charge(
