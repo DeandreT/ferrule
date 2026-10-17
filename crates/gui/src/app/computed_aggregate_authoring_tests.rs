@@ -303,10 +303,11 @@ fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
         found: &mut Vec<egui::Pos2>,
     ) {
         match shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == label => {
-                if clip.contains(text.visual_bounding_rect().center()) {
-                    found.push(text.visual_bounding_rect().center());
-                }
+            egui::epaint::Shape::Text(text)
+                if text.galley.text() == label
+                    && clip.contains(text.visual_bounding_rect().center()) =>
+            {
+                found.push(text.visual_bounding_rect().center());
             }
             egui::epaint::Shape::Vec(shapes) => {
                 for shape in shapes {
