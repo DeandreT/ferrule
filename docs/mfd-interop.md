@@ -511,6 +511,17 @@ the Protobuf file boundary; a string, runtime parameter, changed arithmetic
 pattern, or shared conversion keeps the explicit native-profile blocker. This
 claim concerns file-backed Protobuf execution. Ferrule projects reimported from
 the native design retain conversion errors for hand-built nonfinite instances.
+Scalar user-defined function bodies preserve every declared condition/value
+pair in an `if-else` component, in physical input-position order. The first true
+condition selects its value. With at least one pair, an odd input count uses the
+final input as the fallback; an even count falls back to Null.
+Fewer than two inputs produce Null without reading an operand. Declared keyless
+positions are retained rather than shifting later pairs. Only the selected
+value or fallback is evaluated.
+These rules apply to callable single-output functions and inlined multi-output
+functions. Nested function substitution and intervening scalar calls share the
+same expression-depth and node limits; they do not restart the allowance.
+
 Scalar and nested scalar UDFs can also tokenize text, split by fixed
 length or bounded regular expressions, or generate an inclusive integer range,
 then select one 1-based item, test a filtered sequence for a match, or apply
