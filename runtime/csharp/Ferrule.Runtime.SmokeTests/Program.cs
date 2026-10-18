@@ -75,6 +75,11 @@ internal static partial class Program
             ("JSON duplicate declaration clones and bounds", JsonDuplicateDeclarationNestedCloneAndBounds),
             ("JSON large collection boundaries", JsonLargeCollectionsMatchPublicBoundaryLimits),
             ("JSON canonical arbitrary numbers", JsonCanonicalNumbers),
+            ("JSON embedded compact documents and order", JsonEmbeddedCompactDocuments),
+            ("JSON embedded compact strings and exact numbers", JsonEmbeddedCompactStringsAndNumbers),
+            ("JSON embedded compact output validation", JsonEmbeddedCompactValidation),
+            ("JSON embedded compact newline byte boundary", JsonEmbeddedCompactDocumentLimit),
+            ("JSON embedded UTF8 original decoder causes", JsonEmbeddedBytesErrorCauses),
             ("JSON correctly rounded numbers", JsonCorrectlyRoundedNumbers),
             ("JSON parse-field native limits", JsonParseFieldNativeLimits),
             ("JSON outer output bytes", JsonOuterOutputBytes),
@@ -233,6 +238,11 @@ internal static partial class Program
             ("checked named input malformed UTF16", NamedAdmissionMalformedUtf16),
             ("checked named input once-only caller consumption", NamedAdmissionFrozenCountAndCallerErrors),
             ("checked named input negative Count", NamedAdmissionNegativeCount),
+            ("JSON named admission canonical ordinals and minimal envelope", JsonAdmissionCanonicalOrderAndMinimalPolicy),
+            ("JSON named admission policy names and caller boundaries", JsonAdmissionPolicyNamesAndCallerBoundaries),
+            ("JSON named parsing one-shot reentry and cleanup", JsonAdmissionParseOneShotAndFailureCleanup),
+            ("JSON named admission concurrent parsing and binding", JsonAdmissionConcurrentParseAndBinding),
+            ("JSON named admission envelope and native capacities", JsonAdmissionEnvelopeAndNativeCapacityRefusals),
         };
 
         foreach (var test in tests)

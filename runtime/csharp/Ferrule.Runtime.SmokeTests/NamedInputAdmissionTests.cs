@@ -308,4 +308,372 @@ internal static partial class Program
         var result = AdmissionNormalize("N527-39", AdmissionPrimary(), AdmissionCatalogue, probe);
         AdmissionCheck(result.Error is ArgumentOutOfRangeException { ParamName: "supplied", ActualValue: -1 } && result.Error.Message.StartsWith("Count cannot be negative.", StringComparison.Ordinal), "native negative Count argument payload"); AdmissionReads(probe, 1);
     }
+
+    private sealed class JsonAdmissionItem(string? name, FerruleJsonDocumentRef document)
+    {
+        internal string? Name = name;
+        internal FerruleJsonDocumentRef Document = document;
+    }
+    private sealed class JsonAdmissionProbe(params JsonAdmissionItem[] items) : IReadOnlyList<JsonAdmissionItem>
+    {
+        internal JsonAdmissionItem[] Items = items;
+        internal int ExposedCount = items.Length;
+        internal int CountReads, AccessorReads, EnumeratorReads;
+        internal readonly List<int> IndexReads = [];
+        internal bool ChangeCountAtZero, ThrowCount;
+        internal int ThrowIndex = -1, ThrowAccessor = -1;
+        internal Exception? Sentinel;
+        internal long AllocationOrigin, BytesAtCount;
+        public int Count
+        {
+            get
+            {
+                CountReads++; BytesAtCount = GC.GetAllocatedBytesForCurrentThread() - AllocationOrigin;
+                if (ThrowCount) throw Sentinel!;
+                return ExposedCount;
+            }
+        }
+        public JsonAdmissionItem this[int index]
+        {
+            get
+            {
+                IndexReads.Add(index);
+                if (ThrowIndex == index) throw Sentinel!;
+                if (index == 0 && ChangeCountAtZero) ExposedCount = 0;
+                return Items[index];
+            }
+        }
+        public IEnumerator<JsonAdmissionItem> GetEnumerator()
+        { EnumeratorReads++; throw new InvalidOperationException("caller enumeration forbidden"); }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+    private sealed class JsonAdmissionAccessor(JsonAdmissionProbe probe) : IFerruleNamedJsonDocumentAccessor<JsonAdmissionItem>
+    {
+        public FerruleNamedJsonDocumentRef Read(JsonAdmissionItem? item)
+        {
+            var ordinal = probe.AccessorReads++;
+            if (probe.ThrowAccessor == ordinal) throw probe.Sentinel!;
+            return item is null ? default : new(item.Name, item.Document);
+        }
+    }
+    private static object JsonEnvelopeSnapshot((nuint Core, nuint Paired, nuint Adapter, nuint Total) proof) =>
+        new { core = (ulong)proof.Core, paired = (ulong)proof.Paired, adapter = (ulong)proof.Adapter, total = (ulong)proof.Total };
+    private static AdmissionResult<T> JsonAdmissionCapture<T>(string id, JsonAdmissionProbe? probe, Func<T> subject)
+    {
+        T value = default!; Exception? error = null;
+        try { value = subject(); } catch (Exception e) { error = e; }
+        object? actual = error is not null ? AdmissionSnapshot(error) : value switch
+        {
+            FerruleBasicJsonInputAdmission admission => new { kind = "admitted", snapshots = admission.OwnedCapacities.Snapshots,
+                parsed = admission.OwnedCapacities.Parsed,
+                proof = JsonEnvelopeSnapshot(admission.EnvelopeProof) },
+            FerruleBasicJsonParsedInputs parsed => new { kind = "parsed", parsed.OwnedCapacity,
+                proof = JsonEnvelopeSnapshot(parsed.EnvelopeProof) },
+            _ => AdmissionSnapshot(value),
+        };
+        Console.WriteLine("N520_ADMISSION_RAW " + System.Text.Json.JsonSerializer.Serialize(new
+        {
+            id, actual, probe = probe is null ? null : new { probe.CountReads, probe.AccessorReads,
+                probe.EnumeratorReads, indices = probe.IndexReads.ToArray(), probe.ExposedCount, probe.BytesAtCount }
+        }));
+        return new(value, error);
+    }
+    private static AdmissionResult<FerruleBasicJsonInputAdmission> JsonAdmit(string id,
+        FerruleBasicNamedSourceDeclaration[] catalogue, JsonAdmissionProbe probe, FerruleOwnedSourceLimits limits)
+    {
+        Console.WriteLine("N520_ADMISSION_INPUT " + System.Text.Json.JsonSerializer.Serialize(new
+        {
+            id, catalogue = catalogue.Select((entry, ordinal) => new { ordinal,
+                nameCodeUnits = entry.Name?.Select(character => (int)character).ToArray(), mode = (int)entry.Mode }).ToArray(),
+            records = probe.Items.Select(item => item is null ? null : new
+            {
+                nameCodeUnits = item.Name?.Select(character => (int)character).ToArray(), kind = item.Document.Kind.ToString(),
+                text = item.Document.Text, utf8 = item.Document.Utf8?.Select(value => (int)value).ToArray()
+            }).ToArray(), probe.ExposedCount, probe.ChangeCountAtZero, probe.ThrowCount, probe.ThrowIndex, probe.ThrowAccessor,
+            roots = (ulong)limits.MaxRoots, frames = (ulong)limits.MaxActiveFrames, paths = (ulong)limits.MaxPathSegments,
+            bytes = (ulong)limits.MaxMetadataBytes, contexts = (ulong)limits.MaxWalkContexts
+        }));
+        probe.AllocationOrigin = GC.GetAllocatedBytesForCurrentThread();
+        return JsonAdmissionCapture(id, probe, () => FerruleBasicJsonInputAdmission.Admit<JsonAdmissionItem>(
+            catalogue, probe, new JsonAdmissionAccessor(probe), limits));
+    }
+    private static void JsonAdmissionReads(JsonAdmissionProbe probe, int count, int accessors, params int[] indices)
+    {
+        Equal(count, probe.CountReads); Equal(accessors, probe.AccessorReads);
+        Equal(true, probe.IndexReads.SequenceEqual(indices)); Equal(0, probe.EnumeratorReads);
+    }
+    private static void JsonAdmissionBridge<T>(AdmissionResult<T> result,
+        FerruleBasicSourceBridgeErrorKind kind, nuint? declarationIndex = null, nuint? declaredCount = null)
+    {
+        var outer = result.Error as FerruleRuntimeException; var cause = outer?.BasicSourceBridgeFailure;
+        AdmissionCheck(outer is not null && outer.Error == FerruleRuntimeError.BasicSourceBridge &&
+            cause is not null && ReferenceEquals(cause, outer.InnerException), "complete lifted JSON bridge identity");
+        Equal(kind, cause!.Error); Equal(declarationIndex, cause.DeclarationIndex); Equal(declaredCount, cause.DeclaredCount);
+        Equal<FerruleBasicSourceBridgeComponent?>(kind == FerruleBasicSourceBridgeErrorKind.PairedMetadataArithmeticOverflow ?
+            FerruleBasicSourceBridgeComponent.MetadataSlots : null, cause.Component);
+        Equal<nuint?>(null, cause.Used); Equal<nuint?>(null, cause.Requested); Equal<nuint?>(null, cause.Maximum);
+        Equal<nuint?>(null, cause.InputOrdinal); Equal<nuint?>(null, cause.CandidateOrdinal);
+        Equal<FerruleOwnedSourceInstanceKind?>(null, cause.Found); Equal<Exception?>(null, cause.InnerException);
+        Equal<uint?>(null, outer!.Node); Equal<FerruleOwnedSourceException?>(null, outer.OwnedSourceFailure);
+        Equal("basic source bridge failed", outer.Message); Equal("basic source bridge refused", cause.Message);
+    }
+
+    private static void JsonAdmissionCanonicalOrderAndMinimalPolicy()
+    {
+        var empty = new JsonAdmissionProbe();
+        var minimal = new FerruleOwnedSourceLimits(1, 0, 0, 0, 0);
+        var admitted = AdmissionSuccess(JsonAdmit("J520.minimal", [], empty, minimal));
+        Equal((0, 0), admitted.OwnedCapacities);
+        Equal((Core: (nuint)9, Paired: (nuint)138, Adapter: (nuint)16, Total: (nuint)154), admitted.EnvelopeProof);
+        var callbacks = 0;
+        var parsed = AdmissionSuccess(JsonAdmissionCapture("J520.minimal.parse", empty,
+            () => admitted.ParseNamedWith((_, _) => { callbacks++; throw new InvalidOperationException("empty parser"); })));
+        var primary = Scalar(Text("primary"));
+        var roots = AdmissionSuccess(JsonAdmissionCapture("J520.minimal.bind", empty, () => parsed.BasicRoots(primary)));
+        Equal(Text("primary"), roots.RootContext().ResolveOwnedField(FerruleOwnedSourceOwner.Primary, []));
+        Equal(0, callbacks); JsonAdmissionReads(empty, 1, 0);
+
+        FerruleBasicNamedSourceDeclaration[] catalogue = [new("Dyn", FerruleBasicNamedSourceMode.ReservedUnavailable),
+            new("Unused", FerruleBasicNamedSourceMode.Optional), new("Ref", FerruleBasicNamedSourceMode.RequiredLegacy),
+            new("Other", FerruleBasicNamedSourceMode.Optional)];
+        var rawBytes = new byte[] { 0xff }; var originalText = new string(new[] { '{', 'b', 'r', 'o', 'k', 'e', 'n' });
+        var first = new JsonAdmissionItem("Other", FerruleJsonDocumentRef.FromText(originalText));
+        var probe = new JsonAdmissionProbe(first, new("Ref", FerruleJsonDocumentRef.FromUtf8(rawBytes))) { ChangeCountAtZero = true };
+        var limits = new FerruleOwnedSourceLimits(5, 0, 0, 4096, 0);
+        admitted = AdmissionSuccess(JsonAdmit("J520.order", catalogue, probe, limits));
+        Equal((4, 2), admitted.OwnedCapacities);
+        Equal((nuint)24, admitted.EnvelopeProof.Adapter);
+        Equal(admitted.EnvelopeProof.Paired + 24, admitted.EnvelopeProof.Total);
+        Equal(true, probe.BytesAtCount >= System.Runtime.CompilerServices.Unsafe.SizeOf<BasicJsonInputSnapshot>() * 4);
+        first.Name = "changed"; first.Document = FerruleJsonDocumentRef.FromText("changed");
+        probe.ThrowCount = true; probe.ThrowIndex = 0; probe.Sentinel = new TestSentinelException();
+        var ordinals = new List<int>();
+        parsed = AdmissionSuccess(JsonAdmissionCapture("J520.order.parse", probe, () => admitted.ParseNamedWith((ordinal, document) =>
+        {
+            ordinals.Add(ordinal); Equal((0, 0), admitted.OwnedCapacities);
+            if (ordinal == 3)
+            {
+                Equal(FerruleJsonDocumentKind.Text, document.Kind); Equal(true, ReferenceEquals(originalText, document.Text));
+                Equal<byte[]?>(null, document.Utf8); return Scalar(Text("other"));
+            }
+            Equal(2, ordinal); Equal(FerruleJsonDocumentKind.Utf8, document.Kind);
+            Equal(true, ReferenceEquals(rawBytes, document.Utf8)); Equal<string?>(null, document.Text);
+            return Scalar(Text("ref"));
+        })));
+        Equal(true, ordinals.SequenceEqual(new[] { 3, 2 })); Equal(2, parsed.OwnedCapacity);
+        roots = AdmissionSuccess(JsonAdmissionCapture("J520.order.bind", probe, () => parsed.BasicRoots(primary)));
+        Equal(true, roots.OwnedRoots.Instance(1) is null && roots.OwnedRoots.Instance(2) is null);
+        Equal("Ref", roots.OwnedRoots.Name(3)); Equal("Other", roots.OwnedRoots.Name(4));
+        Equal(2, roots.UniqueIndex(0)); Equal(3, roots.UniqueIndex(1));
+        Equal(Text("ref"), roots.RootContext().ResolveOwnedField(FerruleOwnedSourceOwner.Named("Ref"), []));
+        Equal(true, rawBytes.SequenceEqual(new byte[] { 0xff })); JsonAdmissionReads(probe, 1, 2, 0, 1);
+        GC.KeepAlive(parsed);
+        var exact = AdmissionSuccess(JsonAdmit("J520.csharp-no-extra-projection-bytes", AdmissionCatalogue,
+            new(new JsonAdmissionItem("Ref", FerruleJsonDocumentRef.FromText("ignored by stub parser"))),
+            new FerruleOwnedSourceLimits(2, 0, 0, 3, 0)));
+        var exactParsed = exact.ParseNamedWith((_, _) => Scalar(Text("ref")));
+        var exactRoots = AdmissionSuccess(JsonAdmissionCapture("J520.csharp-exact-name-bytes-bind", null,
+            () => exactParsed.BasicRoots(primary)));
+        Equal<nuint>(3, exactRoots.OwnedRoots.RegistryText); Equal(1, exactParsed.OwnedCapacity);
+        GC.KeepAlive(exactParsed);
+    }
+
+    private static void JsonAdmissionPolicyNamesAndCallerBoundaries()
+    {
+        var item = new JsonAdmissionItem("Ref", FerruleJsonDocumentRef.FromText("not JSON"));
+        var probe = new JsonAdmissionProbe(item);
+        var roots = JsonAdmit("J520.roots-before-count", AdmissionCatalogue, probe, default);
+        AdmissionOwnedError(roots, FerruleOwnedSourceErrorKind.MetadataLimit, FerruleOwnedSourceLimitKind.Roots, 0, 2, 0);
+        JsonAdmissionReads(probe, 0, 0);
+        probe = new(item);
+        var bytes = JsonAdmit("J520.names-before-count", AdmissionCatalogue, probe, AdmissionLimits with { MaxMetadataBytes = 2 });
+        AdmissionOwnedError(bytes, FerruleOwnedSourceErrorKind.MetadataLimit, FerruleOwnedSourceLimitKind.MetadataBytes, 0, 3, 2);
+        JsonAdmissionReads(probe, 0, 0);
+        probe = new(item);
+        var duplicateCatalogue = JsonAdmit("J520.catalogue-before-count", [new("Ref", FerruleBasicNamedSourceMode.Optional),
+            new("Ref", FerruleBasicNamedSourceMode.Optional)], probe, AdmissionLimits);
+        JsonAdmissionBridge(duplicateCatalogue, FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness, 1, 2);
+        JsonAdmissionReads(probe, 0, 0);
+        probe = new(item);
+        var arithmetic = JsonAdmit("J520.existing-arithmetic-before-envelope", [], probe,
+            new FerruleOwnedSourceLimits(nuint.MaxValue, 0, 0, 0, 0));
+        AdmissionOwnedError(arithmetic, FerruleOwnedSourceErrorKind.MetadataArithmeticOverflow, FerruleOwnedSourceLimitKind.MetadataSlots);
+        JsonAdmissionReads(probe, 0, 0);
+        probe = new(item);
+        var invalidMode = JsonAdmit("J520.invalid-mode-before-count", [new("Ref", (FerruleBasicNamedSourceMode)99)], probe, AdmissionLimits);
+        JsonAdmissionBridge(invalidMode, FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness, 0, 1);
+        JsonAdmissionReads(probe, 0, 0);
+        probe = new(item);
+        var emptyOwner = JsonAdmit("J520.empty-catalogue-name", [new("", FerruleBasicNamedSourceMode.Optional)], probe, AdmissionLimits);
+        AdmissionOwnedError(emptyOwner, FerruleOwnedSourceErrorKind.InvalidNamedOwner); JsonAdmissionReads(probe, 0, 0);
+        probe = new(new JsonAdmissionItem("X", FerruleJsonDocumentRef.FromText("malformed"))) { ExposedCount = int.MaxValue };
+        var huge = JsonAdmit("J520.untrusted-count-no-allocation", AdmissionCatalogue, probe, AdmissionLimits);
+        AdmissionOrdinaryError(huge, FerruleRuntimeError.UnexpectedNamedSource, "X"); JsonAdmissionReads(probe, 1, 1, 0);
+        probe = new(item) { ExposedCount = -1 };
+        var negative = JsonAdmit("J520.negative-count", AdmissionCatalogue, probe, AdmissionLimits);
+        AdmissionCheck(negative.Error is ArgumentOutOfRangeException { ParamName: "supplied", ActualValue: -1 } &&
+            negative.Error.Message.StartsWith("Count cannot be negative.", StringComparison.Ordinal), "exact negative Count payload");
+        JsonAdmissionReads(probe, 1, 0);
+        probe = new(new JsonAdmissionItem("X", FerruleJsonDocumentRef.FromText("bad")));
+        var diagnostic = JsonAdmit("J520.diagnostic-bytes", AdmissionCatalogue, probe, AdmissionLimits with { MaxMetadataBytes = 3 });
+        AdmissionOwnedError(diagnostic, FerruleOwnedSourceErrorKind.MetadataLimit, FerruleOwnedSourceLimitKind.MetadataBytes, 3, 1, 3);
+        foreach (var (name, document) in new[]
+        {
+            ((string?)null, FerruleJsonDocumentRef.FromText("data")),
+            ((string?)"X", FerruleJsonDocumentRef.FromText(null)),
+            ((string?)"X", FerruleJsonDocumentRef.FromUtf8(null)),
+        })
+        {
+            probe = new(new JsonAdmissionItem(name, document));
+            var invalid = JsonAdmit("J520.null-name-or-handle", AdmissionCatalogue, probe, AdmissionLimits);
+            AdmissionCheck(invalid.Error is ArgumentNullException { ParamName: "supplied" }, "null selected handle precedes name matching");
+            JsonAdmissionReads(probe, 1, 1, 0);
+        }
+        probe = new(new JsonAdmissionItem("\ud800", FerruleJsonDocumentRef.FromText("data")));
+        var unicode = JsonAdmit("J520.name-unicode-before-match", AdmissionCatalogue, probe, AdmissionLimits);
+        AdmissionCheck(unicode.Error is ArgumentException { ParamName: "supplied" } &&
+            unicode.Error.Message.StartsWith("Text must contain valid Unicode scalar values.", StringComparison.Ordinal), "strict name Unicode");
+        var required = JsonAdmit("J520.missing-before-parsers", [new("Ref", FerruleBasicNamedSourceMode.RequiredLegacy)], new(), AdmissionLimits);
+        AdmissionOrdinaryError(required, FerruleRuntimeError.MissingNamedSource, "Ref");
+        var reserved = JsonAdmit("J520.reserved-name", [new("Ref", FerruleBasicNamedSourceMode.ReservedUnavailable)], new(item), AdmissionLimits);
+        AdmissionOrdinaryError(reserved, FerruleRuntimeError.UnexpectedNamedSource, "Ref");
+        var duplicate = JsonAdmit("J520.duplicate-supplied", AdmissionCatalogue, new(item, item), AdmissionLimits);
+        AdmissionOrdinaryError(duplicate, FerruleRuntimeError.DuplicateNamedSource, "Ref");
+        var guard = JsonAdmissionCapture("J520.supplied-null-before-policy", null, () => FerruleBasicJsonInputAdmission.Admit<JsonAdmissionItem>(
+            AdmissionCatalogue, null!, null!, default));
+        AdmissionCheck(guard.Error is ArgumentNullException { ParamName: "supplied" }, "helper supplied guard first");
+        guard = JsonAdmissionCapture("J520.accessor-null-before-policy", null, () => FerruleBasicJsonInputAdmission.Admit<JsonAdmissionItem>(
+            AdmissionCatalogue, [], null!, default));
+        AdmissionCheck(guard.Error is ArgumentNullException { ParamName: "accessor" }, "reference accessor guard second");
+
+        foreach (var sentinel in new Exception[] { new TestSentinelException(),
+            new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner),
+            new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch),
+            FerruleFailures.MappingFailure(7, Text("caller")) })
+        {
+            foreach (var stage in new[] { "count", "index", "accessor" })
+            {
+                probe = new(item) { Sentinel = sentinel, ThrowCount = stage == "count", ThrowIndex = stage == "index" ? 0 : -1,
+                    ThrowAccessor = stage == "accessor" ? 0 : -1 };
+                var caller = JsonAdmit("J520.caller." + stage, AdmissionCatalogue, probe, AdmissionLimits);
+                Equal(true, ReferenceEquals(sentinel, caller.Error));
+                JsonAdmissionReads(probe, 1, stage == "accessor" ? 1 : 0, stage == "count" ? [] : [0]);
+            }
+        }
+    }
+
+    private static void JsonAdmissionParseOneShotAndFailureCleanup()
+    {
+        var bytes = new byte[] { 0xff, 1, 2 };
+        var probe = new JsonAdmissionProbe(new("Ref", FerruleJsonDocumentRef.FromUtf8(bytes)),
+            new("Other", FerruleJsonDocumentRef.FromText("bad later")));
+        FerruleBasicNamedSourceDeclaration[] catalogue = [new("Ref", FerruleBasicNamedSourceMode.Optional), new("Other", FerruleBasicNamedSourceMode.Optional)];
+        var admitted = AdmissionSuccess(JsonAdmit("J520.parse-reentry", catalogue, probe, AdmissionLimits));
+        var callbacks = 0;
+        var parsed = AdmissionSuccess(JsonAdmissionCapture("J520.parse-winner", probe, () => admitted.ParseNamedWith((ordinal, _) =>
+        {
+            callbacks++; Equal((0, 0), admitted.OwnedCapacities);
+            var reentry = JsonAdmissionCapture("J520.parse-reentrant-loser", probe,
+                () => admitted.ParseNamedWith((_, _) => throw new InvalidOperationException("losing callback")));
+            AdmissionCheck(reentry.Error is InvalidOperationException, "reentrant parse is refused before callback/clear");
+            return Scalar(Text(ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        })));
+        Equal(2, callbacks); Equal(2, parsed.OwnedCapacity);
+        foreach (var sentinel in new Exception[] { new TestSentinelException(),
+            new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner),
+            new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.RegistryMismatch) })
+        {
+            admitted = AdmissionSuccess(JsonAdmit("J520.parse-failure-admit", catalogue, new(probe.Items), AdmissionLimits));
+            callbacks = 0;
+            var failed = JsonAdmissionCapture("J520.parse-failure", null, () => admitted.ParseNamedWith((_, _) =>
+            { if (++callbacks == 2) throw sentinel; return Scalar(Text("partial-private")); }));
+            Equal(true, ReferenceEquals(sentinel, failed.Error)); Equal(2, callbacks); Equal((0, 0), admitted.OwnedCapacities);
+            var retry = JsonAdmissionCapture("J520.parse-failure-retry", null, () => admitted.ParseNamedWith((_, _) => Scalar(Text("unreachable"))));
+            AdmissionCheck(retry.Error is InvalidOperationException, "failed parse consumed its owner");
+            Equal(true, bytes.SequenceEqual(new byte[] { 0xff, 1, 2 }));
+        }
+        admitted = AdmissionSuccess(JsonAdmit("J520.parse-null-result-admit", AdmissionCatalogue,
+            new(new JsonAdmissionItem("Ref", FerruleJsonDocumentRef.FromText("x"))), AdmissionLimits));
+        var nullResult = JsonAdmissionCapture("J520.parse-null-result", null, () => admitted.ParseNamedWith((_, _) => null!));
+        AdmissionCheck(nullResult.Error is InvalidOperationException, "null callback result is rejected without exposing storage");
+        var consumed = JsonAdmissionCapture("J520.parse-null-result-retry", null, () => admitted.ParseNamedWith((_, _) => Scalar(Text("unreachable"))));
+        AdmissionCheck(consumed.Error is InvalidOperationException, "null-result failure consumes owner");
+        admitted = AdmissionSuccess(JsonAdmit("J520.parse-codec-admit", catalogue, new(probe.Items), AdmissionLimits));
+        FerruleRuntimeException? codecError = null;
+        var codec = JsonAdmissionCapture("J520.parse-original-codec-cause", null, () => admitted.ParseNamedWith((_, document) =>
+        {
+            try { return FerruleJson.ParseEmbeddedBytes("""{"name":"Value","kind":{"kind":"scalar","ty":"string"}}""", document.Utf8!); }
+            catch (FerruleRuntimeException error) { codecError = error; throw; }
+        }));
+        Equal(true, ReferenceEquals(codecError, codec.Error));
+        AdmissionCheck(codecError is { Error: FerruleRuntimeError.JsonBoundary, InnerException: System.Text.DecoderFallbackException },
+            "original decoder cause retained through consuming parser");
+        Equal(true, bytes.SequenceEqual(new byte[] { 0xff, 1, 2 })); Equal((0, 0), admitted.OwnedCapacities);
+        admitted = AdmissionSuccess(JsonAdmit("J520.parse-null-callback-admit", [], new(),
+            new FerruleOwnedSourceLimits(1, 0, 0, 0, 0)));
+        var nullCallback = JsonAdmissionCapture("J520.parse-null-callback", null, () => admitted.ParseNamedWith(null!));
+        AdmissionCheck(nullCallback.Error is ArgumentNullException { ParamName: "parse" }, "invalid callback consumes claimed storage");
+        var nullRetry = JsonAdmissionCapture("J520.parse-null-callback-retry", null, () => admitted.ParseNamedWith((_, _) => Group()));
+        AdmissionCheck(nullRetry.Error is InvalidOperationException, "null-callback attempt cannot be retried");
+    }
+
+    private static void JsonAdmissionConcurrentParseAndBinding()
+    {
+        var admitted = AdmissionSuccess(JsonAdmit("J520.concurrent-admit", AdmissionCatalogue,
+            new(new JsonAdmissionItem("Ref", FerruleJsonDocumentRef.FromText("x"))), AdmissionLimits));
+        using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
+        var winner = Task.Run(() => admitted.ParseNamedWith((_, _) =>
+        { entered.Set(); if (!release.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("parse release"); return AdmissionNamed(); }));
+        FerruleBasicJsonParsedInputs parsed;
+        try
+        {
+            AdmissionCheck(entered.Wait(TimeSpan.FromSeconds(30)), "winning parser reached callback");
+            Equal((0, 0), admitted.OwnedCapacities);
+            var loser = JsonAdmissionCapture("J520.concurrent-parse-loser", null,
+                () => admitted.ParseNamedWith((_, _) => throw new InvalidOperationException("losing callback")));
+            AdmissionCheck(loser.Error is InvalidOperationException, "concurrent parse cannot claim buffers");
+        }
+        finally { release.Set(); }
+        parsed = winner.GetAwaiter().GetResult();
+        var nullPrimary = JsonAdmissionCapture("J520.bind-null-primary", null, () => parsed.BasicRoots(null!));
+        AdmissionCheck(nullPrimary.Error is ArgumentNullException { ParamName: "primary" }, "null primary does not claim binding");
+        using var start = new ManualResetEventSlim();
+        var tasks = Enumerable.Range(0, 8).Select(i => Task.Run(() =>
+        { start.Wait(); return JsonAdmissionCapture("J520.concurrent-bind." + i, null, () => parsed.BasicRoots(AdmissionPrimary())); })).ToArray();
+        start.Set();
+        var results = Task.WhenAll(tasks).GetAwaiter().GetResult();
+        Equal(1, results.Count(result => result.Error is null));
+        Equal(7, results.Count(result => result.Error is InvalidOperationException));
+        var roots = results.Single(result => result.Error is null).Value;
+        Equal(Text("R.root"), roots.RootContext().ResolveOwnedField(FerruleOwnedSourceOwner.Named("Ref"), ["Value"]));
+        var claimed = JsonAdmissionCapture("J520.bind-claimed-again", null, () => parsed.BasicRoots(AdmissionPrimary()));
+        AdmissionCheck(claimed.Error is InvalidOperationException, "successful binding remains consumed");
+        var claimedNull = JsonAdmissionCapture("J520.bind-claimed-null-primary", null, () => parsed.BasicRoots(null!));
+        AdmissionCheck(claimedNull.Error is ArgumentNullException { ParamName: "primary" }, "null primary guard still precedes claimed state");
+        Equal(1, parsed.OwnedCapacity); GC.KeepAlive(parsed);
+    }
+
+    private static void JsonAdmissionEnvelopeAndNativeCapacityRefusals()
+    {
+        var failures = new Action[]
+        {
+            () => BasicJsonInputEnvelope.Bounds(nuint.MaxValue, 0),
+            () => BasicJsonInputEnvelope.Bounds(0, nuint.MaxValue),
+            () => BasicJsonInputEnvelope.RequireSnapshotCapacity((nuint)Array.MaxLength + 1),
+            () => BasicJsonInputEnvelope.RequireParsedCapacity((nuint)Array.MaxLength + 1),
+            () => BasicJsonInputEnvelope.RequireSnapshotCapacity(1, (nuint)Array.MaxLength, 0),
+            () => BasicJsonInputEnvelope.RequireParsedCapacity(1, (nuint)Array.MaxLength, 0),
+            () => BasicJsonInputEnvelope.RequireSnapshotCapacity(nuint.MaxValue, nuint.MaxValue, nuint.MaxValue),
+            () => BasicJsonInputEnvelope.RequireParsedCapacity(nuint.MaxValue, nuint.MaxValue, nuint.MaxValue),
+        };
+        foreach (var action in failures)
+        {
+            var actual = JsonAdmissionCapture("J520.capacity-closed-layout", null, () => { action(); return 0; });
+            JsonAdmissionBridge(actual, FerruleBasicSourceBridgeErrorKind.PairedMetadataArithmeticOverflow);
+        }
+        BasicJsonInputEnvelope.RequireSnapshotCapacity(0, 0, 0);
+        BasicJsonInputEnvelope.RequireParsedCapacity(0, 0, 0);
+        BasicJsonInputEnvelope.RequireSnapshotCapacity(1, 1, (nuint)System.Runtime.CompilerServices.Unsafe.SizeOf<BasicJsonInputSnapshot>());
+        BasicJsonInputEnvelope.RequireParsedCapacity(1, 1, (nuint)System.Runtime.CompilerServices.Unsafe.SizeOf<BasicJsonInputParsed>());
+    }
 }

@@ -282,14 +282,15 @@ public static partial class FerruleJson
     }
 
     // Utf8JsonWriter does not indent WriteRawValue consistently inside arrays.
-    // Rebuild serde_json's two-space layout from complete JSON tokens, retaining
-    // each numeric token byte for byte so no float is parsed a second time.
-    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded) =>
-        CanonicalizeOutputText(encoded).ToString();
+    // Rebuild serde_json's two-space or explicit compact layout from complete
+    // tokens. Preserve each numeric token byte for byte; never reparse a float
+    // or remove raw whitespace that might belong to a string.
+    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded, bool compact = false) =>
+        CanonicalizeOutputText(encoded, compact).ToString();
 
     // Keep the ordinary string wrapper exact while allowing JSON5 to finish its
     // newline in the builder before the single final string materialization.
-    private static StringBuilder CanonicalizeOutputText(ReadOnlySpan<byte> encoded)
+    private static StringBuilder CanonicalizeOutputText(ReadOnlySpan<byte> encoded, bool compact = false)
     {
         var reader = new Utf8JsonReader(
             encoded,
@@ -303,7 +304,7 @@ public static partial class FerruleJson
             {
                 case JsonTokenType.StartObject:
                 case JsonTokenType.StartArray:
-                    BeginPrettyValue(text, frames, ref rootWritten);
+                    BeginPrettyValue(text, frames, ref rootWritten, compact);
                     text.Append(reader.TokenType == JsonTokenType.StartObject ? '{' : '[');
                     frames.Add(new PrettyFrame(reader.TokenType));
                     break;
@@ -323,7 +324,7 @@ public static partial class FerruleJson
                         throw Boundary("JSON output has an invalid container end.");
                     }
                     frames.RemoveAt(frames.Count - 1);
-                    if (finished.HasItems)
+                    if (finished.HasItems && !compact)
                     {
                         text.Append('\n');
                         AppendPrettyIndent(text, frames.Count);
@@ -338,26 +339,25 @@ public static partial class FerruleJson
                         throw Boundary("JSON output has a property outside an object.");
                     }
                     var owner = frames[^1];
-                    text.Append(owner.HasItems ? ",\n" : "\n");
-                    AppendPrettyIndent(text, frames.Count);
+                    AppendOutputSeparator(text, frames.Count, owner.HasItems, compact);
                     AppendSerdeString(text, reader.GetString() ?? string.Empty);
-                    text.Append(": ");
+                    text.Append(compact ? ":" : ": ");
                     owner.HasItems = true;
                     owner.AwaitingValue = true;
                     frames[^1] = owner;
                     break;
                 case JsonTokenType.String:
-                    BeginPrettyValue(text, frames, ref rootWritten);
+                    BeginPrettyValue(text, frames, ref rootWritten, compact);
                     AppendSerdeString(text, reader.GetString() ?? string.Empty);
                     break;
                 case JsonTokenType.Number:
-                    BeginPrettyValue(text, frames, ref rootWritten);
+                    BeginPrettyValue(text, frames, ref rootWritten, compact);
                     AppendJsonAscii(text, reader.ValueSpan);
                     break;
                 case JsonTokenType.True:
                 case JsonTokenType.False:
                 case JsonTokenType.Null:
-                    BeginPrettyValue(text, frames, ref rootWritten);
+                    BeginPrettyValue(text, frames, ref rootWritten, compact);
                     text.Append(reader.TokenType switch
                     {
                         JsonTokenType.True => "true",
@@ -379,7 +379,8 @@ public static partial class FerruleJson
     private static void BeginPrettyValue(
         StringBuilder text,
         List<PrettyFrame> frames,
-        ref bool rootWritten)
+        ref bool rootWritten,
+        bool compact)
     {
         if (frames.Count == 0)
         {
@@ -402,8 +403,7 @@ public static partial class FerruleJson
         }
         else
         {
-            text.Append(owner.HasItems ? ",\n" : "\n");
-            AppendPrettyIndent(text, frames.Count);
+            AppendOutputSeparator(text, frames.Count, owner.HasItems, compact);
             owner.HasItems = true;
         }
         frames[^1] = owner;
@@ -411,6 +411,16 @@ public static partial class FerruleJson
 
     private static void AppendPrettyIndent(StringBuilder text, int depth) =>
         text.Append(' ', checked(depth * 2));
+
+    private static void AppendOutputSeparator(StringBuilder text, int depth, bool hasItems, bool compact)
+    {
+        if (hasItems) { text.Append(','); }
+        if (!compact)
+        {
+            text.Append('\n');
+            AppendPrettyIndent(text, depth);
+        }
+    }
 
     private struct PrettyFrame(JsonTokenType kind)
     {

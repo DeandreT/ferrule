@@ -13,6 +13,9 @@ use crate::{EmitError, literal};
 
 mod failures;
 mod filter_map;
+mod owned_json_api;
+#[cfg(test)]
+mod owned_json_api_tests;
 mod selected_json_api;
 mod xml_api;
 
@@ -40,6 +43,13 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
 
 pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
     render_with_json_boundaries(program, false)
+}
+
+pub(crate) fn append_basic_owned_json_api(
+    program: &Program,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    owned_json_api::render(program, output)
 }
 
 fn render_with_json_boundaries(

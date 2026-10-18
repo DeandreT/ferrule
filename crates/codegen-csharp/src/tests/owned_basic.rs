@@ -2965,9 +2965,7 @@ fn retain_public_basic_consumer(label: &str, program: &Program, body: &str) -> S
             .clone(),
     )
     .expect("complete emitted mapping is UTF-8");
-    let host = PUBLIC_BASIC_CONSUMER
-        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
-        .replace("__BODY__", body);
+    let host = public_basic_consumer(body, true);
     eprintln!("RAW {label} complete independent public consumer={host}");
     if let Some(base) = std::env::var_os("FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR") {
         let base = std::path::PathBuf::from(base);
@@ -3024,6 +3022,34 @@ const PUBLIC_BASIC_CONSUMER_PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../generated/Ferrule.Generated.csproj" /></ItemGroup>
 </Project>
+"#;
+
+fn public_basic_consumer(body: &str, json: bool) -> String {
+    let expected = if json {
+        r#""ExecuteJsonBytesOutputsWithBasicOwnedSources","ExecuteJsonBytesSelectedTargetWithBasicOwnedSources","ExecuteJsonOutputsWithBasicOwnedSources","ExecuteJsonSelectedTargetWithBasicOwnedSources","ExecuteSelectedWithBasicOwnedSources","ExecuteWithBasicOwnedSources""#
+    } else {
+        r#""ExecuteSelectedWithBasicOwnedSources","ExecuteWithBasicOwnedSources""#
+    };
+    PUBLIC_BASIC_CONSUMER
+        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
+        .replace("__EXPECTED_PUBLIC_METHODS__", expected)
+        .replace(
+            "__JSON_API_CHECKS__",
+            if json { PUBLIC_BASIC_JSON_API } else { "" },
+        )
+        .replace("__BODY__", body)
+}
+
+const PUBLIC_BASIC_JSON_API: &str = r#"
+        void JsonMethod(string name,Type result,params Type[] parameters)
+        {
+            var method=methods.Single(m=>m.Name==name);
+            Check(method.ReturnType==result && method.GetParameters().Select(p=>p.ParameterType).SequenceEqual(parameters),"exact JSON entry "+name);
+        }
+        JsonMethod("ExecuteJsonOutputsWithBasicOwnedSources",typeof(JsonExecutionOutputs),typeof(string),typeof(IReadOnlyList<NamedJsonInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext));
+        JsonMethod("ExecuteJsonBytesOutputsWithBasicOwnedSources",typeof(JsonBytesExecutionOutputs),typeof(byte[]),typeof(IReadOnlyList<NamedJsonBytesInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext));
+        JsonMethod("ExecuteJsonSelectedTargetWithBasicOwnedSources",typeof(SelectedJsonTargetOutput),typeof(string),typeof(FerruleTargetSelection),typeof(IReadOnlyList<NamedJsonInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext));
+        JsonMethod("ExecuteJsonBytesSelectedTargetWithBasicOwnedSources",typeof(SelectedJsonBytesTargetOutput),typeof(byte[]),typeof(FerruleTargetSelection),typeof(IReadOnlyList<NamedJsonBytesInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext));
 "#;
 
 const PUBLIC_BASIC_CONSUMER: &str = r#"using System;
@@ -3130,10 +3156,11 @@ internal static class Program
         var methods=typeof(GeneratedMapping).GetMethods(BindingFlags.Public|BindingFlags.Static|BindingFlags.DeclaredOnly).OrderBy(m=>m.Name,StringComparer.Ordinal).ToArray();
         var properties=typeof(FerruleOwnedSourceLimits).GetProperties(BindingFlags.Public|BindingFlags.Instance|BindingFlags.DeclaredOnly).OrderBy(p=>p.Name,StringComparer.Ordinal).ToArray();
         Console.WriteLine(Json(new {classification="complete_public_API_before_comparison",methods=methods.Select(m=>new {m.Name,result=m.ReturnType.FullName,parameters=m.GetParameters().Select(p=>new {p.Name,type=p.ParameterType.FullName,p.IsOptional,p.HasDefaultValue}).ToArray()}).ToArray(),limits=properties.Select(p=>new {p.Name,type=p.PropertyType.FullName}).ToArray()}));
-        Check(methods.Select(m=>m.Name).SequenceEqual(new[]{"ExecuteSelectedWithBasicOwnedSources","ExecuteWithBasicOwnedSources"}),"only two public methods; no metadata/observer/counter/transport or eager entry");
-        var all=methods[1];var selected=methods[0];
+        Check(methods.Select(m=>m.Name).SequenceEqual(new[]{__EXPECTED_PUBLIC_METHODS__}),"exact public API for the selected emitter profile");
+        var all=methods.Single(m=>m.Name=="ExecuteWithBasicOwnedSources");var selected=methods.Single(m=>m.Name=="ExecuteSelectedWithBasicOwnedSources");
         Check(all.ReturnType==typeof(ExecutionOutputs) && all.GetParameters().Select(p=>p.ParameterType).SequenceEqual(new[]{typeof(FerruleInstance),typeof(IReadOnlyList<NamedInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext)}),"exact all entry");
         Check(selected.ReturnType==typeof(SelectedTargetOutput) && selected.GetParameters().Select(p=>p.ParameterType).SequenceEqual(new[]{typeof(FerruleInstance),typeof(FerruleTargetSelection),typeof(IReadOnlyList<NamedInput>),typeof(FerruleOwnedSourceLimits),typeof(FerruleExecutionContext)}),"exact selected entry");
+__JSON_API_CHECKS__
         Check(methods.SelectMany(m=>m.GetParameters()).All(p=>!p.IsOptional && !p.HasDefaultValue),"every public argument mandatory");
         Check(properties.Select(p=>p.Name).SequenceEqual(new[]{"MaxActiveFrames","MaxMetadataBytes","MaxPathSegments","MaxRoots","MaxWalkContexts"}) && properties.All(p=>p.PropertyType==typeof(nuint)),"all five native policy fields unchanged");
     }
@@ -6321,9 +6348,7 @@ fn retain_public_filter_consumer(label: &str, program: &Program, body: &str) -> 
             .clone(),
     )
     .expect("complete emitted mapping is UTF-8");
-    let host = PUBLIC_BASIC_CONSUMER
-        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
-        .replace("__BODY__", body);
+    let host = public_basic_consumer(body, false);
     eprintln!("RAW {label} complete independent public consumer={host}");
     if let Some(base) = std::env::var_os("FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR") {
         let base = std::path::PathBuf::from(base);
@@ -6454,12 +6479,13 @@ fn public_basic_filter_companion_preserves_control_free_bytes_and_closed_routes(
         vec![expression(1, field(SourceOwner::Primary, &["Value"], None))],
         group(vec![binding("Value", 1, ScalarType::String)]),
     );
-    let old = filter_645_mapping(crate::emit_with_basic_owned_sources(&plain).unwrap());
+    let old = crate::owned_basic::render_public_basic_owned_mapping(&plain).unwrap();
+    let with_json = filter_645_mapping(crate::emit_with_basic_owned_sources(&plain).unwrap());
     let explicit = filter_645_mapping(crate::emit_with_basic_owned_filters(&plain).unwrap());
-    assert_eq!(
-        old, explicit,
-        "control-free generated mapping bytes are exact"
-    );
+    assert!(with_json.starts_with(&old));
+    assert!(with_json.contains("ExecuteJsonOutputsWithBasicOwnedSources("));
+    assert!(!explicit.contains("ExecuteJsonOutputsWithBasicOwnedSources("));
+    assert_eq!(old, explicit, "control-free typed mapping bytes are exact");
 }
 
 fn filter_681_positive_pairing_program() -> Program {
@@ -7041,9 +7067,7 @@ fn retain_public_sort_consumer(label: &str, program: &Program, body: &str) -> St
             .clone(),
     )
     .expect("complete emitted mapping is UTF-8");
-    let host = PUBLIC_BASIC_CONSUMER
-        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
-        .replace("__BODY__", body);
+    let host = public_basic_consumer(body, false);
     eprintln!("RAW {label} complete independent public consumer={host}");
     if let Some(base) = std::env::var_os("FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR") {
         let base = std::path::PathBuf::from(base);
