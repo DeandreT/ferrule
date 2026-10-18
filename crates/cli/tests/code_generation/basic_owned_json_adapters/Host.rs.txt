@@ -1,0 +1,147 @@
+use codegen_runtime::{ExecutionContext, Instance, JsonBoundaryError, OwnedSourceError,
+    OwnedSourceLimitKind, OwnedSourceLimits, RuntimeError, TargetSelection};
+use serde_json::{Value as Json, json};
+use std::{error::Error as _, fs, io::Write as _, path::{Path,PathBuf}};
+
+type Outcome = Result<Vec<(Option<String>,Vec<u8>)>,JsonBoundaryError>;
+fn write(directory:&Path,name:&str,bytes:&[u8]) {
+    let mut file=fs::OpenOptions::new().create_new(true).write(true).open(directory.join(name)).unwrap();
+    file.write_all(bytes).unwrap(); file.flush().unwrap();
+}
+fn limits(profile:&str)->OwnedSourceLimits {
+    let mut limits=OwnedSourceLimits {max_roots:8,max_active_frames:8,max_path_segments:32,max_metadata_bytes:1_048_576,max_walk_contexts:128};
+    match profile {
+        "generous"=>{}, "zero"=>limits=OwnedSourceLimits {max_roots:0,max_active_frames:0,max_path_segments:0,max_metadata_bytes:0,max_walk_contexts:0},
+        "no-roots"=>limits.max_roots=0,"no-name-bytes"=>limits.max_metadata_bytes=0,
+        "catalogue-name-bytes"=>limits.max_metadata_bytes=22,_=>panic!("frozen policy profile"),
+    }; limits
+}
+macro_rules! invoke {
+    ($module:ident,$transport:expr,$selection:expr,$source:expr,$named:expr,$context:expr,$limits:expr)=>{{
+        let source=$source; let named=$named; let selection=$selection;
+        let target=if selection=="Primary" {TargetSelection::Primary} else {TargetSelection::Named(selection)};
+        if $transport=="text" {
+            let source=std::str::from_utf8(source).unwrap();
+            let inputs=named.iter().map(|(name,document)|$module::NamedJsonInput {
+                name,document:std::str::from_utf8(document).unwrap()}).collect::<Vec<_>>();
+            if selection=="All" {
+                let result:Result<$module::JsonExecutionOutputs,_>=$module::execute_json_outputs_with_basic_owned_sources(source,&inputs,Some($context),$limits);
+                result.map(|output| {let mut result=vec![(None,output.primary.into_bytes())];
+                    result.extend(output.extras.into_iter().map(|output|(Some(output.name.to_owned()),output.document.into_bytes())));result})
+            } else {
+                let result:Result<$module::SelectedJsonTargetOutput,_>=$module::execute_json_selected_target_with_basic_owned_sources(source,&inputs,Some($context),$limits,target);
+                result.map(|output|match output {$module::SelectedJsonTargetOutput::Primary(document)=>vec![(None,document.into_bytes())],
+                    $module::SelectedJsonTargetOutput::Named(output)=>vec![(Some(output.name.to_owned()),output.document.into_bytes())]})
+            }
+        } else {
+            let inputs=named.iter().map(|(name,document)|$module::NamedJsonBytesInput {name,document}).collect::<Vec<_>>();
+            if selection=="All" {
+                let result:Result<$module::JsonBytesExecutionOutputs,_>=$module::execute_json_bytes_outputs_with_basic_owned_sources(source,&inputs,Some($context),$limits);
+                result.map(|output| {let mut result=vec![(None,output.primary)];
+                    result.extend(output.extras.into_iter().map(|output|(Some(output.name.to_owned()),output.document)));result})
+            } else {
+                let result:Result<$module::SelectedJsonBytesTargetOutput,_>=$module::execute_json_bytes_selected_target_with_basic_owned_sources(source,&inputs,Some($context),$limits,target);
+                result.map(|output|match output {$module::SelectedJsonBytesTargetOutput::Primary(document)=>vec![(None,document)],
+                    $module::SelectedJsonBytesTargetOutput::Named(output)=>vec![(Some(output.name.to_owned()),output.document)]})
+            }
+        }
+    }};
+}
+fn expected_runtime(recipe:&Json)->RuntimeError {
+    match recipe["kind"].as_str().unwrap() {
+        "UnknownTarget"=>RuntimeError::UnknownTarget {name:recipe["name"].as_str().unwrap().into()},
+        "MissingNamedSource"=>RuntimeError::MissingNamedSource {name:"RequiredLegacy"},
+        "DuplicateNamedSource"=>RuntimeError::DuplicateNamedSource {name:"Ref"},
+        "UnexpectedNamedSource"=>RuntimeError::UnexpectedNamedSource {name:recipe["name"].as_str().unwrap().into()},
+        "MappingException"=>RuntimeError::MappingException {node:6,message:Some("520 target poison".into())},
+        "SourceUnavailable"=>RuntimeError::OwnedSourceAtNode {node:2,source:OwnedSourceError::SourceUnavailable {name:"Ref".into()}},
+        "MetadataLimit"=>RuntimeError::OwnedSource(OwnedSourceError::MetadataLimit {
+            kind:match recipe["resource"].as_str().unwrap() {"Roots"=>OwnedSourceLimitKind::Roots,"MetadataBytes"=>OwnedSourceLimitKind::MetadataBytes,_=>panic!("no guessed workspace arithmetic")},
+            used:recipe["used"].as_u64().unwrap() as usize,requested:recipe["requested"].as_u64().unwrap() as usize,max:recipe["maximum"].as_u64().unwrap() as usize,
+        }),
+        _=>panic!("frozen runtime error"),
+    }
+}
+fn matches_error(error:&JsonBoundaryError,recipe:&Json)->bool {
+    match recipe["kind"].as_str().unwrap() {
+        "InvalidInput"=>matches!(error,JsonBoundaryError::InvalidInput {message} if message.contains(recipe["rust_marker"].as_str().unwrap())),
+        "InvalidOutput"=>matches!(error,JsonBoundaryError::InvalidOutput {message} if message.contains("Value")),
+        "Utf8"=>{
+            let mut source=error.source(); let mut found=None; let mut depth=0;
+            while let Some(error)=source {
+                depth+=1;
+                if let Some(error)=error.downcast_ref::<std::str::Utf8Error>() {found=Some(*error);}
+                source=error.source();
+            }
+            found.is_some_and(|error|error.valid_up_to()==recipe["offset"].as_u64().unwrap() as usize
+                &&error.error_len()==recipe["error_length"].as_u64().map(|n|n as usize))&&depth==1
+        },
+        _=>*error==JsonBoundaryError::Execution(expected_runtime(recipe)),
+    }
+}
+fn outputs_match(actual:&[(Option<String>,Vec<u8>)],expected:&Json)->bool {
+    let rows=expected.as_array().unwrap();
+    if actual.len()!=rows.len() {return false;}
+    actual.iter().zip(rows).all(|((name,bytes),row)| {
+        let expected=row[1].as_str().unwrap();
+        let parsed=serde_json::from_slice::<Json>(bytes);
+        let expected_tree:Json=serde_json::from_str(expected).unwrap();
+        let records=parsed.as_ref().ok().map(|tree|tree.as_array().map_or(1,Vec::len));
+        name.as_deref()==row[0].as_str()&&bytes==expected.as_bytes()&&!bytes.ends_with(b"\n")
+            &&parsed.as_ref().is_ok_and(|tree|*tree==expected_tree)&&records==Some(row[2].as_u64().unwrap() as usize)
+    })
+}
+fn main() {
+    let args=std::env::args_os().skip(1).collect::<Vec<_>>(); assert_eq!(args.len(),2);
+    let directory=PathBuf::from(&args[1]); assert!(directory.is_absolute()&&!directory.exists()); fs::create_dir(&directory).unwrap();
+    let raw=fs::read(&args[0]).unwrap();write(&directory,"COMPLETE-FROZEN-CONTROLS.json",&raw);
+    let controls:Json=serde_json::from_slice(&raw).unwrap();
+    let context=ExecutionContext::new(Path::new("json520.mapping"));let mut checks=Vec::new();
+    for (ordinal,case) in controls["cases"].as_array().unwrap().iter().enumerate() {
+        if case["languages"]!="both" {continue;}
+        let source=case.get("source_bytes").map(|bytes|serde_json::from_value::<Vec<u8>>(bytes.clone()).unwrap())
+            .unwrap_or_else(||case["source"].as_str().unwrap().as_bytes().to_vec());
+        let named=case["inputs"].as_array().unwrap().iter().enumerate().map(|(index,input)| {
+            let document=case.get("input_bytes").map(|bytes|serde_json::from_value::<Vec<u8>>(bytes[index].clone()).unwrap())
+                .unwrap_or_else(||input[1].as_str().unwrap().as_bytes().to_vec());
+            (input[0].as_str().unwrap().to_owned(),document)
+        }).collect::<Vec<_>>();
+        let before=(source.clone(),named.clone());let limits=limits(case["limits"].as_str().unwrap());
+        for transport in case["transports"].as_array().unwrap() {for call in case["calls"].as_array().unwrap() {
+            let transport=transport.as_str().unwrap();let selection=call["selection"].as_str().unwrap();
+            let prefix=format!("{ordinal:02}-{transport}-{selection}");
+            write(&directory,&format!("{prefix}-COMPLETE-INPUT.txt"),format!("source={source:#?}\nnamed={named:#?}\nlimits={limits:#?}\ncontext: mapping_file_path=json520.mapping; main_mapping_file_path=json520.mapping; current_datetime=None; parameters=None; loader=None; cancellation=None\ncase={case:#?}\ncall={call:#?}\n").as_bytes());
+            let actual=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Outcome {match case["model"].as_u64().unwrap() {
+                0=>invoke!(model0,transport,selection,&source,&named,&context,limits),
+                1=>invoke!(model1,transport,selection,&source,&named,&context,limits),
+                2=>invoke!(model2,transport,selection,&source,&named,&context,limits),_=>panic!("frozen model"),
+            }}));
+            let mut original=match &actual {Ok(actual)=>format!("COMPLETE_RESULT={actual:#?}\n"),
+                Err(payload)=>format!("PANIC={:?};type={:?}\n",payload.downcast_ref::<String>().map(String::as_str).or_else(||payload.downcast_ref::<&str>().copied()),payload.as_ref().type_id())};
+            if let Ok(Err(error))=&actual {
+                original.push_str(&format!("DISPLAY={error}\n"));let mut source=error.source();
+                while let Some(error)=source {original.push_str(&format!("CAUSE_DEBUG={error:#?}\nCAUSE_DISPLAY={error}\n"));source=error.source();}
+                original.push_str("CAUSE_CHAIN_TERMINATED=None\n");
+            }
+            // Persist originals before any equality/category/count inspection.
+            write(&directory,&format!("{prefix}-COMPLETE-ACTUAL.txt"),original.as_bytes());
+            write(&directory,&format!("{prefix}-COMPLETE-AFTER-INPUT.txt"),format!("source={source:#?}\nnamed={named:#?}\n").as_bytes());
+            if let Ok(Ok(outputs))=&actual {for (index,(_,bytes)) in outputs.iter().enumerate() {
+                write(&directory,&format!("{prefix}-OUTPUT{index}.json"),bytes);
+            }}
+            let matched=match &actual {Ok(Ok(outputs))=>call["expected"].get("Ok").is_some_and(|expected|outputs_match(outputs,expected)),
+                Ok(Err(error))=>call["expected"].get("Err").is_some_and(|recipe|matches_error(error,recipe)),Err(_)=>false};
+            checks.push(json!({"case":case["id"],"transport":transport,"selection":selection,"matched":matched&&before==(source.clone(),named.clone())}));
+        }}
+    }
+    // The old serializer profile is a separate control, never a compact oracle.
+    let schema=r#"{"name":"Output","kind":{"kind":"group","children":[{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}"#;
+    let instance=Instance::Group(vec![("Value".into(),Instance::Scalar(codegen_runtime::Value::String("P.root".into())))].into());
+    let legacy=codegen_runtime::serialize_json(schema,&instance);
+    let legacy_bytes=codegen_runtime::serialize_json_bytes(schema,&instance);
+    write(&directory,"COMPLETE-LEGACY-SERIALIZER-CONTROLS.txt",format!("text={legacy:#?}\nbytes={legacy_bytes:#?}\n").as_bytes());
+    write(&directory,"ALL-COMPLETE-COMPARISONS.json",&serde_json::to_vec_pretty(&checks).unwrap());
+    assert_eq!(legacy.unwrap(),"{\n  \"Value\": \"P.root\"\n}\n");
+    assert_eq!(legacy_bytes.unwrap(),b"{\n  \"Value\": \"P.root\"\n}\n");
+    assert_eq!(checks.len(),101);assert!(checks.iter().all(|row|row["matched"]==true),"JSON520 differs; all originals retained");
+}

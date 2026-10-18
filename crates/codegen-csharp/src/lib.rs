@@ -68,15 +68,20 @@ fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
     emit_mapping_artifacts(program, generated_mapping)
 }
 
-/// Emits typed Basic source entry points with an explicit caller policy.
+/// Emits typed and strict JSON Basic source entry points with an explicit policy.
 ///
 /// The generated all-output and selected-output methods require the existing
-/// five-field native limits and an explicit execution context argument. Ordinary
-/// emitters and document adapters retain their existing admission and APIs.
+/// five-field native limits and an explicit execution context argument. JSON text
+/// and UTF-8 companions admit all names before parsing, parse every supplied
+/// document once, and return complete compact documents without a trailing newline.
+/// Their closed document handles capture only text/byte-array references; the
+/// runtime owns bounded admission and parsed-input storage. Ordinary emitters and
+/// the other Basic control profiles retain their existing admission and APIs.
 pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     codegen::validate_basic_owned_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
+    let mut generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
+    mapping::append_basic_owned_json_api(program, &mut generated_mapping)?;
     emit_mapping_artifacts(program, generated_mapping)
 }
 

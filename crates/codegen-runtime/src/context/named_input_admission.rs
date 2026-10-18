@@ -33,15 +33,21 @@ pub struct BasicNamedSourceInput<'name, 'src> {
     pub instance: &'src Instance,
 }
 
-pub(super) fn normalize<'name, 'src, I>(
-    primary: &'src Instance,
+/// The allocation-free prefix shared by typed and document admission. Keep its
+/// check order identical to the original typed normalizer.
+pub(super) struct NamedInputPreflight {
+    pub(super) bounds: PairedBounds,
+    pub(super) root_count: usize,
+    pub(super) storage_count: usize,
+    pub(super) name_bytes: usize,
+    pub(super) header: usize,
+    pub(super) slots: OwnedSlotBudget,
+}
+
+pub(super) fn preflight(
     catalogue: &'static [BasicNamedSourceDeclaration],
-    supplied: I,
     limits: OwnedSourceLimits,
-) -> Result<(SourceRoots<'src>, PairedBounds), RuntimeError>
-where
-    I: IntoIterator<Item = BasicNamedSourceInput<'name, 'src>>,
-{
+) -> Result<NamedInputPreflight, RuntimeError> {
     // paired_bounds checks the unchanged direct equation first. Products and
     // native representability precede every table, registry or diagnostic copy.
     let bounds = paired_bounds(limits)?;
@@ -91,6 +97,58 @@ where
     // with the final table. They are not retained after the iterator finishes.
     slots.charge(1)?;
     slots.charge(2)?;
+    Ok(NamedInputPreflight {
+        bounds,
+        root_count,
+        storage_count,
+        name_bytes,
+        header,
+        slots,
+    })
+}
+
+pub(super) fn input_declaration(
+    catalogue: &'static [BasicNamedSourceDeclaration],
+    name: &str,
+    name_bytes: usize,
+    limits: OwnedSourceLimits,
+) -> Result<usize, RuntimeError> {
+    if let Some(index) = catalogue.iter().position(|declaration| {
+        declaration.name == name && declaration.mode != BasicNamedSourceMode::ReservedUnavailable
+    }) {
+        return Ok(index);
+    }
+    // Admit the complete copied diagnostic before to_string. C# uses
+    // the same logical charge even when retaining an immutable name.
+    owned_charge(
+        OwnedSourceLimitKind::MetadataBytes,
+        name_bytes,
+        name.len(),
+        limits.max_metadata_bytes,
+    )?;
+    paired_capacity::<u8>(name.len())?;
+    Err(RuntimeError::UnexpectedNamedSource {
+        name: name.to_string(),
+    })
+}
+
+pub(super) fn normalize<'name, 'src, I>(
+    primary: &'src Instance,
+    catalogue: &'static [BasicNamedSourceDeclaration],
+    supplied: I,
+    limits: OwnedSourceLimits,
+) -> Result<(SourceRoots<'src>, PairedBounds), RuntimeError>
+where
+    I: IntoIterator<Item = BasicNamedSourceInput<'name, 'src>>,
+{
+    let NamedInputPreflight {
+        bounds,
+        root_count,
+        storage_count,
+        name_bytes,
+        header: _header,
+        slots,
+    } = preflight(catalogue, limits)?;
     #[cfg(test)]
     eprintln!(
         "RAW NAMED_ADMISSION before_table catalogue={catalogue:?} primary={primary:?} limits={limits:?} root_count={root_count} storage_count={storage_count} slots={} maximum={} name_bytes={name_bytes}",
@@ -123,24 +181,7 @@ where
     }
     let mut iterator = supplied.into_iter();
     while let Some(input) = next_input(&mut iterator, &named, storage_count, name_bytes, &slots) {
-        let index = catalogue.iter().position(|declaration| {
-            declaration.name == input.name
-                && declaration.mode != BasicNamedSourceMode::ReservedUnavailable
-        });
-        let Some(index) = index else {
-            // Admit the complete copied diagnostic before to_string. C# uses
-            // the same logical charge even when retaining an immutable name.
-            owned_charge(
-                OwnedSourceLimitKind::MetadataBytes,
-                name_bytes,
-                input.name.len(),
-                limits.max_metadata_bytes,
-            )?;
-            paired_capacity::<u8>(input.name.len())?;
-            return Err(RuntimeError::UnexpectedNamedSource {
-                name: input.name.to_string(),
-            });
-        };
+        let index = input_declaration(catalogue, input.name, name_bytes, limits)?;
         if named[index].instance.is_some() {
             return Err(RuntimeError::DuplicateNamedSource {
                 name: catalogue[index].name,
@@ -160,7 +201,7 @@ where
     }
     #[cfg(test)]
     eprintln!(
-        "RAW NAMED_ADMISSION before_registry named={named:?} root_count={root_count} storage_count={storage_count} name_bytes={name_bytes} retained_header={header}"
+        "RAW NAMED_ADMISSION before_registry named={named:?} root_count={root_count} storage_count={storage_count} name_bytes={name_bytes} retained_header={_header}"
     );
     // The final table moves into the registry; no helper-local slice escapes.
     // Empty declarations use the same borrowed empty representation as before.

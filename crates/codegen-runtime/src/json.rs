@@ -6,6 +6,8 @@ use crate::RuntimeError;
 
 mod allowed_values;
 #[cfg(test)]
+mod compact;
+#[cfg(test)]
 mod contains;
 #[cfg(test)]
 mod dependent_schemas;
@@ -27,6 +29,8 @@ mod required_property_precedence;
 #[cfg(test)]
 mod string_int_range;
 mod unique_items;
+#[cfg(test)]
+mod utf8;
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -38,6 +42,7 @@ pub enum JsonBoundaryError {
     InvalidEmbeddedSchema { message: String },
     InputTooLarge { bytes: usize, max: usize },
     InvalidInput { message: String },
+    InvalidUtf8(std::str::Utf8Error),
     Execution(RuntimeError),
     InvalidOutput { message: String },
     OutputTooLarge { bytes: usize, max: usize },
@@ -57,6 +62,12 @@ impl fmt::Display for JsonBoundaryError {
                 write!(formatter, "JSON input is {bytes} bytes; maximum is {max}")
             }
             Self::InvalidInput { message } => write!(formatter, "JSON input is invalid: {message}"),
+            Self::InvalidUtf8(error) => {
+                write!(
+                    formatter,
+                    "JSON input is invalid: document is not UTF-8: {error}"
+                )
+            }
             Self::Execution(error) => error.fmt(formatter),
             Self::InvalidOutput { message } => {
                 write!(formatter, "JSON output is invalid: {message}")
@@ -72,6 +83,7 @@ impl std::error::Error for JsonBoundaryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Execution(error) => Some(error),
+            Self::InvalidUtf8(error) => Some(error),
             Self::EmbeddedSchemaTooLarge { .. }
             | Self::InvalidEmbeddedSchema { .. }
             | Self::InputTooLarge { .. }
@@ -91,6 +103,12 @@ impl From<RuntimeError> for JsonBoundaryError {
 /// Per-document portable-constraint state.
 #[derive(Debug)]
 struct ConstraintBoundary;
+
+#[derive(Clone, Copy)]
+enum JsonOutputFormat {
+    Pretty,
+    Compact,
+}
 
 impl ConstraintBoundary {
     fn new() -> Self {
@@ -140,6 +158,7 @@ impl ConstraintBoundary {
         &self,
         schema: &str,
         instance: &Instance,
+        format: JsonOutputFormat,
     ) -> Result<String, JsonBoundaryError> {
         let schema = self.parse_schema(schema)?;
         let formatter_schema = without_boundary_constraints(schema.clone());
@@ -148,12 +167,16 @@ impl ConstraintBoundary {
                 message: error.to_string(),
             }
         })?;
-        let mut document = serde_json::to_string_pretty(&value).map_err(|error| {
-            JsonBoundaryError::InvalidOutput {
-                message: error.to_string(),
-            }
+        let mut document = match format {
+            JsonOutputFormat::Pretty => serde_json::to_string_pretty(&value),
+            JsonOutputFormat::Compact => serde_json::to_string(&value),
+        }
+        .map_err(|error| JsonBoundaryError::InvalidOutput {
+            message: error.to_string(),
         })?;
-        document.push('\n');
+        if matches!(format, JsonOutputFormat::Pretty) {
+            document.push('\n');
+        }
         if document.len() > MAX_JSON_DOCUMENT_BYTES {
             return Err(JsonBoundaryError::OutputTooLarge {
                 bytes: document.len(),
@@ -173,7 +196,7 @@ impl ConstraintBoundary {
         schema: &str,
         instance: &Instance,
     ) -> Result<Vec<u8>, JsonBoundaryError> {
-        self.serialize_json(schema, instance)
+        self.serialize_json(schema, instance, JsonOutputFormat::Pretty)
             .map(String::into_bytes)
     }
 
@@ -217,6 +240,20 @@ pub fn parse_json_bytes(schema: &str, document: &[u8]) -> Result<Instance, JsonB
     ConstraintBoundary::new().parse_json_bytes(schema, document)
 }
 
+/// Parses one bounded UTF-8 JSON payload, retaining a decoding failure as its cause.
+///
+/// The byte limit is checked before UTF-8 decoding. Valid UTF-8 uses [`parse_json`]
+/// unchanged, including its string-only JSON parser errors. [`parse_json_bytes`]
+/// retains its legacy string-only UTF-8 errors.
+pub fn parse_json_bytes_with_utf8_cause(
+    schema: &str,
+    document: &[u8],
+) -> Result<Instance, JsonBoundaryError> {
+    check_input_size(document.len())?;
+    let document = std::str::from_utf8(document).map_err(JsonBoundaryError::InvalidUtf8)?;
+    parse_json(schema, document)
+}
+
 fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
     if bytes > MAX_JSON_DOCUMENT_BYTES {
         return Err(JsonBoundaryError::InputTooLarge {
@@ -229,7 +266,7 @@ fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
 
 /// Serializes one instance as a bounded pretty-printed JSON document.
 pub fn serialize_json(schema: &str, instance: &Instance) -> Result<String, JsonBoundaryError> {
-    ConstraintBoundary::new().serialize_json(schema, instance)
+    ConstraintBoundary::new().serialize_json(schema, instance, JsonOutputFormat::Pretty)
 }
 
 /// Serializes one instance as a bounded pretty-printed UTF-8 JSON payload.
@@ -238,6 +275,25 @@ pub fn serialize_json_bytes(
     instance: &Instance,
 ) -> Result<Vec<u8>, JsonBoundaryError> {
     ConstraintBoundary::new().serialize_json_bytes(schema, instance)
+}
+
+/// Serializes one instance as bounded compact JSON without a trailing newline.
+///
+/// Uses the same schema, normalization, validation, and field-order contract as
+/// [`serialize_json`]. The output byte limit counts only the compact document.
+pub fn serialize_json_compact(
+    schema: &str,
+    instance: &Instance,
+) -> Result<String, JsonBoundaryError> {
+    ConstraintBoundary::new().serialize_json(schema, instance, JsonOutputFormat::Compact)
+}
+
+/// Serializes one instance as bounded compact UTF-8 JSON without a trailing newline.
+pub fn serialize_json_compact_bytes(
+    schema: &str,
+    instance: &Instance,
+) -> Result<Vec<u8>, JsonBoundaryError> {
+    serialize_json_compact(schema, instance).map(String::into_bytes)
 }
 
 fn parse_schema(schema: &str) -> Result<SchemaNode, JsonBoundaryError> {

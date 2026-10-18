@@ -21,6 +21,7 @@ mod csv_api;
 mod failure;
 mod json5_api;
 mod owned_basic;
+mod owned_json_api;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
@@ -154,7 +155,8 @@ pub fn emit_with_basic_owned_sources(
     }
     codegen::validate_basic_owned_emission(program)?;
     let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_source(program)?;
+    let mut source = owned_basic::render_public_basic_owned_source(program)?;
+    source.push_str(&owned_json_api::render(program)?);
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
