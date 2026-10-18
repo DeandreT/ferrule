@@ -806,6 +806,13 @@ that wrapper's contract. Schema resolution still runs, and missing or malformed
 schemas still prevent executable import. Declared but unused outputs do not use
 this admission path.
 
+Required global String inputs accept the same exact absent-default forms as
+optional parser inputs: no `sources` element, an empty element, or one
+position-zero datapoint with no key or an unconnected valid key. The raw form is
+checked before pin normalization. Duplicate, malformed and connected defaults
+remain unsupported; an empty placeholder never supplies the design-time preview
+as a runtime default.
+
 JSON structure variables use the explicit parameter-root path to select their
 schema value. Property steps retain their names; object views are transparent.
 Variables remain intermediate values and scalar outputs resolve through their
