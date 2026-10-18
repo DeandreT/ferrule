@@ -410,6 +410,46 @@ fn take_scope(root: &mut mapping::Scope, target_path: &[String]) -> Option<mappi
     Some(parent.children.remove(index))
 }
 
+fn unique_constructed_driver(
+    target: &SchemaComponent,
+    target_path: &[String],
+    target_port: Option<u32>,
+    feed: u32,
+    builder: &GraphBuilder<'_>,
+) -> bool {
+    // Concatenated occurrences pass a declared branch marker instead of a port.
+    // Count connectors within that occurrence, not across its sibling clones.
+    // Multiple protocol-wrapper connectors inside one branch remain ambiguous.
+    let branch = target_port.filter(|port| !target.input_keys.contains(port));
+    if branch.is_some_and(|marker| {
+        literal_constant_value(feed, builder).is_none()
+            || branch_owners::lineage(target, marker).is_none()
+            || target.ambiguous_branch_inputs.iter().any(|key| {
+                builder.edge_from.contains_key(key)
+                    && target
+                        .ports
+                        .get(key)
+                        .is_some_and(|path| path.starts_with(target_path))
+            })
+    }) {
+        return false;
+    }
+    let mut candidates = target.ports.iter().filter(|(key, path)| {
+        target.input_keys.contains(key)
+            && *path == target_path
+            && builder.edge_from.contains_key(key)
+            && branch.is_none_or(|marker| {
+                target
+                    .input_ancestors
+                    .get(key)
+                    .is_some_and(|ancestors| ancestors.contains(&marker))
+            })
+    });
+    candidates.next().is_some_and(|(key, _)| {
+        builder.edge_from.get(key) == Some(&feed) && (branch.is_some() || target_port == Some(*key))
+    }) && candidates.next().is_none()
+}
+
 fn build_one(
     iteration: TargetIteration,
     target: &SchemaComponent,
@@ -522,16 +562,13 @@ fn build_one(
             && !has_inherited_filter
             && schema_node_at(&target.schema, &target_path)
                 .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
-            && target
-                .ports
-                .iter()
-                .filter(|(key, path)| {
-                    target.input_keys.contains(key)
-                        && **path == target_path
-                        && builder.edge_from.contains_key(key)
-                })
-                .count()
-                == 1
+            && unique_constructed_driver(
+                target,
+                &target_path,
+                iteration.target_port,
+                iteration.feed,
+                builder,
+            )
             && plain_constructed_group_feed(iteration.feed, &feed)
             && super::constructed_variable_driver::uniquely_declared_output(iteration.feed, builder)
         {
