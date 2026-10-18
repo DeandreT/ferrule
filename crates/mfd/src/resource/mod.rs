@@ -263,10 +263,24 @@ impl ResourceResolver {
         Ok(canonical)
     }
 
+    pub(crate) fn import_json_schema(&self, declared: &str) -> Result<ir::SchemaNode, String> {
+        if let Some(bound) = self.bound_resource(ResourceBindingKindV1::JsonSchema, declared)? {
+            return bound
+                .finish(format_json::json_schema::import_with_byte_reader(
+                    bound.path(),
+                    bound.root(),
+                    bound.clone(),
+                ))
+                .map_err(|error| error.to_string());
+        }
+        let (path, root) = self.resolve_json_schema(declared)?;
+        format_json::json_schema::import_with_root(&path, &root).map_err(|error| error.to_string())
+    }
+
     /// Resolves a JSON Schema from the package first, then from explicitly
     /// trusted catalogs. The returned root is the boundary that authorized
     /// the path and must also confine the schema's local-file references.
-    pub(crate) fn resolve_json_schema(&self, declared: &str) -> Result<(PathBuf, PathBuf), String> {
+    fn resolve_json_schema(&self, declared: &str) -> Result<(PathBuf, PathBuf), String> {
         if let Some(session) = &self.bindings {
             session.guard_untyped(declared)?;
         }

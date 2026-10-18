@@ -1,6 +1,6 @@
 # Explicit immutable resource bindings
 
-The `mfd` host API can opt into typed, digest-pinned bindings for XML Schema and
+The `mfd` host API can opt into typed, digest-pinned bindings for XML Schema, JSON Schema and
 the ordinary EDI configuration reader. It does not modify a mapping or recreate
 an obsolete installation directory. Existing imports and version-1 package
 manifests keep their unbound lookup and fallback behavior.
@@ -9,7 +9,7 @@ manifests keep their unbound lookup and fallback behavior.
 
 Construct `ResourceBindingV1` with:
 
-- `ResourceBindingKindV1::XmlSchema` or `EdiConfig`;
+- `ResourceBindingKindV1::XmlSchema`, `JsonSchema` or `EdiConfig`;
 - the existing original MFD pathname (canonicalized for exact origin identity);
 - the **exact original reference string**, including its separators/prefix;
 - an explicitly trusted existing resource root and root-relative target;
@@ -91,7 +91,8 @@ mutable DOS-drive or short-name aliases; those locations remain private receipts
 The binding set is limited to 64 entries and 4096-byte path/reference inputs.
 Root and resource path depth is limited to 64 components; exact-name directory
 validation is bounded to 4096 entries on Unix. XML binding caches allow at most
-64 unique files and 64 MiB of raw bytes; EDI allows 32 files and 8 MiB. The whole
+64 unique files and 64 MiB of raw bytes; JSON allows 256 files and 64 MiB;
+EDI allows 32 files and 8 MiB. The whole
 import's binding captures have a 128 MiB aggregate budget. Repeated cached
 reads do not consume a second byte budget.
 
@@ -136,7 +137,11 @@ omitting evidence. No sink is retained or populated unless the host requests it.
 `format_xml::xsd` exposes additive root/type/base entry points accepting an
 `XmlSchemaByteReader`, plus raw-byte decoding for annotations.
 `format_edi::config::import_config_with_byte_reader` accepts an
-`EdiConfigByteReader`. These readers receive approved absolute identities and
+`EdiConfigByteReader`. `format_json::json_schema::import_with_byte_reader`
+accepts a `JsonSchemaByteReader` for the root and relative local-file `$ref`
+dependencies, retaining the ordinary schema semantics and import limits.
+JSON components, string parsers and HTTP request schemas use the same typed
+binding route. These readers receive approved absolute identities and
 supply immutable raw buffers; the host reader owns physical authorization and
 any digest policy. Their parsing paths do not reopen supplied identities.
 The mfd binding implementation supplies the rooted, digest-checking host reader.

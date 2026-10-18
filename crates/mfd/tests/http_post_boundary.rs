@@ -97,6 +97,63 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     Ok(design)
 }
 
+#[test]
+fn post_request_schema_uses_immutable_bound_json_bytes() -> Result<(), Box<dyn std::error::Error>> {
+    use sha2::{Digest, Sha256};
+    let dir = TempDir::new()?;
+    let design = write_fixture(&dir.0)?;
+    let original = std::fs::read_to_string(&design)?;
+    std::fs::write(
+        &design,
+        original.replacen(
+            "<document encoding=\"UTF-8\"/>",
+            "<document encoding=\"UTF-8\" schemafile=\"OldRequest.json\"/>",
+            1,
+        ),
+    )?;
+    let root = r##"{"type":"object","additionalProperties":false,"properties":{"query":{"$ref":"text.json"}}}"##;
+    let text = r#"{"type":"string","minLength":2}"#;
+    std::fs::write(dir.0.join("request.json"), root)?;
+    std::fs::write(dir.0.join("text.json"), text)?;
+    let binding = mfd::ResourceBindingV1::new(
+        mfd::ResourceBindingKindV1::JsonSchema,
+        &design,
+        "OldRequest.json",
+        &dir.0,
+        "request.json",
+        Sha256::digest(root.as_bytes()).into(),
+    )?
+    .with_dependency_pin("text.json", Sha256::digest(text.as_bytes()).into())?
+    .prepare()?;
+    std::fs::write(dir.0.join("request.json"), "not JSON")?;
+    let reads = mfd::ResourceReadSetV1::default();
+    let options = mfd::ImportOptions::default()
+        .with_resource_readset_v1(reads.clone())
+        .with_resource_bindings_v1([binding])?;
+    let imported = mfd::import_with_options(&design, &options)?;
+    let schema = imported
+        .project
+        .extra_sources
+        .iter()
+        .find_map(
+            |source| match source.options.external_source.as_ref()?.origin() {
+                ExternalSourceOrigin::HttpPost { request_schema, .. } => request_schema.as_deref(),
+                _ => None,
+            },
+        )
+        .ok_or("request schema was not retained")?;
+    assert!(format_json::from_str(r#"{"query":"ok"}"#, schema).is_ok());
+    assert!(format_json::from_str(r#"{"query":"x"}"#, schema).is_err());
+    let records = reads.records();
+    assert_eq!(records.len(), 2);
+    assert!(
+        records.iter().all(|r| r.delivered
+            && r.from_prepared_snapshot
+            && r.expected_sha256 == Some(r.sha256))
+    );
+    Ok(())
+}
+
 fn write_legacy_copy_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
         dir.join("source.xsd"),

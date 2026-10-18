@@ -22,6 +22,7 @@ const MAX_IMPORT_BYTES: usize = 128 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourceBindingKindV1 {
     XmlSchema,
+    JsonSchema,
     EdiConfig,
 }
 
@@ -395,6 +396,7 @@ impl BoundResource {
         }
         let (max_files, max_bytes): (usize, usize) = match self.binding.kind {
             ResourceBindingKindV1::XmlSchema => (64, 64 * 1024 * 1024),
+            ResourceBindingKindV1::JsonSchema => (256, 64 * 1024 * 1024),
             ResourceBindingKindV1::EdiConfig => (32, 8 * 1024 * 1024),
         };
         if self.cache.borrow().len() >= max_files {
@@ -454,6 +456,11 @@ impl BoundResource {
 }
 
 impl format_xml::xsd::XmlSchemaByteReader for BoundResource {
+    fn read(&self, path: &Path) -> io::Result<Arc<[u8]>> {
+        self.bytes(path)
+    }
+}
+impl format_json::json_schema::JsonSchemaByteReader for BoundResource {
     fn read(&self, path: &Path) -> io::Result<Arc<[u8]>> {
         self.bytes(path)
     }

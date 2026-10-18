@@ -12,7 +12,7 @@ use super::{
     ComponentFormat, PortDeclarationCensus, SchemaComponent, collect_entry_ports_with_declarations,
     collect_json_ports_with_declarations, entry_key_sets, entry_tree_schema, is_default_output,
     json_entry_value_schema, merge_generic_xml_entries, normalize_xml_text_ports,
-    read_xml_schema_file, record_entry_keys, resolve_resource_reference,
+    read_xml_schema_file, record_entry_keys,
 };
 
 pub(super) fn read(
@@ -431,35 +431,9 @@ fn read_json_request_schema(
     document
         .attribute("schemafile")
         .and_then(|relative| {
-            let resolved = match resources {
-                Some(resources) => resources.resolve_json_schema(relative),
-                None => resolve_resource_reference(
-                    mfd_path,
-                    None,
-                    relative,
-                    "HTTP request JSON Schema",
-                )
-                .map(|path| {
-                    let root = path
-                        .parent()
-                        .unwrap_or_else(|| Path::new("."))
-                        .to_path_buf();
-                    (path, root)
-                }),
-            };
-            let (path, root) = match resolved {
-                Ok(resolved) => resolved,
-                Err(error) => {
-                    warnings.push(format!(
-                        "HTTP component `{component_name}`: could not read request schema `{relative}` ({error}); falling back to the entry tree"
-                    ));
-                    return None;
-                }
-            };
-            let imported = match resources {
-                Some(_) => format_json::json_schema::import_with_root(&path, &root),
-                None => format_json::json_schema::import(&path),
-            };
+            let imported = super::shared::read_json_schema_resource(
+                mfd_path, resources, relative, "HTTP request JSON Schema",
+            );
             match imported {
                 Ok(schema) => Some(schema),
                 Err(error) => {

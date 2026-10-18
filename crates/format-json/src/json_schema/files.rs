@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::JsonFormatError;
 
@@ -101,6 +103,7 @@ struct Document {
 struct Loader {
     package_root: PathBuf,
     allow_external_files: bool,
+    reader: Option<Rc<dyn super::JsonSchemaByteReader>>,
     indexes: BTreeMap<PathBuf, usize>,
     documents: Vec<Document>,
     total_bytes: usize,
@@ -160,6 +163,7 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<LoadedSchema, Jso
     let mut loader = Loader {
         package_root,
         allow_external_files: true,
+        reader: None,
         indexes: BTreeMap::new(),
         documents: Vec::new(),
         total_bytes: 0,
@@ -168,6 +172,63 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<LoadedSchema, Jso
     let root_index = loader.load_document(&root_path, 0)?;
     debug_assert_eq!(root_index, 0);
     loader.finish()
+}
+
+pub(super) fn load_with_byte_reader(
+    path: &Path,
+    resource_root: &Path,
+    reader: Rc<dyn super::JsonSchemaByteReader>,
+) -> Result<LoadedSchema, JsonFormatError> {
+    if !resource_root.is_absolute()
+        || resource_root.as_os_str().len() > 4096
+        || resource_root.as_os_str().as_encoded_bytes().contains(&0)
+        || resource_root
+            .components()
+            .any(|c| matches!(c, Component::ParentDir))
+    {
+        return Err(JsonFormatError::SchemaResource {
+            reference: resource_root.display().to_string(),
+            base: resource_root.to_path_buf(),
+            reason: "supplied JSON root must be an approved absolute identity".to_string(),
+        });
+    }
+    let path = supplied_identity(path, resource_root)?;
+    let mut loader = Loader {
+        package_root: resource_root.to_path_buf(),
+        allow_external_files: true,
+        reader: Some(reader),
+        indexes: BTreeMap::new(),
+        documents: Vec::new(),
+        total_bytes: 0,
+        references: 0,
+    };
+    loader.load_document(&path, 0)?;
+    loader.finish()
+}
+
+fn supplied_identity(path: &Path, root: &Path) -> Result<PathBuf, JsonFormatError> {
+    let invalid = || JsonFormatError::SchemaResource {
+        reference: path.display().to_string(),
+        base: root.to_path_buf(),
+        reason: "supplied JSON resource is not a bounded contained identity".to_string(),
+    };
+    if path.as_os_str().len() > 4096 || path.as_os_str().as_encoded_bytes().contains(&0) {
+        return Err(invalid());
+    }
+    let relative = path.strip_prefix(root).map_err(|_| invalid())?;
+    let mut normalized = PathBuf::new();
+    for component in relative.components() {
+        match component {
+            Component::Normal(name) => normalized.push(name),
+            Component::CurDir => {}
+            Component::ParentDir if normalized.pop() => {}
+            _ => return Err(invalid()),
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err(invalid());
+    }
+    Ok(root.join(normalized))
 }
 
 pub(super) fn load_inline(text: &str) -> Result<LoadedSchema, JsonFormatError> {
@@ -183,6 +244,7 @@ pub(super) fn load_inline(text: &str) -> Result<LoadedSchema, JsonFormatError> {
     let mut loader = Loader {
         package_root: PathBuf::new(),
         allow_external_files: false,
+        reader: None,
         indexes: BTreeMap::new(),
         documents: vec![Document {
             path: PathBuf::from("<memory>"),
@@ -232,7 +294,11 @@ impl Loader {
             });
         }
 
-        let bytes = std::fs::read(path).map_err(|error| JsonFormatError::SchemaResource {
+        let bytes: Arc<[u8]> = match &self.reader {
+            Some(reader) => reader.read(path),
+            None => std::fs::read(path).map(Arc::from),
+        }
+        .map_err(|error| JsonFormatError::SchemaResource {
             reference: path.display().to_string(),
             base: path.parent().unwrap_or(path).to_path_buf(),
             reason: error.to_string(),
@@ -505,6 +571,8 @@ impl Loader {
             if decoded.contains('?')
                 || Path::new(&decoded).is_absolute()
                 || has_uri_scheme(&decoded)
+                || self.reader.is_some()
+                    && (decoded.contains(['\0', ':']) || decoded.starts_with(['/', '\\']))
             {
                 return self.resource_error(
                     document_index,
@@ -517,9 +585,13 @@ impl Loader {
                 .parent()
                 .unwrap_or(&self.documents[document_index].path);
             let candidate = base.join(decoded.replace('\\', "/"));
-            let canonical = std::fs::canonicalize(&candidate).map_err(|error| {
-                self.make_resource_error(document_index, reference, &error.to_string())
-            })?;
+            let canonical = if self.reader.is_some() {
+                supplied_identity(&candidate, &self.package_root)?
+            } else {
+                std::fs::canonicalize(&candidate).map_err(|error| {
+                    self.make_resource_error(document_index, reference, &error.to_string())
+                })?
+            };
             ensure_contained(&canonical, &self.package_root, Path::new(reference), base)?;
             self.load_document(&canonical, reference_depth + 1)?
         };
