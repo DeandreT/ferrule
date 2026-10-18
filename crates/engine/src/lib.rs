@@ -147,13 +147,16 @@ pub struct SourceOwnershipObservers {
 
 /// Admits the complete potential target closure and its requested observers
 /// without acquiring inputs or invoking callbacks.
+///
+/// Trace and debug hooks are supported for the admitted Basic profile. Requesting
+/// observers does not widen the owned-source execution domains admitted here.
 pub fn check_source_ownership_capability_with_observers(
     project: &Project,
     selection: Option<TargetSelection<'_>>,
     observers: SourceOwnershipObservers,
 ) -> Result<(), EngineError> {
-    let admission = source_ownership::admit_project(project, selection)?;
-    check_owned_observers(admission, observers)
+    let _ = observers;
+    source_ownership::admit_project(project, selection).map(|_| ())
 }
 
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
@@ -229,7 +232,7 @@ impl RuntimeParameters {
     }
 }
 
-/// Execution domains that remain closed for new owned source access.
+/// Execution-domain identity carried by owned-source capability errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OwnedCapabilityContext {
     Basic,
@@ -761,7 +764,6 @@ fn run_outputs_internal(
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
     let admission = source_ownership::admit_project(project, None)?;
-    check_owned_execution_options(admission, execution)?;
     evaluate_run(
         project,
         source,
@@ -812,7 +814,6 @@ fn run_selected_target_internal(
 ) -> Result<SelectedTargetOutput, EngineError> {
     let named_target = required_sources::selected_target(project, selection)?;
     let admission = source_ownership::admit_project(project, Some(selection))?;
-    check_owned_execution_options(admission, execution)?;
     evaluate_run(
         project,
         source,
@@ -856,43 +857,6 @@ fn run_selected_target_internal(
             }
         },
     )
-}
-
-fn check_owned_execution_options(
-    admission: source_ownership::AdmissionSummary,
-    execution: Option<&ExecutionContext<'_>>,
-) -> Result<(), EngineError> {
-    check_owned_observers(
-        admission,
-        SourceOwnershipObservers {
-            tracing: execution.is_some_and(|execution| execution.trace_sink.is_some()),
-            debugging: execution.is_some_and(|execution| execution.debug_hook.is_some()),
-        },
-    )
-}
-
-fn check_owned_observers(
-    admission: source_ownership::AdmissionSummary,
-    observers: SourceOwnershipObservers,
-) -> Result<(), EngineError> {
-    if admission.used_owned {
-        let context = if observers.tracing {
-            Some(OwnedCapabilityContext::Tracing)
-        } else if observers.debugging {
-            Some(OwnedCapabilityContext::Debugging)
-        } else {
-            None
-        };
-        if let Some(context) = context {
-            return Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context,
-            });
-        }
-    }
-    Ok(())
 }
 
 fn evaluate_run<R>(

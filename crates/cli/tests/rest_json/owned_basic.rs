@@ -90,19 +90,54 @@ fn basic_owned_rest_response_syntax_errors_are_not_admission_refusals() {
 }
 
 #[test]
-fn basic_owned_observer_refusal_precedes_rest_connection() {
-    struct Trace(std::cell::Cell<usize>);
-    impl engine::TraceSink for Trace {
+fn basic_owned_trace_and_debug_observe_actual_rest_execution() {
+    struct Observers {
+        events: std::cell::Cell<usize>,
+        witnesses: std::cell::Cell<usize>,
+        writes: std::cell::Cell<usize>,
+    }
+    impl engine::TraceSink for Observers {
         fn record(&self, _: engine::TraceEvent) {
-            self.0.set(self.0.get() + 1);
+            self.events.set(self.events.get() + 1);
+        }
+        fn wants_owned_context(&self) -> bool {
+            true
+        }
+        fn record_with_owned_context(
+            &self,
+            event: engine::TraceEvent,
+            context: Result<engine::TraceOwnedWitness<'_>, &engine::TraceOwnedContextError>,
+        ) {
+            let witness = context.unwrap();
+            witness.snapshot().unwrap();
+            self.witnesses.set(self.witnesses.get() + 1);
+            self.record(event);
+        }
+    }
+    impl engine::DebugHook for Observers {
+        fn before_target_write(&self, _: &engine::PendingTargetWrite) -> engine::DebugDecision {
+            self.writes.set(self.writes.get() + 1);
+            engine::DebugDecision::Resume
         }
     }
     for collection in [false, true] {
-        let server = Server::json(b"not JSON");
-        let trace = Trace(std::cell::Cell::new(0));
+        let row = serde_json::json!({"Message":"observed","Number":9007199254740993_i64,"SignedZero":0.0});
+        let body = serde_json::to_vec(&if collection {
+            serde_json::json!([row])
+        } else {
+            row
+        })
+        .unwrap();
+        let server = Server::json(&body);
+        let observers = Observers {
+            events: std::cell::Cell::new(0),
+            witnesses: std::cell::Cell::new(0),
+            writes: std::cell::Cell::new(0),
+        };
         let mut options =
             RestJsonMappingOptions::new(Path::new("response.json"), Path::new("result.json"));
-        options.trace_sink = Some(&trace);
+        options.trace_sink = Some(&observers);
+        options.debug_hook = Some(&observers);
         let result = cli::run_project_value_rest_json_payloads(
             &basic_project(collection),
             Path::new("mapping.json"),
@@ -111,19 +146,85 @@ fn basic_owned_observer_refusal_precedes_rest_connection() {
             &options,
         );
         let requests = server.finish();
-        capture("basic-owned-observer-preflight", &result, &requests);
+        capture("basic-owned-observer-success", &result, &requests);
+        assert_eq!(requests.len(), 1);
+        let outcome = result.unwrap();
+        assert_eq!(outcome.artifacts.len(), 1);
+        assert_eq!(outcome.records_written, 1);
+        let row = serde_json::json!({"Message":"observed","Number":9007199254740993_i64,"SignedZero":0.0,"Lazy":"observed"});
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&outcome.artifacts[0].bytes).unwrap(),
+            if collection {
+                serde_json::json!([row])
+            } else {
+                row
+            }
+        );
+        assert!(observers.events.get() > 0);
+        assert!(observers.witnesses.get() > 0);
+        assert!(observers.writes.get() > 0);
+    }
+}
+
+#[test]
+fn unsupported_owned_function_with_trace_refuses_before_rest_connection() {
+    struct Trace(std::cell::Cell<usize>);
+    impl engine::TraceSink for Trace {
+        fn record(&self, _: engine::TraceEvent) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    for collection in [false, true] {
+        let mut project = basic_project(collection);
+        let function = mapping::FunctionId::new(7);
+        let owned = project.graph.nodes[&0].clone();
+        project.user_functions.insert(
+            function,
+            mapping::UserFunction {
+                library: "tests".into(),
+                name: "unsupported_owned".into(),
+                description: None,
+                parameters: vec![],
+                output_name: "value".into(),
+                output_type: ir::ScalarType::String,
+                body: mapping::Graph {
+                    nodes: [(0, owned)].into(),
+                },
+                output: 0,
+            },
+        );
+        project.graph.nodes.insert(
+            0,
+            mapping::Node::UserFunctionCall {
+                function,
+                args: vec![],
+            },
+        );
+        let server = Server::json(b"not JSON");
+        let trace = Trace(std::cell::Cell::new(0));
+        let mut options =
+            RestJsonMappingOptions::new(Path::new("response.json"), Path::new("result.json"));
+        options.trace_sink = Some(&trace);
+        let result = cli::run_project_value_rest_json_payloads(
+            &project,
+            Path::new("mapping.json"),
+            &RestJsonRequest::get(&server.url),
+            GRANT,
+            &options,
+        );
+        let requests = server.finish();
+        capture("unsupported-owned-observer-preflight", &result, &requests);
         assert!(requests.is_empty());
         assert_eq!(trace.0.get(), 0);
         let RestJsonError::Mapping(error) = result.unwrap_err() else {
-            panic!("expected typed observer refusal");
+            panic!("expected typed unsupported-function refusal");
         };
         assert_eq!(
             error.downcast_ref::<engine::EngineError>(),
-            Some(&engine::EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: engine::OwnedCapabilityContext::Tracing,
+            Some(&engine::EngineError::UnsupportedSourceOwnership {
+                node: 0,
+                function: Some(function),
+                kind: "owned_source_field",
             })
         );
     }
