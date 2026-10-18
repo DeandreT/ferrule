@@ -9,7 +9,7 @@ use std::path::{Component, Path};
 
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 pub const BUNDLED_LEDGER: &str = include_str!("../../../conformance/mfd-2026r2.json");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,10 +109,12 @@ pub struct Support {
 pub struct VendorBackends {
     pub xslt1: Assessment,
     pub xslt2: Assessment,
+    pub xslt3: Assessment,
     pub xquery1: Assessment,
     pub cpp: Assessment,
     pub java: Assessment,
     pub csharp: Assessment,
+    pub built_in: Assessment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,7 +137,7 @@ pub enum Status {
     NotApplicable,
 }
 
-pub const DIMENSIONS: [&str; 14] = [
+pub const DIMENSIONS: [&str; 16] = [
     "import",
     "interpreter",
     "native_export",
@@ -146,10 +148,12 @@ pub const DIMENSIONS: [&str; 14] = [
     "csharp",
     "vendor_backends.xslt1",
     "vendor_backends.xslt2",
+    "vendor_backends.xslt3",
     "vendor_backends.xquery1",
     "vendor_backends.cpp",
     "vendor_backends.java",
     "vendor_backends.csharp",
+    "vendor_backends.built_in",
 ];
 
 impl Status {
@@ -168,7 +172,7 @@ impl Status {
 
 impl Support {
     /// Stable dimension names used in diagnostics and external reports.
-    pub fn assessments(&self) -> [(&'static str, &Assessment); 14] {
+    pub fn assessments(&self) -> [(&'static str, &Assessment); 16] {
         [
             ("import", &self.import),
             ("interpreter", &self.interpreter),
@@ -180,10 +184,12 @@ impl Support {
             ("csharp", &self.csharp),
             ("vendor_backends.xslt1", &self.vendor_backends.xslt1),
             ("vendor_backends.xslt2", &self.vendor_backends.xslt2),
+            ("vendor_backends.xslt3", &self.vendor_backends.xslt3),
             ("vendor_backends.xquery1", &self.vendor_backends.xquery1),
             ("vendor_backends.cpp", &self.vendor_backends.cpp),
             ("vendor_backends.java", &self.vendor_backends.java),
             ("vendor_backends.csharp", &self.vendor_backends.csharp),
+            ("vendor_backends.built_in", &self.vendor_backends.built_in),
         ]
     }
 }
