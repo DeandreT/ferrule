@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target": {
     "product": ".mfd-compatible application",
     "release": "2026r2",
     "edition": "Enterprise"
   },
   "inventory_complete": false,
-  "description": "Source-only bounded JSON object-schema inventory proposal for eight operations and two independently scoped profiles. All 224 dimension cells remain unverified or unassessed. This separate ledger proposes narrow child IDs without modifying or replacing the broad canonical formats.json row, promoting historical evidence, or claiming execution. Fixed means declared field names; computed-property authoring and other active increments are outside scope.",
+  "description": "Source-only bounded JSON object-schema inventory proposal for eight operations and two independently scoped profiles. Every dimension cell remains unverified or unassessed. This separate ledger proposes narrow child IDs without modifying or replacing the broad canonical formats.json row, promoting historical evidence, or claiming execution. Fixed means declared field names; computed-property authoring and other active increments are outside scope.",
   "profiles": [
     {
       "id": "mfd-2026r2-enterprise",
@@ -165,6 +165,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Closed named object fields. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -264,6 +266,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Closed named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -379,6 +383,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Typed runtime-named object fields. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -478,6 +484,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Typed runtime-named object fields. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -593,6 +601,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Arbitrary runtime-named JSON values. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -692,6 +702,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Arbitrary runtime-named JSON values. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -802,6 +814,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Required declared field presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -903,6 +917,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Required declared field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -1013,6 +1029,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Required runtime-named field presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -1114,6 +1132,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Required runtime-named field presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -1225,6 +1245,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Nullable object presence. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -1326,6 +1348,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Nullable object presence. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -1441,6 +1465,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Compatible exclusive object alternatives. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -1542,6 +1568,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Compatible exclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [
@@ -1652,6 +1680,8 @@
           "detail": "Applicable candidate: generated C# public JSON boundaries for Compatible inclusive object alternatives. Missing proof: separate fresh compiled library and complete text/bytes and typed/context/named-input cases. Rust results and historical C# emission do not transfer."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [],
@@ -1753,6 +1783,8 @@
           "detail": "Applicability unknown in extension profile for csharp and Compatible inclusive object alternatives. No distinct semantic extension or extension-backed fixture is identified. Ordinary JSON schemas/round-trip annotations alone do not require an extension. Assess this profile independently; no native-status transfer or automatic exclusion."
         },
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {
             "status": "unassessed",
             "evidence": [

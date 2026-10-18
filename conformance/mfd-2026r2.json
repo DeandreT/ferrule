@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target": {"product": ".mfd-compatible application", "release": "2026r2", "edition": "Enterprise"},
   "inventory_complete": false,
   "description": "Seeded, non-exhaustive capability inventory. Statuses describe the documented Ferrule subset, not measured product parity. Vendor acceptance, Ferrule self-roundtrip, interpreter execution, authoring, debugging and generated backends are independent. Corpus totals are historical repository evidence, not fresh measurements.",
@@ -54,6 +54,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -79,6 +81,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -104,6 +108,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -129,6 +135,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -154,6 +162,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -179,6 +189,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -204,6 +216,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -229,6 +243,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -254,6 +270,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -279,6 +297,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -304,6 +324,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -329,6 +351,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -354,6 +378,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -379,6 +405,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -404,6 +432,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -429,6 +459,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -454,6 +486,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -479,6 +513,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -504,6 +540,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -529,6 +567,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -554,6 +594,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -579,6 +621,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -604,6 +648,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -629,6 +675,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -654,6 +702,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Backend applicability and behavioral coverage require itemization against the pinned vendor profile."},
@@ -679,6 +729,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -704,6 +756,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -729,6 +783,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -754,6 +810,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -779,6 +837,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -804,6 +864,8 @@
         "rust": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "csharp": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -829,6 +891,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Generated Rust host API is documented."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Generated C# host API is documented."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "This surface is not part of this capability."},
@@ -854,6 +918,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Ferrule-specific Rust code generation exists."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs"], "detail": "Ferrule-specific C# code generation exists."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
           "xslt2": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
           "xquery1": {"status": "unassessed", "evidence": [], "detail": "Inventory backend feature support and compare compiled execution against the pinned vendor implementation."},
@@ -879,6 +945,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
@@ -904,6 +972,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
@@ -929,6 +999,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
@@ -954,6 +1026,8 @@
         "rust": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "csharp": {"status": "partial", "evidence": ["codegen-docs", "survey-codegen"], "detail": "Lowering/emission covers the documented subset; corpus-wide compiled behavioral coverage remains separate."},
         "vendor_backends": {
+          "xslt3": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise XSLT 3.0: exact operation/backend eligibility and independent vendor execution proof are unknown."},
+          "built_in": {"status": "unassessed", "evidence": [], "detail": "Applicability unknown for pinned 2026r2 Enterprise vendor BUILT-IN: exact operation/backend eligibility and independent vendor execution proof are unknown; Ferrule interpreter results do not transfer."},
           "xslt1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xslt2": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
           "xquery1": {"status": "not_applicable", "evidence": [], "detail": "Ferrule-only semantics are outside the native vendor backend profile."},
