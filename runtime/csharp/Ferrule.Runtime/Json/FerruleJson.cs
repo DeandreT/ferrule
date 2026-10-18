@@ -173,7 +173,12 @@ public static partial class FerruleJson
     public static string SerializeEmbedded(string descriptor, FerruleInstance instance)
         => SerializeCore(descriptor, instance, embedded: true);
 
-    private static string SerializeCore(string schemaJson, FerruleInstance instance, bool embedded)
+    /// <summary>Serializes a generated host result as compact JSON without a trailing newline.</summary>
+    public static string SerializeEmbeddedCompact(string descriptor, FerruleInstance instance)
+        => SerializeCore(descriptor, instance, embedded: true, compact: true);
+
+    private static string SerializeCore(
+        string schemaJson, FerruleInstance instance, bool embedded, bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
@@ -186,7 +191,7 @@ public static partial class FerruleJson
                        buffer,
                        new JsonWriterOptions
                        {
-                           Indented = true,
+                           Indented = !compact,
                            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                            MaxDepth = MaximumDepth,
                            SkipValidation = false,
@@ -210,15 +215,15 @@ public static partial class FerruleJson
                 }
             }
 
-            var canonical = CanonicalizeOutputStrings(buffer.WrittenSpan);
-            var outputBytes = checked(StrictUtf8.GetByteCount(canonical) + 1);
+            var canonical = CanonicalizeOutputStrings(buffer.WrittenSpan, compact);
+            var outputBytes = checked(StrictUtf8.GetByteCount(canonical) + (compact ? 0 : 1));
             if (outputBytes > MaximumDocumentBytes)
             {
                 throw Boundary(
                     $"JSON output is {outputBytes} bytes; maximum is {MaximumDocumentBytes}.");
             }
 
-            return canonical + "\n";
+            return compact ? canonical : canonical + "\n";
         }
         catch (FerruleRuntimeException)
         {
@@ -237,6 +242,10 @@ public static partial class FerruleJson
     /// <summary>Serializes a generated host result as UTF-8 bytes.</summary>
     public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance instance) =>
         StrictUtf8.GetBytes(SerializeEmbedded(descriptor, instance));
+
+    /// <summary>Serializes a generated host result as compact UTF-8 bytes without a newline or BOM.</summary>
+    public static byte[] SerializeEmbeddedCompactBytes(string descriptor, FerruleInstance instance) =>
+        StrictUtf8.GetBytes(SerializeEmbeddedCompact(descriptor, instance));
 
     private static JsonSchemaNode ParseSchema(string schemaJson, bool embedded = false)
     {

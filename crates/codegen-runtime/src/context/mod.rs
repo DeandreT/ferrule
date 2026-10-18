@@ -1,4 +1,5 @@
 mod basic;
+mod basic_json_inputs;
 mod named_input_admission;
 
 #[cfg(test)]
@@ -26,6 +27,10 @@ mod source_field_tests;
 pub use basic::{
     BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots,
     CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+};
+pub use basic_json_inputs::{
+    BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
+    BasicNamedJsonDocumentRef, admit_basic_json_inputs,
 };
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};

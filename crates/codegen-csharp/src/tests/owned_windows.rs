@@ -11,9 +11,7 @@ fn retain_public_window_consumer(label: &str, program: &Program, body: &str) -> 
             .clone(),
     )
     .expect("emitted mapping is UTF-8");
-    let host = PUBLIC_BASIC_CONSUMER
-        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
-        .replace("__BODY__", body);
+    let host = public_basic_consumer(body, false);
     if let Some(base) = std::env::var_os("FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR") {
         let base = std::path::PathBuf::from(base);
         assert!(base.is_absolute(), "host directory must be absolute");
@@ -156,13 +154,16 @@ fn public_basic_windows_preserve_old_companions_and_require_explicit_admission()
         vec![expression(1, field(SourceOwner::Primary, &["Value"], None))],
         group(vec![binding("Value", 1, ScalarType::String)]),
     );
-    assert_eq!(
-        crate::emit_with_basic_owned_sources(&plain),
-        crate::emit_with_basic_owned_filters(&plain)
+    let with_json = crate::emit_with_basic_owned_sources(&plain).unwrap();
+    assert_public_basic_typed_artifacts_match(
+        &plain,
+        &with_json,
+        &crate::emit_with_basic_owned_filters(&plain).unwrap(),
     );
-    assert_eq!(
-        crate::emit_with_basic_owned_sources(&plain),
-        crate::emit_with_basic_owned_sort(&plain)
+    assert_public_basic_typed_artifacts_match(
+        &plain,
+        &with_json,
+        &crate::emit_with_basic_owned_sort(&plain).unwrap(),
     );
     let p = window_703_program(
         vec![codegen::SequenceWindow::First { count: 31 }],

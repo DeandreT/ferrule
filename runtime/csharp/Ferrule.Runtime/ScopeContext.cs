@@ -1457,38 +1457,11 @@ public sealed class FerruleOwnedSourceRoots
         nuint core, text, backing;
         try
         {
-            core = OwnedSourceAccounting.CSharpSlots(limits);
-            _ = BasicSourceAccounting.Maximum(limits, false);
-            var count = OwnedSourceAccounting.Add((nuint)catalogue.Length, 1, FerruleOwnedSourceLimitKind.Roots);
-            OwnedSourceAccounting.Limit(0, count, limits.MaxRoots, FerruleOwnedSourceLimitKind.Roots);
-            var length = BasicSourceAccounting.ArrayLength((nuint)catalogue.Length);
-            backing = length == 0 ? (nuint)0 : (nuint)1;
-            var storage = OwnedSourceAccounting.Add(count, backing, FerruleOwnedSourceLimitKind.MetadataSlots);
-            // One current value, two counter objects, and two complete error envelopes.
-            // The existing current/diagnostic and C# task reserves cover these five cells.
-            var peak = OwnedSourceAccounting.Add(storage, 5, FerruleOwnedSourceLimitKind.MetadataSlots);
-            OwnedSourceAccounting.Limit(0, peak, core, FerruleOwnedSourceLimitKind.MetadataSlots);
-            text = 0;
-            for (var i = 0; i < length; i++)
-            {
-                var declaration = catalogue[i]; var name = declaration.Name;
-                if (name is null) throw new ArgumentNullException(nameof(catalogue));
-                FerruleUnicode.RequireWellFormed(name, nameof(catalogue));
-                if (name.Length == 0) throw new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner);
-                if (declaration.Mode is not (FerruleBasicNamedSourceMode.Optional or
-                    FerruleBasicNamedSourceMode.RequiredLegacy or FerruleBasicNamedSourceMode.ReservedUnavailable))
-                    throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
-                        declarationIndex: (nuint)i, declaredCount: (nuint)length);
-                for (var j = 0; j < i; j++)
-                    if (StringComparer.Ordinal.Equals(catalogue[j].Name, name))
-                        throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
-                            declarationIndex: (nuint)i, declaredCount: (nuint)length);
-                var size = OwnedSourceAccounting.Text(name);
-                OwnedSourceAccounting.Limit(text, size, limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
-                text = OwnedSourceAccounting.Add(text, size, FerruleOwnedSourceLimitKind.MetadataBytes);
-            }
+            var policy = PreflightNamedInputs(catalogue, limits);
+            core = policy.Core; text = policy.Text; backing = policy.Backing;
             budget = new BasicSourceBudget(limits, false);
-            budget.Charge(peak); budget.Text(text);
+            budget.Charge(policy.Peak); budget.Text(text);
+            var length = catalogue.Length;
             named = length == 0 ? Array.Empty<Binding>() : new Binding[length];
             for (var i = 0; i < named.Length; i++) named[i] = new(catalogue[i].Name, null);
         }
@@ -1532,6 +1505,45 @@ public sealed class FerruleOwnedSourceRoots
         // Only the two counters remain live during the shared projection factory.
         budget.Release(3);
         return new(primary, named, limits, core, text, backing);
+    }
+
+    internal readonly record struct NamedInputPreflight(nuint Core, nuint Paired, nuint Text, nuint Backing, nuint Peak);
+
+    // Shared pure policy/catalogue proof. Preserve the typed factory's original
+    // order and payloads; no roots, counters, projection or registry is created.
+    internal static NamedInputPreflight PreflightNamedInputs(
+        ReadOnlySpan<FerruleBasicNamedSourceDeclaration> catalogue, FerruleOwnedSourceLimits limits)
+    {
+        var core = OwnedSourceAccounting.CSharpSlots(limits);
+        var paired = BasicSourceAccounting.Maximum(limits, false);
+        var count = OwnedSourceAccounting.Add((nuint)catalogue.Length, 1, FerruleOwnedSourceLimitKind.Roots);
+        OwnedSourceAccounting.Limit(0, count, limits.MaxRoots, FerruleOwnedSourceLimitKind.Roots);
+        var length = BasicSourceAccounting.ArrayLength((nuint)catalogue.Length);
+        var backing = length == 0 ? (nuint)0 : (nuint)1;
+        var storage = OwnedSourceAccounting.Add(count, backing, FerruleOwnedSourceLimitKind.MetadataSlots);
+        // One current value, two counters and two complete error envelopes.
+        var peak = OwnedSourceAccounting.Add(storage, 5, FerruleOwnedSourceLimitKind.MetadataSlots);
+        OwnedSourceAccounting.Limit(0, peak, core, FerruleOwnedSourceLimitKind.MetadataSlots);
+        nuint text = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var declaration = catalogue[i]; var name = declaration.Name;
+            if (name is null) throw new ArgumentNullException(nameof(catalogue));
+            FerruleUnicode.RequireWellFormed(name, nameof(catalogue));
+            if (name.Length == 0) throw new FerruleOwnedSourceException(FerruleOwnedSourceErrorKind.InvalidNamedOwner);
+            if (declaration.Mode is not (FerruleBasicNamedSourceMode.Optional or
+                FerruleBasicNamedSourceMode.RequiredLegacy or FerruleBasicNamedSourceMode.ReservedUnavailable))
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+                    declarationIndex: (nuint)i, declaredCount: (nuint)length);
+            for (var j = 0; j < i; j++)
+                if (StringComparer.Ordinal.Equals(catalogue[j].Name, name))
+                    throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidDeclarationWitness,
+                        declarationIndex: (nuint)i, declaredCount: (nuint)length);
+            var size = OwnedSourceAccounting.Text(name);
+            OwnedSourceAccounting.Limit(text, size, limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+            text = OwnedSourceAccounting.Add(text, size, FerruleOwnedSourceLimitKind.MetadataBytes);
+        }
+        return new(core, paired, text, backing, peak);
     }
 
     public FerruleOwnedScopeContext RootContext() => FerruleOwnedScopeContext.CreateRoot(this);
@@ -3393,6 +3405,239 @@ public readonly record struct FerruleNamedSourceInput(string? Name, FerruleInsta
 public interface IFerruleNamedSourceInputAccessor<T>
 {
     FerruleNamedSourceInput Read(T item);
+}
+
+public enum FerruleJsonDocumentKind { Text, Utf8 }
+
+/// <summary>A closed borrowed document handle. Admission validates only its selected reference.</summary>
+public readonly struct FerruleJsonDocumentRef
+{
+    private FerruleJsonDocumentRef(FerruleJsonDocumentKind kind, string? text, byte[]? utf8)
+    { Kind = kind; Text = text; Utf8 = utf8; }
+    public FerruleJsonDocumentKind Kind { get; }
+    public string? Text { get; }
+    public byte[]? Utf8 { get; }
+    public static FerruleJsonDocumentRef FromText(string? document) => new(FerruleJsonDocumentKind.Text, document, null);
+    public static FerruleJsonDocumentRef FromUtf8(byte[]? document) => new(FerruleJsonDocumentKind.Utf8, null, document);
+    internal bool HasDocument => Kind == FerruleJsonDocumentKind.Text ? Text is not null :
+        Kind == FerruleJsonDocumentKind.Utf8 && Utf8 is not null;
+}
+
+public readonly record struct FerruleNamedJsonDocumentRef(string? Name, FerruleJsonDocumentRef Document);
+public interface IFerruleNamedJsonDocumentAccessor<T> where T : class
+{
+    FerruleNamedJsonDocumentRef Read(T? item);
+}
+
+internal readonly record struct BasicJsonInputSnapshot(int DeclarationIndex, FerruleJsonDocumentRef Document);
+internal readonly record struct BasicJsonInputParsed(int DeclarationIndex, FerruleInstance? Instance);
+
+// A and P are disjoint reservations, not a shared mutable counter. The existing
+// typed factory receives the original L and never sees A or the larger envelope E.
+internal sealed class BasicJsonInputEnvelope
+{
+    private readonly ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> _catalogue;
+    private readonly FerruleOwnedSourceLimits _limits;
+    private readonly nuint _core, _paired, _adapter, _total;
+    private BasicJsonInputEnvelope(ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> catalogue,
+        FerruleOwnedSourceLimits limits, nuint core, nuint paired, nuint adapter, nuint total)
+    { _catalogue = catalogue; _limits = limits; _core = core; _paired = paired; _adapter = adapter; _total = total; }
+    internal ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> Catalogue => _catalogue;
+    internal FerruleOwnedSourceLimits Limits => _limits;
+    internal (nuint Core, nuint Paired, nuint Adapter, nuint Total) Proof => (_core, _paired, _adapter, _total);
+    internal static BasicJsonInputEnvelope Create(ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> catalogue,
+        FerruleOwnedSourceLimits limits, FerruleOwnedSourceRoots.NamedInputPreflight policy)
+    {
+        var (adapter, total) = Bounds((nuint)catalogue.Length, policy.Paired);
+        RequireSnapshotCapacity((nuint)catalogue.Length);
+        return new(catalogue, limits, policy.Core, policy.Paired, adapter, total);
+    }
+    internal static (nuint Adapter, nuint Total) Bounds(nuint count, nuint paired)
+    {
+        try
+        {
+            var adapter = BasicSourceAccounting.Add(BasicSourceAccounting.Multiply(2, count), 16);
+            return (adapter, BasicSourceAccounting.Add(paired, adapter));
+        }
+        catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
+    }
+    internal static void RequireSnapshotCapacity(nuint count) => RequireSnapshotCapacity(count, (nuint)Array.MaxLength, (nuint)nint.MaxValue);
+    internal static void RequireParsedCapacity(nuint count) => RequireParsedCapacity(count, (nuint)Array.MaxLength, (nuint)nint.MaxValue);
+    // Pure internal capacity seams retain the actual two closed record layouts;
+    // tests can exercise native refusal frontiers without impossible allocations.
+    internal static void RequireSnapshotCapacity(nuint count, nuint arrayMaximum, nuint dataMaximum) =>
+        RequireCapacity(count, (nuint)System.Runtime.CompilerServices.Unsafe.SizeOf<BasicJsonInputSnapshot>(), arrayMaximum, dataMaximum);
+    internal static void RequireParsedCapacity(nuint count, nuint arrayMaximum, nuint dataMaximum) =>
+        RequireCapacity(count, (nuint)System.Runtime.CompilerServices.Unsafe.SizeOf<BasicJsonInputParsed>(), arrayMaximum, dataMaximum);
+    private static void RequireCapacity(nuint count, nuint recordBytes, nuint arrayMaximum, nuint dataMaximum)
+    {
+        try
+        {
+            if (count > arrayMaximum || BasicSourceAccounting.Multiply(count, recordBytes) > dataMaximum)
+                throw BasicSourceAccounting.Overflow();
+        }
+        catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
+    }
+}
+
+/// <summary>One complete name-admission pass retaining only canonical ordinals and borrowed document handles.</summary>
+/// <remarks>The catalogue backing must remain immutable through parsing and binding.
+/// The root-derived adapter reservation is separate from codec/source-tree storage and
+/// the existing control-free Basic primitive allowance; it is not an RSS bound.</remarks>
+public sealed class FerruleBasicJsonInputAdmission
+{
+    private readonly BasicJsonInputEnvelope _ticket;
+    private BasicJsonInputSnapshot[]? _snapshots;
+    private BasicJsonInputParsed[]? _parsed;
+    private int _parseClaimed;
+    private FerruleBasicJsonInputAdmission(BasicJsonInputEnvelope ticket,
+        BasicJsonInputSnapshot[] snapshots, BasicJsonInputParsed[] parsed)
+    { _ticket = ticket; _snapshots = snapshots; _parsed = parsed; }
+    internal (int Snapshots, int Parsed) OwnedCapacities =>
+        (System.Threading.Volatile.Read(ref _snapshots)?.Length ?? 0, System.Threading.Volatile.Read(ref _parsed)?.Length ?? 0);
+    internal (nuint Core, nuint Paired, nuint Adapter, nuint Total) EnvelopeProof => _ticket.Proof;
+
+    public static FerruleBasicJsonInputAdmission Admit<T>(
+        ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> catalogue, IReadOnlyList<T> supplied,
+        IFerruleNamedJsonDocumentAccessor<T> accessor, FerruleOwnedSourceLimits limits) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(supplied); ArgumentNullException.ThrowIfNull(accessor);
+        BasicJsonInputEnvelope ticket;
+        BasicJsonInputSnapshot[] snapshots;
+        nuint catalogueBytes;
+        try
+        {
+            var policy = FerruleOwnedSourceRoots.PreflightNamedInputs(catalogue.Span, limits);
+            catalogueBytes = policy.Text;
+            ticket = BasicJsonInputEnvelope.Create(catalogue, limits, policy);
+            snapshots = catalogue.Length == 0 ? Array.Empty<BasicJsonInputSnapshot>() : new BasicJsonInputSnapshot[catalogue.Length];
+        }
+        catch (FerruleOwnedSourceException error) { throw FerruleRuntimeException.FromOwnedSource(error); }
+        catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
+        try
+        {
+            // Count, indexer and accessor are caller code: never place them inside
+            // owned-error lifting, even when they throw a typed owned/bridge cause.
+            var suppliedCount = supplied.Count;
+            if (suppliedCount < 0) throw new ArgumentOutOfRangeException(nameof(supplied), suppliedCount, "Count cannot be negative.");
+            var accepted = 0;
+            for (var ordinal = 0; ordinal < suppliedCount; ordinal++)
+            {
+                var item = supplied[ordinal];
+                var input = accessor.Read(item);
+                try
+                {
+                    var name = input.Name; var document = input.Document;
+                    if (name is null || !document.HasDocument) throw new ArgumentNullException(nameof(supplied));
+                    FerruleUnicode.RequireWellFormed(name, nameof(supplied));
+                    var found = -1;
+                    for (var i = 0; i < catalogue.Length; i++)
+                        if (StringComparer.Ordinal.Equals(catalogue.Span[i].Name, name) &&
+                            catalogue.Span[i].Mode != FerruleBasicNamedSourceMode.ReservedUnavailable)
+                        { found = i; break; }
+                    if (found < 0)
+                    {
+                        // C# retains the diagnostic string reference; it allocates
+                        // no encoded-name buffer. Keep its existing byte accounting.
+                        OwnedSourceAccounting.Limit(catalogueBytes, OwnedSourceAccounting.Text(name),
+                            limits.MaxMetadataBytes, FerruleOwnedSourceLimitKind.MetadataBytes);
+                        throw new FerruleRuntimeException(FerruleRuntimeError.UnexpectedNamedSource,
+                            "named source is not declared by this mapping", detail: name);
+                    }
+                    for (var i = 0; i < accepted; i++)
+                        if (snapshots[i].DeclarationIndex == found)
+                            throw new FerruleRuntimeException(FerruleRuntimeError.DuplicateNamedSource,
+                                "named source was supplied more than once", detail: catalogue.Span[found].Name);
+                    snapshots[accepted++] = new(found, document);
+                }
+                catch (FerruleOwnedSourceException error) { throw FerruleRuntimeException.FromOwnedSource(error); }
+                catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
+            }
+            for (var i = 0; i < catalogue.Length; i++)
+            {
+                if (catalogue.Span[i].Mode != FerruleBasicNamedSourceMode.RequiredLegacy) continue;
+                var present = false;
+                for (var j = 0; j < accepted; j++) if (snapshots[j].DeclarationIndex == i) { present = true; break; }
+                if (!present) throw new FerruleRuntimeException(FerruleRuntimeError.MissingNamedSource,
+                    "named source is required by this mapping", detail: catalogue.Span[i].Name);
+            }
+            // The C# projection has no extra name-byte charge. M <= N proves its
+            // existing array-count checks; check the closed parsed layout at M,
+            // only after every name/required-binding error has had precedence.
+            BasicJsonInputEnvelope.RequireParsedCapacity((nuint)accepted);
+            var parsed = accepted == 0 ? Array.Empty<BasicJsonInputParsed>() : new BasicJsonInputParsed[accepted];
+            return new FerruleBasicJsonInputAdmission(ticket, snapshots, parsed);
+        }
+        catch { Array.Clear(snapshots); throw; }
+    }
+
+    /// <summary>Consumes this owner once; all callbacks see original declaration ordinals in supplied order.</summary>
+    public FerruleBasicJsonParsedInputs ParseNamedWith(Func<int, FerruleJsonDocumentRef, FerruleInstance> parse)
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _parseClaimed, 1, 0) != 0)
+            throw new InvalidOperationException("JSON input admission has already been consumed.");
+        // Detach both arrays before even the first callback. Losing/reentrant
+        // attempts cannot see or clear buffers owned by the winning parse.
+        var snapshots = System.Threading.Interlocked.Exchange(ref _snapshots, null)!;
+        var parsed = System.Threading.Interlocked.Exchange(ref _parsed, null)!;
+        try
+        {
+            ArgumentNullException.ThrowIfNull(parse);
+            for (var i = 0; i < parsed.Length; i++)
+            {
+                var snapshot = snapshots[i];
+                var instance = parse(snapshot.DeclarationIndex, snapshot.Document);
+                if (instance is null) throw new InvalidOperationException("JSON input parser returned null.");
+                parsed[i] = new(snapshot.DeclarationIndex, instance);
+            }
+            return FerruleBasicJsonParsedInputs.Create(_ticket, parsed);
+        }
+        catch { Array.Clear(parsed); throw; }
+        finally { Array.Clear(snapshots); }
+    }
+}
+
+/// <summary>Completed parsed inputs carrying a disjoint reservation and a one-shot Basic binding ticket.</summary>
+/// <remarks>Generated callers keep this owner live through complete serialization,
+/// including error paths. The reservation covers control-free companion bookkeeping,
+/// not codec/source-tree storage or retained filter/sort/window phases.</remarks>
+public sealed class FerruleBasicJsonParsedInputs
+{
+    private readonly BasicJsonInputEnvelope _ticket;
+    private BasicJsonInputParsed[]? _parsed;
+    private int _bindingClaimed;
+    private FerruleBasicJsonParsedInputs(BasicJsonInputEnvelope ticket, BasicJsonInputParsed[] parsed)
+    { _ticket = ticket; _parsed = parsed; }
+    internal static FerruleBasicJsonParsedInputs Create(BasicJsonInputEnvelope ticket, BasicJsonInputParsed[] parsed) => new(ticket, parsed);
+    internal int OwnedCapacity => _parsed?.Length ?? 0;
+    internal (nuint Core, nuint Paired, nuint Adapter, nuint Total) EnvelopeProof => _ticket.Proof;
+    private sealed class FactoryInputView(ReadOnlyMemory<FerruleBasicNamedSourceDeclaration> catalogue,
+        BasicJsonInputParsed[] parsed) : IReadOnlyList<FerruleNamedSourceInput>
+    {
+        public int Count => parsed.Length;
+        public FerruleNamedSourceInput this[int index] =>
+            new(catalogue.Span[parsed[index].DeclarationIndex].Name, parsed[index].Instance);
+        public IEnumerator<FerruleNamedSourceInput> GetEnumerator() => throw new NotSupportedException("Factory input is indexed.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+    private readonly struct FactoryAccessor : IFerruleNamedSourceInputAccessor<FerruleNamedSourceInput>
+    { public FerruleNamedSourceInput Read(FerruleNamedSourceInput item) => item; }
+
+    public FerruleBasicSourceRoots BasicRoots(FerruleInstance primary)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+        if (System.Threading.Interlocked.CompareExchange(ref _bindingClaimed, 1, 0) != 0)
+            throw new InvalidOperationException("Parsed JSON inputs have already been bound.");
+        var parsed = _parsed!;
+        try
+        {
+            var view = new FactoryInputView(_ticket.Catalogue, parsed);
+            return FerruleBasicSourceRoots.CreateFromNamedInputs(primary, _ticket.Catalogue.Span,
+                view, new FactoryAccessor(), _ticket.Limits);
+        }
+        catch { Array.Clear(parsed); _parsed = null; throw; }
+        finally { GC.KeepAlive(_ticket); GC.KeepAlive(parsed); }
+    }
 }
 
 

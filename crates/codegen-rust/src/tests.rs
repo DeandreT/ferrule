@@ -1521,3 +1521,5 @@ impl Drop for TempDir {
 }
 
 mod owned_basic;
+#[path = "owned_json_api_tests.rs"]
+mod owned_json_api;

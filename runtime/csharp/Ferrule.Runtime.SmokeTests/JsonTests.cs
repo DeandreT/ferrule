@@ -335,6 +335,38 @@ internal static partial class Program
         JsonScalarUnionBoundaries();
     }
 
+    private static void JsonEmbeddedBytesErrorCauses()
+    {
+        const string descriptor = "FERRULE-EMBEDDED-SCHEMA/2\n" + BasicJsonSchema;
+        foreach (var (raw, offset, unknown) in new[]
+        {
+            (new byte[] { 0x20, 0x20, 0xff }, 2, new byte[] { 0xff }),
+            (new byte[] { 0x22, 0xc3, 0xa9, 0x22, 0x20, 0x80 }, 5, new byte[] { 0x80 }),
+        })
+        {
+            var outer = Error(FerruleRuntimeError.JsonBoundary,
+                () => FerruleJson.ParseEmbeddedBytes(descriptor, raw));
+            Equal("JSON input is not UTF-8.", outer.Message);
+            Equal(outer.Message, outer.Detail);
+            var cause = outer.InnerException as System.Text.DecoderFallbackException;
+            Equal(true, cause is not null);
+            Equal(offset, cause!.Index);
+            Equal(true, cause.BytesUnknown.AsSpan().SequenceEqual(unknown));
+            Equal<Exception?>(null, cause.InnerException);
+            Equal<uint?>(null, outer.Node);
+            Equal<FerruleOwnedSourceException?>(null, outer.OwnedSourceFailure);
+            Equal<FerruleBasicSourceBridgeException?>(null, outer.BasicSourceBridgeFailure);
+        }
+        var oversized = new byte[FerruleJson.MaximumDocumentBytes + 1];
+        oversized[2] = 0xff;
+        var size = Error(FerruleRuntimeError.JsonBoundary,
+            () => FerruleJson.ParseEmbeddedBytes("invalid embedded descriptor", oversized));
+        Equal($"JSON input is {FerruleJson.MaximumDocumentBytes + 1} bytes; maximum is {FerruleJson.MaximumDocumentBytes}.", size.Message);
+        Equal(size.Message, size.Detail);
+        Equal<Exception?>(null, size.InnerException);
+        Equal<uint?>(null, size.Node);
+    }
+
     private static void JsonExactIntegerOutputBoundaries()
     {
         const string integer =

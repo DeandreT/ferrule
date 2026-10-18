@@ -6460,7 +6460,7 @@ fn public_basic_filter_profile_preserves_complete_control_free_artifacts_and_pol
         let options = public519_options("public_filter_control_free_644");
         let old = public519_result("F644 control-free baseline", &p, &options).unwrap();
         let opted = filter644_result("control-free explicit profile", &p, &options).unwrap();
-        assert_eq!(old.files(), opted.files());
+        assert_control_free_typed_artifacts_match(&p, &old, &opted);
     }
     let p = filter644_program(SourceOwner::Primary);
     let files = filter644_result(
@@ -6487,6 +6487,30 @@ fn public_basic_filter_profile_preserves_complete_control_free_artifacts_and_pol
     filter644_invalid(
         filter644_result("structure before package", &structural, &invalid),
         expected,
+    );
+}
+
+fn assert_control_free_typed_artifacts_match(
+    program: &Program,
+    with_json: &ArtifactSet,
+    typed: &ArtifactSet,
+) {
+    let core = crate::owned_basic::render_public_basic_owned_source(program).unwrap();
+    let source = public519_source(with_json);
+    assert!(source.starts_with(&core));
+    assert!(source.contains("pub fn execute_json_outputs_with_basic_owned_sources("));
+    assert_eq!(public519_source(typed), core);
+    assert_eq!(
+        with_json
+            .files()
+            .iter()
+            .filter(|file| file.path.as_str() != "src/lib.rs")
+            .collect::<Vec<_>>(),
+        typed
+            .files()
+            .iter()
+            .filter(|file| file.path.as_str() != "src/lib.rs")
+            .collect::<Vec<_>>(),
     );
 }
 
@@ -7337,7 +7361,7 @@ fn public_basic_sort_preserves_complete_control_free_and_filter_only_artifact_by
         let options = public519_options("public_sort_control_free_668");
         let baseline = public519_result("S668 control-free baseline", &p, &options).unwrap();
         let sorted = sort668_result("control-free sort opt-in", &p, &options).unwrap();
-        assert_eq!(baseline.files(), sorted.files());
+        assert_control_free_typed_artifacts_match(&p, &baseline, &sorted);
     }
     for owner in [SourceOwner::Primary, named("Ref")] {
         let p = filter644_program(owner);

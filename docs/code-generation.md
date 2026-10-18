@@ -59,6 +59,66 @@ directory. To generate directly onto a Windows filesystem, use a Windows build
 of the CLI. The same publication requirement applies to ordinary generation
 and explicitly selected companions.
 
+## Explicit Basic owned-source JSON documents
+
+`emit_with_basic_owned_sources` adds compact JSON document adapters to the
+control-free Basic typed entry family. Rust exposes
+`execute_json_outputs_with_basic_owned_sources` and
+`execute_json_selected_target_with_basic_owned_sources`, plus the corresponding
+`execute_json_bytes_outputs_with_basic_owned_sources` and
+`execute_json_bytes_selected_target_with_basic_owned_sources` UTF-8 methods.
+C# exposes `ExecuteJsonOutputsWithBasicOwnedSources`,
+`ExecuteJsonSelectedTargetWithBasicOwnedSources`,
+`ExecuteJsonBytesOutputsWithBasicOwnedSources`, and
+`ExecuteJsonBytesSelectedTargetWithBasicOwnedSources`.
+
+Every call requires the explicit five-field owned-source policy and an execution
+context argument (`None` / `null` is permitted for the context). Rust all-output
+arguments are `(source, inputs, execution, limits)`; selected calls append
+`selection`. C# all-output arguments are `(source, inputs, limits, execution)`;
+selected calls place `selection` immediately after `source`. There are no
+implicit-policy overloads. A zero-valued policy is a supplied policy, not an
+omitted argument.
+
+Selected calls resolve the exact target identity before policy admission or
+input parsing; C# first checks its source and selection arguments for null.
+Admission then checks the complete catalogue and bounded metadata before
+inspecting supplied document handles. Unexpected and duplicate names are
+reported in supplied order, followed by missing legacy-required bindings in
+catalogue order. Owned-only inputs may be omitted; reaching an unavailable
+owner during evaluation preserves its typed failure. A supplied optional input
+is still parsed even when its consuming target is not selected.
+
+After metadata admission, parsing consumes the primary document first, then
+each captured supplied document in its original order. C# reads the supplied
+list's count once and each reached item once. The adapter preserves original
+declaration ordinals, constructs one checked Basic root context and executes
+the selected or all-output route once. All required serialization completes
+before an output set is returned.
+
+Outputs use schema field order and compact UTF-8 without a BOM or trailing
+newline. For example, `{"Value":"P.root"}` and `{"Value":"N.root"}` each
+occupy 18 bytes; `[{"Value":"N1"},{"Value":"N2"}]` occupies 31 bytes. A
+selected document matches the corresponding all-output document. Ordinary
+JSON adapters retain their pretty-printed, trailing-newline format.
+
+The strict byte routes preserve original UTF-8 failures: Rust's additive
+`parse_json_bytes_with_utf8_cause` returns `JsonBoundaryError::InvalidUtf8` with
+the original `Utf8Error` as its source; C# retains its decoder exception.
+Existing Rust `parse_json_bytes` keeps its original error representation.
+Document/schema size and shape validation remain independent of owned-source
+limits; output validation uses normalized typed values without reparsing
+floating-point text.
+
+Admission retains at most two fixed-record buffers: `N` snapshot slots for the
+complete named catalogue and `M <= N` parsed slots. A checked companion
+reservation `A = 2N + 16` is disjoint from the existing base Basic primitive
+allowance `P`; the combined envelope is checked as `P + A`. Native buffer
+representability is checked separately. The factory retains its original
+policy and allowance. These bounds cover adapter bookkeeping and the base
+Basic primitives, not document trees, codec allocations or process memory.
+Filter, sort, window and row-failure emitters retain their separate API profiles.
+
 ## Explicit Basic owned-source windows
 
 Library hosts can select the static Basic owned-source window profile with
