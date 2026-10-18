@@ -959,44 +959,8 @@ fn read_json_component_resolved(
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
-            let (schema_path, schema_root) = match resources {
-                Some(resources) => match resources.resolve_json_schema(rel) {
-                    Ok(resolved) => resolved,
-                    Err(error) => {
-                        if json_schema_unresolved_reference.is_none() {
-                            json_schema_unresolved_reference = Some(rel.to_string());
-                        }
-                        warnings.push(format!(
-                            "component `{name}`: could not read schema `{rel}` ({error}); \
-                             falling back to the entry tree"
-                        ));
-                        return None;
-                    }
-                },
-                None => match resolve_resource_reference(mfd_path, None, rel, "JSON Schema") {
-                    Ok(path) => {
-                        let root = path
-                            .parent()
-                            .unwrap_or_else(|| Path::new("."))
-                            .to_path_buf();
-                        (path, root)
-                    }
-                    Err(error) => {
-                        if json_schema_unresolved_reference.is_none() {
-                            json_schema_unresolved_reference = Some(rel.to_string());
-                        }
-                        warnings.push(format!(
-                            "component `{name}`: could not read schema `{rel}` ({error}); \
-                             falling back to the entry tree"
-                        ));
-                        return None;
-                    }
-                },
-            };
-            let imported = match resources {
-                Some(_) => format_json::json_schema::import_with_root(&schema_path, &schema_root),
-                None => format_json::json_schema::import(&schema_path),
-            };
+            let imported =
+                shared::read_json_schema_resource(mfd_path, resources, rel, "JSON Schema");
             match imported {
                 Ok(schema) => {
                     json_schema_authoritative = ordinary_json_schema_declaration(component);

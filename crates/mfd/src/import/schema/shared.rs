@@ -5,6 +5,21 @@ use ir::SchemaNode;
 
 use crate::resource::ResourceResolver;
 
+pub(super) fn read_json_schema_resource(
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    reference: &str,
+    description: &str,
+) -> Result<SchemaNode, String> {
+    match resources {
+        Some(resources) => resources.import_json_schema(reference),
+        None => {
+            let path = super::resolve_resource_reference(mfd_path, None, reference, description)?;
+            format_json::json_schema::import(&path).map_err(|error| error.to_string())
+        }
+    }
+}
+
 /// Carries request-specific authority; dispatching only by resolved pathname
 /// would accidentally grant an unbound alias another request's trusted root.
 #[derive(Clone)]
