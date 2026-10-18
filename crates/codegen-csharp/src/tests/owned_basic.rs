@@ -6454,6 +6454,30 @@ fn filter_645_mapping(artifacts: codegen::ArtifactSet) -> String {
     .unwrap()
 }
 
+fn assert_public_basic_typed_artifacts_match(
+    program: &Program,
+    with_json: &codegen::ArtifactSet,
+    typed: &codegen::ArtifactSet,
+) {
+    let core = crate::owned_basic::render_public_basic_owned_mapping(program).unwrap();
+    let source = filter_645_mapping(with_json.clone());
+    assert!(source.starts_with(&core));
+    assert!(source.contains("ExecuteJsonOutputsWithBasicOwnedSources("));
+    assert_eq!(filter_645_mapping(typed.clone()), core);
+    assert_eq!(
+        with_json
+            .files()
+            .iter()
+            .filter(|file| file.path.as_str() != "GeneratedMapping.cs")
+            .collect::<Vec<_>>(),
+        typed
+            .files()
+            .iter()
+            .filter(|file| file.path.as_str() != "GeneratedMapping.cs")
+            .collect::<Vec<_>>(),
+    );
+}
+
 #[test]
 fn public_basic_filter_companion_preserves_control_free_bytes_and_closed_routes() {
     let p = filter_645_program();
@@ -7237,8 +7261,12 @@ fn public_basic_sort_companion_preserves_existing_bytes_and_closed_routes() {
     eprintln!(
         "N669 compatibility complete input={plain:#?} old={old:#?} filter={filtered:#?} sort={sorted:#?} private={private_plain:#?} public={public_plain:#?} public_filter={public_filter_plain:#?} public_sort={public_sort_plain:#?}"
     );
-    assert_eq!(old, filtered);
-    assert_eq!(old, sorted);
+    let old = old.unwrap();
+    let filtered = filtered.unwrap();
+    let sorted = sorted.unwrap();
+    assert_public_basic_typed_artifacts_match(&plain, &old, &filtered);
+    assert_public_basic_typed_artifacts_match(&plain, &old, &sorted);
+    assert_eq!(filtered, sorted);
     assert_eq!(public_plain, public_filter_plain);
     assert_eq!(public_plain, public_sort_plain);
     assert!(private_plain.is_ok());
