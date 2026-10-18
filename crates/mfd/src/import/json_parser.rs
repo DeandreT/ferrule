@@ -18,6 +18,30 @@ pub(super) struct Recipe {
     pub(super) optional_string_inputs: Vec<super::optional_parser_input::OptionalStringInput>,
 }
 
+/// A saved string parser with no declared outputs cannot supply a value to the
+/// mapping. Keep reading its schema and input declaration, but do not invent a
+/// demand for parsing or promote it to a physical source.
+pub(super) fn has_no_declared_outputs(component: &roxmltree::Node<'_, '_>) -> bool {
+    let parameters = component
+        .descendants()
+        .filter(|node| node.has_tag_name("parameter"))
+        .collect::<Vec<_>>();
+    let inputs = component
+        .descendants()
+        .filter(|node| node.has_attribute("inpkey"))
+        .collect::<Vec<_>>();
+    matches!(parameters.as_slice(), [parameter] if parameter.attribute("usageKind") == Some("stringparse"))
+        && matches!(inputs.as_slice(), [input] if input.has_tag_name("entry") && parse_u32(input.attribute("inpkey")).is_some())
+        && !component.descendants().any(|node| {
+            node.has_attribute("outkey")
+                || node.has_tag_name("targets")
+                || matches!(
+                    node.attribute("name"),
+                    Some("compute-when" | "parent-context")
+                )
+        })
+}
+
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     schema: &SchemaComponent,
@@ -87,7 +111,7 @@ pub(super) fn read(
         }
         outputs.insert(output, path);
     }
-    if outputs.is_empty() && object_outputs.is_empty() {
+    if outputs.is_empty() && object_outputs.is_empty() && !has_no_declared_outputs(component) {
         return Err("has no supported property outputs".to_string());
     }
 
@@ -132,6 +156,34 @@ fn has_repeating_ancestor(schema: &SchemaComponent, path: &[String]) -> bool {
 }
 
 impl GraphBuilder<'_> {
+    pub(super) fn dormant_json_parser_parameters(&mut self) -> BTreeMap<NodeId, Node> {
+        let mut parameters = BTreeMap::new();
+        for recipe in self.json_parsers {
+            if !recipe.outputs.is_empty() || !recipe.object_outputs.is_empty() {
+                continue;
+            }
+            if !super::constructed_parser_scalar::input_is_required_string(recipe, self) {
+                self.warnings.push(format!(
+                    "JSON string parser without outputs at input `{}` requires a uniquely declared required global String input without a connected default",
+                    recipe.input,
+                ));
+                continue;
+            }
+            // Preserve the parameter declaration without introducing a parser
+            // call or a target dependency. Runtime demand remains unchanged.
+            let feed = self.edge_from[&recipe.input];
+            if let Some(id) = self.value_node(feed) {
+                parameters.insert(id, self.graph.nodes[&id].clone());
+            } else {
+                self.warnings.push(format!(
+                    "JSON string parser without outputs at input `{}` could not retain its runtime parameter",
+                    recipe.input,
+                ));
+            }
+        }
+        parameters
+    }
+
     pub(super) fn json_parser_declares_object(&self, output: u32) -> bool {
         self.json_parsers
             .iter()

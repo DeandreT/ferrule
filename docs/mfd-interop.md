@@ -796,6 +796,16 @@ outputs, root arrays, array-crossing property paths and missing schema paths ret
 their explicit refusal. Each admitted field still parses and validates the complete
 JSON document against its schema, including properties whose ports are unused.
 
+A JSON string parser with no declared output ports can retain a directly connected,
+uniquely declared required global String parameter without evaluating that parser.
+It requires one valid input declaration and one `stringparse` parameter, with no
+connected default or scope controls. The imported graph preserves the runtime
+parameter's name, type and preview for host inspection; it creates no physical
+source or parser call. Required arguments enforced by an external wrapper remain
+that wrapper's contract. Schema resolution still runs, and missing or malformed
+schemas still prevent executable import. Declared but unused outputs do not use
+this admission path.
+
 JSON structure variables use the explicit parameter-root path to select their
 schema value. Property steps retain their names; object views are transparent.
 Variables remain intermediate values and scalar outputs resolve through their
