@@ -18,6 +18,11 @@ fn literal_group_drivers_compiled_complete_oracles() -> TestResult<()> {
             include_str!("../../../mfd/tests/fixtures/literal-group-drivers/array-cases.json"),
             "literal_group_array",
         ),
+        (
+            "cloned.mfd",
+            include_str!("../../../mfd/tests/fixtures/literal-group-drivers/cloned-cases.json"),
+            "literal_group_cloned",
+        ),
     ] {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../mfd/tests/fixtures/literal-group-drivers")

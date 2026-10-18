@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping><component name="map"><structure><children>
+  <component name="source" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object"><entry name="Rows" type="json-property"><entry name="array" outkey="10"><entry name="item" type="json-item"><entry name="object"><entry name="Label" type="json-property"><entry name="string" outkey="11"/></entry></entry></entry></entry></entry></entry></entry></entry></entry></root><json schema="source.schema.json" inputinstance="source.json"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="103"/></targets><data><constant value="false" datatype="boolean"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="101"/></targets><data><constant value="" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="105"/></targets><data><constant value="first" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="106"/></targets><data><constant value="second" datatype="string"/></data></component>
+  <component name="report" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+      <entry name="Results" type="json-property"><entry name="array" inpkey="20"><entry name="item" type="json-item"><entry name="object">
+        <entry name="Label" type="json-property"><entry name="string" inpkey="21"/></entry>
+        <entry name="Details" type="json-property"><entry name="array"><entry name="item" type="json-item">
+          <entry name="object" inpkey="40"><entry name="Value" type="json-property"><entry name="string" inpkey="41"/></entry><entry name="Kind" type="json-property"><entry name="string" inpkey="42"/></entry></entry>
+          <entry name="object" clone="1" inpkey="30"><entry name="Value" type="json-property"><entry name="string" inpkey="31"/></entry><entry name="Kind" type="json-property"><entry name="string" inpkey="32"/></entry></entry>
+        </entry></entry></entry>
+      </entry></entry></entry></entry>
+    </entry></entry></entry></entry></root><json schema="cloned.schema.json" outputinstance="report.json"/>
+  </data></component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+  <vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="41"/><edge vertexkey="31"/></edges></vertex>
+  <vertex vertexkey="103"><edges><edge vertexkey="40"/></edges></vertex>
+  <vertex vertexkey="101"><edges><edge vertexkey="30"/></edges></vertex>
+  <vertex vertexkey="105"><edges><edge vertexkey="42"/></edges></vertex>
+  <vertex vertexkey="106"><edges><edge vertexkey="32"/></edges></vertex>
+</vertices></graph></structure></component></mapping>

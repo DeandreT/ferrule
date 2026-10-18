@@ -1,0 +1,11 @@
+[
+  {"input":"{\"Rows\":[]}","expected":{"Results":[]}},
+  {"input":"{\"Rows\":[{\"Label\":\"one\"}]}","expected":{"Results":[{"Label":"one","Details":[{"Value":"one","Kind":"first"},{"Value":"one","Kind":"second"}]}]}},
+  {"input":"{\"Rows\":[{\"Label\":\"雪\"},{\"Label\":\"\"},{\"Label\":\"last\"}]}","expected":{"Results":[{"Label":"雪","Details":[{"Value":"雪","Kind":"first"},{"Value":"雪","Kind":"second"}]},{"Label":"","Details":[{"Value":"","Kind":"first"},{"Value":"","Kind":"second"}]},{"Label":"last","Details":[{"Value":"last","Kind":"first"},{"Value":"last","Kind":"second"}]}]}},
+  {"input":"{\"Rows\":[{\"Label\":null}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Label\":{}}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Label\":\"duplicate\"},{\"Label\":\"duplicate\"}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Label\":\"1\"},{\"Label\":\"2\"},{\"Label\":\"3\"},{\"Label\":\"4\"}]}","reject":true},
+  {"input":"{\"Rows\":[{\"Label\":\"one\",\"Extra\":true}]}","reject":true},
+  {"input":"{\"Rows\":[", "reject":true}
+]
