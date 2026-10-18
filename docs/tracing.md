@@ -31,6 +31,32 @@ and before writing raw artifact bytes. This preserves an empty stdout when trace
 publication fails. A later stdout write failure, such as a broken pipe, can
 therefore leave a trace for the successfully evaluated mapping.
 
+## Basic Owned-Source Observers
+
+Public engine execution and CLI input routes accept trace/debug observers for
+the admitted Basic owned-source profile. Admission still checks the complete
+potential selected-target closure before input acquisition or callbacks;
+requesting an observer does not admit specialized or generated owned contexts.
+
+Direct library `TraceSink` implementations can request synchronous borrowed
+ownership witnesses with `wants_owned_context_for`. The older
+`wants_owned_context` opt-in selects only main-graph value/input events. Other
+supported events require explicit event selection. Retain metadata only through
+the bounded `TraceOwnedWitness::snapshot` API; projection/snapshot errors are
+observer metadata, not mapping execution failures.
+
+Direct `DebugHook` implementations receive the existing successful-value,
+input and target-write callbacks. The deepest main-graph failure hook can opt
+into a borrowed ownership witness and the complete typed error through
+`wants_owned_context_for_node_failure` and
+`after_node_failure_with_owned_context`. Resume propagates the original error;
+Cancel returns `DebugCancelled`.
+
+The JSON trace writer and stage-attributed pipeline trace adapters remain
+event-only: they do not serialize or forward borrowed ownership witnesses.
+Existing JSON schema versions and event payloads are unchanged. Successful debug
+snapshots likewise remain bounded previews, not ownership-witness snapshots.
+
 ## JSON Lines Envelope
 
 Every line is one JSON object:

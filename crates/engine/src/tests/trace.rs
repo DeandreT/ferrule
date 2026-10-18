@@ -11,6 +11,9 @@ use mapping::{
 
 use crate::{ExecutionContext, TraceEvent, TraceSink, run_with_context};
 
+#[path = "owned_scope_observers.rs"]
+mod owned_scope_observers;
+
 #[derive(Default)]
 struct Collector(RefCell<Vec<TraceEvent>>);
 
@@ -1315,11 +1318,10 @@ fn target_field_trace_records_dynamic_children_after_their_content() -> Result<(
 mod owned_trace_witness {
     use super::field_trace_project;
     use crate::{
-        EngineError, OwnedCapabilityContext, SourceOwnershipObservers, TraceOwnedDomain,
-        TraceOwnedFrameRef, TraceOwnedLocation, TraceOwnedOriginRef, TraceOwnedOwner,
-        TraceOwnedOwnerRef, TraceOwnedPhase, TraceOwnedPositionRef, TraceOwnedRootRef,
-        TraceOwnedWitness, TraceOwnedWitnessError, TracePosition,
-        check_source_ownership_capability_with_observers,
+        SourceOwnershipObservers, TraceOwnedDomain, TraceOwnedFrameRef, TraceOwnedLocation,
+        TraceOwnedOriginRef, TraceOwnedOwner, TraceOwnedOwnerRef, TraceOwnedPhase,
+        TraceOwnedPositionRef, TraceOwnedRootRef, TraceOwnedWitness, TraceOwnedWitnessError,
+        TracePosition, check_source_ownership_capability_with_observers,
     };
     use ir::{Instance, SchemaNode, Value};
     use mapping::{Graph, NamedSource, Node, OwnedSourceField, OwnedSourceRef, Scope, SourceOwner};
@@ -2099,7 +2101,7 @@ mod owned_trace_witness {
     }
 
     #[test]
-    fn legacy_position_fields_and_public_observer_refusals_remain_exact() {
+    fn legacy_position_fields_and_public_basic_observer_admission_remain_exact() {
         use crate::source_iteration::PositionFrame;
         let position = PositionFrame {
             collection: vec!["Root".into(), "Rows".into()],
@@ -2135,37 +2137,23 @@ mod owned_trace_witness {
             target_field: "Result".into(),
             node: 0,
         });
-        for (observers, context) in [
-            (
-                SourceOwnershipObservers {
-                    tracing: true,
-                    debugging: false,
-                },
-                OwnedCapabilityContext::Tracing,
-            ),
-            (
-                SourceOwnershipObservers {
-                    tracing: false,
-                    debugging: true,
-                },
-                OwnedCapabilityContext::Debugging,
-            ),
-            (
-                SourceOwnershipObservers {
-                    tracing: true,
-                    debugging: true,
-                },
-                OwnedCapabilityContext::Tracing,
-            ),
+        for observers in [
+            SourceOwnershipObservers {
+                tracing: true,
+                debugging: false,
+            },
+            SourceOwnershipObservers {
+                tracing: false,
+                debugging: true,
+            },
+            SourceOwnershipObservers {
+                tracing: true,
+                debugging: true,
+            },
         ] {
             assert_eq!(
                 check_source_ownership_capability_with_observers(&project, None, observers),
-                Err(EngineError::UnsupportedOwnedContext {
-                    node: None,
-                    function: None,
-                    scope: None,
-                    context
-                })
+                Ok(())
             );
         }
         assert!(
@@ -3150,7 +3138,7 @@ mod owned_trace_producer {
     }
 
     #[test]
-    fn public_owned_trace_and_debug_admission_stays_closed_before_callbacks() {
+    fn public_basic_trace_runs_with_expression_witnesses() {
         let mut project = trace_project(
             &[],
             vec![(0, owned_field(SourceOwner::Primary, &["Value"], None))],
@@ -3171,39 +3159,33 @@ mod owned_trace_producer {
             .with_trace_sink(&paired);
         assert_eq!(
             crate::run_with_context(&project, &primary, &execution),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: crate::OwnedCapabilityContext::Tracing
-            })
+            Ok(Instance::Group(
+                vec![(
+                    "Result".into(),
+                    Instance::Scalar(Value::String("hello".into()))
+                )]
+                .into()
+            ))
         );
-        assert!(paired.events.borrow().is_empty());
-        assert!(paired.observations.borrow().is_empty());
-        for (observers, context) in [
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: false,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Debugging,
-            ),
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: true,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Tracing,
-            ),
+        assert!(!paired.events.borrow().is_empty());
+        assert_eq!(paired.observations.borrow().len(), 1);
+        assert!(matches!(
+            &paired.observations.borrow()[0].outcome,
+            Outcome::Snapshot(Ok(snapshot)) if snapshot.phase == TraceOwnedPhase::Output
+        ));
+        for observers in [
+            crate::SourceOwnershipObservers {
+                tracing: false,
+                debugging: true,
+            },
+            crate::SourceOwnershipObservers {
+                tracing: true,
+                debugging: true,
+            },
         ] {
             assert_eq!(
                 crate::check_source_ownership_capability_with_observers(&project, None, observers),
-                Err(EngineError::UnsupportedOwnedContext {
-                    node: None,
-                    function: None,
-                    scope: None,
-                    context
-                })
+                Ok(())
             );
         }
     }
@@ -4261,7 +4243,7 @@ mod owned_output_trace_producer {
     }
 
     #[test]
-    fn public_observer_admission_and_expression_only_consumers_stay_unchanged() {
+    fn public_output_witnesses_and_expression_only_opt_in_stay_distinct() {
         let project = project(
             &[],
             vec![(0, owned_field(SourceOwner::Primary, &["Value"], None))],
@@ -4285,39 +4267,38 @@ mod owned_output_trace_producer {
             .with_trace_sink(&paired);
         assert_eq!(
             crate::run_with_context(&project, &primary, &execution),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: crate::OwnedCapabilityContext::Tracing,
-            })
+            Ok(Instance::Group(
+                vec![(
+                    "Result".into(),
+                    Instance::Scalar(Value::String("hello".into()))
+                )]
+                .into()
+            ))
         );
-        assert!(paired.events.borrow().is_empty());
-        assert!(paired.observations.borrow().is_empty());
-        for (observers, context) in [
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: false,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Debugging,
-            ),
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: true,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Tracing,
-            ),
+        assert_eq!(paired.observations.borrow().len(), 2);
+        assert!(
+            paired
+                .observations
+                .borrow()
+                .iter()
+                .all(|observation| matches!(
+                    &observation.outcome,
+                    Outcome::Snapshot(Ok(snapshot)) if snapshot.phase == TraceOwnedPhase::Output
+                ))
+        );
+        for observers in [
+            crate::SourceOwnershipObservers {
+                tracing: false,
+                debugging: true,
+            },
+            crate::SourceOwnershipObservers {
+                tracing: true,
+                debugging: true,
+            },
         ] {
             assert_eq!(
                 crate::check_source_ownership_capability_with_observers(&project, None, observers),
-                Err(EngineError::UnsupportedOwnedContext {
-                    node: None,
-                    function: None,
-                    scope: None,
-                    context
-                })
+                Ok(())
             );
         }
         let plain = Collector::default();
@@ -5804,7 +5785,7 @@ mod owned_scope_lifecycle {
     }
 
     #[test]
-    fn old_owned_iteration_refusal_and_public_observer_gates_remain_closed() {
+    fn legacy_iteration_refusal_and_public_basic_lifecycle_admission_stay_distinct() {
         let owned = ScopeIteration::OwnedSource {
             source: OwnedSourceRef {
                 owner: SourceOwner::Named {
@@ -5863,39 +5844,26 @@ mod owned_scope_lifecycle {
             .with_trace_sink(&paired);
         assert_eq!(
             crate::run_with_context(&p, &primary, &execution),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: crate::OwnedCapabilityContext::Tracing
-            })
+            Ok(primary.clone())
         );
-        assert!(paired.events.borrow().is_empty());
-        assert!(paired.contexts.borrow().is_empty());
-        for (observers, context) in [
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: false,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Debugging,
-            ),
-            (
-                crate::SourceOwnershipObservers {
-                    tracing: true,
-                    debugging: true,
-                },
-                crate::OwnedCapabilityContext::Tracing,
-            ),
+        assert_eq!(paired.contexts.borrow().len(), 2);
+        assert!(paired.contexts.borrow().iter().all(|(_, outcome)| matches!(
+            outcome,
+            Outcome::Snapshot(Ok(snapshot)) if snapshot.phase == TraceOwnedPhase::Structural
+        )));
+        for observers in [
+            crate::SourceOwnershipObservers {
+                tracing: false,
+                debugging: true,
+            },
+            crate::SourceOwnershipObservers {
+                tracing: true,
+                debugging: true,
+            },
         ] {
             assert_eq!(
                 crate::check_source_ownership_capability_with_observers(&p, None, observers),
-                Err(EngineError::UnsupportedOwnedContext {
-                    node: None,
-                    function: None,
-                    scope: None,
-                    context
-                })
+                Ok(())
             );
         }
         let mut p = constant();
@@ -11098,7 +11066,7 @@ mod owned_scope_lifecycle {
     }
 
     #[test]
-    fn failure_owned_cancel_function_priority_lazy_branches_and_closed_public_gates_stay_exact() {
+    fn failure_owned_cancel_function_priority_lazy_branches_and_public_failures_stay_exact() {
         let p = project(
             &[],
             vec![
@@ -11294,11 +11262,9 @@ mod owned_scope_lifecycle {
             .with_debug_hook(&hook);
         assert_eq!(
             crate::run_with_context(&owned, &primary, &execution),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: crate::OwnedCapabilityContext::Debugging
+            Err(EngineError::MappingFailure {
+                rule: 1,
+                message: None
             })
         );
         let execution = crate::ExecutionContext::new(std::path::Path::new("mapping.json"))
@@ -11306,14 +11272,18 @@ mod owned_scope_lifecycle {
             .with_trace_sink(&sink);
         assert_eq!(
             crate::run_with_context(&owned, &primary, &execution),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: None,
-                context: crate::OwnedCapabilityContext::Tracing
+            Err(EngineError::MappingFailure {
+                rule: 1,
+                message: None
             })
         );
-        assert!(sink.0.borrow().is_empty());
+        assert!(
+            sink.0
+                .borrow()
+                .iter()
+                .all(|event| matches!(event, TraceEvent::NodeValue { node: 10, .. }))
+        );
+        assert_eq!(sink.0.borrow().len(), 1);
         assert!(hook.pending.borrow().is_empty());
     }
 
