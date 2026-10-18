@@ -154,13 +154,16 @@ fn public_basic_windows_preserve_old_companions_and_require_explicit_admission()
         vec![expression(1, field(SourceOwner::Primary, &["Value"], None))],
         group(vec![binding("Value", 1, ScalarType::String)]),
     );
-    assert_eq!(
-        crate::emit_with_basic_owned_sources(&plain),
-        crate::emit_with_basic_owned_filters(&plain)
+    let with_json = crate::emit_with_basic_owned_sources(&plain).unwrap();
+    assert_public_basic_typed_artifacts_match(
+        &plain,
+        &with_json,
+        &crate::emit_with_basic_owned_filters(&plain).unwrap(),
     );
-    assert_eq!(
-        crate::emit_with_basic_owned_sources(&plain),
-        crate::emit_with_basic_owned_sort(&plain)
+    assert_public_basic_typed_artifacts_match(
+        &plain,
+        &with_json,
+        &crate::emit_with_basic_owned_sort(&plain).unwrap(),
     );
     let p = window_703_program(
         vec![codegen::SequenceWindow::First { count: 31 }],
