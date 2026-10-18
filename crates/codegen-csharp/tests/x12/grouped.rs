@@ -510,6 +510,99 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "<configuration><packageSources><clear /></packageSources></configuration>\n",
     )
     .unwrap();
+    let expected_paths = std::collections::BTreeSet::from([
+        "Ferrule.Generated.csproj",
+        "GeneratedMapping.X12.cs",
+        "GeneratedMapping.cs",
+        "GeneratedTargetBuilder.cs",
+        "Runtime/FerruleAdjacencyTree.cs",
+        "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleBasicGroupBy.cs",
+        "Runtime/FerruleDelimitedText.cs",
+        "Runtime/FerruleDynamicDocuments.cs",
+        "Runtime/FerruleDynamicSources.cs",
+        "Runtime/FerruleDynamicTargets.cs",
+        "Runtime/FerruleEmbeddedSchema.cs",
+        "Runtime/FerruleExecutionContext.cs",
+        "Runtime/FerruleFailures.cs",
+        "Runtime/FerruleFilterMap.cs",
+        "Runtime/FerruleFunctions.DateTime.cs",
+        "Runtime/FerruleFunctions.DateTimeAdd.cs",
+        "Runtime/FerruleFunctions.DateTimeFormatting.cs",
+        "Runtime/FerruleFunctions.DateTimePictures.cs",
+        "Runtime/FerruleFunctions.EdifactDateTime.cs",
+        "Runtime/FerruleFunctions.FormatNumber.cs",
+        "Runtime/FerruleFunctions.Json.cs",
+        "Runtime/FerruleFunctions.Numeric.cs",
+        "Runtime/FerruleFunctions.Regex.cs",
+        "Runtime/FerruleFunctions.Strings.cs",
+        "Runtime/FerruleFunctions.cs",
+        "Runtime/FerruleGrouping.cs",
+        "Runtime/FerruleInstance.cs",
+        "Runtime/FerruleJoins.cs",
+        "Runtime/FerrulePathHierarchy.cs",
+        "Runtime/FerrulePrimaryRoot.cs",
+        "Runtime/FerruleRecursiveFilter.cs",
+        "Runtime/FerruleRuntimeException.cs",
+        "Runtime/FerruleScalarRegex.BinaryTables.cs",
+        "Runtime/FerruleScalarRegex.BoundaryCompiler.cs",
+        "Runtime/FerruleScalarRegex.BoundaryParser.cs",
+        "Runtime/FerruleScalarRegex.GraphemeTables.cs",
+        "Runtime/FerruleScalarRegex.Program.cs",
+        "Runtime/FerruleScalarRegex.Properties.cs",
+        "Runtime/FerruleScalarRegex.ScriptTables.cs",
+        "Runtime/FerruleScalarRegex.cs",
+        "Runtime/FerruleSequences.cs",
+        "Runtime/FerruleTargetSelection.cs",
+        "Runtime/FerruleUserFunctions.cs",
+        "Runtime/FerruleValue.cs",
+        "Runtime/FerruleValueMaps.cs",
+        "Runtime/FerruleXml.Boundary.cs",
+        "Runtime/FerruleXml.DocumentOutputs.cs",
+        "Runtime/FerruleXml.DocumentSet.cs",
+        "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
+        "Runtime/FerruleXml.DynamicSources.cs",
+        "Runtime/FerruleXml.Input.Structured.cs",
+        "Runtime/FerruleXml.Input.StructuredProjection.cs",
+        "Runtime/FerruleXml.Input.StructuredSchema.cs",
+        "Runtime/FerruleXml.Input.cs",
+        "Runtime/FerruleXml.InputDocumentOutputs.cs",
+        "Runtime/FerruleXml.InputDocumentSet.cs",
+        "Runtime/FerruleXml.InputSet.cs",
+        "Runtime/FerruleXml.Output.cs",
+        "Runtime/FerruleXml.OutputSet.cs",
+        "Runtime/FerruleXml.cs",
+        "Runtime/FerruleXmlMixedContent.cs",
+        "Runtime/FerruleXmlTypeOrigin.cs",
+        "Runtime/Json/FerruleJson.AllowedValues.cs",
+        "Runtime/Json/FerruleJson.Canonical.cs",
+        "Runtime/Json/FerruleJson.Contains.cs",
+        "Runtime/Json/FerruleJson.DependentSchemas.cs",
+        "Runtime/Json/FerruleJson.MultipleOf.cs",
+        "Runtime/Json/FerruleJson.ObjectOpenness.cs",
+        "Runtime/Json/FerruleJson.PatternProperties.cs",
+        "Runtime/Json/FerruleJson.Patterns.cs",
+        "Runtime/Json/FerruleJson.PropertyCounts.cs",
+        "Runtime/Json/FerruleJson.PropertyDependencies.cs",
+        "Runtime/Json/FerruleJson.PropertyNames.cs",
+        "Runtime/Json/FerruleJson.UniqueItems.cs",
+        "Runtime/Json/FerruleJson.cs",
+        "Runtime/ScalarPathResolver.cs",
+        "Runtime/ScopeContext.CollectionFind.cs",
+        "Runtime/ScopeContext.cs",
+        "Runtime/X12/FerruleX12.Completion.cs",
+        "Runtime/X12/FerruleX12.Lexical.cs",
+        "Runtime/X12/FerruleX12.Numeric.cs",
+        "Runtime/X12/FerruleX12.Reader.cs",
+        "Runtime/X12/FerruleX12.Schema.cs",
+        "Runtime/X12/FerruleX12.Writer.cs",
+        "Runtime/X12/FerruleX12.cs",
+        "Runtime/X12/FerruleX12Exception.cs",
+    ]);
+    let expected_runtime_count = expected_paths
+        .iter()
+        .filter(|path| path.starts_with("Runtime/"))
+        .count();
     let mut libraries = Vec::new();
     for (isa, version, direction) in [
         ("00401", "004010", "Both"),
@@ -543,13 +636,14 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
             format!("{paths:#?}"),
         )
         .unwrap();
-        assert_eq!(paths.len(), 86);
+        assert_eq!(paths, expected_paths);
+        assert_eq!(artifacts.files().len(), expected_paths.len());
         assert_eq!(
             paths
                 .iter()
                 .filter(|path| path.starts_with("Runtime/"))
                 .count(),
-            82
+            expected_runtime_count
         );
         let x12: std::collections::BTreeSet<_> = paths
             .iter()
@@ -671,6 +765,9 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
                 "-nr:false",
                 "-p:UseSharedCompilation=false",
                 "-p:NuGetAudit=false",
+                "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+                "-p:EnableTargetingPackDownload=false",
+                "-p:EnableRuntimePackDownload=false",
             ])
             .current_dir(&root),
     );

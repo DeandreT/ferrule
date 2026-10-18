@@ -94,6 +94,14 @@ pub fn validate_program_with_basic_owned_group_by(
     owned_sources::validate_basic_owned_group_by_emission(program)
 }
 
+/// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
+/// the qualified By, filter/sort/window and primary-row failure permissions.
+pub fn validate_program_with_basic_owned_sequence_item_at(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_sequence_item_at_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -105,6 +113,20 @@ fn validate_program_with_owned_profiles(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
     primary_row_failures: bool,
+) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_policies(
+        program,
+        profile,
+        primary_row_failures,
+        owned_sources::SequenceItemAtPolicy::Closed,
+    )
+}
+
+fn validate_program_with_owned_policies(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    primary_row_failures: bool,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
@@ -156,7 +178,12 @@ fn validate_program_with_owned_profiles(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_profiles(program, profile, primary_row_failures)
+    owned_sources::validate_closed_contexts_with_policies(
+        program,
+        profile,
+        primary_row_failures,
+        sequence_item_at,
+    )
 }
 
 fn validate_schema_metadata(
@@ -1349,8 +1376,8 @@ fn validate_scope(
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
     validate_basic_owned_filter_emission, validate_basic_owned_group_by_emission,
-    validate_basic_owned_row_failure_emission, validate_basic_owned_sort_emission,
-    validate_basic_owned_window_emission,
+    validate_basic_owned_row_failure_emission, validate_basic_owned_sequence_item_at_emission,
+    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
 };
 
 #[cfg(test)]

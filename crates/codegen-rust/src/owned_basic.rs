@@ -13,6 +13,7 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 #[path = "owned_basic_windows.rs"]
 mod windows;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;
+pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;

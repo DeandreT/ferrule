@@ -7906,3 +7906,4 @@ fn public_basic_sort_keeps_first_windows_other_families_and_uint_boundaries() {
 include!("owned_windows.rs");
 include!("owned_row_failures.rs");
 include!("owned_group_by.rs");
+include!("owned_sequence_item_at.rs");

@@ -149,6 +149,20 @@ pub fn emit_with_basic_owned_group_by(program: &Program) -> Result<ArtifactSet, 
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits scalar ItemAt over the four pure producers in a receiving Basic context.
+///
+/// Producer values precede one index evaluation in that same context. This
+/// companion composes By, prior controls, and primary-row failures without
+/// enabling ItemAt in owned failure predicates/messages or generated scopes.
+/// The two typed entry points retain mandatory limits and execution arguments.
+pub fn emit_with_basic_owned_sequence_item_at(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
+    codegen::validate_basic_owned_sequence_item_at_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_sequence_item_at_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
