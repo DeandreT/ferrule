@@ -95,6 +95,47 @@ document iteration, dynamic sources, user functions, and special construction
 are outside this Basic profile. Ordinary generation and the narrower
 owned-source, filter, and sort companions retain their respective contracts.
 
+## Explicit Basic primary-row failures
+
+`codegen::lower_with_basic_owned_row_failures` combines the window target profile
+with a separate global-failure permission. Emit with
+`codegen_rust::emit_with_basic_owned_row_failures(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_row_failures(&program)`. Direct Program
+callers can use `validate_basic_owned_row_failure_emission`; the corresponding
+`legacy_named_input_admission_plan_with_basic_owned_row_failures` retains global
+failure dependencies for every target selection. Existing generation companions
+keep their previous failure gates.
+
+A potentially owned rule must use one nonempty static source-collection segment
+under the Primary Group schema. At execution, its selected base must be the
+actual Primary Group root: named-source fallback, even to an aliased payload,
+does not establish ownership. The bounded observed walk retains borrowed row
+frames and raw structural positions, including null slots. A plain singleton
+does not gain a repetition position. Named owned fields read immutable static
+roots with no frame pin or an explicit empty root pin; named positions and
+nonempty named pins are outside this profile.
+
+The authenticated collection path does not require a same-name named input.
+Legacy reads in the rule's predicate or message still contribute their eager
+named-input requirements. Ordinary rules retain the ordinary collection-alias
+requirement, including when mixed with authenticated rules.
+
+Rules run once in stored order before any selected or all-target output. Each
+complete row cohort's count and metadata are admitted before predicates; each
+reached terminal is checked before its predicate or message. An earlier selected
+failure therefore precedes an unsupported later terminal. Predicates and scalar
+branches retain their normal evaluation rules, and messages run only for the
+first selected row. Ordinary rules without potential owned reads keep their
+ordinary route, independently of owned targets or other rules.
+
+Generated execution uses the same explicit-policy Basic entry points described
+above. Authentication failures are bare `UnsupportedPrimaryFailureContext`
+bridge errors. Reached specialized terminals retain `UnsupportedBasicContext`
+with their exact kind. Owned leaf failures retain their original node and typed
+cause; absent messages remain distinct from explicitly empty messages. Deeper
+or named-row iterations, repeated-root `Source[]`, generated/dynamic/specialized
+failure profiles and public observers remain closed.
+
 ## C#
 
 ### Build and test environment

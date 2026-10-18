@@ -40,6 +40,12 @@ pub fn lower_with_basic_owned_windows(project: &Project) -> Result<Program, Lowe
     lower_with_validator(project, crate::validate_program_with_basic_owned_windows)
 }
 
+/// Lower window-profile targets with explicitly admitted owned primary-row
+/// global failures, preserving the original failure iteration representation.
+pub fn lower_with_basic_owned_row_failures(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, crate::validate_basic_owned_row_failure_emission)
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,

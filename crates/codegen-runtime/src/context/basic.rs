@@ -16,6 +16,9 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+#[path = "basic_failures.rs"]
+mod failure_rows;
+
 /// Fixed bridge failures; no user text is copied into these diagnostics.
 #[derive(Debug, PartialEq, Eq)]
 pub enum BasicSourceBridgeError {
@@ -27,6 +30,9 @@ pub enum BasicSourceBridgeError {
     UnsupportedBasicContext {
         kind: InstanceKind,
     },
+    /// A primary-row failure boundary received a non-primary/non-Group base,
+    /// or invalid root context/request.
+    UnsupportedPrimaryFailureContext,
     PairedMetadataLimit {
         component: &'static str,
         used: usize,
@@ -1869,6 +1875,19 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
         #[cfg(test)]
         TERMINALS.with(|n| n.set(n.get() + 1));
         supported(terminal)?;
+        self.publish_terminal(acc, terminal_path)
+    }
+}
+
+impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
+    // Only the primary-failure wrapper may defer terminal-domain checking until
+    // a row is reached. All provenance and allocation still comes from this
+    // same observed producer; the ordinary walk checks the terminal above.
+    fn publish_terminal(
+        &mut self,
+        acc: &[ScopeFrame<'ctx>],
+        terminal_path: &[String],
+    ) -> Result<BasicSourceCandidate<'ctx>, RuntimeError> {
         owned_charge(
             OwnedSourceLimitKind::WalkContexts,
             self.produced,

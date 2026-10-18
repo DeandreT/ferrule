@@ -6,15 +6,67 @@ use super::*;
 pub(crate) fn render_public_basic_owned_window_source(
     program: &Program,
 ) -> Result<String, EmitError> {
+    render_public_basic_owned_source_profile(program, false)
+}
+
+pub(crate) fn render_public_basic_owned_row_failure_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_profile(program, true)
+}
+
+fn render_public_basic_owned_source_profile(
+    program: &Program,
+    primary_row_failures: bool,
+) -> Result<String, EmitError> {
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
-    codegen::validate_basic_owned_window_emission(program)?;
+    if primary_row_failures {
+        codegen::validate_basic_owned_row_failure_emission(program)?;
+    } else {
+        codegen::validate_basic_owned_window_emission(program)?;
+    }
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".into(), &mut scopes);
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
-    let retained = expression_usage(program, &scopes);
+    let mut basic = BTreeSet::new();
+    mark_basic_scopes(program, &program.root, "scope_root", false, &mut basic);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        mark_basic_scopes(
+            program,
+            &target.root,
+            &format!("scope_extra_{index}"),
+            false,
+            &mut basic,
+        );
+    }
+    let basic_scopes = scopes
+        .iter()
+        .filter(|(name, _, _, _)| basic.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let legacy_scopes = scopes
+        .iter()
+        .filter(|(name, _, _, _)| !basic.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    // Failures execute in the paired context, but legacy-only target nodes do
+    // not. Retain each expression only in the contexts that actually call it.
+    let basic_retained = expression_usage(program, &basic_scopes);
+    let legacy_retained = rows::target_expression_usage(program, &legacy_scopes);
+    let mut basic_call_targets = BTreeSet::from(["scope_root".to_owned()]);
+    basic_call_targets.extend(
+        program
+            .extra_targets
+            .iter()
+            .enumerate()
+            .map(|(index, _)| format!("scope_extra_{index}")),
+    );
+    for (_, _, children, _) in &basic_scopes {
+        basic_call_targets.extend(children.iter().cloned());
+    }
     let functions = BTreeMap::new();
     let mut source = String::from(
         "// Basic owned-source entry points require an explicit native policy per call.\n\
@@ -26,7 +78,7 @@ pub(crate) fn render_public_basic_owned_window_source(
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
     if program.expressions.iter().any(|node| {
-        retained.contains(&node.id)
+        basic_retained.contains(&node.id)
             && matches!(&node.expression, Expression::OwnedSourceField(field)
                 if field.frame.as_ref().is_some_and(Vec::is_empty))
     }) {
@@ -60,7 +112,7 @@ pub(crate) fn render_public_basic_owned_window_source(
         );
     source.push_str(&entries);
     for node in &program.expressions {
-        if retained.contains(&node.id) {
+        if basic_retained.contains(&node.id) {
             source.push_str(&render_expression_in_context(
                 node.id,
                 &node.expression,
@@ -77,25 +129,12 @@ pub(crate) fn render_public_basic_owned_window_source(
         }
     }
     if !program.failure_rules.is_empty() {
-        source.push_str(&failure::render_basic(program)?);
+        source.push_str(&if primary_row_failures {
+            failure::render_basic_with_row_failures(program)?
+        } else {
+            failure::render_basic(program)?
+        });
     }
-    let mut basic = BTreeSet::new();
-    mark_basic_scopes(program, &program.root, "scope_root", false, &mut basic);
-    for (index, target) in program.extra_targets.iter().enumerate() {
-        mark_basic_scopes(
-            program,
-            &target.root,
-            &format!("scope_extra_{index}"),
-            false,
-            &mut basic,
-        );
-    }
-    let legacy_scopes = scopes
-        .iter()
-        .filter(|(name, _, _, _)| !basic.contains(name))
-        .cloned()
-        .collect::<Vec<_>>();
-    let legacy_retained = expression_usage(program, &legacy_scopes);
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
         for node in &program.expressions {
@@ -131,10 +170,18 @@ pub(crate) fn render_public_basic_owned_window_source(
                 scope,
                 &legacy_children,
             )?);
-            source.push_str(&format!("fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    {legacy_name}(context.legacy_view())\n}}\n\n"));
+            // A legacy parent calls its legacy children directly. Only entry
+            // roots and children called by paired scopes need a Basic adapter.
+            if basic_call_targets.contains(&name) {
+                source.push_str(&format!("fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    {legacy_name}(context.legacy_view())\n}}\n\n"));
+            }
         }
     }
-    let plan = codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?;
+    let plan = if primary_row_failures {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
+    } else {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+    };
     source.push_str(
         "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
     );
@@ -186,7 +233,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
         return true;
     }
     let one = vec![(String::new(), scope, Vec::new(), Vec::new())];
-    let retained = expression_usage(program, &one);
+    let retained = rows::target_expression_usage(program, &one);
     program.expressions.iter().any(|node| {
         retained.contains(&node.id)
             && matches!(

@@ -12,7 +12,10 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 
 #[path = "owned_basic_windows.rs"]
 mod windows;
+pub(crate) use windows::render_public_basic_owned_row_failure_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
+#[path = "owned_basic_rows.rs"]
+mod rows;
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
     render_basic_owned_source_with_nodes(program, false, false)
@@ -485,6 +488,7 @@ fn render_entries(program: &Program) -> String {
          // Trusted declaration precondition: exact complete Program name/order/count,\n\
          // optional bindings and original ordinals. This private route does not\n\
          // normalize arbitrary supplied inputs or attach a dynamic source loader.\n\
+         #[allow(dead_code)]\n\
          pub(crate) fn execute_private_owned_basic<'src>(\n\
              source: &'src Instance, declared: &'src [DeclaredNamedSourceRoot<'src>],\n\
              execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,\n\
@@ -501,7 +505,7 @@ fn render_entries(program: &Program) -> String {
         source.push_str(&format!("        NamedOutput {{ name: {}.to_string(), instance: scope_extra_{index}(&context)? }},\n", rust_string(&target.name)));
     }
     source.push_str("    ];\n    Ok(ExecutionOutputs { primary, extras })\n}\n\n");
-    source.push_str("pub(crate) fn execute_selected_private_owned_basic<'src>(\n    source: &'src Instance, declared: &'src [DeclaredNamedSourceRoot<'src>],\n    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    let selected = match selection {\n        TargetSelection::Primary => 0,\n        TargetSelection::Named(name) => match name {\n");
+    source.push_str("#[allow(dead_code)]\npub(crate) fn execute_selected_private_owned_basic<'src>(\n    source: &'src Instance, declared: &'src [DeclaredNamedSourceRoot<'src>],\n    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    let selected = match selection {\n        TargetSelection::Primary => 0,\n        TargetSelection::Named(name) => match name {\n");
     for (index, target) in program.extra_targets.iter().enumerate() {
         source.push_str(&format!(
             "            {} => {},\n",
