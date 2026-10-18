@@ -109,10 +109,10 @@ internal static class Driver
                 node: node, mappingExceptionMessage: message));
         if (kind == "NotABool")
         {
-            var found = recipe["found"]!.GetValue<string>();
+            var booleanKind = recipe["found"]!.GetValue<string>();
             return Error(new FerruleRuntimeException(FerruleRuntimeError.NotABool,
-                $"Graph node {node} expected a bool, found {found}.", node: node,
-                foundKind: found == "null" ? FerruleValueKind.Null : FerruleValueKind.String));
+                $"Graph node {node} expected a bool, found {booleanKind}.", node: node,
+                foundKind: booleanKind == "null" ? FerruleValueKind.Null : FerruleValueKind.String));
         }
         if (kind is not ("OwnedSource" or "InactivePosition"))
             throw new InvalidOperationException("Unknown frozen error recipe.");
