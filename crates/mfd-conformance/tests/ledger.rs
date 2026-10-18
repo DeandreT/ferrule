@@ -76,19 +76,23 @@ fn missing_fields_unknown_fields_and_invalid_states_reject() {
             "missing field",
         );
     }
-    rejected(
-        |document| {
-            document["capabilities"][0]["support"]["vendor_backends"]
-                .as_object_mut()
-                .expect("object")
-                .remove("java");
-        },
-        "missing field",
-    );
-    rejected(
-        |document| document["schema_version"] = json!(2),
-        "schema_version must be 1",
-    );
+    for backend in ["java", "xslt3", "built_in"] {
+        rejected(
+            |document| {
+                document["capabilities"][0]["support"]["vendor_backends"]
+                    .as_object_mut()
+                    .expect("object")
+                    .remove(backend);
+            },
+            &format!("missing field `{backend}`"),
+        );
+    }
+    for version in [1, 3] {
+        rejected(
+            |document| document["schema_version"] = json!(version),
+            "schema_version must be 2",
+        );
+    }
     rejected(
         |document| document["invented"] = json!(true),
         "unknown field",

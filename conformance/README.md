@@ -37,8 +37,8 @@ to create a focused development gate. Each option is inclusive; omitting an
 axis selects all values on that axis. Unknown, duplicate, or empty
 profile/capability intersections fail. Dimension names are `import`,
 `interpreter`, `native_export`, `ferrule_roundtrip`, `gui`, `debug`, `rust`,
-`csharp`, and `vendor_backends.xslt1`, `.xslt2`, `.xquery1`, `.cpp`, `.java`,
-`.csharp`. For example:
+`csharp`, and `vendor_backends.xslt1`, `.xslt2`, `.xslt3`, `.xquery1`, `.cpp`,
+`.java`, `.csharp`, `.built_in`. For example:
 
 ```sh
 cargo run -p mfd-conformance -- gate \
@@ -55,10 +55,16 @@ development slice without implying that the product or profile is complete.
 
 Each capability independently assesses MFD import, interpreter execution,
 native MFD export acceptance, Ferrule self-roundtrip, GUI authoring,
-debugging, Ferrule Rust/C# generation, and vendor XSLT 1.0, XSLT 2.0, XQuery 1.0,
-C++, Java and C# backends. Vendor-backend applicability must be checked per
-capability: the presence of a language in this schema does not imply that every
-format or operation is available in that language.
+debugging, Ferrule Rust/C# generation, and vendor XSLT 1.0, XSLT 2.0, XSLT 3.0,
+XQuery 1.0, C++, Java, C# and BUILT-IN environments. These eight vendor
+environments follow the official Enterprise manual's
+[feature](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_featingencode.html)
+and [format](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_sourcestargets.html)
+matrices. Vendor BUILT-IN execution is distinct from Ferrule's `interpreter`;
+neither its applicability nor its results transfer between those dimensions.
+Vendor-backend applicability must be checked for the pinned release and exact
+operation: a matrix column does not establish that every format or operation is
+available there. Documentation claims are not execution receipts.
 
 | Status | Meaning |
 |---|---|
@@ -84,7 +90,7 @@ Add native profile coverage only after native lowering and vendor acceptance
 are proved.
 Neither profile should silently inherit status from the other.
 
-Version 1 uses required, strictly typed fields; unknown fields and unknown
+Version 2 uses required, strictly typed fields; unknown fields and unknown
 enum values reject. Every ID must be unique within its namespace and use
 lowercase ASCII letters, digits, dots, underscores or hyphens. All profile,
 capability-dependency and evidence references must resolve. Duplicate references,
@@ -92,6 +98,30 @@ dependency cycles, empty inventories, blank explanations, unsafe or missing
 local evidence paths and missing status dimensions reject. Both profiles must
 have at least one capability. HTTPS documentation locations are checked
 structurally but are not fetched by the validator.
+
+### Migrating version-1 ledgers
+
+Schema version 2 requires `support.vendor_backends.xslt3` and
+`support.vendor_backends.built_in` on every capability, in both native and
+Ferrule-extension profiles. Set the root `schema_version` to `2` and add an
+explicit assessment for each new environment. When no independent assessment
+exists, use `status: "unassessed"`, `evidence: []`, and a nonblank detail stating
+that pinned-release, operation and backend applicability and execution proof are
+unknown. Preserve all existing assessments, evidence references, IDs, profiles
+and dependencies; do not copy interpreter support or another vendor backend's
+status. An incomplete inventory remains `inventory_complete: false`.
+
+This is a wire-incompatible schema change, not an optional-field extension.
+Version-1 readers reject the new fields, and version-2 readers reject missing
+fields or an unsupported root version. Strict structural deserialization occurs
+before version validation, so an untouched legacy ledger may first report a
+missing field. No fallback reader or implicit assessment promotion is provided.
+Keep archival version-1 records unchanged; migrate an explicitly selected copy
+before validation. New environments participate independently in summaries and
+gates; unassessed cells fail, and supported/partial cells require their own
+`vendor_execution` reference under the existing evidence rules. Native-profile
+vendor exclusions require vendor documentation or execution; Ferrule-extension
+exclusions may use repository evidence. An all-excluded gate still fails.
 
 To extend the inventory, split broad seeded rows into individually testable
 functions, configuration commands, formats, connector operations and workflows.
@@ -133,7 +163,7 @@ change ledger statuses or imply that every gate has passed.
 ## JSON object-schema inventory proposal
 
 [`json-object-schemas.proposal.json`](json-object-schemas.proposal.json) is a
-separate version-1 ledger for a bounded object family. It does not replace the
+separate version-2 ledger for a bounded object family. It does not replace the
 canonical `formats.json` capability, change any historical assessment, or claim
 that the inventory is complete. Existing IDs keep their original scope. The
 new `json.objects.<operation>.native` and `.extensions` IDs are proposed child
@@ -169,7 +199,7 @@ classified as unsupported.
 
 The assessment table below applies separately to each exact operation. The
 proposal repeats the concrete missing proof in every cell, including each of
-the six vendor backends.
+the eight vendor environments.
 
 | Dimension | Native candidate status and applicability | Extension-profile status and applicability |
 | --- | --- | --- |
@@ -183,10 +213,12 @@ the six vendor backends.
 | `csharp` | `unverified`: separate compiled generated public JSON case results missing; Rust/emission results do not transfer. | `unassessed`: extension lowering/runtime eligibility unknown. |
 | `vendor_backends.xslt1` | `unassessed`: XSLT 1.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
 | `vendor_backends.xslt2` | `unassessed`: XSLT 2.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.xslt3` | `unassessed`: XSLT 3.0 pinned-release/operation/backend applicability and independent execution proof unknown. | `unassessed`: pinned-release/operation/backend applicability and independent extension execution proof unknown. |
 | `vendor_backends.xquery1` | `unassessed`: XQuery 1.0 operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
 | `vendor_backends.cpp` | `unassessed`: C++ operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
 | `vendor_backends.java` | `unassessed`: Java operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
 | `vendor_backends.csharp` | `unassessed`: vendor C# operation/format eligibility and pinned generate/compile/run evidence unknown. | `unassessed`: independent extension/backend eligibility unknown. |
+| `vendor_backends.built_in` | `unassessed`: vendor BUILT-IN pinned-release/operation/backend applicability and independent execution proof unknown; Ferrule interpreter results do not transfer. | `unassessed`: pinned-release/operation/backend applicability and independent extension execution proof unknown; no automatic exclusion. |
 
 No external dependency is established as blocking these cells, so none is
 labelled `blocked`; lack of an assessment or run is stated as unknown or
