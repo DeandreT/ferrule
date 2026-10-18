@@ -8,6 +8,8 @@ use super::schema::{parse_u32, schema_node_at};
 pub(super) struct RequiredStringInput {
     output: u32,
     name: String,
+    default_pins: Vec<Option<u32>>,
+    default_connected: bool,
 }
 
 pub(super) fn required_string_inputs(parser: roxmltree::Node<'_, '_>) -> Vec<RequiredStringInput> {
@@ -99,16 +101,21 @@ fn required_string_input(
     if declared_output_count(siblings.iter().copied(), output) != 1 {
         return None;
     }
-    // A named input may declare one unconnected default pin. Its connectedness
-    // is checked against the actual GraphBuilder below.
-    let input_pins =
-        exact_pins(component, "sources", 0).or_else(|| exact_pins(component, "sources", 1))?;
-    if input_pins.contains(&output) {
+    // Preserve the saved absence grammar before normalizing pins. A keyless
+    // position-zero placeholder is not an unknown or connected default.
+    let default_pins = super::optional_parser_input::default_pins(component)?;
+    if default_pins.contains(&Some(output)) {
         return None;
     }
+    let default_connected = default_pins
+        .iter()
+        .flatten()
+        .any(|key| super::optional_parser_input::raw_default_is_connected(component, *key));
     Some(RequiredStringInput {
         output,
         name: name.to_string(),
+        default_pins,
+        default_connected,
     })
 }
 
@@ -275,10 +282,13 @@ fn required_string_parameter(
         || parameter.input_type != Some(ScalarType::String)
         || parameter.outputs.as_slice() != [feed]
         || parameter.output_pins.as_slice() != [Some(feed)]
+        || parameter.inputs != witness.default_pins
+        || witness.default_connected
         || parameter
             .inputs
             .iter()
-            .any(|input| input.is_none_or(|input| builder.edge_from.contains_key(&input)))
+            .flatten()
+            .any(|input| builder.edge_from.contains_key(input))
         || !parameter
             .input_parameter_name
             .as_ref()
