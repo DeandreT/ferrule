@@ -498,8 +498,8 @@ struct Origin {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OriginKind {
     Ordinary,
-    GroupWrapper,
-    GroupMembers,
+    KeyedGroupWrapper,
+    KeyedGroupMembers,
 }
 
 #[derive(Clone, Copy)]
@@ -834,7 +834,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
                     .ok_or(BasicSourceBridgeError::RegistryMismatch)?;
                 (
                     origin.path.len(),
-                    usize::from(origin.kind == OriginKind::GroupWrapper && !path.is_empty()),
+                    usize::from(origin.kind == OriginKind::KeyedGroupWrapper && !path.is_empty()),
                 )
             }
             Some(LegacySelected::NamedBinding(_)) => (0, 1),
@@ -1880,7 +1880,7 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
                 }
                 self.key = origin.owner;
                 self.base = &origin.path;
-                if origin.kind == OriginKind::GroupWrapper {
+                if origin.kind == OriginKind::KeyedGroupWrapper {
                     self.prefix_len = 1;
                     self.raw_head = match self.parent.legacy.frames[index].instance {
                         Instance::Group(fields) => fields.first().map(|field| field.0.as_str()),

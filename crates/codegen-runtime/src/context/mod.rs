@@ -731,7 +731,8 @@ struct OwnedSourceFrame<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OwnedOccurrenceKind {
     Item,
-    ByGroup,
+    // Authenticated member containers minted only by paired By / AdjacentBy.
+    KeyedGroup,
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.

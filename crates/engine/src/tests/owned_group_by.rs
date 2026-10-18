@@ -562,6 +562,24 @@ fn neighboring_grouping_modes_and_specialized_consumers_stay_closed() {
             2 => p.root.group_ending_with = Some(5),
             _ => p.root.group_into_blocks = Some(8),
         }
+        if mode == 0 {
+            // #442 adds this one neighboring family; the original fixture is
+            // retained as a literal adjacent control, not a new By baseline.
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P",
+                    &[
+                        ("a1", &["a1"]),
+                        ("b1", &["b1"]),
+                        ("a2", &["a2"]),
+                        ("c1", &["c1"]),
+                        ("b2", &["b2"])
+                    ]
+                ))
+            );
+            continue;
+        }
         assert!(matches!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -1240,7 +1258,7 @@ fn trusted_empty_group_is_null_and_never_an_identity_or_another_owner_rescue() {
             collection: path(&["Rows"]),
             item: &empty,
             position_slot: 0,
-            kind: OccurrenceKind::ByGroup,
+            kind: OccurrenceKind::KeyedGroup,
         }],
         origins: vec![],
         owned_ancestry: true,

@@ -1,0 +1,10 @@
+[package]
+name = "ferrule-generated-mapping"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+codegen-runtime = { path = "/home/deandre/.local/share/opencode/worktree/46e7500c1bca51739be34e89a033c1d259eefdd1/basic-primary-row-failures/crates/codegen-runtime" }
+
+[workspace]

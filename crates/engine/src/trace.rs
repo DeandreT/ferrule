@@ -1365,7 +1365,7 @@ pub(crate) fn with_owned_witness<R>(
         domain: if owned
             .frames
             .iter()
-            .any(|frame| frame.kind == crate::owned_context::OccurrenceKind::ByGroup)
+            .any(|frame| frame.kind == crate::owned_context::OccurrenceKind::KeyedGroup)
         {
             TraceOwnedDomain::Grouped
         } else {

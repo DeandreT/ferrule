@@ -423,11 +423,11 @@ impl<'a> SourceRoots<'a> {
     }
 }
 
-/// Only the owned By evaluator may mint the synthetic member-container case.
+/// Only admitted owned By/AdjacentBy evaluators mint the keyed member container.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OccurrenceKind {
     Item,
-    ByGroup,
+    KeyedGroup,
 }
 
 #[derive(Clone)]
@@ -442,7 +442,7 @@ pub(crate) struct SourceFrame<'a> {
 impl SourceFrame<'_> {
     fn representative(&self) -> Option<&Instance> {
         match (self.kind, self.item) {
-            (OccurrenceKind::ByGroup, Instance::Repeated(members)) => members.first(),
+            (OccurrenceKind::KeyedGroup, Instance::Repeated(members)) => members.first(),
             _ => Some(self.item),
         }
     }
@@ -451,8 +451,8 @@ impl SourceFrame<'_> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SourceOriginKind {
     Ordinary,
-    ByGroupWrapper,
-    ByGroupMembers,
+    KeyedGroupWrapper,
+    KeyedGroupMembers,
 }
 
 #[derive(Clone)]
@@ -511,11 +511,11 @@ impl<'a> OwnedContext<'a> {
                     .iter()
                     .rev()
                     .find(|frame| frame.owner == key && frame.collection == pin);
-                // A ByGroup at C=[] does not redefine an explicit root pin.
+                // A KeyedGroup at C=[] does not redefine an explicit root pin.
                 // Ordinary repeated-root Item pins keep their active-item rule;
                 // the latest exact member frame also shadows an enclosing group.
                 if pin.is_empty()
-                    && (frame.is_some_and(|frame| frame.kind == OccurrenceKind::ByGroup)
+                    && (frame.is_some_and(|frame| frame.kind == OccurrenceKind::KeyedGroup)
                         || (!declared_repeating && !matches!(root, Instance::Repeated(_))))
                 {
                     (root, suffix)
@@ -625,7 +625,7 @@ impl<'a> OwnedContext<'a> {
             .rev()
             .find(|origin| std::ptr::eq(origin.item, base))
         {
-            if origin.kind == SourceOriginKind::ByGroupWrapper
+            if origin.kind == SourceOriginKind::KeyedGroupWrapper
                 && let Instance::Group(fields) = origin.item
                 && let [(label, members)] = fields.as_slice()
                 && let Some((segment, tail)) = path.split_first()

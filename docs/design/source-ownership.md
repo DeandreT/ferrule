@@ -10,14 +10,14 @@ An owner selects immutable primary or one exact named endpoint. Preserve name by
 
 Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
 
-## Group-by occurrence identity
+## Keyed-group occurrence identity
 
-An owned By group carries a private grouped occurrence at its exact owner and
+An owned By or AdjacentBy group carries a private grouped occurrence at its exact owner and
 absolute collection path. It exposes the first surviving ordered member for
 scalar reads, a compact group ordinal for positions, and its complete ordered
 members for nested collection iteration. A nested member creates an ordinary
 occurrence with its own position; other owners and incoming ancestor frames are
-preserved. An explicit empty frame at a By-group root reads the immutable
+preserved. An explicit empty frame at a keyed-group root reads the immutable
 endpoint root. The latest exact-owner frame governs selection, so a nested
 ordinary repeated-root member retains its active-item pin behavior.
 
@@ -34,13 +34,19 @@ and children use the resulting grouped context. These distinct roles also govern
 dependency discovery. See [the generated group-by contract](../code-generation.md#explicit-owned-group-by)
 for ordering, explicit profile selection and metadata admission.
 
+Adjacent grouping compares only the last constructed run. Filtering before
+grouping can bring equal keys together; removing an unretained run afterward
+does not merge neighboring runs. The [adjacent contract](owned-group-adjacent-by.md)
+uses the same authenticated occurrence and member rules under its own explicit
+generation companion.
+
 ## Parent-context scalar sequence selection
 
 `SequenceItemAt` over Generate, Tokenize, TokenizeByLength or TokenizeRegex uses
 the receiving source context for both producer arguments and its once-evaluated
 index. Production completes first, including empty and null-suppressed sequences;
 producer errors precede the index. The consumer creates no source frame, so
-endpoint ownership, parent pins and By representative/member positions retain
+endpoint ownership, parent pins and keyed-group representative/member positions retain
 their ordinary meaning. Nested eligible ItemAt expressions use that same rule.
 
 The explicit generated companion selects an orthogonal consumer permission

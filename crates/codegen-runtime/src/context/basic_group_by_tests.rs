@@ -2005,11 +2005,11 @@ fn ordinary_empty_member_pin_uses_latest_item_even_with_older_root_by_group() {
                 for member in members.iter() {
                     let c = member.context();
                     // Establish that this is the newest Item over a retained
-                    // ByGroup at the very same empty collection, not a fresh root.
+                    // KeyedGroup at the very same empty collection, not a fresh root.
                     let frames = &c.owned.frames;
                     assert_eq!(frames.len(), 2);
                     assert!(frames[0].collection.is_empty());
-                    assert!(frames[0].kind == OwnedOccurrenceKind::ByGroup);
+                    assert!(frames[0].kind == OwnedOccurrenceKind::KeyedGroup);
                     assert!(frames[1].collection.is_empty());
                     assert!(frames[1].kind == OwnedOccurrenceKind::Item);
                     let value = c.owned_field(owner, &["Label"], Some(&[]))?;
@@ -2191,3 +2191,6 @@ fn nonempty_by_group_empty_pin_keeps_existing_declared_nonrepeating_root_rule() 
         assert_eq!(output, vec![scalar(Value::Int(7))]);
     }
 }
+
+#[path = "basic_group_adjacent_by_tests.rs"]
+mod basic_group_adjacent_by;

@@ -229,11 +229,11 @@ impl<'a> Admission<'a> {
                     context,
                 });
             }
-            // Only an admitted By scope introduces grouped owned ancestry.
+            // Only admitted By/AdjacentBy scopes introduce grouped owned ancestry.
             // Closed legacy scopes still report their original owned-node cause,
             // rather than being promoted into an earlier scope-level refusal.
             ancestry |= context == OwnedCapabilityContext::Basic
-                && scope.group_by.is_some()
+                && (scope.group_by.is_some() || scope.group_adjacent_by.is_some())
                 && scope_demands_owned(self.project, scope);
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
@@ -796,10 +796,10 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     if scope.iteration_output == mapping::IterationOutput::MappedSequence {
         return OwnedCapabilityContext::XmlOperator;
     }
-    // By is the only authenticated owned grouping family. A retention predicate
-    // alone does not introduce a group, nor do source-free or conflicting modes.
+    // Only By and AdjacentBy authenticate owned keyed member containers. A
+    // retention predicate alone, source-free or conflicting modes do not.
     if (scope.has_grouping() || scope.post_group_filter.is_some())
-        && !(scope.group_by.is_some()
+        && !((scope.group_by.is_some() || scope.group_adjacent_by.is_some())
             && !scope.has_conflicting_grouping()
             && scope.source_selector().is_some())
     {
