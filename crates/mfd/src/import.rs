@@ -2383,6 +2383,8 @@ fn import_resolved(
         }
     }
 
+    let dormant_parser_parameters = builder.dormant_json_parser_parameters();
+
     // Dynamic document inputs must establish their driver frames before any
     // target expression is materialized. A filename expression can also feed
     // an ordinary target binding, and SourceField nodes created there need the
@@ -2602,6 +2604,9 @@ fn import_resolved(
     };
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     project.prune_unreachable_nodes();
+    // These declarations are retained for host inspection, not as executable
+    // roots. Their dormant parser introduces no evaluation dependency.
+    project.graph.nodes.extend(dormant_parser_parameters);
     // Global-ID counters still lower to Null, including through unanchored
     // scalar consumers. Only retained placeholders are import blockers; an
     // unused eager placeholder must not reject an otherwise supported project.

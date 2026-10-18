@@ -1,0 +1,9 @@
+[
+  {"input":"{\"Message\":\"hello\"}","expected":{"Message":"hello"}},
+  {"input":"{\"Message\":\"Ω 😀\\nline\"}","expected":{"Message":"Ω 😀\nline"}},
+  {"input":"{\"Message\":\"\"}","expected":{"Message":""}},
+  {"input":"{", "reject":true},
+  {"input":"{\"Message\":null}","reject":true},
+  {"input":"{}","reject":true},
+  {"input":"{\"Message\":\"ok\",\"Unexpected\":true}","reject":true}
+]

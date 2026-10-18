@@ -929,7 +929,7 @@ fn read_json_component_resolved(
     if let Some(target) = &dynamic_json {
         in_count += target.input_count();
     }
-    if out_count == 0 && in_count == 0 {
+    if out_count == 0 && in_count == 0 && !super::json_parser::has_no_declared_outputs(component) {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
