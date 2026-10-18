@@ -89,6 +89,25 @@ pub fn import_with_root(
     import_value(&value)
 }
 
+/// Supplies immutable bytes for an authorized absolute schema identity. The
+/// host owns physical resource authorization and any digest policy. Imports
+/// using this reader never reopen the supplied identities as filesystem paths.
+pub trait JsonSchemaByteReader {
+    fn read(&self, resource: &std::path::Path) -> std::io::Result<std::sync::Arc<[u8]>>;
+}
+
+/// Imports a schema and its relative local-file references from immutable host
+/// buffers. Identities are normalized lexically within `resource_root`; the
+/// ordinary schema, document-count, depth and aggregate-byte limits still apply.
+pub fn import_with_byte_reader(
+    path: &std::path::Path,
+    resource_root: &std::path::Path,
+    reader: std::rc::Rc<dyn JsonSchemaByteReader>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let value = files::load_with_byte_reader(path, resource_root, reader)?;
+    import_value(&value)
+}
+
 /// Imports UTF-8 JSON Schema text without opening files. Document-local `$ref`
 /// pointers and the declared dialect have the same behavior as file imports;
 /// external resources reject. Input retains the file loader's 64 MiB limit.
