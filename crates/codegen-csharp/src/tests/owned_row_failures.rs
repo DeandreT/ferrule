@@ -52,9 +52,7 @@ fn retain_public_row_failure_consumer(label: &str, program: &Program, body: &str
             .clone(),
     )
     .unwrap();
-    let host = PUBLIC_BASIC_CONSUMER
-        .replace("__ERROR_SNAPSHOT__", HOST_ERROR_SNAPSHOT)
-        .replace("__BODY__", body);
+    let host = public_basic_consumer(body, false);
     if let Some(base) = std::env::var_os("FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR") {
         let base = std::path::PathBuf::from(base);
         assert!(base.is_absolute(), "host directory must be absolute");

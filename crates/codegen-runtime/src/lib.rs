@@ -36,6 +36,10 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
+    BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
+    BasicNamedJsonDocumentRef, admit_basic_json_inputs,
+};
+pub use context::{
     BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext,
     BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
     PhaseSelection, RetainedSourceCohort,
@@ -81,7 +85,8 @@ pub use iteration::{
 };
 pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
-    parse_json_bytes, serialize_json, serialize_json_bytes,
+    parse_json_bytes, parse_json_bytes_with_utf8_cause, serialize_json, serialize_json_bytes,
+    serialize_json_compact, serialize_json_compact_bytes,
 };
 pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,

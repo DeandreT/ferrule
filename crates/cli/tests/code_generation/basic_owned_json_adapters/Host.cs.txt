@@ -1,0 +1,234 @@
+using System.Collections;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+    private static string? Count(nuint? value) => value?.ToString(CultureInfo.InvariantCulture);
+    private static void Write(string directory, string name, string text) => WriteBytes(directory, name, Utf8.GetBytes(text));
+    private static void WriteBytes(string directory, string name, byte[] bytes)
+    {
+        using var file = new FileStream(Path.Combine(directory, name), FileMode.CreateNew, FileAccess.Write);
+        file.Write(bytes); file.Flush();
+    }
+    private static FerruleOwnedSourceLimits Limits(string profile) => profile switch
+    {
+        "generous" => new(8, 8, 32, 1_048_576, 128),
+        "zero" => new(0, 0, 0, 0, 0), "no-roots" => new(0, 8, 32, 1_048_576, 128),
+        "no-name-bytes" => new(8, 8, 32, 0, 128), "catalogue-name-bytes" => new(8, 8, 32, 22, 128),
+        _ => throw new InvalidOperationException("Frozen policy profile."),
+    };
+    // Every public typed exception field and all nested causes precede comparison.
+    private static JsonNode Error(Exception error) => Json(new {
+        type = error.GetType().FullName, message = error.Message, hresult = error.HResult,
+        data = error.Data.Cast<DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+        inner = error.InnerException is null ? null : Error(error.InnerException),
+        argument = error is ArgumentException argument ? new { parameter = argument.ParamName } : null,
+        decoder = error is DecoderFallbackException decoder ? new { index = decoder.Index, bytes = decoder.BytesUnknown } : null,
+        syntax = error is JsonException syntax ? new { path = syntax.Path, line = syntax.LineNumber, position = syntax.BytePositionInLine } : null,
+        runtime = error is FerruleRuntimeException runtime ? Json(new {
+            category = runtime.Error.ToString(), node = runtime.Node, function = runtime.Function,
+            expected_arity = runtime.ExpectedArity, actual_arity = runtime.ActualArity,
+            found_kind = runtime.FoundKind?.ToString(), aggregate = runtime.AggregateOperation?.ToString(), detail = runtime.Detail,
+            requested_items = runtime.RequestedItems?.ToString(CultureInfo.InvariantCulture),
+            maximum_items = runtime.MaximumItems?.ToString(CultureInfo.InvariantCulture), maximum_depth = runtime.MaximumDepth,
+            runtime_value = runtime.RuntimeValue?.ToString(), rule = runtime.FailureRule,
+            mapping_failure_message = runtime.MappingFailureMessage, mapping_exception_message = runtime.MappingExceptionMessage,
+            join = runtime.Join, user_function = runtime.UserFunction, function_parameter = runtime.FunctionParameter,
+            expected_scalar_type = runtime.ExpectedScalarType?.ToString(), runtime_parameter = runtime.RuntimeParameter,
+            source_field = runtime.SourceField, found_instance = runtime.FoundInstance, primary_root = runtime.PrimaryRoot,
+            owned_identity = runtime.OwnedSourceFailure is null ? (bool?)null : ReferenceEquals(runtime.OwnedSourceFailure, runtime.InnerException),
+            bridge_identity = runtime.BasicSourceBridgeFailure is null ? (bool?)null : ReferenceEquals(runtime.BasicSourceBridgeFailure, runtime.InnerException),
+        }) : null,
+        owned = error is FerruleOwnedSourceException owned ? Json(new {
+            category = owned.Error.ToString(), owner = owned.Owner is null ? null : new { primary = owned.Owner.IsPrimary, name = owned.Owner.Name },
+            requested_name = owned.RequestedName, declarations = owned.DeclarationIndices, path = owned.Path, frame = owned.Frame,
+            collection = owned.Collection, segment = Count(owned.Segment), found = owned.FoundInstance?.ToString(),
+            index = Count(owned.RequestedIndex), limit = owned.LimitKind?.ToString(), used = Count(owned.Used),
+            requested = Count(owned.Requested), maximum = Count(owned.Maximum),
+        }) : null,
+        traversal = error is FerruleOwnedSourceTraversalException traversal ? Json(new {
+            category = traversal.Error.ToString(), path = traversal.Path, segment = Count(traversal.Segment), found = traversal.Found.ToString(),
+        }) : null,
+        bridge = error is FerruleBasicSourceBridgeException bridge ? Json(new {
+            category = bridge.Error.ToString(), component = bridge.Component?.ToString(), used = Count(bridge.Used),
+            requested = Count(bridge.Requested), maximum = Count(bridge.Maximum), input_ordinal = Count(bridge.InputOrdinal),
+            candidate_ordinal = Count(bridge.CandidateOrdinal), declaration_index = Count(bridge.DeclarationIndex),
+            declared_count = Count(bridge.DeclaredCount), found = bridge.Found?.ToString(),
+        }) : null,
+    })!;
+    private static bool MatchesError(Exception error, JsonNode recipe)
+    {
+        var kind = recipe["kind"]!.GetValue<string>();
+        if (kind == "ArgumentNull") return error is ArgumentNullException argument && argument.ParamName == recipe["parameter"]!.GetValue<string>();
+        if (error is not FerruleRuntimeException runtime) return false;
+        if (kind == "Utf8") return runtime.Error == FerruleRuntimeError.JsonBoundary && runtime.InnerException is DecoderFallbackException decoder &&
+            decoder.Index == recipe["offset"]!.GetValue<int>() && decoder.BytesUnknown is byte[] invalid &&
+            invalid.SequenceEqual(Bytes(recipe["decoder_bytes"]!)) && decoder.InnerException is null;
+        if (kind is "InvalidInput" or "InvalidOutput")
+        {
+            if (runtime.Error != FerruleRuntimeError.JsonBoundary) return false;
+            // Parser wording is not a cross-language API. Shape/range witnesses
+            // remain in the complete originals; syntax must retain JsonException.
+            if (kind == "InvalidOutput") return runtime.Message.Contains("Value", StringComparison.Ordinal);
+            var marker = recipe["rust_marker"]!.GetValue<string>();
+            if (marker == "EOF") return runtime.InnerException is JsonException;
+            if (marker == "expected object") return runtime.Message.Contains("object", StringComparison.OrdinalIgnoreCase);
+            return runtime.Message.Contains(marker.StartsWith("range", StringComparison.Ordinal) ? "Bound" : marker, StringComparison.Ordinal);
+        }
+        if (kind == "MetadataLimit") return runtime.Error == FerruleRuntimeError.OwnedSource && runtime.Node is null &&
+            runtime.OwnedSourceFailure is FerruleOwnedSourceException owned && ReferenceEquals(owned, runtime.InnerException) &&
+            owned.Error.ToString() == "MetadataLimit" && owned.LimitKind?.ToString() == recipe["resource"]!.GetValue<string>() &&
+            owned.Used == (nuint)recipe["used"]!.GetValue<ulong>() && owned.Requested == (nuint)recipe["requested"]!.GetValue<ulong>() &&
+            owned.Maximum == (nuint)recipe["maximum"]!.GetValue<ulong>() && owned.Owner is null && owned.Path is null && owned.InnerException is null;
+        if (kind == "SourceUnavailable") return runtime.Error == FerruleRuntimeError.OwnedSource && runtime.Node == 2 &&
+            runtime.OwnedSourceFailure is FerruleOwnedSourceException unavailable && ReferenceEquals(unavailable, runtime.InnerException) &&
+            unavailable.Error.ToString() == "SourceUnavailable" && unavailable.Owner is { IsPrimary: false, Name: "Ref" } &&
+            unavailable.RequestedName == "Ref" && unavailable.Path is null && unavailable.InnerException is null;
+        if (kind == "MappingException") return runtime.Error == FerruleRuntimeError.MappingException && runtime.Node == 6 &&
+            runtime.MappingExceptionMessage == "520 target poison" && runtime.InnerException is null;
+        return runtime.Error.ToString() == kind && runtime.Detail == recipe["name"]!.GetValue<string>() &&
+            runtime.Node is null && runtime.InnerException is null;
+    }
+    private sealed class ProbeList<T>(T[] values, bool rejectAnyRead) : IReadOnlyList<T>
+    {
+        private readonly int[] _reads = new int[values.Length];
+        private int _countReads;
+        private int _enumeratorAttempts;
+        public int Count { get {
+            _countReads++;
+            if (rejectAnyRead || _countReads != 1) throw new InvalidOperationException("Supplied Count was read before policy admission or more than once.");
+            return values.Length;
+        } }
+        public T this[int index] { get {
+            _reads[index]++;
+            if (rejectAnyRead || _reads[index] != 1) throw new InvalidOperationException("Supplied handles were read outside frozen admission ordering.");
+            return values[index];
+        } }
+        public IEnumerator<T> GetEnumerator()
+        {
+            _enumeratorAttempts++;
+            throw new InvalidOperationException("Supplied handles must be captured by bounded indexed access, never enumeration.");
+        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        public object Observation => new { CountReads = _countReads, IndexReads = (int[])_reads.Clone(), EnumeratorAttempts = _enumeratorAttempts };
+        public bool Matched => _countReads == (rejectAnyRead ? 0 : 1) && _enumeratorAttempts == 0 &&
+            _reads.All(read => read == (rejectAnyRead ? 0 : 1));
+    }
+    private static object Invoke(string transport, string selection, byte[]? source,
+        (string Name, byte[] Document)[]? inputs, FerruleOwnedSourceLimits limits,
+        FerruleExecutionContext context, string? probeKind, out Func<bool> probeMatched, out Func<object> probeReads)
+    {
+        var target = selection == "Null" ? null : selection == "Primary" ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named(selection);
+        probeMatched = () => true; probeReads = () => new { CountReads = 0, IndexReads = Array.Empty<int>(), EnumeratorAttempts = 0 };
+        if (transport == "text")
+        {
+            IReadOnlyList<NamedJsonInput>? named = inputs?.Select(input => new NamedJsonInput(input.Name, Utf8.GetString(input.Document))).ToArray();
+            if (probeKind is not null)
+            {
+                var probe = new ProbeList<NamedJsonInput>(named!.ToArray(), probeKind == "reject-any-read"); named = probe;
+                probeMatched = () => probe.Matched; probeReads = () => probe.Observation;
+            }
+            var text = source is null ? null : Utf8.GetString(source);
+            if (selection == "All") return GeneratedMapping.ExecuteJsonOutputsWithBasicOwnedSources(text!, named!, limits, context);
+            return GeneratedMapping.ExecuteJsonSelectedTargetWithBasicOwnedSources(text!, target!, named!, limits, context);
+        }
+        else
+        {
+            IReadOnlyList<NamedJsonBytesInput>? named = inputs?.Select(input => new NamedJsonBytesInput(input.Name, input.Document)).ToArray();
+            if (probeKind is not null)
+            {
+                var probe = new ProbeList<NamedJsonBytesInput>(named!.ToArray(), probeKind == "reject-any-read"); named = probe;
+                probeMatched = () => probe.Matched; probeReads = () => probe.Observation;
+            }
+            if (selection == "All") return GeneratedMapping.ExecuteJsonBytesOutputsWithBasicOwnedSources(source!, named!, limits, context);
+            return GeneratedMapping.ExecuteJsonBytesSelectedTargetWithBasicOwnedSources(source!, target!, named!, limits, context);
+        }
+    }
+    private static (string? Name, byte[] Document)[] Outputs(object output) => output switch
+    {
+        JsonExecutionOutputs all => new[] { ((string?)null, Utf8.GetBytes(all.Primary)) }
+            .Concat(all.Extras.Select(named => ((string?)named.Name, Utf8.GetBytes(named.Document)))).ToArray(),
+        JsonBytesExecutionOutputs all => new[] { ((string?)null, all.Primary) }
+            .Concat(all.Extras.Select(named => ((string?)named.Name, named.Document))).ToArray(),
+        SelectedJsonTargetOutput.Primary primary => [(null, Utf8.GetBytes(primary.Document))],
+        SelectedJsonTargetOutput.Named named => [(named.Output.Name, Utf8.GetBytes(named.Output.Document))],
+        SelectedJsonBytesTargetOutput.Primary primary => [(null, primary.Document)],
+        SelectedJsonBytesTargetOutput.Named named => [(named.Output.Name, named.Output.Document)],
+        _ => throw new InvalidOperationException("Unexpected public JSON output variant."),
+    };
+    private static JsonNode CompleteOutputs((string? Name, byte[] Document)[] outputs) => Json(outputs.Select(output => {
+        var document = Utf8.GetString(output.Document); var tree = JsonNode.Parse(document)!;
+        return new { name = output.Name, text = document, bytes = output.Document.Select(value => (int)value).ToArray(),
+            tree, records = tree is JsonArray array ? array.Count : 1 };
+    }).ToArray())!;
+    private static bool MatchesOutputs((string? Name, byte[] Document)[] outputs, JsonArray expected)
+    {
+        if (outputs.Length != expected.Count) return false;
+        for (var index = 0; index < outputs.Length; index++)
+        {
+            var row = expected[index]!; var document = row[1]!.GetValue<string>(); var bytes = outputs[index].Document;
+            if (outputs[index].Name != row[0]?.GetValue<string>() || !bytes.SequenceEqual(Utf8.GetBytes(document)) || bytes.LastOrDefault() == 10) return false;
+            var tree = JsonNode.Parse(bytes)!;
+            if (!JsonNode.DeepEquals(tree, JsonNode.Parse(document)) || (tree is JsonArray array ? array.Count : 1) != row[2]!.GetValue<int>()) return false;
+        }
+        return true;
+    }
+    private static byte[] Bytes(JsonNode node) => node.AsArray().Select(value => value!.GetValue<byte>()).ToArray();
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3) throw new InvalidOperationException("Controls, model ordinal, fresh absolute originals directory required.");
+        var model = int.Parse(args[1], CultureInfo.InvariantCulture); var directory = args[2];
+        if (!Path.IsPathFullyQualified(directory) || Path.Exists(directory)) throw new InvalidOperationException("Fresh absolute originals directory required.");
+        Directory.CreateDirectory(directory); var raw = File.ReadAllText(args[0]); Write(directory, "COMPLETE-FROZEN-CONTROLS.json", raw);
+        var controls = JsonNode.Parse(raw)!; var checks = new List<JsonNode>(); var ordinal = 0;
+        var context = new FerruleExecutionContext("json520.mapping", "json520.mapping", null);
+        foreach (var caseNode in controls["cases"]!.AsArray())
+        {
+            var item = caseNode!; var caseOrdinal = ordinal++; if (item["model"]!.GetValue<int>() != model) continue;
+            byte[]? source = item["source_bytes"] is JsonNode rawBytes ? Bytes(rawBytes) : item["source"] is null ? null : Utf8.GetBytes(item["source"]!.GetValue<string>());
+            (string Name, byte[] Document)[]? inputs = item["inputs"]?.AsArray().Select((input, index) =>
+                (input![0]!.GetValue<string>(), item["input_bytes"] is JsonArray inputBytes ? Bytes(inputBytes[index]!) : Utf8.GetBytes(input[1]!.GetValue<string>()))).ToArray();
+            string Snapshot() => Json(new { source = source?.Select(value => (int)value).ToArray(), inputs = inputs?.Select(input => new {
+                name = input.Name, bytes = input.Document.Select(value => (int)value).ToArray() }).ToArray() })!.ToJsonString();
+            var before = Snapshot(); var limits = Limits(item["limits"]!.GetValue<string>());
+            foreach (var transportNode in item["transports"]!.AsArray()) foreach (var callNode in item["calls"]!.AsArray())
+            {
+                var transport = transportNode!.GetValue<string>(); var call = callNode!; var selection = call["selection"]!.GetValue<string>();
+                var prefix = $"{caseOrdinal:00}-{transport}-{selection}";
+                Write(directory, prefix + "-COMPLETE-INPUT.json", Json(new { before, recipe = item, call,
+                    context = new { context.MappingFilePath, context.MainMappingFilePath, context.CurrentDateTime,
+                        parameters = Array.Empty<object>(), loader = (object?)null, cancellation = (object?)null },
+                    limits = item["limits"]!.GetValue<string>() })!.ToJsonString());
+                object actual; Func<bool> probeMatched = () => true; Func<object> probeReads = () => new { CountReads = 0, IndexReads = Array.Empty<int>(), EnumeratorAttempts = 0 };
+                try { actual = Invoke(transport, selection, source, inputs, limits, context, item["list_probe"]?.GetValue<string>(), out probeMatched, out probeReads); }
+                catch (Exception caught) { actual = caught; }
+                // Capture complete typed exception / raw text or original output
+                // bytes first. No category/equality/count comparison precedes it.
+                Write(directory, prefix + "-COMPLETE-EXCEPTION.txt", actual is Exception failure ? failure.ToString() : "successful public JSON output\n");
+                (string? Name, byte[] Document)[]? outputs = actual is Exception ? null : Outputs(actual);
+                if (outputs is not null) for (var index = 0; index < outputs.Length; index++) WriteBytes(directory, prefix + $"-OUTPUT{index}.json", outputs[index].Document);
+                Write(directory, prefix + "-COMPLETE-ACTUAL.json", (actual is Exception observedError ? Error(observedError) : CompleteOutputs(outputs!)).ToJsonString());
+                var after = Snapshot(); Write(directory, prefix + "-COMPLETE-AFTER-INPUT.json", after);
+                Write(directory, prefix + "-COMPLETE-PROBE-READS.json", Json(probeReads())!.ToJsonString());
+                var matched = actual is Exception exception ? call["expected"]!["Err"] is JsonNode recipe && MatchesError(exception, recipe)
+                    : call["expected"]!["Ok"] is JsonArray expected && MatchesOutputs(outputs!, expected);
+                checks.Add(Json(new { @case = item["id"]!.GetValue<string>(), transport, selection, matched = matched && before == after && probeMatched() })!);
+            }
+        }
+        const string schema = "{\"name\":\"Output\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+        var instance = new FerruleGroup([new FerruleField("Value", new FerruleScalar(FerruleValue.FromString("P.root")))]);
+        var legacy = FerruleJson.SerializeEmbedded(schema, instance); var legacyBytes = FerruleJson.SerializeEmbeddedBytes(schema, instance);
+        Write(directory, "COMPLETE-LEGACY-SERIALIZER-CONTROLS.json", Json(new { legacy, bytes = legacyBytes.Select(value => (int)value).ToArray() })!.ToJsonString());
+        Write(directory, "ALL-COMPLETE-COMPARISONS.json", Json(checks)!.ToJsonString());
+        var expectedCount = model switch { 0 => 83, 1 => 20, 2 => 10, _ => throw new InvalidOperationException("Frozen model ordinal.") };
+        return checks.Count == expectedCount && checks.All(row => row["matched"]!.GetValue<bool>()) &&
+            legacy == "{\n  \"Value\": \"P.root\"\n}\n" && legacyBytes.SequenceEqual(Utf8.GetBytes(legacy)) ? 0 : 1;
+    }
+}
