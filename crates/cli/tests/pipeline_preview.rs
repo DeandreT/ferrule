@@ -1666,55 +1666,39 @@ mod source_ownership_admission {
             *trace_calls.borrow_mut() += 1;
         };
         let cancellation = AtomicBool::new(false);
-        for (label, requested, expected_context) in [
+        for (label, requested) in [
             (
                 "debug",
                 PipelinePreviewOptions::new(&hosts).with_stage_debug_hook(&debug),
-                engine::OwnedCapabilityContext::Debugging,
             ),
             (
                 "cancellation",
                 PipelinePreviewOptions::new(&hosts).with_cancellation(&cancellation),
-                engine::OwnedCapabilityContext::Debugging,
             ),
             (
                 "trace",
                 PipelinePreviewOptions::new(&hosts).with_stage_trace_sink(&trace),
-                engine::OwnedCapabilityContext::Tracing,
             ),
         ] {
-            let validation = validate_pipeline_preview(&pipeline, &pipeline_path, &requested)
-                .expect_err("requested owned observers must reject during preflight");
-            assert!(matches!(
-                validation.downcast_ref::<engine::PipelineError>(),
-                Some(engine::PipelineError::StageExecution { stage, source })
-                    if stage == "one" && *source == (engine::EngineError::UnsupportedOwnedContext {
-                        node: None,
-                        function: None,
-                        scope: None,
-                        context: expected_context,
-                    })
-            ));
-            let error = preview_pipeline_value_payloads(&pipeline, &pipeline_path, &requested)
-                .expect_err("requested owned observer contexts must remain unsupported");
-            eprintln!("{label} requested_context_result={error:?}");
-            match error.downcast_ref::<engine::PipelineError>() {
-                Some(engine::PipelineError::StageExecution { stage, source }) => {
-                    assert_eq!(stage.as_str(), "one");
-                    assert_eq!(
-                        source,
-                        &engine::EngineError::UnsupportedOwnedContext {
-                            context: expected_context,
-                            node: None,
-                            function: None,
-                            scope: None,
-                        }
-                    );
+            *debug_calls.borrow_mut() = 0;
+            *trace_calls.borrow_mut() = 0;
+            validate_pipeline_preview(&pipeline, &pipeline_path, &requested)?;
+            let observed = preview_pipeline_value_payloads(&pipeline, &pipeline_path, &requested)?;
+            assert_eq!(observed.stages_executed, ["one"]);
+            assert_eq!(observed.artifacts.len(), 1);
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&observed.artifacts[0].bytes)?,
+                serde_json::json!({"Value":"supported"})
+            );
+            match label {
+                "debug" => assert!(*debug_calls.borrow() > 0),
+                "trace" => assert!(*trace_calls.borrow() > 0),
+                "cancellation" => {
+                    assert_eq!(*debug_calls.borrow(), 0);
+                    assert_eq!(*trace_calls.borrow(), 0);
                 }
-                other => panic!("expected typed owned observer context refusal, got {other:?}"),
+                _ => unreachable!(),
             }
-            assert_eq!(*debug_calls.borrow(), 0);
-            assert_eq!(*trace_calls.borrow(), 0);
             assert_eq!(
                 std::fs::read(&sentinel)?.as_slice(),
                 b"old-output".as_slice()

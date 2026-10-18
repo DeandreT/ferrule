@@ -9,7 +9,7 @@ use mapping::{
     Binding, Graph, NamedSource, NamedTarget, Node, OwnedPosition, OwnedSourceField,
     OwnedSourceRef, Project, Scope, ScopeIteration, SourceOwner,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -860,7 +860,7 @@ fn c14_c15_trace_debug_activation_is_selected_not_stored() {
         node: 1,
     }];
     p.extra_targets.push(NamedTarget {
-        name: "Other".into(),
+        name: "primary".into(),
         path: None,
         schema: p.target.clone(),
         options: Default::default(),
@@ -886,20 +886,20 @@ fn c14_c15_trace_debug_activation_is_selected_not_stored() {
     );
     assert!(sink.0.get() > 0);
     sink.0.set(0);
-    assert!(matches!(
+    assert_eq!(
         crate::run_selected_target_with_sources_and_context(
             &p,
             &input,
             vec![],
             &execution,
-            TargetSelection::Named("Other")
+            TargetSelection::Named("primary")
         ),
-        Err(EngineError::UnsupportedOwnedContext {
-            context: Domain::Tracing,
-            ..
-        })
-    ));
-    assert_eq!(sink.0.get(), 0);
+        Ok(crate::SelectedTargetOutput::Named(crate::NamedOutput {
+            name: "primary".into(),
+            instance: row("P.root"),
+        }))
+    );
+    assert!(sink.0.get() > 0);
     struct Hook(Cell<usize>);
     impl crate::DebugHook for Hook {
         fn before_target_write(&self, _: &crate::PendingTargetWrite) -> crate::DebugDecision {
@@ -921,26 +921,408 @@ fn c14_c15_trace_debug_activation_is_selected_not_stored() {
     );
     assert!(hook.0.get() > 0);
     hook.0.set(0);
-    assert!(matches!(
+    assert_eq!(
         crate::run_selected_target_with_sources_and_context(
             &p,
             &input,
             vec![],
             &execution,
-            TargetSelection::Named("Other")
+            TargetSelection::Named("primary")
         ),
-        Err(EngineError::UnsupportedOwnedContext {
-            context: Domain::Debugging,
-            ..
-        })
-    ));
-    assert_eq!(hook.0.get(), 0);
+        Ok(crate::SelectedTargetOutput::Named(crate::NamedOutput {
+            name: "primary".into(),
+            instance: row("P.root"),
+        }))
+    );
+    assert!(hook.0.get() > 0);
     let admission =
         crate::source_ownership::admit_project(&p, Some(TargetSelection::Primary)).unwrap();
     assert!(!admission.used_owned);
     let admission =
-        crate::source_ownership::admit_project(&p, Some(TargetSelection::Named("Other"))).unwrap();
+        crate::source_ownership::admit_project(&p, Some(TargetSelection::Named("primary")))
+            .unwrap();
     assert!(admission.used_owned);
+    // An unsupported sibling is still excluded by isolated Primary evaluation,
+    // but all-target and selected-named runs must refuse before any callback.
+    p.extra_targets[0].root.group_by = Some(2);
+    sink.0.set(0);
+    hook.0.set(0);
+    let execution = crate::ExecutionContext::new(Path::new("test.json"))
+        .with_trace_sink(&sink)
+        .with_debug_hook(&hook);
+    for result in [
+        crate::run_outputs_with_sources_and_context(&p, &input, vec![], &execution).map(|_| ()),
+        crate::run_selected_target_with_sources_and_context(
+            &p,
+            &input,
+            vec![],
+            &execution,
+            TargetSelection::Named("primary"),
+        )
+        .map(|_| ()),
+    ] {
+        assert_eq!(
+            result,
+            Err(EngineError::UnsupportedOwnedContext {
+                node: Some(2),
+                function: None,
+                scope: None,
+                context: Domain::Grouping,
+            })
+        );
+    }
+    assert_eq!(sink.0.get(), 0);
+    assert_eq!(hook.0.get(), 0);
+    crate::run_selected_target_with_sources_and_context(
+        &p,
+        &input,
+        vec![],
+        &execution,
+        TargetSelection::Primary,
+    )
+    .unwrap();
+    assert!(sink.0.get() > 0);
+    assert!(hook.0.get() > 0);
+}
+
+#[test]
+fn public_run_observers_borrow_real_roots_and_preserve_debug_errors_and_cancellation() {
+    #[derive(Debug, PartialEq)]
+    enum Callback {
+        // Index into the current run's complete event stream.
+        Trace(usize),
+        Value(mapping::NodeId),
+        Input(mapping::NodeId, mapping::NodeId, usize),
+        Write,
+        Failure(mapping::NodeId),
+    }
+    struct Sink<'a> {
+        source: &'a Instance,
+        events: RefCell<Vec<crate::TraceEvent>>,
+        contexts: RefCell<Vec<crate::TraceOwnedSnapshot>>,
+        callbacks: &'a RefCell<Vec<Callback>>,
+    }
+    impl crate::TraceSink for Sink<'_> {
+        fn record(&self, event: crate::TraceEvent) {
+            self.callbacks
+                .borrow_mut()
+                .push(Callback::Trace(self.events.borrow().len()));
+            self.events.borrow_mut().push(event);
+        }
+        fn wants_owned_context_for(&self, event: &crate::TraceEvent) -> bool {
+            matches!(
+                event,
+                crate::TraceEvent::NodeValue { .. }
+                    | crate::TraceEvent::NodeInputValue { .. }
+                    | crate::TraceEvent::TargetFieldWritten { .. }
+                    | crate::TraceEvent::TargetProduced { .. }
+            )
+        }
+        fn record_with_owned_context(
+            &self,
+            event: crate::TraceEvent,
+            context: Result<crate::TraceOwnedWitness<'_>, &crate::TraceOwnedContextError>,
+        ) {
+            let witness = context.unwrap();
+            assert!(std::ptr::eq(witness.roots[0].input.unwrap(), self.source));
+            assert_eq!(witness.roots[0].owner, crate::TraceOwnedOwnerRef::Primary);
+            assert_eq!(witness.phase, crate::TraceOwnedPhase::Output);
+            self.contexts.borrow_mut().push(witness.snapshot().unwrap());
+            self.record(event);
+        }
+    }
+    struct Hook<'a> {
+        source: &'a Instance,
+        values: Cell<usize>,
+        inputs: Cell<usize>,
+        writes: Cell<usize>,
+        failures: RefCell<Vec<(EngineError, crate::TraceOwnedSnapshot)>>,
+        cancel: Cell<bool>,
+        callbacks: &'a RefCell<Vec<Callback>>,
+    }
+    impl crate::DebugHook for Hook<'_> {
+        fn before_target_write(&self, write: &crate::PendingTargetWrite) -> crate::DebugDecision {
+            assert_eq!(write.field, "Value");
+            self.callbacks.borrow_mut().push(Callback::Write);
+            self.writes.set(self.writes.get() + 1);
+            crate::DebugDecision::Resume
+        }
+        fn after_node_value(&self, value: &crate::PendingNodeValue) -> crate::DebugDecision {
+            self.callbacks
+                .borrow_mut()
+                .push(Callback::Value(value.node));
+            self.values.set(self.values.get() + 1);
+            crate::DebugDecision::Resume
+        }
+        fn after_node_input(&self, input: &crate::PendingNodeInput) -> crate::DebugDecision {
+            self.callbacks.borrow_mut().push(Callback::Input(
+                input.consumer,
+                input.input,
+                input.input_index,
+            ));
+            self.inputs.set(self.inputs.get() + 1);
+            crate::DebugDecision::Resume
+        }
+        fn wants_node_failures(&self) -> bool {
+            true
+        }
+        fn wants_owned_context_for_node_failure(&self, _: &crate::PendingNodeFailure) -> bool {
+            true
+        }
+        fn after_node_failure_with_owned_context(
+            &self,
+            failure: &crate::PendingNodeFailure,
+            error: &EngineError,
+            context: Result<crate::TraceOwnedWitness<'_>, &crate::TraceOwnedContextError>,
+        ) -> crate::DebugDecision {
+            assert_eq!(failure.node, 3);
+            self.callbacks
+                .borrow_mut()
+                .push(Callback::Failure(failure.node));
+            let witness = context.unwrap();
+            assert!(std::ptr::eq(witness.roots[0].input.unwrap(), self.source));
+            assert_eq!(witness.phase, crate::TraceOwnedPhase::Output);
+            // Compare the complete typed error while it is borrowed, rather than
+            // accepting the bounded UI error preview as an execution oracle.
+            assert_eq!(
+                error,
+                &EngineError::MappingException {
+                    node: 3,
+                    message: Some("P.root".into()),
+                }
+            );
+            self.failures.borrow_mut().push((
+                EngineError::MappingException {
+                    node: 3,
+                    message: Some("P.root".into()),
+                },
+                witness.snapshot().unwrap(),
+            ));
+            if self.cancel.get() {
+                crate::DebugDecision::Cancel
+            } else {
+                crate::DebugDecision::Resume
+            }
+        }
+    }
+    let (input, _) = fixture();
+    let mut p = project();
+    p.extra_sources.clear();
+    p.graph.nodes.insert(
+        1,
+        Node::OwnedSourceField(field(SourceOwner::Primary, &["Value"], None)),
+    );
+    p.graph.nodes.insert(
+        2,
+        Node::Const {
+            value: Value::String("!".into()),
+        },
+    );
+    p.graph.nodes.insert(
+        3,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![1, 2],
+        },
+    );
+    p.root.bindings = vec![Binding {
+        target_field: "Value".into(),
+        node: 3,
+    }];
+    p.extra_targets.push(NamedTarget {
+        name: "primary".into(),
+        path: None,
+        schema: p.target.clone(),
+        options: Default::default(),
+        root: p.root.clone(),
+    });
+    let callbacks = RefCell::new(Vec::new());
+    let sink = Sink {
+        source: &input,
+        events: RefCell::new(Vec::new()),
+        contexts: RefCell::new(Vec::new()),
+        callbacks: &callbacks,
+    };
+    let hook = Hook {
+        source: &input,
+        values: Cell::new(0),
+        inputs: Cell::new(0),
+        writes: Cell::new(0),
+        failures: RefCell::new(Vec::new()),
+        cancel: Cell::new(false),
+        callbacks: &callbacks,
+    };
+    let execution = crate::ExecutionContext::new(Path::new("test.json"))
+        .with_trace_sink(&sink)
+        .with_debug_hook(&hook);
+    assert_eq!(
+        crate::run_with_context(&p, &input, &execution),
+        Ok(row("P.root!"))
+    );
+    assert_eq!(hook.writes.get(), 2);
+    assert_eq!(hook.inputs.get(), 4);
+    assert_eq!(hook.values.get(), 6);
+    assert_eq!(sink.contexts.borrow().len(), 14);
+    assert!(hook.failures.borrow().is_empty());
+    sink.events.borrow_mut().clear();
+    sink.contexts.borrow_mut().clear();
+    assert_eq!(
+        crate::run_selected_target_with_sources_and_context(
+            &p,
+            &input,
+            vec![],
+            &execution,
+            TargetSelection::Named("primary"),
+        ),
+        Ok(crate::SelectedTargetOutput::Named(crate::NamedOutput {
+            name: "primary".into(),
+            instance: row("P.root!"),
+        }))
+    );
+    let targets = sink
+        .events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            crate::TraceEvent::TargetProduced { scope, .. } => Some(scope.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(
+        targets[0].target,
+        crate::TraceTarget::Named("primary".into())
+    );
+    assert_eq!(
+        targets[0].source_scope,
+        mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Named {
+            index: 0,
+            name: "primary".into()
+        },)
+    );
+    assert_eq!(sink.contexts.borrow().len(), 7);
+    p.graph.nodes.insert(3, Node::Raise { message: Some(1) });
+    // Literal source-derived oracle: the once scope starts and admits its one
+    // candidate, then Raise's message succeeds and reaches input zero. Raise
+    // itself never succeeds; no target write, output or scope finish follows.
+    let scope = crate::TraceScope {
+        target: crate::TraceTarget::Primary,
+        target_path: Vec::new(),
+        structural_path: Vec::new(),
+        source_scope: mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
+    };
+    let expected_prefix = vec![
+        crate::TraceEvent::ScopeStarted {
+            scope: scope.clone(),
+            iteration: crate::TraceIteration::Once,
+            positions: Vec::new(),
+        },
+        crate::TraceEvent::IterationCandidate {
+            scope,
+            ordinal: 1,
+            positions: Vec::new(),
+            source_row: None,
+        },
+        crate::TraceEvent::NodeValue {
+            node: 1,
+            positions: Vec::new(),
+            value: crate::TraceValue {
+                value_type: "string",
+                preview: "P.root".into(),
+                truncated: false,
+            },
+        },
+        crate::TraceEvent::NodeInputValue {
+            consumer: 3,
+            input: 1,
+            input_index: 0,
+            positions: Vec::new(),
+            value: crate::TraceValue {
+                value_type: "string",
+                preview: "P.root".into(),
+                truncated: false,
+            },
+        },
+    ];
+    sink.events.borrow_mut().clear();
+    sink.contexts.borrow_mut().clear();
+    callbacks.borrow_mut().clear();
+    hook.values.set(0);
+    hook.inputs.set(0);
+    hook.writes.set(0);
+    let trace_only = crate::ExecutionContext::new(Path::new("test.json")).with_trace_sink(&sink);
+    assert_eq!(
+        crate::run_with_context(&p, &input, &trace_only),
+        Err(EngineError::MappingException {
+            node: 3,
+            message: Some("P.root".into()),
+        })
+    );
+    // Validate the actual public trace-only baseline independently before using
+    // it for the complete Resume/Cancel comparisons below.
+    let trace_only_prefix = sink.events.borrow().clone();
+    assert_eq!(trace_only_prefix, expected_prefix);
+    assert_eq!(
+        *callbacks.borrow(),
+        vec![
+            Callback::Trace(0),
+            Callback::Trace(1),
+            Callback::Trace(2),
+            Callback::Trace(3)
+        ]
+    );
+    assert_eq!(sink.contexts.borrow().len(), 2);
+    assert_eq!(
+        (hook.values.get(), hook.inputs.get(), hook.writes.get()),
+        (0, 0, 0)
+    );
+    assert!(hook.failures.borrow().is_empty());
+    let expected_callbacks = vec![
+        Callback::Trace(0),
+        Callback::Trace(1),
+        Callback::Trace(2),
+        Callback::Value(1),
+        Callback::Trace(3),
+        Callback::Input(3, 1, 0),
+        Callback::Failure(3),
+    ];
+    for (cancel, error, failure_count) in [
+        (
+            false,
+            EngineError::MappingException {
+                node: 3,
+                message: Some("P.root".into()),
+            },
+            1,
+        ),
+        (true, EngineError::DebugCancelled, 2),
+    ] {
+        sink.events.borrow_mut().clear();
+        sink.contexts.borrow_mut().clear();
+        callbacks.borrow_mut().clear();
+        hook.values.set(0);
+        hook.inputs.set(0);
+        hook.writes.set(0);
+        hook.cancel.set(cancel);
+        assert_eq!(crate::run_with_context(&p, &input, &execution), Err(error));
+        assert_eq!(*sink.events.borrow(), trace_only_prefix);
+        assert!(sink.events.borrow().iter().all(|event| !matches!(
+            event,
+            crate::TraceEvent::NodeValue { node: 3, .. }
+                | crate::TraceEvent::TargetFieldWritten { .. }
+                | crate::TraceEvent::TargetProduced { .. }
+                | crate::TraceEvent::ScopeFinished { .. }
+        )));
+        // Successful value/input trace records precede their debug callbacks;
+        // the failure callback is last, with no later event or debug callback.
+        assert_eq!(*callbacks.borrow(), expected_callbacks);
+        assert_eq!(sink.contexts.borrow().len(), 2);
+        assert_eq!(
+            (hook.values.get(), hook.inputs.get(), hook.writes.get()),
+            (1, 1, 0)
+        );
+        assert_eq!(hook.failures.borrow().len(), failure_count);
+    }
 }
 
 #[test]

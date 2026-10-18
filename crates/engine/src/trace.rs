@@ -740,7 +740,7 @@ impl<'a> From<&'a TracePosition> for TraceOwnedPositionRef<'a> {
 /// Descriptor producers must supply authentic registry/occurrence references;
 /// validation checks declaration and slot metadata, not pointer ancestry by
 /// traversing inputs. No supplied descriptor is treated as an execution capability.
-/// This foundation does not enable owned tracing or debugging in execution.
+/// Execution admission independently determines the supported owned contexts.
 pub struct TraceOwnedWitness<'a> {
     pub project: &'a mapping::Project,
     pub domain: TraceOwnedDomain,
