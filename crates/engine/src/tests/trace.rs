@@ -1442,18 +1442,21 @@ mod owned_trace_witness {
             frames: vec![
                 SourceFrame {
                     owner: OwnerKey::Named(0),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into()],
                     item: outer,
                     position_slot: 0,
                 },
                 SourceFrame {
                     owner: OwnerKey::Named(0),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into(), "Sub".into()],
                     item: inner,
                     position_slot: 1,
                 },
             ],
             origins: vec![SourceOrigin {
+                kind: crate::owned_context::SourceOriginKind::Ordinary,
                 owner: OwnerKey::Named(0),
                 path: vec![],
                 item: first,
@@ -2395,18 +2398,21 @@ mod owned_trace_producer {
             frames: vec![
                 SourceFrame {
                     owner: OwnerKey::Named(0),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into()],
                     item: first_row,
                     position_slot: 0,
                 },
                 SourceFrame {
                     owner: OwnerKey::Named(1),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into()],
                     item: second_row,
                     position_slot: 1,
                 },
             ],
             origins: vec![SourceOrigin {
+                kind: crate::owned_context::SourceOriginKind::Ordinary,
                 owner: OwnerKey::Named(0),
                 path: Vec::new(),
                 item: first,
@@ -2755,6 +2761,7 @@ mod owned_trace_producer {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -3612,18 +3619,21 @@ mod owned_output_trace_producer {
             frames: vec![
                 SourceFrame {
                     owner: OwnerKey::Named(0),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into()],
                     item: first_row,
                     position_slot: 0,
                 },
                 SourceFrame {
                     owner: OwnerKey::Named(1),
+                    kind: crate::owned_context::OccurrenceKind::Item,
                     collection: vec!["Rows".into()],
                     item: second_row,
                     position_slot: 1,
                 },
             ],
             origins: vec![SourceOrigin {
+                kind: crate::owned_context::SourceOriginKind::Ordinary,
                 owner: OwnerKey::Named(0),
                 path: Vec::new(),
                 item: first,
@@ -4154,6 +4164,7 @@ mod owned_output_trace_producer {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -5051,11 +5062,13 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: path(&["Rows"]),
                 item,
                 position_slot: 0,
             }],
             origins: vec![SourceOrigin {
+                kind: crate::owned_context::SourceOriginKind::Ordinary,
                 owner: OwnerKey::Primary,
                 path: path(&["Rows"]),
                 item,
@@ -5667,6 +5680,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -6406,11 +6420,13 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: path(&["Rows"]),
                 item: outer,
                 position_slot: 0,
             }],
             origins: vec![SourceOrigin {
+                kind: crate::owned_context::SourceOriginKind::Ordinary,
                 owner: OwnerKey::Primary,
                 path: path(&["Rows"]),
                 item: outer,
@@ -6885,6 +6901,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -7972,6 +7989,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -9124,6 +9142,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -9685,11 +9704,13 @@ mod owned_scope_lifecycle {
                     roots: &roots,
                     frames: vec![SourceFrame {
                         owner: key,
+                        kind: crate::owned_context::OccurrenceKind::Item,
                         collection: path(&["Rows"]),
                         item,
                         position_slot: 0,
                     }],
                     origins: vec![SourceOrigin {
+                        kind: crate::owned_context::SourceOriginKind::Ordinary,
                         owner: key,
                         path: path(&["Rows"]),
                         item,
@@ -9973,6 +9994,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,
@@ -10799,11 +10821,13 @@ mod owned_scope_lifecycle {
                     roots: &roots,
                     frames: vec![SourceFrame {
                         owner: key,
+                        kind: crate::owned_context::OccurrenceKind::Item,
                         collection: path(&["Rows"]),
                         item,
                         position_slot: 0,
                     }],
                     origins: vec![SourceOrigin {
+                        kind: crate::owned_context::SourceOriginKind::Ordinary,
                         owner: key,
                         path: path(&["Rows"]),
                         item,
@@ -11028,6 +11052,7 @@ mod owned_scope_lifecycle {
             roots: &roots,
             frames: vec![SourceFrame {
                 owner: OwnerKey::Primary,
+                kind: crate::owned_context::OccurrenceKind::Item,
                 collection: Vec::new(),
                 item: &primary,
                 position_slot: 7,

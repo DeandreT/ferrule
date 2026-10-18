@@ -1,0 +1,6 @@
+{
+  "source":{"name":"Input","kind":{"kind":"group","children":[{"name":"Rows","repeating":true,"kind":{"kind":"group","children":[{"name":"Key","kind":{"kind":"scalar","ty":"string"}},{"name":"Label","kind":{"kind":"scalar","ty":"string"}}]}}]}},
+  "target":{"name":"Output","kind":{"kind":"group","children":[{"name":"Groups","repeating":true,"kind":{"kind":"group","children":[{"name":"First","kind":{"kind":"scalar","ty":"string"}},{"name":"Position","kind":{"kind":"scalar","ty":"int"}},{"name":"Members","repeating":true,"kind":{"kind":"group","children":[{"name":"Label","kind":{"kind":"scalar","ty":"string"}}]}}]}}]}},
+  "graph":{"nodes":{"1":{"kind":"source_field","path":["Label"],"frame":["Rows"]},"2":{"kind":"source_field","path":["Key"],"frame":["Rows"]},"3":{"kind":"position","collection":["Rows"]}}},
+  "root":{"children":[{"target_field":"Groups","source":["Rows"],"group_by":2,"bindings":[{"target_field":"First","node":1},{"target_field":"Position","node":3}],"children":[{"target_field":"Members","source":[],"bindings":[{"target_field":"Label","node":1}]}]}]}
+}

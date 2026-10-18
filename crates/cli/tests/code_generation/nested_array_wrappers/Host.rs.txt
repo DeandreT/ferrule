@@ -108,6 +108,9 @@ fn error(error: &JsonBoundaryError) -> Json {
         JsonBoundaryError::InvalidInput { message } => {
             json!({"variant":"InvalidInput","message":message})
         }
+        JsonBoundaryError::InvalidUtf8(cause) => {
+            json!({"variant":"InvalidUtf8","valid_up_to":cause.valid_up_to(),"error_len":cause.error_len()})
+        }
         JsonBoundaryError::Execution(cause) => {
             json!({"variant":"Execution","complete":format!("{cause:#?}"),"display":cause.to_string()})
         }

@@ -25,7 +25,11 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 74] = [
+pub(crate) const SOURCES: [(&str, &str); 75] = [
+    (
+        "Runtime/FerruleBasicGroupBy.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleBasicGroupBy.cs"),
+    ),
     (
         "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
         include_str!(

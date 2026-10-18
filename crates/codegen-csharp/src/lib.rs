@@ -136,6 +136,19 @@ pub fn emit_with_basic_owned_row_failures(program: &Program) -> Result<ArtifactS
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits explicit Basic By grouping, any-member retention, and prior controls.
+///
+/// Group keys and retention predicates receive source candidates; window bounds
+/// receive the parent. Group outputs retain the first member and enumerate the
+/// complete bucket in children. Primary-row failures run before target controls.
+/// The two typed entry points still require caller limits and execution context.
+pub fn emit_with_basic_owned_group_by(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_by(program)?;
+    codegen::validate_basic_owned_group_by_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_group_by_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

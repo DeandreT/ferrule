@@ -115,7 +115,11 @@ fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
                 "csharp-complete-runtime-body-readback",
                 &body_readback,
             )?;
-            if body_readback.len() != 74
+            let expected_runtime_count = expected_csharp_artifact_paths(false)
+                .iter()
+                .filter(|path| path.starts_with("Runtime/"))
+                .count();
+            if body_readback.len() != expected_runtime_count
                 || body_readback
                     .iter()
                     .any(|(_, wanted, actual)| !matches!(actual, Ok(actual) if actual == *wanted))

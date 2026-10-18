@@ -198,6 +198,67 @@ failure profiles remain closed. Observer APIs are outside this generated profile
 For native Basic `TraceSink`/`DebugHook` observers, see
 [Execution Tracing](tracing.md#basic-owned-source-observers).
 
+## Explicit owned group-by
+
+Select this profile with `codegen::lower_with_basic_owned_group_by`, then
+`codegen_rust::emit_with_basic_owned_group_by(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_by(&program)`. Direct Program hosts
+use `validate_basic_owned_group_by_emission`; named-input admission uses
+`legacy_named_input_admission_plan_with_basic_owned_group_by`. The profile
+combines static By grouping and member-retention predicates with the qualified
+filter, sort, window and primary-row-failure controls. Generated libraries expose
+the two typed explicit-policy Basic execution methods described above.
+
+Each group retains its exact source owner and absolute endpoint-local collection
+identity. Group bindings read the first surviving ordered member. Nested
+iteration over that collection enumerates all its members with independent
+one-based member positions; it does not return the group as an identity row.
+The final groups have compact one-based group ordinals. Other owners and outer
+frames remain available under their own identities, even when collection names
+and key values collide. An explicit empty root pin at a grouped root selects the
+immutable registered root; a repeated registered root cannot be read as a
+representative. A nested ordinary repeated-root member instead retains its
+existing active-frame pin behavior. A nonrepeating owned root groups as one
+member in one group.
+
+Grouping uses exact tagged value equality and first-seen bucket order. For
+example, integer `1` and floating-point `1.0` are different keys; signed floating
+zeros compare equal, and each NaN creates a distinct bucket. Members preserve
+their filtered/sorted order. A post-group predicate evaluates once for every
+reached member: any true result retains the whole group, including members whose
+predicate was false. It neither filters individual members nor changes the
+representative to the first true member.
+
+Filter-then-sort evaluates every source predicate before sort keys. Otherwise,
+grouping evaluates each surviving candidate's filter, key and post predicate
+before advancing to the next candidate. Sort keys use structural positions;
+group keys and post predicates use the selected candidate's position. Explicit
+window bounds evaluate once in the receiving parent after sorting and before
+group keys. Windows, including implicit First, select retained groups afterward.
+Consequently `First(0)` cannot suppress a group-key error, and an empty source
+still evaluates its parent bounds. Global failure rules finish before target
+grouping begins.
+
+The paired runtime authenticates the complete original cohort and terminal
+observations before semantic callbacks. One checked operation budget accounts
+for fixed-capacity order, key, bucket, member-link and window storage, prefix
+templates, sorted views and output metadata. Templates preserve the first
+member's intermediate source prefix; grouped payloads and context identities
+cannot be reused as provenance for another group. Known metadata is admitted
+before operation-owned allocation. String keys are admitted immediately after
+their scalar callback returns and before comparison or retention. These are
+metadata bounds, not limits on source/output payload allocation or process RAM.
+Rust and C# have representation-specific slot ceilings under the same five-field
+policy and admission ordering. The [paired runtime design](design/owned-group-by.md)
+defines the terminal witnesses, storage layout and checked slot envelope.
+
+The group-by profile has its own capability gate. Other owned grouping modes,
+specialized consumers and grouped observer snapshots retain typed refusals.
+Ordinary static legacy grouping subtrees without owned demand or owned ancestry
+keep their ordinary dispatch. A paired By scope establishes grouped ancestry
+even when its only owned read is in the key or post predicate. Existing generation
+profiles retain their gates and saved Projects require no new wire fields.
+
 ## C#
 
 ### Build and test environment

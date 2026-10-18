@@ -184,11 +184,31 @@ fn hash_file(path: &Path) -> io::Result<(u64, String)> {
     Ok((length, format!("{:x}", hash.finalize())))
 }
 
-fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
+fn copy_sources(
+    root: &Path,
+    originals: &Path,
+    selected: Option<&[PathBuf]>,
+) -> io::Result<Vec<Json>> {
+    if let Some(selected) = selected {
+        if selected.is_empty() {
+            return Err(invalid("source selection must not be empty"));
+        }
+        for path in selected {
+            if path.as_os_str().is_empty()
+                || path
+                    .components()
+                    .any(|part| !matches!(part, Component::Normal(_)))
+            {
+                return Err(invalid("selected source must be a relative descendant"));
+            }
+            fs::symlink_metadata(root.join(path))?;
+        }
+    }
     fn visit(
         root: &Path,
         current: &Path,
         originals: &Path,
+        selected: Option<&[PathBuf]>,
         total: &mut u64,
         rows: &mut Vec<Json>,
     ) -> io::Result<()> {
@@ -196,6 +216,14 @@ fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
             let path = entry.path();
+            let relative = path.strip_prefix(root).map_err(io::Error::other)?;
+            if selected.is_some_and(|selected| {
+                !selected
+                    .iter()
+                    .any(|source| relative.starts_with(source) || source.starts_with(relative))
+            }) {
+                continue;
+            }
             let name = entry.file_name();
             if [
                 "target",
@@ -217,7 +245,7 @@ fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
                 return Err(invalid("source traversal refuses symlinks"));
             }
             if ty.is_dir() {
-                visit(root, &path, originals, total, rows)?;
+                visit(root, &path, originals, selected, total, rows)?;
                 continue;
             }
             let before = metadata(&path)?;
@@ -229,7 +257,6 @@ fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
             if *total > MAX_SOURCE_TOTAL {
                 return Err(invalid("original source set exceeds total bound"));
             }
-            let relative = path.strip_prefix(root).map_err(io::Error::other)?;
             let retained = originals.join(relative);
             fs::create_dir_all(
                 retained
@@ -263,7 +290,7 @@ fn copy_sources(root: &Path, originals: &Path) -> io::Result<Vec<Json>> {
     }
     let mut total = 0;
     let mut rows = Vec::new();
-    visit(root, root, originals, &mut total, &mut rows)?;
+    visit(root, root, originals, selected, &mut total, &mut rows)?;
     Ok(rows)
 }
 
@@ -279,6 +306,26 @@ pub(super) fn recorded_output(
     command: &mut Command,
     directory: &Path,
     name: &str,
+) -> io::Result<Output> {
+    recorded_output_inner(command, directory, name, None)
+}
+
+/// Retain the invocation's complete inputs without copying earlier observations.
+/// Callers must also fence the complete prepared campaign before and after execution.
+pub(super) fn recorded_output_with_sources(
+    command: &mut Command,
+    directory: &Path,
+    name: &str,
+    sources: &[PathBuf],
+) -> io::Result<Output> {
+    recorded_output_inner(command, directory, name, Some(sources))
+}
+
+fn recorded_output_inner(
+    command: &mut Command,
+    directory: &Path,
+    name: &str,
+    selected: Option<&[PathBuf]>,
 ) -> io::Result<Output> {
     let (target, shared) = checked_target(directory)?;
     let cargo = command.get_program() == OsStr::new("cargo");
@@ -298,7 +345,7 @@ pub(super) fn recorded_output(
     fs::create_dir_all(&originals)?;
     let invocation = originals.join(name);
     fs::create_dir(&invocation)?;
-    let sources = copy_sources(directory, &invocation.join("prebuild-sources"))?;
+    let sources = copy_sources(directory, &invocation.join("prebuild-sources"), selected)?;
     json_file(
         &invocation.join("command.original.json"),
         &json!({
@@ -306,6 +353,7 @@ pub(super) fn recorded_output(
         "arguments":command.get_args().collect::<Vec<_>>(), "cwd":command.get_current_dir(),
         "configured_host_target":if cargo {Some(&target)} else {None},
         "shared_cache_in_this_process":cargo && shared, "source_originals":sources,
+        "selected_source_roots":selected,
         "inherited_rustflags":std::env::var_os("RUSTFLAGS"),
         "inherited_encoded_rustflags":std::env::var_os("CARGO_ENCODED_RUSTFLAGS")}),
     )?;
@@ -483,7 +531,7 @@ fn complete_source_retention_excludes_build_cache_bodies() -> io::Result<()> {
     }
     let originals = directory.0.join("host-originals/source-control");
     fs::create_dir_all(&originals)?;
-    let rows = copy_sources(&directory.0, &originals)?;
+    let rows = copy_sources(&directory.0, &originals, None)?;
     assert_eq!(rows.len(), 2);
     assert_eq!(
         fs::read(originals.join("project.json"))?,
@@ -522,5 +570,65 @@ fn failed_spawn_retains_prebuild_sources_and_complete_error() -> io::Result<()> 
     assert_eq!(retained["debug"], format!("{error:?}"));
     assert_eq!(retained["display"], error.to_string());
     assert!(invocation.join("command.original.json").is_file());
+    Ok(())
+}
+
+#[test]
+fn selected_sources_retain_dependencies_without_recapturing_campaign_outputs() -> io::Result<()> {
+    let directory = super::TempDir::new("host_policy_campaign_sources")?;
+    for (path, bytes) in [
+        ("caller/Program.cs", b"complete caller".as_slice()),
+        ("model/Runtime/Source.cs", b"complete runtime".as_slice()),
+        (
+            "controls.json",
+            b"complete inputs and expectations".as_slice(),
+        ),
+    ] {
+        let path = directory.0.join(path);
+        fs::create_dir_all(path.parent().unwrap())?;
+        fs::write(path, bytes)?;
+    }
+    fs::create_dir(directory.0.join("earlier-actual"))?;
+    File::create(directory.0.join("earlier-actual/large-observation.bin"))?
+        .set_len(MAX_SOURCE_FILE + 1)?;
+    let originals = directory.0.join("host-originals/unscoped");
+    fs::create_dir_all(&originals)?;
+    assert_eq!(
+        copy_sources(&directory.0, &originals, None)
+            .unwrap_err()
+            .to_string(),
+        "original source exceeds file bound"
+    );
+    let selected = ["caller", "model", "controls.json"].map(PathBuf::from);
+    let mut command = Command::new(directory.0.join("absent-program"));
+    assert_eq!(
+        recorded_output_with_sources(&mut command, &directory.0, "selected", &selected)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+    let invocation = directory.0.join("host-originals/selected");
+    let record: Json =
+        serde_json::from_slice(&fs::read(invocation.join("command.original.json"))?)?;
+    assert_eq!(record["selected_source_roots"], json!(selected));
+    assert_eq!(record["source_originals"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        fs::read(invocation.join("prebuild-sources/model/Runtime/Source.cs"))?,
+        b"complete runtime"
+    );
+    assert_eq!(
+        fs::read(invocation.join("prebuild-sources/controls.json"))?,
+        b"complete inputs and expectations"
+    );
+    assert!(!invocation.join("prebuild-sources/earlier-actual").exists());
+    assert!(invocation.join("spawn-error.original.json").is_file());
+    for selected in [vec![], vec![PathBuf::from("../outside")]] {
+        assert_eq!(
+            copy_sources(&directory.0, &invocation, Some(&selected))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
     Ok(())
 }
