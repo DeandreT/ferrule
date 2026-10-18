@@ -1,0 +1,6 @@
+{
+  "source":{"name":"Input","kind":{"kind":"group","children":[{"name":"Text","kind":{"kind":"scalar","ty":"string"}},{"name":"Index","kind":{"kind":"scalar","ty":"int"}}]}},
+  "target":{"name":"Output","kind":{"kind":"group","children":[{"name":"Result","kind":{"kind":"scalar","ty":"string"}}]}},
+  "graph":{"nodes":{"10":{"kind":"source_field","path":["Text"]},"11":{"kind":"const","value":"|"},"30":{"kind":"source_field","path":["Index"]},"40":{"kind":"sequence_item_at","sequence":{"kind":"tokenize","input":10,"delimiter":11,"item":90},"index":30},"90":{"kind":"source_field","path":[]}}},
+  "root":{"bindings":[{"target_field":"Result","node":40}]}
+}

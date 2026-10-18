@@ -2231,6 +2231,9 @@ fn render_expression(
             ));
         }
         Expression::SequenceItemAt { sequence, index } => {
+            // Pure producer arguments and the index use this same receiving
+            // context overload. The explicit Basic ItemAt inventory admits only
+            // the four scalar producers; no generated item context is attached.
             output.push_str("\n    {\n");
             let identifier = format!("node_{node}");
             render_generated_values(&identifier, sequence, output)?;

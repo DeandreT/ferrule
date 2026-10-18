@@ -259,6 +259,44 @@ keep their ordinary dispatch. A paired By scope establishes grouped ancestry
 even when its only owned read is in the key or post predicate. Existing generation
 profiles retain their gates and saved Projects require no new wire fields.
 
+## Explicit owned sequence ItemAt
+
+Use `codegen::lower_with_basic_owned_sequence_item_at`, followed by
+`codegen_rust::emit_with_basic_owned_sequence_item_at(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_sequence_item_at(&program)`. Direct Program
+validation and named-input admission use the corresponding
+`validate_program_with_basic_owned_sequence_item_at`,
+`validate_basic_owned_sequence_item_at_emission`, and
+`legacy_named_input_admission_plan_with_basic_owned_sequence_item_at` APIs.
+
+This profile composes the By/filter/sort/window and primary-row-failure controls
+with `SequenceItemAt` over Generate, Tokenize, TokenizeByLength and TokenizeRegex.
+Owned scalar reads are allowed in both the producer's parent arguments and its
+index, including nested eligible ItemAt expressions. The generated libraries use
+the two typed Basic execution entries and the mandatory five-field policy.
+
+The producer materializes its complete scalar sequence before evaluating the
+index exactly once, including when production returns an empty sequence. Both
+phases use the receiving source context: exact owners, parent pins, grouped
+representatives and member positions remain available. A producer exception
+prevents index evaluation. A node shared by a producer argument and the index is
+evaluated separately at each semantic edge.
+
+Selection is one-based. Integer indexes are used directly; Float indexes round
+ties away from zero, and trimmed integer strings are parsed. Other index kinds,
+NaN and out-of-range positions produce Null. The selected scalar retains its
+type before ordinary target adaptation. Producer null suppression and existing
+pure-sequence limits apply independently of the owned metadata policy.
+
+This permission is scoped to the four scalar producers and their parent-context
+consumer. RecursiveCollect, FilterMap, other sequence consumers, generated-source
+iteration and inherited specialized contexts have separate capability gates.
+The permission does not apply to owned failure predicates or messages. Existing
+generation and JSON-adapter profiles keep their own admission rules; native
+export, GUI authoring and observer eligibility are independently gated.
+See [the ownership contract](design/owned-sequence-item-at.md) and
+[the genuine-Project corpus](../conformance/basic-owned-sequence-item-at/README.md).
+
 ## C#
 
 ### Build and test environment

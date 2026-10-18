@@ -34,6 +34,20 @@ and children use the resulting grouped context. These distinct roles also govern
 dependency discovery. See [the generated group-by contract](../code-generation.md#explicit-owned-group-by)
 for ordering, explicit profile selection and metadata admission.
 
+## Parent-context scalar sequence selection
+
+`SequenceItemAt` over Generate, Tokenize, TokenizeByLength or TokenizeRegex uses
+the receiving source context for both producer arguments and its once-evaluated
+index. Production completes first, including empty and null-suppressed sequences;
+producer errors precede the index. The consumer creates no source frame, so
+endpoint ownership, parent pins and By representative/member positions retain
+their ordinary meaning. Nested eligible ItemAt expressions use that same rule.
+
+The explicit generated companion selects an orthogonal consumer permission
+beside the target-control profile. Inherited closed contexts and owned failure
+eligibility remain authoritative. See [the ItemAt contract](owned-sequence-item-at.md)
+for admission, complete named catalogues and resource boundaries.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

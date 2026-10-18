@@ -22,6 +22,7 @@ mod failure;
 mod json5_api;
 mod owned_basic;
 mod owned_json_api;
+mod scalar_sequence;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
@@ -257,6 +258,26 @@ pub fn emit_with_basic_owned_group_by(
     codegen::validate_basic_owned_group_by_emission(program)?;
     let manifest = render_manifest(options);
     let source = owned_basic::render_public_basic_owned_group_by_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
+/// pure scalar producers. Existing emitters and failure-expression gates stay closed.
+pub fn emit_with_basic_owned_sequence_item_at(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_sequence_item_at_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_sequence_item_at_source(program)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -1467,6 +1488,20 @@ fn render_expression_in_context(
     functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
     emission: ExpressionEmission,
 ) -> Result<String, EmitError> {
+    render_expression_in_context_with_scalar_item_at(
+        id, expression, prefix, parameters, functions, emission, false,
+    )
+}
+
+fn render_expression_in_context_with_scalar_item_at(
+    id: NodeId,
+    expression: &Expression,
+    prefix: &str,
+    parameters: Option<&BTreeMap<FunctionParameterId, usize>>,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    emission: ExpressionEmission,
+    scalar_item_at: bool,
+) -> Result<String, EmitError> {
     let filter_map = emission.filter_map;
     let owner_function = emission.owner_function;
     let basic = emission.is_basic();
@@ -1906,9 +1941,36 @@ fn render_expression_in_context(
             }
             Expression::SequenceItemAt { sequence, index } => {
                 let mut body = String::from("{\n");
-                render_generated_values(sequence, "        ", &mut body)?;
+                if scalar_item_at {
+                    // Both phases use the receiving source context. The item
+                    // declaration is lexical metadata, never a generated frame.
+                    if !scalar_sequence::render_values(sequence, "        ", &mut body, &|node| {
+                        call_expression(node, "context")
+                    }) {
+                        return Err(codegen::owned_expression_emission_error(
+                            codegen::OwnedSourceNamespace::Main,
+                            id,
+                            expression,
+                        )
+                        .into());
+                    }
+                } else if basic {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                } else {
+                    render_generated_values(sequence, "        ", &mut body)?;
+                }
+                let index = if scalar_item_at {
+                    call_expression(*index, "context")
+                } else {
+                    format!("expression_{index}(context)")
+                };
                 body.push_str(&format!(
-                "        let index = expression_{index}(context)?;\n        aggregate(AggregateFunction::ItemAt, &sequence_values, Some(index))\n    }}"
+                "        let index = {index}?;\n        aggregate(AggregateFunction::ItemAt, &sequence_values, Some(index))\n    }}"
             ));
                 body
             }
@@ -2506,45 +2568,28 @@ fn render_generated_values(
     indent: &str,
     output: &mut String,
 ) -> Result<(), EmitError> {
+    if scalar_sequence::render_values(sequence, indent, output, &|node| {
+        format!("expression_{node}(context)")
+    }) {
+        return Ok(());
+    }
     match sequence {
         GeneratedSequence::FilterMapV1(composition) => {
-            let from = composition.source.from.map_or_else(|| "None".to_string(), |node|
-                format!("Some(FilterMapInput {{ node: {node}, evaluate: &expression_{node} }})"));
+            let from = composition.source.from.map_or_else(
+                || "None".to_string(),
+                |node| {
+                    format!("Some(FilterMapInput {{ node: {node}, evaluate: &expression_{node} }})")
+                },
+            );
             let captures = composition.captures.iter().map(|capture| format!(
                 "FilterMapCapture {{ input: FilterMapInput {{ node: {}, evaluate: &expression_{} }}, ty: ScalarType::{} }}",
                 capture.node, capture.node, scalar_type_name(capture.ty))).collect::<Vec<_>>().join(", ");
-            let predicate = composition.predicate.get(); let mapper = composition.mapper.get();
+            let predicate = composition.predicate.get();
+            let mapper = composition.mapper.get();
             output.push_str(&format!(
                 "{indent}let sequence_values = filter_map_sequence(context, FilterMapDescriptor {{\n{indent}    item: {}, from: {from},\n{indent}    to: FilterMapInput {{ node: {}, evaluate: &expression_{} }},\n{indent}    captures: &[{captures}],\n{indent}    predicate: FilterMapFunction {{ id: {predicate}, output: USER_FUNCTION_{predicate}_OUTPUT, evaluate: &user_function_{predicate} }},\n{indent}    mapper: FilterMapFunction {{ id: {mapper}, output: USER_FUNCTION_{mapper}_OUTPUT, evaluate: &user_function_{mapper} }},\n{indent}    output_type: ScalarType::{},\n{indent}}})?;\n",
                 composition.item, composition.source.to, composition.source.to,
                 scalar_type_name(composition.output_type)));
-        }
-        GeneratedSequence::Tokenize {
-            input, delimiter, ..
-        } => output.push_str(&format!(
-            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{delimiter}(context)?;\n{indent}    if sequence_parameter == Value::Null || sequence_parameter.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
-        )),
-        GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
-            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{length}(context)?;\n{indent}    if sequence_parameter == Value::Null || sequence_parameter.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize_by_length(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
-        )),
-        GeneratedSequence::TokenizeRegex {
-            input,
-            pattern,
-            flags,
-            ..
-        } => {
-            output.push_str(&format!(
-                "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_pattern = expression_{pattern}(context)?;\n{indent}    if sequence_pattern == Value::Null || sequence_pattern.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n"
-            ));
-            match flags {
-                Some(flags) => output.push_str(&format!(
-                    "{indent}        let sequence_flags = expression_{flags}(context)?;\n{indent}        if sequence_flags == Value::Null || sequence_flags.is_json_null() {{\n{indent}            Vec::new()\n{indent}        }} else {{\n{indent}            tokenize_regex(sequence_input, sequence_pattern, Some(sequence_flags))?\n{indent}        }}\n"
-                )),
-                None => output.push_str(&format!(
-                    "{indent}        tokenize_regex(sequence_input, sequence_pattern, None)?\n"
-                )),
-            }
-            output.push_str(&format!("{indent}    }}\n{indent}}};\n"));
         }
         GeneratedSequence::RecursiveCollect {
             collection,
@@ -2572,16 +2617,10 @@ fn render_generated_values(
                 "{indent}let sequence_prefix = recursive_sequence_parameter(expression_{prefix}(context)?)?;\n{indent}let sequence_separator = recursive_sequence_parameter(expression_{separator}(context)?)?;\n{indent}let sequence_values = recursive_collect(\n{indent}    context,\n{indent}    RecursiveCollectPaths {{\n{indent}        collection: &[{collection}],\n{indent}        children: &[{children}],\n{indent}        descent_value: &[{descent_value}],\n{indent}        values: &[{values}],\n{indent}        value: &[{value}],\n{indent}    }},\n{indent}    &sequence_prefix,\n{indent}    &sequence_separator,\n{indent})?;\n"
             ));
         }
-        GeneratedSequence::Range {
-            from: Some(from),
-            to,
-            ..
-        } => output.push_str(&format!(
-            "{indent}let sequence_from = expression_{from}(context)?;\n{indent}let sequence_values = if sequence_from == Value::Null || sequence_from.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_to = expression_{to}(context)?;\n{indent}    if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        generate_sequence(Some(sequence_from), sequence_to)?\n{indent}    }}\n{indent}}};\n"
-        )),
-        GeneratedSequence::Range { from: None, to, .. } => output.push_str(&format!(
-            "{indent}let sequence_to = expression_{to}(context)?;\n{indent}let sequence_values = if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
-        )),
+        GeneratedSequence::Range { .. }
+        | GeneratedSequence::Tokenize { .. }
+        | GeneratedSequence::TokenizeByLength { .. }
+        | GeneratedSequence::TokenizeRegex { .. } => unreachable!("scalar producer rendered above"),
     }
     Ok(())
 }
