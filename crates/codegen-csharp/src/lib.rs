@@ -163,6 +163,18 @@ pub fn emit_with_basic_owned_sequence_item_at(program: &Program) -> Result<Artif
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic By/AdjacentBy grouping with the qualified scalar ItemAt
+/// producers. Prior companions retain their narrower control/consumer admission.
+pub fn emit_with_basic_owned_group_adjacent_by(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
+    codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_group_adjacent_by_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

@@ -807,6 +807,25 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
     let (input, supplied) = fixture();
     let mut p = value_position_project(SourceOwner::Primary, &["Rows"]);
     p.root.group_adjacent_by = Some(1);
+    assert_eq!(
+        crate::run(&p, &input),
+        Ok(Instance::Repeated(vec![
+            group(vec![
+                ("Value", text("P1")),
+                ("Position", Instance::Scalar(Value::Int(1)))
+            ]),
+            group(vec![
+                ("Value", text("P2")),
+                ("Position", Instance::Scalar(Value::Int(2)))
+            ]),
+            group(vec![
+                ("Value", text("P3")),
+                ("Position", Instance::Scalar(Value::Int(3)))
+            ]),
+        ]))
+    );
+    p.root.group_adjacent_by = None;
+    p.root.group_starting_with = Some(1);
     assert!(matches!(
         crate::run(&p, &input),
         Err(EngineError::UnsupportedOwnedContext {
@@ -815,7 +834,7 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
             ..
         })
     ));
-    p.root.group_adjacent_by = None;
+    p.root.group_starting_with = None;
     p.root.set_output_path(Some(1));
     assert!(matches!(
         crate::run(&p, &input),

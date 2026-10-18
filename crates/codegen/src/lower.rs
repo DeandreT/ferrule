@@ -52,6 +52,16 @@ pub fn lower_with_basic_owned_group_by(project: &Project) -> Result<Program, Low
     lower_with_validator(project, crate::validate_program_with_basic_owned_group_by)
 }
 
+/// Lowers static Basic By and AdjacentBy with qualified source controls,
+/// primary-row failures and scalar-producer SequenceItemAt. Existing companions
+/// retain their separate control and consumer policies; the IR is unchanged.
+pub fn lower_with_basic_owned_group_adjacent_by(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_group_adjacent_by,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {

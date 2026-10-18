@@ -132,7 +132,7 @@ public sealed class FerruleGroup : FerruleInstance
         _origin = null;
     }
 
-    internal static FerruleGroup FromBasicGroupWrapper(string name, FerruleRepeated members,
+    internal static FerruleGroup FromBasicKeyedGroupWrapper(string name, FerruleRepeated members,
         BasicGroupPrefixTemplate admission)
     {
         admission.ConsumeWrapper();
@@ -167,7 +167,7 @@ public sealed class FerruleGroup : FerruleInstance
 public sealed class FerruleRepeated : FerruleInstance
 {
     private FerruleRepeated(ReadOnlyCollection<FerruleInstance> admitted) { Items = admitted; }
-    internal static FerruleRepeated FromBasicGroupMembers(FerruleInstance[] admitted,
+    internal static FerruleRepeated FromBasicKeyedGroupMembers(FerruleInstance[] admitted,
         BasicGroupPrefixTemplate admission)
     {
         admission.ConsumeMembers(admitted.Length);

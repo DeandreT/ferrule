@@ -25,6 +25,16 @@ pub(crate) fn render_public_basic_owned_sequence_item_at_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_group_adjacent_by_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupAdjacentBy,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -36,6 +46,21 @@ pub(super) enum Profile {
     Windows,
     PrimaryRows,
     GroupBy,
+    GroupAdjacentBy,
+}
+
+impl Profile {
+    fn has_keyed_groups(self) -> bool {
+        matches!(self, Self::GroupBy | Self::GroupAdjacentBy)
+    }
+
+    pub(super) fn permits_grouping(self, grouping: Option<GroupingPlan>) -> bool {
+        match grouping {
+            Some(GroupingPlan::By { .. }) => self.has_keyed_groups(),
+            Some(GroupingPlan::AdjacentBy { .. }) => self == Self::GroupAdjacentBy,
+            _ => false,
+        }
+    }
 }
 
 pub(super) fn render_public_basic_owned_source_profile(
@@ -52,14 +77,23 @@ fn render_public_basic_owned_source_policy(
 ) -> Result<String, EmitError> {
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
-    if item_at == SequenceItemAtPolicy::BasicScalarProducers {
-        codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    } else {
-        match profile {
-            Profile::Windows => codegen::validate_basic_owned_window_emission(program)?,
-            Profile::PrimaryRows => codegen::validate_basic_owned_row_failure_emission(program)?,
-            Profile::GroupBy => codegen::validate_basic_owned_group_by_emission(program)?,
+    match (profile, item_at) {
+        (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
         }
+        (Profile::GroupBy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_sequence_item_at_emission(program)?;
+        }
+        (Profile::Windows, SequenceItemAtPolicy::Closed) => {
+            codegen::validate_basic_owned_window_emission(program)?;
+        }
+        (Profile::PrimaryRows, SequenceItemAtPolicy::Closed) => {
+            codegen::validate_basic_owned_row_failure_emission(program)?;
+        }
+        (Profile::GroupBy, SequenceItemAtPolicy::Closed) => {
+            codegen::validate_basic_owned_group_by_emission(program)?;
+        }
+        _ => unreachable!("private control/consumer profile pair"),
     }
     let primary_row_failures = profile != Profile::Windows;
     let mut scopes = Vec::new();
@@ -68,20 +102,16 @@ fn render_public_basic_owned_source_policy(
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
     let mut basic = BTreeSet::new();
-    let mark = if profile == Profile::GroupBy {
-        group_by::mark_basic_scopes
-    } else {
-        mark_basic_scopes
+    let mut mark = |scope: &TargetScope, name: &str| {
+        if profile.has_keyed_groups() {
+            group_by::mark_basic_scopes(program, scope, name, false, &mut basic, profile);
+        } else {
+            mark_basic_scopes(program, scope, name, false, &mut basic);
+        }
     };
-    mark(program, &program.root, "scope_root", false, &mut basic);
+    mark(&program.root, "scope_root");
     for (index, target) in program.extra_targets.iter().enumerate() {
-        mark(
-            program,
-            &target.root,
-            &format!("scope_extra_{index}"),
-            false,
-            &mut basic,
-        );
+        mark(&target.root, &format!("scope_extra_{index}"));
     }
     let basic_scopes = scopes
         .iter()
@@ -214,7 +244,7 @@ fn render_public_basic_owned_source_policy(
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
-        if profile == Profile::GroupBy
+        if profile.has_keyed_groups()
             && legacy_scopes.iter().any(|(_, scope, _, _)| {
                 scope
                     .iteration
@@ -245,11 +275,8 @@ fn render_public_basic_owned_source_policy(
     }
     for (name, scope, children, _) in scopes {
         if basic.contains(&name) {
-            source.push_str(&if profile == Profile::GroupBy
-                && scope
-                    .iteration
-                    .as_ref()
-                    .is_some_and(|iteration| iteration.grouping().is_some())
+            source.push_str(&if profile
+                .permits_grouping(scope.iteration.as_ref().and_then(IterationPlan::grouping))
             {
                 group_by::render_basic_group_by_scope(&name, scope, &children)
             } else {
@@ -261,7 +288,7 @@ fn render_public_basic_owned_source_policy(
                 .iter()
                 .map(|child| format!("legacy_{child}"))
                 .collect::<Vec<_>>();
-            source.push_str(&if profile == Profile::GroupBy
+            source.push_str(&if profile.has_keyed_groups()
                 && scope
                     .iteration
                     .as_ref()
@@ -283,20 +310,23 @@ fn render_public_basic_owned_source_policy(
             }
         }
     }
-    let plan = if item_at == SequenceItemAtPolicy::BasicScalarProducers {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
-    } else {
-        match profile {
-            Profile::Windows => {
-                codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
-            }
-            Profile::PrimaryRows => {
-                codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
-            }
-            Profile::GroupBy => {
-                codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
-            }
+    let plan = match (profile, item_at) {
+        (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(program)?
         }
+        (Profile::GroupBy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
+        }
+        (Profile::Windows, SequenceItemAtPolicy::Closed) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+        }
+        (Profile::PrimaryRows, SequenceItemAtPolicy::Closed) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
+        }
+        (Profile::GroupBy, SequenceItemAtPolicy::Closed) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
+        }
+        _ => unreachable!("private control/consumer profile pair"),
     };
     source.push_str(render_checked_catalogue_import(program, false));
     source.push_str(&render_checked_catalogue(

@@ -71,7 +71,7 @@ fn target_schema() -> SchemaNode {
     )
 }
 
-fn project(owner: SourceOwner) -> mapping::Project {
+pub(super) fn project(owner: SourceOwner) -> mapping::Project {
     let iteration = || mapping::ScopeIteration::OwnedSource {
         source: OwnedSourceRef {
             owner: owner.clone(),
@@ -196,7 +196,7 @@ fn program(project: &mapping::Project) -> Program {
     codegen::lower_with_basic_owned_group_by(&restored).expect("explicit By project lowers")
 }
 
-fn options() -> Options {
+pub(super) fn options() -> Options {
     Options {
         package_name: "owned_group_by_host".into(),
         runtime_dependency: RuntimeDependency::Path(
@@ -211,7 +211,7 @@ fn options() -> Options {
     }
 }
 
-fn generated_source(artifacts: &ArtifactSet) -> &str {
+pub(super) fn generated_source(artifacts: &ArtifactSet) -> &str {
     std::str::from_utf8(
         &artifacts
             .files()
@@ -274,7 +274,7 @@ fn owned_by_entry_is_typed_explicit_and_keeps_every_older_gate_closed() {
     ));
 }
 
-fn legacy_control_project(owned_control: bool, post_only: bool) -> mapping::Project {
+pub(super) fn legacy_control_project(owned_control: bool, post_only: bool) -> mapping::Project {
     let mut p = project(SourceOwner::Primary);
     p.extra_targets.clear();
     let groups = &mut p.root.children[0];
@@ -530,7 +530,10 @@ fn by_companion_preserves_row_failure_profile_artifacts_when_no_grouping_is_requ
     );
 }
 
-fn configure_groups(project: &mut mapping::Project, configure: impl Fn(&mut mapping::Scope)) {
+pub(super) fn configure_groups(
+    project: &mut mapping::Project,
+    configure: impl Fn(&mut mapping::Scope),
+) {
     configure(&mut project.root.children[0]);
     for target in &mut project.extra_targets {
         configure(&mut target.root.children[0]);

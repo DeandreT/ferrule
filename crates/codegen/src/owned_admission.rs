@@ -105,6 +105,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_group_by(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plan static Basic By/AdjacentBy admission with candidate key/retention,
+/// receiving-parent bounds, grouped/member targets and qualified ItemAt inputs.
+/// All catalogues keep original declaration ordinals and global failure demands;
+/// exact owned reads remain lazy and legacy aliases remain eager.
+pub fn legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_group_adjacent_by(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 /// Plans the explicit Basic SequenceItemAt profile. Producer scalar inputs and
 /// index keep the receiving source environment; owned reads remain lazy and
 /// potential legacy aliases remain eager in every complete target catalogue.
@@ -129,14 +140,14 @@ fn admission_plan_with_primary_row_failures(
 fn admission_plan_with_profiles(
     program: &Program,
     primary_row_failures: bool,
-    group_by: bool,
+    candidate_group_retention: bool,
 ) -> NamedInputAdmissionPlan<'_> {
     let primary_required = analyze(
         program,
         &program.root,
         Root::Primary,
         primary_row_failures,
-        group_by,
+        candidate_group_retention,
     )
     .required;
     let primary = catalogue(program, &primary_required);
@@ -148,7 +159,7 @@ fn admission_plan_with_profiles(
             &target.root,
             Root::Target(index),
             primary_row_failures,
-            group_by,
+            candidate_group_retention,
         )
         .required;
         all_required.extend(required.iter().copied());
@@ -228,7 +239,7 @@ struct Pending {
 struct Analysis<'a> {
     program: &'a Program,
     primary_row_failures: bool,
-    group_by: bool,
+    candidate_group_retention: bool,
     main: BTreeMap<NodeId, &'a Expression>,
     functions: Vec<&'a UserFunctionProgram>,
     function_index: BTreeMap<FunctionId, usize>,
@@ -240,11 +251,15 @@ struct Analysis<'a> {
     visited: BTreeSet<(Namespace, usize, NodeId)>,
 }
 impl<'a> Analysis<'a> {
-    fn new(program: &'a Program, primary_row_failures: bool, group_by: bool) -> Self {
+    fn new(
+        program: &'a Program,
+        primary_row_failures: bool,
+        candidate_group_retention: bool,
+    ) -> Self {
         Self {
             program,
             primary_row_failures,
-            group_by,
+            candidate_group_retention,
             main: program
                 .expressions
                 .iter()
@@ -422,12 +437,16 @@ impl<'a> Analysis<'a> {
         } else {
             item
         };
-        // By retention evaluates once per surviving candidate, not once on the
+        // Keyed retention evaluates once per surviving candidate, not once on the
         // synthetic grouped wrapper. Keep the legacy analyzer's environments
-        // unchanged unless the explicit By companion was selected.
+        // unchanged unless an explicit keyed-group companion was selected.
         self.optional(
             Namespace::Main,
-            if self.group_by { item } else { current },
+            if self.candidate_group_retention {
+                item
+            } else {
+                current
+            },
             iteration.post_group_filter(),
         );
         current
@@ -650,9 +669,9 @@ fn analyze<'a>(
     scope: &TargetScope,
     root: Root,
     primary_row_failures: bool,
-    group_by: bool,
+    candidate_group_retention: bool,
 ) -> Analysis<'a> {
-    let mut analysis = Analysis::new(program, primary_row_failures, group_by);
+    let mut analysis = Analysis::new(program, primary_row_failures, candidate_group_retention);
     let context = analysis.root(root);
     analysis.scope(scope, context);
     analysis.failures();
@@ -716,6 +735,28 @@ pub(crate) fn primary_visits_for_test_with_basic_owned_group_by(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
     crate::validate_program_with_basic_owned_group_by(program)?;
+    let analysis = analyze(program, &program.root, Root::Primary, true, true);
+    Ok(analysis
+        .visited
+        .iter()
+        .map(|(namespace, context, node)| {
+            (
+                match namespace {
+                    Namespace::Main => None,
+                    Namespace::Function(index) => Some(analysis.functions[*index].id),
+                },
+                *context,
+                *node,
+            )
+        })
+        .collect())
+}
+
+#[cfg(test)]
+pub(crate) fn primary_visits_for_test_with_basic_owned_group_adjacent_by(
+    program: &Program,
+) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_group_adjacent_by(program)?;
     let analysis = analyze(program, &program.root, Root::Primary, true, true);
     Ok(analysis
         .visited

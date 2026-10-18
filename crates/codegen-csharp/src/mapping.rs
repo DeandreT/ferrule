@@ -2426,28 +2426,55 @@ pub(super) fn render_basic_scopes<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(program, output, false, false)
+    render_basic_scopes_profile(
+        program,
+        output,
+        false,
+        crate::owned_basic::TargetControls::Closed,
+    )
 }
 
 pub(super) fn render_basic_scopes_with_windows<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(program, output, true, false)
+    render_basic_scopes_profile(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::Closed,
+    )
 }
 
 pub(super) fn render_basic_scopes_with_group_by<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(program, output, true, true)
+    render_basic_scopes_profile(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::By,
+    )
+}
+
+pub(super) fn render_basic_scopes_with_group_adjacent_by<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::ByAndAdjacent,
+    )
 }
 
 fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
-    allow_group_by: bool,
+    grouping: crate::owned_basic::TargetControls,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
@@ -2458,21 +2485,9 @@ fn render_basic_scopes_profile<'a>(
         .collect();
     let mut owned_routes = Vec::new();
     if allow_windows {
-        collect_basic_window_routes(
-            program,
-            &program.root,
-            false,
-            allow_group_by,
-            &mut owned_routes,
-        );
+        collect_basic_window_routes(program, &program.root, false, grouping, &mut owned_routes);
         for target in &program.extra_targets {
-            collect_basic_window_routes(
-                program,
-                &target.root,
-                false,
-                allow_group_by,
-                &mut owned_routes,
-            );
+            collect_basic_window_routes(program, &target.root, false, grouping, &mut owned_routes);
         }
     }
     for (index, scope) in scopes.iter().enumerate() {
@@ -2499,7 +2514,7 @@ fn render_basic_scopes_profile<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if allow_group_by && matches!(iteration.grouping(), Some(GroupingPlan::By { .. })) {
+            if grouping.permits_grouping(iteration.grouping()) {
                 owned_group_by::render_operation(index, iteration, output);
             } else if allow_windows
                 && (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
@@ -2551,10 +2566,10 @@ fn render_basic_scopes_profile<'a>(
         } else {
             render_bound_group(index, scope, output);
         }
-        if allow_group_by
+        if allow_windows
             && owned_routes[index]
             && let Some(iteration) = scope.iteration
-            && matches!(iteration.grouping(), Some(GroupingPlan::By { .. }))
+            && grouping.permits_grouping(iteration.grouping())
         {
             owned_group_by::render_controls(index, iteration, output);
         }
@@ -2583,7 +2598,7 @@ fn collect_basic_window_routes(
     program: &Program,
     scope: &TargetScope,
     inherited: bool,
-    allow_group_by: bool,
+    grouping: crate::owned_basic::TargetControls,
     routes: &mut Vec<bool>,
 ) {
     let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
@@ -2595,18 +2610,17 @@ fn collect_basic_window_routes(
     // A legacy Source can enter the paired route solely through its key or
     // member-retention predicate. Its authenticated grouped output still owns
     // member ancestry; descendants may not project it back to an ordinary island.
-    let paired_group = allow_group_by
-        && owned
+    let paired_group = owned
         && scope
             .iteration
             .as_ref()
-            .is_some_and(|iteration| matches!(iteration.grouping(), Some(GroupingPlan::By { .. })));
+            .is_some_and(|iteration| grouping.permits_grouping(iteration.grouping()));
     for child in &scope.children {
         collect_basic_window_routes(
             program,
             child,
             inherited || own_source || paired_group,
-            allow_group_by,
+            grouping,
             routes,
         );
     }
