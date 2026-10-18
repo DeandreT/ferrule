@@ -846,6 +846,13 @@ parent frame, including empty groups and nested source-row bindings. Malformed
 constants, competing structural connectors, computed feeds, structural copy and sequence controls keep their
 existing admission diagnostics.
 
+Separately declared cloned groups can each have a direct constant driver. Each
+occurrence must own exactly one connected group connector and its descendant
+bindings. They contribute items in saved declaration order, even when they reuse
+the same constant output, and retain the enclosing source-row context. Competing
+connectors within one occurrence and inputs shared ambiguously across cloned
+declarations remain refused.
+
 A closed, non-repeating JSON or compiled EDI variable record can also drive one
 repeating target group through its structural output. Require one connected
 target connector, a valid direct literal that establishes presence, and
