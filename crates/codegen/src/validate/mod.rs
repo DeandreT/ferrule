@@ -94,6 +94,15 @@ pub fn validate_program_with_basic_owned_group_by(
     owned_sources::validate_basic_owned_group_by_emission(program)
 }
 
+/// Validates static Basic By and AdjacentBy controls, composing the qualified
+/// scalar-producer SequenceItemAt and independent primary-row failure subset.
+/// Every structural check and every older companion's permissions are unchanged.
+pub fn validate_program_with_basic_owned_group_adjacent_by(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_group_adjacent_by_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -1375,9 +1384,10 @@ fn validate_scope(
 
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_group_by_emission,
-    validate_basic_owned_row_failure_emission, validate_basic_owned_sequence_item_at_emission,
-    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
+    validate_basic_owned_group_by_emission, validate_basic_owned_row_failure_emission,
+    validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
+    validate_basic_owned_window_emission,
 };
 
 #[cfg(test)]

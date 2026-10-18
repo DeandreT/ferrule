@@ -706,10 +706,10 @@ impl super::OwnedScopeContext<'_> {
             if frame.is_empty()
                 && ((declared_nonrepeating && !matches!(root, Instance::Repeated(_)))
                     || active.is_some_and(|index| {
-                        self.frames[index].kind == super::OwnedOccurrenceKind::ByGroup
+                        self.frames[index].kind == super::OwnedOccurrenceKind::KeyedGroup
                     }))
             {
-                // A root ByGroup pin selects the immutable endpoint, not its
+                // A root keyed-group pin selects the immutable endpoint, not its
                 // representative. Only the latest exact-owner empty frame can
                 // grant that exception; a newer Item keeps ordinary pinning.
                 None
@@ -725,9 +725,9 @@ impl super::OwnedScopeContext<'_> {
         };
         let (mut current, offset) =
             selected.map_or((root, 0), |frame| (frame.instance, frame.collection.len()));
-        if selected.is_some_and(|frame| frame.kind == super::OwnedOccurrenceKind::ByGroup) {
+        if selected.is_some_and(|frame| frame.kind == super::OwnedOccurrenceKind::KeyedGroup) {
             let Instance::Repeated(members) = current else {
-                unreachable!("private ByGroup occurrence owns its member collection")
+                unreachable!("private keyed-group occurrence owns its member collection")
             };
             let Some(first) = members.first() else {
                 return Ok(Value::Null);

@@ -307,7 +307,7 @@ enum Ancestor<'a> {
         scope: SourceScopeLocation,
         input: &'a IterationSource,
     },
-    ByGroup {
+    KeyedGroup {
         scope: SourceScopeLocation,
     },
 }
@@ -322,7 +322,7 @@ struct Visit<'a> {
 fn owns(ancestry: &[Ancestor<'_>]) -> bool {
     ancestry
         .iter()
-        .any(|entry| matches!(entry, Ancestor::Owned { .. } | Ancestor::ByGroup { .. }))
+        .any(|entry| matches!(entry, Ancestor::Owned { .. } | Ancestor::KeyedGroup { .. }))
 }
 fn failure(location: Location, query: Option<Request>, closed: Closed) -> ProgramValidationError {
     ProgramValidationError::OwnedSource {
@@ -365,10 +365,12 @@ pub(super) enum BasicOwnedProfile {
     SortAndFilter,
     WindowsAndSortAndFilter,
     ByAndWindowsAndSortAndFilter,
+    ByAndAdjacentByAndWindowsAndSortAndFilter,
 }
 
 /// Consumer permission is orthogonal to source controls and failure eligibility.
-/// Every preexisting public profile passes Closed.
+/// Only explicit scalar-producer companions opt in; source controls do not
+/// themselves grant a consumer permission.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SequenceItemAtPolicy {
     Closed,
@@ -388,6 +390,13 @@ impl SequenceItemAtPolicy {
 }
 
 impl BasicOwnedProfile {
+    fn supports_keyed_groups(self) -> bool {
+        matches!(
+            self,
+            Self::ByAndWindowsAndSortAndFilter | Self::ByAndAdjacentByAndWindowsAndSortAndFilter
+        )
+    }
+
     fn permits_filter(self, scope: &TargetScope) -> bool {
         self == Self::FilterOnly
             && matches!(
@@ -415,9 +424,9 @@ impl BasicOwnedProfile {
                             .iteration
                             .as_ref()
                             .is_some_and(|iteration| iteration.filter().is_some()))
-            || self == Self::ByAndWindowsAndSortAndFilter
+            || self.supports_keyed_groups()
                 && (Self::WindowsAndSortAndFilter.permits_filter(scope)
-                    || self.permits_group_by(scope)
+                    || self.permits_keyed_group(scope)
                         && scope
                             .iteration
                             .as_ref()
@@ -447,9 +456,9 @@ impl BasicOwnedProfile {
                             .iteration
                             .as_ref()
                             .is_some_and(|iteration| iteration.sort().is_some()))
-            || self == Self::ByAndWindowsAndSortAndFilter
+            || self.supports_keyed_groups()
                 && (Self::WindowsAndSortAndFilter.permits_sort(scope)
-                    || self.permits_group_by(scope)
+                    || self.permits_keyed_group(scope)
                         && scope
                             .iteration
                             .as_ref()
@@ -473,22 +482,27 @@ impl BasicOwnedProfile {
                         || iteration.output() == IterationOutput::First
                             && matches!(scope.construction, TargetConstruction::Group))
             })
-            || self == Self::ByAndWindowsAndSortAndFilter
+            || self.supports_keyed_groups()
                 && (Self::WindowsAndSortAndFilter.permits_windows(scope)
-                    || self.permits_group_by(scope)
+                    || self.permits_keyed_group(scope)
                         && scope.iteration.as_ref().is_some_and(|iteration| {
                             !iteration.windows().is_empty()
                                 || iteration.output() == IterationOutput::First
                         }))
     }
-    fn permits_group_by(self, scope: &TargetScope) -> bool {
-        self == Self::ByAndWindowsAndSortAndFilter
+    fn permits_keyed_group(self, scope: &TargetScope) -> bool {
+        self.supports_keyed_groups()
             && matches!(
                 scope.construction,
                 TargetConstruction::Group | TargetConstruction::Scalar { .. }
             )
             && scope.iteration.as_ref().is_some_and(|iteration| {
-                matches!(iteration.grouping(), Some(crate::GroupingPlan::By { .. }))
+                (matches!(iteration.grouping(), Some(crate::GroupingPlan::By { .. }))
+                    || self == Self::ByAndAdjacentByAndWindowsAndSortAndFilter
+                        && matches!(
+                            iteration.grouping(),
+                            Some(crate::GroupingPlan::AdjacentBy { .. })
+                        ))
                     && matches!(
                         iteration.input(),
                         IterationSource::Source(_) | IterationSource::OwnedSource(_)
@@ -642,7 +656,7 @@ impl<'a> Admission<'a> {
         if let Some(iteration) = &scope.iteration {
             let reason = if (iteration.grouping().is_some()
                 || iteration.post_group_filter().is_some())
-                && !self.profile.permits_group_by(scope)
+                && !self.profile.permits_keyed_group(scope)
             {
                 Some(Capability::Grouping)
             } else if iteration.filter().is_some() && !self.profile.permits_filter(scope)
@@ -712,7 +726,7 @@ impl<'a> Admission<'a> {
             TargetConstruction::Scalar { .. }
                 if self.profile.permits_sort(scope)
                     || self.profile.permits_windows(scope)
-                    || self.profile == BasicOwnedProfile::ByAndWindowsAndSortAndFilter =>
+                    || self.profile.supports_keyed_groups() =>
             {
                 None
             }
@@ -741,8 +755,8 @@ impl<'a> Admission<'a> {
                 closed,
             ));
         }
-        if self.profile.permits_group_by(scope) {
-            let iteration = scope.iteration.as_ref().expect("admitted By iteration");
+        if self.profile.permits_keyed_group(scope) {
+            let iteration = scope.iteration.as_ref().expect("admitted keyed iteration");
             // Bounds run once in the receiving parent, while filter, sort, key
             // and retention are candidate expressions. Only target expressions
             // and descendants inherit the representative/member grouped view.
@@ -787,9 +801,10 @@ impl<'a> Admission<'a> {
                 })?;
             }
             // A wholly ordinary island must not gain owned ancestry just by
-            // using By. A demanded paired By does establish a grouped frame.
+            // using By/AdjacentBy. A demanded paired keyed operation does
+            // establish a grouped frame, but no other mode may mint one.
             if owns(&ancestry) || basic_scope_needs_owned(self.program, scope) {
-                ancestry.push(Ancestor::ByGroup {
+                ancestry.push(Ancestor::KeyedGroup {
                     scope: route.clone(),
                 });
             }
@@ -800,7 +815,7 @@ impl<'a> Admission<'a> {
             .map(|binding| binding.expression)
             .collect::<Vec<_>>();
         if let Some(iteration) = &scope.iteration
-            && !self.profile.permits_group_by(scope)
+            && !self.profile.permits_keyed_group(scope)
         {
             if let Some((parent_ancestry, parent_closed)) = &window_parent {
                 for node in iteration
@@ -1132,6 +1147,20 @@ pub fn validate_basic_owned_group_by_emission(
     )
 }
 
+/// Explicitly admits static Basic By and AdjacentBy with candidate retention.
+/// Source controls and scalar-producer ItemAt remain orthogonal permissions;
+/// owned failure expressions retain their independently closed scalar subset.
+pub fn validate_basic_owned_group_adjacent_by_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 /// Explicitly admits SequenceItemAt over the existing four scalar producers.
 /// Producer arguments and index retain the receiving source context. By and
 /// prior controls compose here; all older profiles and failure scalar subsets
@@ -1320,7 +1349,7 @@ fn basic_scope(
         if let Some(reason) = reason {
             return Err(basic_scope_refusal(scope, route, reason));
         }
-        let legacy_grouping_island = profile == BasicOwnedProfile::ByAndWindowsAndSortAndFilter
+        let legacy_grouping_island = profile.supports_keyed_groups()
             && !inherited_owned
             && !basic_scope_needs_owned(program, scope)
             && iteration.source_iteration().is_some()
@@ -1332,7 +1361,7 @@ fn basic_scope(
             && (iteration.filter().is_some() && !profile.permits_filter(scope)
                 || iteration.sort().is_some() && !profile.permits_sort(scope)
                 || (iteration.grouping().is_some() || iteration.post_group_filter().is_some())
-                    && !profile.permits_group_by(scope)
+                    && !profile.permits_keyed_group(scope)
                 || !iteration.windows().is_empty() && !profile.permits_windows(scope)
                 || iteration.output() != IterationOutput::Repeated
                     && !profile.permits_windows(scope))
@@ -1363,7 +1392,7 @@ fn basic_scope(
     let inherited_owned = inherited_owned
         || scope.iteration.as_ref().is_some_and(|iteration| {
             iteration.owned_source_iteration().is_some()
-                || profile.permits_group_by(scope) && basic_scope_needs_owned(program, scope)
+                || profile.permits_keyed_group(scope) && basic_scope_needs_owned(program, scope)
         });
     for (index, child) in scope.children.iter().enumerate() {
         basic_scope(
@@ -1495,10 +1524,10 @@ fn basic_target_expressions(
                     .flat_map(crate::SequenceWindow::nodes),
             );
         }
-        if profile == BasicOwnedProfile::ByAndWindowsAndSortAndFilter
+        if profile.supports_keyed_groups()
             && let Some(iteration) = &scope.iteration
         {
-            // The new profile also retains controls of ordinary legacy grouping
+            // Keyed profiles also retain controls of ordinary legacy grouping
             // islands. Their capability was checked independently by basic_scope.
             output.extend(iteration.roots());
         }

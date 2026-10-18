@@ -759,8 +759,8 @@ internal static partial class Program
                 for (var i = 0; i < members.Count; i++)
                 {
                     var member = members[i].Context; var value = i == 0 ? first : second;
-                    Equal(true, member.OwnedView.FrameAt(0).ByGroup);
-                    Equal(false, member.OwnedView.FrameAt(member.OwnedView.FrameCount - 1).ByGroup);
+                    Equal(true, member.OwnedView.FrameAt(0).KeyedGroup);
+                    Equal(false, member.OwnedView.FrameAt(member.OwnedView.FrameCount - 1).KeyedGroup);
                     Equal(Text(value), member.ResolveOwnedField(owner, path, empty));
                     Equal(Text(value), member.ResolveOwnedFieldWithRootPin(owner, path, empty, false));
                     Equal(Text(value), member.ResolveOwnedFieldWithRootPin(owner, path, empty, true));

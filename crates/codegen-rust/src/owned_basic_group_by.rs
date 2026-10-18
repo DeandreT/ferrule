@@ -15,22 +15,30 @@ pub(super) fn mark_basic_scopes(
     name: &str,
     inherited_paired_frame: bool,
     basic: &mut BTreeSet<String>,
+    profile: windows::Profile,
 ) {
     let current = inherited_paired_frame || windows::subtree_owned(program, scope);
     if current {
         basic.insert(name.to_owned());
     }
-    // A paired By operation mints an authenticated grouped occurrence even
+    // A permitted paired keyed operation mints an authenticated grouped occurrence even
     // when its source selector is legacy and only its key/post demands owned
     // evaluation. Its descendants inherit that grouped ancestry; siblings do
     // not. Older profiles retain their original iteration-only propagation.
     let inherited = inherited_paired_frame
         || scope.iteration.as_ref().is_some_and(|iteration| {
             matches!(iteration.input(), IterationSource::OwnedSource(_))
-                || current && matches!(iteration.grouping(), Some(GroupingPlan::By { .. }))
+                || current && profile.permits_grouping(iteration.grouping())
         });
     for (index, child) in scope.children.iter().enumerate() {
-        mark_basic_scopes(program, child, &format!("{name}_{index}"), inherited, basic);
+        mark_basic_scopes(
+            program,
+            child,
+            &format!("{name}_{index}"),
+            inherited,
+            basic,
+            profile,
+        );
     }
 }
 
@@ -39,9 +47,11 @@ pub(super) fn render_basic_group_by_scope(
     scope: &TargetScope,
     children: &[String],
 ) -> String {
-    let iteration = scope.iteration.as_ref().expect("paired By iteration");
-    let Some(GroupingPlan::By { key: group_key }) = iteration.grouping() else {
-        unreachable!("the explicit paired profile admits By only")
+    let iteration = scope.iteration.as_ref().expect("paired keyed iteration");
+    let (group_key, operation) = match iteration.grouping() {
+        Some(GroupingPlan::By { key }) => (key, "map_group_by_source_cohort"),
+        Some(GroupingPlan::AdjacentBy { key }) => (key, "map_group_adjacent_by_source_cohort"),
+        _ => unreachable!("the explicit paired profile admits By/AdjacentBy only"),
     };
     let keys = iteration
         .sort()
@@ -139,7 +149,7 @@ pub(super) fn render_basic_group_by_scope(
         "        ",
         "item_context",
     ));
-    source.push_str(&format!("        Ok(output)\n    }}\n    let cohort = {walk};\n    let outputs = context.map_group_by_source_cohort(&cohort, &mut Controls, &mut target)?;\n"));
+    source.push_str(&format!("        Ok(output)\n    }}\n    let cohort = {walk};\n    let outputs = context.{operation}(&cohort, &mut Controls, &mut target)?;\n"));
     source.push_str(match iteration.output() {
         IterationOutput::Repeated => "    Ok(repeated(outputs))\n}\n\n",
         IterationOutput::First => {
