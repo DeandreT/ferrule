@@ -14,6 +14,8 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/basic_owned_group_adjacent_by.rs"]
+mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
 mod basic_owned_group_by;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
@@ -68,6 +70,8 @@ mod json5_companions;
 mod json_parser_ports;
 #[path = "code_generation/json_structure_variables.rs"]
 mod json_structure_variables;
+#[path = "code_generation/legacy_artifact_policy.rs"]
+mod legacy_artifact_policy;
 
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;

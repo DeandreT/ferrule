@@ -5,8 +5,13 @@
 use codegen::{GroupingPlan, IterationOutput, IterationPlan, SequenceWindow, SortFilterOrder};
 
 pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: &mut String) {
+    let operation = match iteration.grouping() {
+        Some(GroupingPlan::By { .. }) => "MapGroupBySourceCohort",
+        Some(GroupingPlan::AdjacentBy { .. }) => "MapGroupAdjacentBySourceCohort",
+        _ => unreachable!("only admitted paired keyed groups have controls"),
+    };
     output.push_str(&format!(
-        ");\n        var items_{index} = context.MapGroupBySourceCohort(\n            cohort_{index}, GroupByControls_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
+        ");\n        var items_{index} = context.{operation}(\n            cohort_{index}, GroupByControls_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
     ));
     if iteration.output() == IterationOutput::First {
         output.push_str(&format!(
@@ -20,8 +25,9 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
 }
 
 pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &mut String) {
-    let Some(GroupingPlan::By { key }) = iteration.grouping() else {
-        unreachable!("only admitted paired By scopes have By controls")
+    let key = match iteration.grouping() {
+        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => key,
+        _ => unreachable!("only admitted paired By/AdjacentBy scopes have keyed controls"),
     };
     output.push_str(&format!(
         "\n    private sealed class GroupByControls_{index} : global::Ferrule.Runtime.IFerruleBasicGroupByControls\n    {{\n        internal static readonly GroupByControls_{index} Instance = new();\n        private GroupByControls_{index}() {{ }}\n        private static readonly bool[] Descending = new bool[] {{ "

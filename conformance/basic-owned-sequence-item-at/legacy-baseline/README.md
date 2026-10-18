@@ -29,3 +29,26 @@ quoting. Other paths fail closed rather than silently changing the byte contract
 The other artifact rows never vary with the runtime path. The older Basic By
 inventory still refuses the ordinary ItemAt expression; that typed refusal is a
 separate static control, not a replacement historical artifact baseline.
+
+## Reviewed embedded-runtime updates
+
+The historical manifest is immutable and checked by its own fixed digest.
+Complete historical equality is always reported separately. The explicit
+`ReviewedAdjacentRuntime` test policy also permits source-bound updates to exactly
+three C# artifacts: `Runtime/FerruleBasicGroupBy.cs`, `Runtime/FerruleInstance.cs`
+and `Runtime/ScopeContext.cs`. These carry the adjacent-grouping runtime operation
+and private keyed-group markers. All paths, both Rust artifacts, and the other
+75 C# files remain subject to exact historical comparison.
+
+Before emission, the harness snapshots and retains those three repository source
+bodies. Their emitted contents must match those source snapshots, and the sources
+must remain unchanged. No emitted actual supplies its own expected bytes. The
+preparation source fence and original-evidence checks also cover the comparison
+policy and retained snapshots. Stable-file conservation, runtime-source packaging
+and historical whole-package equality have distinct report fields; permitting a
+reviewed runtime delta does not turn a historical byte mismatch into equality.
+
+The policy requires independent review of the complete runtime source delta and
+affected execution checks. It changes neither mapping-result expectations nor
+old-profile refusal requirements. Any additional runtime file needs a separate
+reviewed policy change; `Runtime/**` is never a blanket exemption.

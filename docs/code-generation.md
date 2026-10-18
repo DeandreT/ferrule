@@ -297,6 +297,26 @@ export, GUI authoring and observer eligibility are independently gated.
 See [the ownership contract](design/owned-sequence-item-at.md) and
 [the genuine-Project corpus](../conformance/basic-owned-sequence-item-at/README.md).
 
+## Explicit owned adjacent grouping
+
+Use `codegen::lower_with_basic_owned_group_adjacent_by`, then
+`codegen_rust::emit_with_basic_owned_group_adjacent_by(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_adjacent_by(&program)`. This explicit
+profile adds contiguous exact-key runs to the By/filter/sort/window controls and
+composes the parent-context ItemAt permission. Existing execution entry names
+and the mandatory five-field Basic policy remain the same.
+
+`A,B,A` forms three runs. A member-retention predicate retains the whole run when
+any member matches; dropping an intervening run does not merge its neighbors.
+Group bindings use the first surviving representative, while nested members
+have independent positions. Parent window bounds evaluate before keys, and the
+windows select retained groups afterward, so `First(0)` does not hide key errors.
+
+Direct Program validation and named-input discovery use the corresponding
+`_with_basic_owned_group_adjacent_by` companions. Earlier generation profiles
+keep their gates. The [adjacent grouping contract](design/owned-group-adjacent-by.md)
+defines exact-owner root pins, phase ordering, storage bounds and closed contexts.
+
 ## C#
 
 ### Build and test environment

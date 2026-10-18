@@ -10,7 +10,7 @@ mod cases;
 #[path = "../../../../conformance/basic-owned-sequence-item-at/closed.rs"]
 mod closed;
 #[path = "basic_owned_sequence_item_at/codec.rs"]
-mod codec;
+pub(super) mod codec;
 #[path = "basic_owned_sequence_item_at/native.rs"]
 mod native;
 #[path = "../../../../conformance/basic-owned-sequence-item-at/projects.rs"]
@@ -29,6 +29,14 @@ struct Case {
     native: bool,
 }
 struct Evidence(PathBuf);
+pub(super) fn run_native(
+    controls: &Json,
+    projects: &[Project],
+    directory: &Path,
+) -> TestResult<Vec<Json>> {
+    native::run(controls, projects, &Evidence(directory.to_owned()))
+}
+
 impl Evidence {
     fn new() -> TestResult<Self> {
         let path = PathBuf::from(
@@ -148,6 +156,7 @@ fn source_bindings() -> TestResult<Vec<(String, usize, String)>> {
         "crates/cli/Cargo.toml",
         "crates/cli/tests/code_generation.rs",
         "crates/cli/tests/code_generation/host_policy.rs",
+        "crates/cli/tests/code_generation/legacy_artifact_policy.rs",
         "crates/cli/tests/code_generation/basic_owned_sequence_item_at.rs",
     ] {
         files.push((relative.into(), fs::read(root.join(relative))?));
@@ -733,6 +742,9 @@ fn legacy_expected_artifacts(
     let manifest = include_str!(
         "../../../../conformance/basic-owned-sequence-item-at/legacy-baseline/manifest.json"
     );
+    if !legacy_historical_manifest_is_original(manifest.as_bytes()) {
+        return Err("legacy historical manifest was changed".into());
+    }
     let template = include_str!(
         "../../../../conformance/basic-owned-sequence-item-at/legacy-baseline/Cargo.toml.template"
     );
@@ -840,6 +852,12 @@ fn prepare_legacy(evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
     };
     evidence.debug("legacy-COMPLETE-RUST-OPTIONS.txt", &options)?;
     let (expected, expected_cargo) = legacy_expected_artifacts(evidence, original, &options)?;
+    // #442 deliberately changes three bundled runtime bodies. Freeze their
+    // source expectations before emission; retain the original historical rows.
+    let runtime_snapshot = legacy_artifact_policy::snapshot(&root()?)?;
+    for (path, bytes) in &runtime_snapshot {
+        evidence.write(&format!("legacy-reviewed-adjacent-sources/{path}"), bytes)?;
+    }
     let rust = codegen_rust::emit(&program, &options);
     let csharp = codegen_csharp::emit(&program);
     let rust_new = codegen_rust::emit_with_basic_owned_sequence_item_at(&program, &options);
@@ -870,6 +888,31 @@ fn prepare_legacy(evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
     let csharp_actual = csharp.as_ref().ok().map(legacy_artifact_manifest);
     let rust_preserved = serde_json::to_value(&rust_actual)? == expected["rust"];
     let csharp_preserved = serde_json::to_value(&csharp_actual)? == expected["csharp"];
+    let historical_csharp = serde_json::from_value::<Vec<legacy_artifact_policy::ManifestRow>>(
+        expected["csharp"].clone(),
+    )?;
+    let runtime_comparison = csharp_actual.as_ref().map(|actual| {
+        legacy_artifact_policy::compare(&historical_csharp, actual, &runtime_snapshot)
+    });
+    let runtime_sources_unchanged =
+        legacy_artifact_policy::snapshot_unchanged(&root()?, &runtime_snapshot)?;
+    let csharp_compatible = runtime_sources_unchanged
+        && runtime_comparison.as_ref().is_some_and(|comparison| {
+            comparison.accepts(legacy_artifact_policy::Policy::ReviewedAdjacentRuntime)
+        });
+    evidence.write(
+        "legacy-REVIEWED-ADJACENT-RUNTIME-COMPARISON.json",
+        &serde_json::to_vec_pretty(&json!({
+            "policy":"ReviewedAdjacentRuntime",
+            "historical_exact":runtime_comparison.as_ref().is_some_and(|value| value.accepts(legacy_artifact_policy::Policy::ExactHistorical)),
+            "paths_exact":runtime_comparison.as_ref().is_some_and(|value| value.paths_exact),
+            "stable_files_exact":runtime_comparison.as_ref().is_some_and(|value| value.stable_files_exact),
+            "runtime_sources_exact":runtime_comparison.as_ref().is_some_and(|value| value.runtime_sources_exact),
+            "source_snapshots_unchanged":runtime_sources_unchanged,
+            "accepted":csharp_compatible,
+            "runtime_expected":runtime_snapshot.iter().map(|(path, bytes)| legacy_artifact_policy::row(path, bytes)).collect::<Vec<_>>(),
+        }))?,
+    )?;
     let cargo_preserved = rust.as_ref().is_ok_and(|artifacts| {
         artifacts.files().iter().any(|file| {
             file.path.as_str() == "Cargo.toml"
@@ -933,13 +976,28 @@ fn prepare_legacy(evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
     )?;
     Ok(same
         && rust_preserved
-        && csharp_preserved
+        && csharp_compatible
         && cargo_preserved
         && old_basic_closed
         && rust.is_ok()
         && csharp.is_ok()
         && rust_new.is_ok()
         && csharp_new.is_ok())
+}
+fn legacy_historical_manifest_is_original(bytes: &[u8]) -> bool {
+    format!("{:x}", Sha256::digest(bytes))
+        == "c9bbb6505306c196d712275a15289601b102646c4052309f4a6a154057a4073d"
+}
+
+#[test]
+fn legacy_historical_manifest_is_not_rebaselined_for_runtime_updates() {
+    let original = include_bytes!(
+        "../../../../conformance/basic-owned-sequence-item-at/legacy-baseline/manifest.json"
+    );
+    assert!(legacy_historical_manifest_is_original(original));
+    let mut changed = original.to_vec();
+    changed.push(b'\n');
+    assert!(!legacy_historical_manifest_is_original(&changed));
 }
 fn old_family_controls(project: &Project, evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
     let program = codegen::lower_with_basic_owned_sequence_item_at(project)?;

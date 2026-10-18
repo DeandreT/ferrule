@@ -24,27 +24,53 @@ enum SequenceItemAtPolicy {
 }
 
 #[derive(Clone, Copy)]
+pub(super) enum TargetControls {
+    Closed,
+    By,
+    ByAndAdjacent,
+}
+
+impl TargetControls {
+    fn has_keyed_groups(self) -> bool {
+        !matches!(self, Self::Closed)
+    }
+
+    pub(super) fn permits_grouping(self, grouping: Option<codegen::GroupingPlan>) -> bool {
+        match grouping {
+            Some(codegen::GroupingPlan::By { .. }) => self.has_keyed_groups(),
+            Some(codegen::GroupingPlan::AdjacentBy { .. }) => matches!(self, Self::ByAndAdjacent),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 struct TargetExtension {
-    group_by: bool,
+    controls: TargetControls,
     sequence_item_at: SequenceItemAtPolicy,
 }
 
 impl TargetExtension {
     const CLOSED: Self = Self {
-        group_by: false,
+        controls: TargetControls::Closed,
         sequence_item_at: SequenceItemAtPolicy::Closed,
     };
     const GROUP_BY: Self = Self {
-        group_by: true,
+        controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::Closed,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
-        group_by: true,
+        controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
     };
 
-    fn permits_group_by(self) -> bool {
-        self.group_by
+    const GROUP_ADJACENT_BY: Self = Self {
+        controls: TargetControls::ByAndAdjacent,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+    };
+
+    fn permits_adjacent_by(self) -> bool {
+        matches!(self.controls, TargetControls::ByAndAdjacent)
     }
 
     fn permits_sequence_item_at(self) -> bool {
@@ -83,10 +109,13 @@ fn render_basic_owned_mapping_profile(
     allow_row_failures: bool,
     extension: TargetExtension,
 ) -> Result<String, EmitError> {
-    let allow_group_by = extension.permits_group_by();
-    if extension.permits_sequence_item_at() {
+    let allow_keyed_groups = extension.controls.has_keyed_groups();
+    // Select the control/consumer pair before the older ItemAt-only companion.
+    if extension.permits_adjacent_by() {
+        codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
+    } else if extension.permits_sequence_item_at() {
         codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
-    } else if allow_group_by {
+    } else if allow_keyed_groups {
         codegen::validate_program_with_basic_owned_group_by(program)?;
     } else if allow_row_failures {
         codegen::validate_program_with_basic_owned_row_failures(program)?;
@@ -110,7 +139,9 @@ fn render_basic_owned_mapping_profile(
         extension,
     )?;
     let mut body = String::new();
-    let (primary, extras) = if allow_group_by {
+    let (primary, extras) = if extension.permits_adjacent_by() {
+        mapping::render_basic_scopes_with_group_adjacent_by(program, &mut body)?
+    } else if allow_keyed_groups {
         mapping::render_basic_scopes_with_group_by(program, &mut body)?
     } else if allow_windows {
         mapping::render_basic_scopes_with_windows(program, &mut body)?
@@ -259,7 +290,7 @@ struct ScopeControls {
     filters: bool,
     sort: bool,
     windows: bool,
-    group_by: bool,
+    grouping: TargetControls,
 }
 
 fn check_scope(
@@ -284,10 +315,9 @@ fn check_scope(
         if (!controls.filters && iteration.filter().is_some())
             || (!controls.sort && iteration.sort().is_some())
             || (iteration.grouping().is_some()
-                && !(controls.group_by
-                    && (!paired
-                        || matches!(iteration.grouping(), Some(codegen::GroupingPlan::By { .. })))))
-            || (iteration.post_group_filter().is_some() && !controls.group_by)
+                && !(controls.grouping.has_keyed_groups()
+                    && (!paired || controls.grouping.permits_grouping(iteration.grouping()))))
+            || (iteration.post_group_filter().is_some() && !controls.grouping.has_keyed_groups())
             || (!controls.windows && !iteration.windows().is_empty())
             || (iteration.output() != IterationOutput::Repeated
                 && !(controls.windows && iteration.output() == IterationOutput::First))
@@ -318,9 +348,7 @@ fn check_scope(
     let inherited_owned = inherited_owned
         || scope.iteration.as_ref().is_some_and(|iteration| {
             matches!(iteration.input(), IterationSource::OwnedSource(_))
-                || controls.group_by
-                    && paired
-                    && matches!(iteration.grouping(), Some(codegen::GroupingPlan::By { .. }))
+                || paired && controls.grouping.permits_grouping(iteration.grouping())
         });
     for (index, child) in scope.children.iter().enumerate() {
         check_scope(
@@ -495,7 +523,7 @@ fn validate_private_inventory(
         filters: allow_filters,
         sort: allow_sort,
         windows: allow_windows,
-        group_by: extension.permits_group_by(),
+        grouping: extension.controls,
     };
     check_scope(
         program,
@@ -516,9 +544,11 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.permits_sequence_item_at() {
+    if extension.permits_adjacent_by() {
+        codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
+    } else if extension.permits_sequence_item_at() {
         codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    } else if extension.permits_group_by() {
+    } else if extension.controls.has_keyed_groups() {
         codegen::validate_basic_owned_group_by_emission(program)?;
     } else if allow_row_failures {
         codegen::validate_basic_owned_row_failure_emission(program)?;
@@ -890,9 +920,11 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.permits_sequence_item_at() {
+    let plan = if extension.permits_adjacent_by() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(program)?
+    } else if extension.permits_sequence_item_at() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
-    } else if extension.permits_group_by() {
+    } else if extension.controls.has_keyed_groups() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
     } else if allow_row_failures {
         codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
@@ -1245,6 +1277,22 @@ pub(crate) fn render_public_basic_owned_sequence_item_at_mapping(
         true,
         true,
         TargetExtension::SEQUENCE_ITEM_AT,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_group_adjacent_by_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::GROUP_ADJACENT_BY,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
