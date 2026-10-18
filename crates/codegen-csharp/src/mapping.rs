@@ -13,6 +13,7 @@ use crate::{EmitError, literal};
 
 mod failures;
 mod filter_map;
+mod owned_group_by;
 mod owned_json_api;
 #[cfg(test)]
 mod owned_json_api_tests;
@@ -2422,20 +2423,28 @@ pub(super) fn render_basic_scopes<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(program, output, false)
+    render_basic_scopes_profile(program, output, false, false)
 }
 
 pub(super) fn render_basic_scopes_with_windows<'a>(
     program: &'a Program,
     output: &mut String,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(program, output, true)
+    render_basic_scopes_profile(program, output, true, false)
+}
+
+pub(super) fn render_basic_scopes_with_group_by<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(program, output, true, true)
 }
 
 fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
+    allow_group_by: bool,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
@@ -2446,9 +2455,21 @@ fn render_basic_scopes_profile<'a>(
         .collect();
     let mut owned_routes = Vec::new();
     if allow_windows {
-        collect_basic_window_routes(program, &program.root, false, &mut owned_routes);
+        collect_basic_window_routes(
+            program,
+            &program.root,
+            false,
+            allow_group_by,
+            &mut owned_routes,
+        );
         for target in &program.extra_targets {
-            collect_basic_window_routes(program, &target.root, false, &mut owned_routes);
+            collect_basic_window_routes(
+                program,
+                &target.root,
+                false,
+                allow_group_by,
+                &mut owned_routes,
+            );
         }
     }
     for (index, scope) in scopes.iter().enumerate() {
@@ -2475,7 +2496,9 @@ fn render_basic_scopes_profile<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if allow_windows
+            if allow_group_by && matches!(iteration.grouping(), Some(GroupingPlan::By { .. })) {
+                owned_group_by::render_operation(index, iteration, output);
+            } else if allow_windows
                 && (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
             {
                 render_basic_window_operation(index, iteration, output);
@@ -2525,6 +2548,13 @@ fn render_basic_scopes_profile<'a>(
         } else {
             render_bound_group(index, scope, output);
         }
+        if allow_group_by
+            && owned_routes[index]
+            && let Some(iteration) = scope.iteration
+            && matches!(iteration.grouping(), Some(GroupingPlan::By { .. }))
+        {
+            owned_group_by::render_controls(index, iteration, output);
+        }
     }
     Ok((primary, extras))
 }
@@ -2550,6 +2580,7 @@ fn collect_basic_window_routes(
     program: &Program,
     scope: &TargetScope,
     inherited: bool,
+    allow_group_by: bool,
     routes: &mut Vec<bool>,
 ) {
     let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
@@ -2558,8 +2589,23 @@ fn collect_basic_window_routes(
         .iteration
         .as_ref()
         .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)));
+    // A legacy Source can enter the paired route solely through its key or
+    // member-retention predicate. Its authenticated grouped output still owns
+    // member ancestry; descendants may not project it back to an ordinary island.
+    let paired_group = allow_group_by
+        && owned
+        && scope
+            .iteration
+            .as_ref()
+            .is_some_and(|iteration| matches!(iteration.grouping(), Some(GroupingPlan::By { .. })));
     for child in &scope.children {
-        collect_basic_window_routes(program, child, inherited || own_source, routes);
+        collect_basic_window_routes(
+            program,
+            child,
+            inherited || own_source || paired_group,
+            allow_group_by,
+            routes,
+        );
     }
 }
 

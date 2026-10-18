@@ -86,6 +86,14 @@ pub fn validate_program_with_basic_owned_row_failures(
     owned_sources::validate_basic_owned_row_failure_emission(program)
 }
 
+/// Validates static Basic By grouping and member retention with the previously
+/// qualified filter, sort, window and primary-row failure permissions.
+pub fn validate_program_with_basic_owned_group_by(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_group_by_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -1340,8 +1348,9 @@ fn validate_scope(
 
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_row_failure_emission,
-    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_group_by_emission,
+    validate_basic_owned_row_failure_emission, validate_basic_owned_sort_emission,
+    validate_basic_owned_window_emission,
 };
 
 #[cfg(test)]

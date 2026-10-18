@@ -1,0 +1,25 @@
+{
+  "Groups": [
+    {
+      "First": "old.a",
+      "Position": 1,
+      "Members": [
+        {
+          "Label": "old.a"
+        },
+        {
+          "Label": "old.c"
+        }
+      ]
+    },
+    {
+      "First": "old.b",
+      "Position": 2,
+      "Members": [
+        {
+          "Label": "old.b"
+        }
+      ]
+    }
+  ]
+}

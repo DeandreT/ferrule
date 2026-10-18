@@ -25,8 +25,9 @@ mod named_tests;
 mod source_field_tests;
 
 pub use basic::{
-    BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots,
-    CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+    BasicGroupByControls, BasicGroupByMetadata, BasicScopeContext, BasicSourceBridgeError,
+    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, PhaseSelection,
+    RetainedSourceCohort,
 };
 pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -724,6 +725,13 @@ struct OwnedSourceFrame<'a> {
     collection: Vec<String>,
     instance: &'a Instance,
     index: usize,
+    kind: OwnedOccurrenceKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnedOccurrenceKind {
+    Item,
+    ByGroup,
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.
@@ -915,12 +923,40 @@ impl<'a> OwnedScopeContext<'a> {
         path: &[&str],
         frame: Option<&[&str]>,
     ) -> Result<OwnedMetadataBudget, OwnedSourceError> {
+        self.query_budget_with_legacy_path(owner, path, frame, false)
+    }
+
+    // Only the observed legacy producer can consume one actual named alias.
+    // Its selected/consumed callbacks still validate the canonical path at P.
+    fn legacy_walk_query_budget(
+        &self,
+        path: &[&str],
+    ) -> Result<OwnedMetadataBudget, OwnedSourceError> {
+        self.query_budget_with_legacy_path(SourceOwnerRef::Primary, path, None, true)
+    }
+
+    fn query_budget_with_legacy_path(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+        legacy_path: bool,
+    ) -> Result<OwnedMetadataBudget, OwnedSourceError> {
         let limits = self.registry.limits;
+        let path_maximum = if legacy_path {
+            limits.max_path_segments.checked_add(1).ok_or(
+                OwnedSourceError::MetadataArithmeticOverflow {
+                    kind: OwnedSourceLimitKind::MetadataSlots,
+                },
+            )?
+        } else {
+            limits.max_path_segments
+        };
         owned_charge(
             OwnedSourceLimitKind::PathSegments,
             0,
             path.len(),
-            limits.max_path_segments,
+            path_maximum,
         )?;
         if let Some(frame) = frame {
             owned_charge(

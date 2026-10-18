@@ -423,12 +423,36 @@ impl<'a> SourceRoots<'a> {
     }
 }
 
+/// Only the owned By evaluator may mint the synthetic member-container case.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OccurrenceKind {
+    Item,
+    ByGroup,
+}
+
 #[derive(Clone)]
 pub(crate) struct SourceFrame<'a> {
     pub owner: OwnerKey,
     pub collection: Vec<String>,
     pub item: &'a Instance,
     pub position_slot: usize,
+    pub kind: OccurrenceKind,
+}
+
+impl SourceFrame<'_> {
+    fn representative(&self) -> Option<&Instance> {
+        match (self.kind, self.item) {
+            (OccurrenceKind::ByGroup, Instance::Repeated(members)) => members.first(),
+            _ => Some(self.item),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SourceOriginKind {
+    Ordinary,
+    ByGroupWrapper,
+    ByGroupMembers,
 }
 
 #[derive(Clone)]
@@ -436,6 +460,7 @@ pub(crate) struct SourceOrigin<'a> {
     pub owner: OwnerKey,
     pub path: Vec<String>,
     pub item: &'a Instance,
+    pub kind: SourceOriginKind,
 }
 
 pub(crate) struct OwnedContext<'a> {
@@ -481,28 +506,40 @@ impl<'a> OwnedContext<'a> {
                     OwnerKey::Primary => self.roots.primary_repeating,
                     OwnerKey::Named(index) => self.roots.declared[index].schema.repeating,
                 };
-                // An empty pin selects the exact root unless it needs a real occurrence.
-                // Neither a different owner's frame nor the first repeated item can supply it.
-                if pin.is_empty() && !declared_repeating && !matches!(root, Instance::Repeated(_)) {
+                let frame = self
+                    .frames
+                    .iter()
+                    .rev()
+                    .find(|frame| frame.owner == key && frame.collection == pin);
+                // A ByGroup at C=[] does not redefine an explicit root pin.
+                // Ordinary repeated-root Item pins keep their active-item rule;
+                // the latest exact member frame also shadows an enclosing group.
+                if pin.is_empty()
+                    && (frame.is_some_and(|frame| frame.kind == OccurrenceKind::ByGroup)
+                        || (!declared_repeating && !matches!(root, Instance::Repeated(_))))
+                {
                     (root, suffix)
                 } else {
-                    let frame = self
-                        .frames
-                        .iter()
-                        .rev()
-                        .find(|frame| frame.owner == key && frame.collection == pin)
-                        .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
-                            owner: field.source.owner.clone(),
-                            collection: Some(pin.to_vec()),
-                        })?;
-                    (frame.item, suffix)
+                    let frame = frame.ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+                        owner: field.source.owner.clone(),
+                        collection: Some(pin.to_vec()),
+                    })?;
+                    let Some(item) = frame.representative() else {
+                        return Ok(Value::Null);
+                    };
+                    (item, suffix)
                 }
             }
             None => {
                 match self.frames.iter().rev().find(|frame| {
                     frame.owner == key && field.source.path.starts_with(&frame.collection)
                 }) {
-                    Some(frame) => (frame.item, &field.source.path[frame.collection.len()..]),
+                    Some(frame) => {
+                        let Some(item) = frame.representative() else {
+                            return Ok(Value::Null);
+                        };
+                        (item, &field.source.path[frame.collection.len()..])
+                    }
                     None => (self.roots.root(key)?, field.source.path.as_slice()),
                 }
             }
@@ -570,7 +607,10 @@ impl<'a> OwnedContext<'a> {
     }
     pub fn active_identity(&self, owner: OwnerKey, path: &[String], item: &Instance) -> bool {
         self.frames.iter().rev().any(|frame| {
-            frame.owner == owner && frame.collection == path && std::ptr::eq(frame.item, item)
+            frame.kind == OccurrenceKind::Item
+                && frame.owner == owner
+                && frame.collection == path
+                && std::ptr::eq(frame.item, item)
         })
     }
     /// Actual legacy base provenance, independent of a path's leading name.
@@ -585,6 +625,17 @@ impl<'a> OwnedContext<'a> {
             .rev()
             .find(|origin| std::ptr::eq(origin.item, base))
         {
+            if origin.kind == SourceOriginKind::ByGroupWrapper
+                && let Instance::Group(fields) = origin.item
+                && let [(label, members)] = fields.as_slice()
+                && let Some((segment, tail)) = path.split_first()
+                && segment == label
+            {
+                // A producer-minted wrapper redirects its actual field to C.
+                // The visible label can be an endpoint alias while C is []; it
+                // is consumed here, never interpreted as an owner/path segment.
+                return Some((origin.owner, members, &origin.path, tail));
+            }
             return Some((origin.owner, base, &origin.path, path));
         }
         if let Some(frame) = self

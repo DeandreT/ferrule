@@ -3,7 +3,10 @@
 //! This layer does not infer an owner from a legacy path or recover a paired
 //! context from arbitrary legacy state. Specialized contexts remain separate.
 
-use super::walk::{LegacySelected, LegacyWalkObserver, OwnedWalkObserver, walk_source_observed};
+use super::walk::{
+    LegacySelected, LegacyWalkObserver, OwnedWalkObserver, legacy_source_selection,
+    walk_source_observed, walk_source_observed_selected,
+};
 use super::{
     CollectionIdentity, DeclaredNamedSourceRoot, InstanceKind, NamedInput, OwnedOwnerKey,
     OwnedScopeContext, OwnedSourceError, OwnedSourceFrame, OwnedSourceLimitKind, OwnedSourceLimits,
@@ -18,6 +21,10 @@ use std::{
 
 #[path = "basic_failures.rs"]
 mod failure_rows;
+
+#[path = "basic_group_by.rs"]
+mod group_by;
+pub use group_by::{BasicGroupByControls, BasicGroupByMetadata};
 
 /// Fixed bridge failures; no user text is copied into these diagnostics.
 #[derive(Debug, PartialEq, Eq)]
@@ -470,6 +477,7 @@ impl<'src> BasicSourceRoots<'src> {
                 path: Vec::new(),
                 owned_frame: None,
                 raw_index: None,
+                kind: OriginKind::Ordinary,
             }],
             bindings: &self.declarations,
             projection_bytes: self.projection_bytes,
@@ -484,6 +492,41 @@ struct Origin {
     path: Vec<String>,
     owned_frame: Option<usize>,
     raw_index: Option<usize>,
+    kind: OriginKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OriginKind {
+    Ordinary,
+    GroupWrapper,
+    GroupMembers,
+}
+
+#[derive(Clone, Copy)]
+enum TerminalPath {
+    Empty,
+    Owned(usize),
+    Origin(usize),
+}
+
+#[derive(Clone, Copy)]
+enum TerminalRaw<'a> {
+    Canonical,
+    Legacy(usize),
+    Suffix { start: usize, head: Option<&'a str> },
+}
+
+/// Only an observed producer mints the terminal/cuts; no public constructor.
+#[derive(Clone, Copy)]
+struct GroupTerminal<'a> {
+    owner: OwnedOwnerKey,
+    item: &'a Instance,
+    canonical: TerminalPath,
+    raw: TerminalRaw<'a>,
+    owned_cut: usize,
+    legacy_cut: usize,
+    origin_cut: usize,
+    wrapped: bool,
 }
 // A walk mints one shared witness. Count is set exactly once, after that same
 // observed walk finishes and before any candidate is exposed to the caller.
@@ -514,6 +557,7 @@ pub struct BasicSourceCandidate<'ctx> {
     cohort: Arc<WalkCohort<'ctx>>,
     ordinal: usize,
     cursor: Option<PhaseCursor>,
+    terminal: GroupTerminal<'ctx>,
 }
 impl<'ctx> BasicScopeContext<'ctx> {
     #[cfg(test)]
@@ -570,6 +614,17 @@ impl<'ctx> BasicScopeContext<'ctx> {
         frame: Option<&[&str]>,
         phase: bool,
     ) -> Result<(PairedBudget, PairedBounds), RuntimeError> {
+        self.budget_with_legacy_path(owner, path, frame, phase, false)
+    }
+
+    fn budget_with_legacy_path(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        path: &[&str],
+        frame: Option<&[&str]>,
+        phase: bool,
+        legacy_path: bool,
+    ) -> Result<(PairedBudget, PairedBounds), RuntimeError> {
         let mut limits = self.owned.registry.limits;
         if phase {
             limits.max_walk_contexts = mul(2, limits.max_walk_contexts)?;
@@ -577,7 +632,11 @@ impl<'ctx> BasicScopeContext<'ctx> {
         let bounds = paired_bounds(limits)?;
         // Direct admission, including owner/query/error copies, comes before
         // namespace resolution. E13 must fail on the first Named("X") byte.
-        let direct = self.owned.query_budget(owner, path, frame)?;
+        let direct = if legacy_path {
+            self.owned.legacy_walk_query_budget(path)?
+        } else {
+            self.owned.query_budget(owner, path, frame)?
+        };
         let mut budget = PairedBudget {
             slots: bounds.core,
             maximum: bounds.total,
@@ -732,7 +791,10 @@ impl<'ctx> BasicScopeContext<'ctx> {
         path: &[&str],
         retained: bool,
     ) -> Result<(Vec<BasicSourceCandidate<'ctx>>, Arc<WalkCohort<'ctx>>), RuntimeError> {
-        let (mut budget, bounds) = self.budget(SourceOwnerRef::Primary, path, None, false)?;
+        let selected = legacy_source_selection(&self.legacy, path);
+        self.admit_complete_legacy_selector(path, selected)?;
+        let (mut budget, bounds) =
+            self.budget_with_legacy_path(SourceOwnerRef::Primary, path, None, false, true)?;
         budget.slots(if retained { 2 } else { 1 })?; // witness and optional holder
         let cohort = Arc::new(WalkCohort {
             parent: Arc::clone(&self.identity),
@@ -748,13 +810,60 @@ impl<'ctx> BasicScopeContext<'ctx> {
             base: &[],
             prefix_len: 0,
             produced: 0,
+            raw_head: None,
+            wrapped: !path.is_empty(),
         };
-        let rows = walk_source_observed(&self.legacy, path, &mut observer)?;
+        let rows = walk_source_observed_selected(&self.legacy, path, selected, &mut observer)?;
         cohort
             .original_count
             .set(rows.len())
             .expect("one completed observed walk");
         Ok((rows, cohort))
+    }
+
+    fn admit_complete_legacy_selector(
+        &self,
+        path: &[&str],
+        selected: Option<LegacySelected>,
+    ) -> Result<(), RuntimeError> {
+        let (prefix, consumed) = match selected {
+            Some(LegacySelected::Frame(index)) => {
+                let origin = self
+                    .origins
+                    .get(index)
+                    .ok_or(BasicSourceBridgeError::RegistryMismatch)?;
+                (
+                    origin.path.len(),
+                    usize::from(origin.kind == OriginKind::GroupWrapper && !path.is_empty()),
+                )
+            }
+            Some(LegacySelected::NamedBinding(_)) => (0, 1),
+            None => (0, 0),
+        };
+        if consumed == 0 {
+            // Unchanged ordinary queries retain the original direct-owned
+            // raw-length diagnostic and its priority over query text/metadata.
+            owned_charge(
+                OwnedSourceLimitKind::PathSegments,
+                0,
+                path.len(),
+                self.owned.registry.limits.max_path_segments,
+            )?;
+        }
+        let suffix = path
+            .len()
+            .checked_sub(consumed)
+            .ok_or(BasicSourceBridgeError::RegistryMismatch)?;
+        // The whole selector is admitted before query bytes, walk buffers or
+        // traversal. Empty/null/missing branches cannot conceal its tail. Only
+        // a real selected named binding or authenticated wrapper consumes one.
+        owned_charge(
+            OwnedSourceLimitKind::PathSegments,
+            0,
+            add(prefix, suffix)?,
+            self.owned.registry.limits.max_path_segments,
+        )?;
+        Ok(())
     }
     fn walk_owned_source_complete(
         &self,
@@ -776,6 +885,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
             cohort: Arc::clone(&cohort),
             key: OwnedOwnerKey::Primary,
             produced: 0,
+            wrapped: !path.is_empty(),
         };
         let rows = self
             .owned
@@ -1332,6 +1442,7 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             cohort: Arc::clone(&self.cohort),
             ordinal: self.ordinal,
             cursor: self.cursor,
+            terminal: self.terminal,
         })
     }
     fn phase_under(
@@ -1356,6 +1467,7 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             cohort: Arc::clone(&self.cohort),
             ordinal: self.ordinal,
             cursor: self.cursor,
+            terminal: self.terminal,
         })
     }
 }
@@ -1709,6 +1821,8 @@ struct BasicLegacyObserver<'p, 'ctx> {
     base: &'p [String],
     prefix_len: usize,
     produced: usize,
+    raw_head: Option<&'ctx str>,
+    wrapped: bool,
 }
 impl BasicLegacyObserver<'_, '_> {
     fn canonical(&mut self, path: &[String]) -> Result<Vec<String>, RuntimeError> {
@@ -1766,6 +1880,13 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
                 }
                 self.key = origin.owner;
                 self.base = &origin.path;
+                if origin.kind == OriginKind::GroupWrapper {
+                    self.prefix_len = 1;
+                    self.raw_head = match self.parent.legacy.frames[index].instance {
+                        Instance::Group(fields) => fields.first().map(|field| field.0.as_str()),
+                        _ => return Err(BasicSourceBridgeError::RegistryMismatch.into()),
+                    };
+                }
             }
             LegacySelected::NamedBinding(index) => {
                 let declaration = *self.parent.bindings.get(index).ok_or(
@@ -1783,6 +1904,7 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
                 }
                 self.key = OwnedOwnerKey::Named(declaration);
                 self.base = &[];
+                self.raw_head = Some(self.parent.legacy.named_inputs[index].name);
             }
         }
         Ok(())
@@ -1923,6 +2045,7 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
                     collection: canonical.clone(),
                     instance: frame.instance,
                     index: collection.index(),
+                    kind: super::OwnedOccurrenceKind::Item,
                 });
                 cursor = Some(PhaseCursor {
                     legacy: legacy.frames.len(),
@@ -1943,10 +2066,30 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
                 path: canonical,
                 owned_frame: own_index,
                 raw_index: collection.map(CollectionIdentity::index),
+                kind: OriginKind::Ordinary,
             });
         }
         let ordinal = self.produced;
         self.produced += 1;
+        let last = legacy.frames.len() - 1;
+        let terminal_own = origins[last].owned_frame;
+        let terminal = GroupTerminal {
+            owner: self.key,
+            item: legacy.frames[last].instance,
+            canonical: TerminalPath::Origin(last),
+            raw: if legacy.frames[last].collection.is_some() {
+                TerminalRaw::Legacy(last)
+            } else {
+                TerminalRaw::Suffix {
+                    start: self.base.len(),
+                    head: self.raw_head,
+                }
+            },
+            owned_cut: terminal_own.unwrap_or(owned.frames.len()),
+            legacy_cut: last,
+            origin_cut: last,
+            wrapped: self.wrapped,
+        };
         Ok(BasicSourceCandidate {
             context: BasicScopeContext {
                 legacy,
@@ -1959,6 +2102,7 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
             cohort: Arc::clone(&self.cohort),
             ordinal,
             cursor,
+            terminal,
         })
     }
 }
@@ -1970,6 +2114,7 @@ struct BasicOwnedObserver<'p, 'ctx> {
     cohort: Arc<WalkCohort<'ctx>>,
     key: OwnedOwnerKey,
     produced: usize,
+    wrapped: bool,
 }
 impl BasicOwnedObserver<'_, '_> {
     fn legacy_path(&mut self, path: &[String]) -> Result<Vec<String>, RuntimeError> {
@@ -2077,6 +2222,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
                 path: origin_path,
                 owned_frame: Some(own_index),
                 raw_index: Some(frame.index),
+                kind: OriginKind::Ordinary,
             });
         }
         if plain {
@@ -2096,10 +2242,44 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
                 path: origin_path,
                 owned_frame: None,
                 raw_index: None,
+                kind: OriginKind::Ordinary,
             });
         }
         let ordinal = self.produced;
         self.produced += 1;
+        let terminal_index = owned.frames.iter().rposition(|frame| {
+            frame.owner == self.key
+                && frame
+                    .collection
+                    .iter()
+                    .map(String::as_str)
+                    .eq(path.iter().copied())
+        });
+        let has_terminal_frame = !identity && terminal_index.is_some_and(|index| index >= start);
+        let remove_legacy = usize::from(has_terminal_frame || plain);
+        let terminal = GroupTerminal {
+            owner: self.key,
+            item: terminal,
+            canonical: terminal_index.map_or_else(
+                || {
+                    if plain {
+                        TerminalPath::Origin(origins.len() - 1)
+                    } else {
+                        TerminalPath::Empty
+                    }
+                },
+                TerminalPath::Owned,
+            ),
+            raw: TerminalRaw::Canonical,
+            owned_cut: if has_terminal_frame {
+                owned.frames.len() - 1
+            } else {
+                owned.frames.len()
+            },
+            legacy_cut: legacy.frames.len() - remove_legacy,
+            origin_cut: origins.len() - remove_legacy,
+            wrapped: self.wrapped,
+        };
         Ok(BasicSourceCandidate {
             context: BasicScopeContext {
                 legacy,
@@ -2112,6 +2292,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
             cohort: Arc::clone(&self.cohort),
             ordinal,
             cursor,
+            terminal,
         })
     }
 }

@@ -1298,7 +1298,8 @@ pub(crate) fn record_owned_event(
     });
 }
 
-/// Projects the existing Basic borrowed view only after a consumer opts in.
+/// Projects the existing borrowed view only after a consumer opts in. Trusted
+/// By occurrences retain their Grouped domain, whose snapshots remain closed.
 /// Callers have already checked that both admitted context and registry exist.
 /// The callback cannot retain its borrowed view; bounded snapshots are explicit.
 pub(crate) fn with_owned_witness<R>(
@@ -1361,7 +1362,15 @@ pub(crate) fn with_owned_witness<R>(
         .collect::<Vec<_>>();
     observe(Ok(TraceOwnedWitness {
         project: registry.project(),
-        domain: TraceOwnedDomain::Basic,
+        domain: if owned
+            .frames
+            .iter()
+            .any(|frame| frame.kind == crate::owned_context::OccurrenceKind::ByGroup)
+        {
+            TraceOwnedDomain::Grouped
+        } else {
+            TraceOwnedDomain::Basic
+        },
         phase: program.owned_trace_phase,
         roots,
         frames: &frames,

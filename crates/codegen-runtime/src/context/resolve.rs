@@ -702,16 +702,21 @@ impl super::OwnedScopeContext<'_> {
                     path: super::owned_string_path(path),
                 });
             }
-            if frame.is_empty() && declared_nonrepeating && !matches!(root, Instance::Repeated(_)) {
-                // Explicit root selection must not choose a same-owner active
-                // row prefix, as an implicit None read may do.
+            let active = self.owned_frame_index(key, Some(frame));
+            if frame.is_empty()
+                && ((declared_nonrepeating && !matches!(root, Instance::Repeated(_)))
+                    || active.is_some_and(|index| {
+                        self.frames[index].kind == super::OwnedOccurrenceKind::ByGroup
+                    }))
+            {
+                // A root ByGroup pin selects the immutable endpoint, not its
+                // representative. Only the latest exact-owner empty frame can
+                // grant that exception; a newer Item keeps ordinary pinning.
                 None
             } else {
-                let index = self.owned_frame_index(key, Some(frame)).ok_or_else(|| {
-                    OwnedSourceError::InactiveSourceFrame {
-                        owner: self.owned_identity(key),
-                        collection: Some(super::owned_string_path(frame)),
-                    }
+                let index = active.ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+                    owner: self.owned_identity(key),
+                    collection: Some(super::owned_string_path(frame)),
                 })?;
                 Some(&self.frames[index])
             }
@@ -720,6 +725,15 @@ impl super::OwnedScopeContext<'_> {
         };
         let (mut current, offset) =
             selected.map_or((root, 0), |frame| (frame.instance, frame.collection.len()));
+        if selected.is_some_and(|frame| frame.kind == super::OwnedOccurrenceKind::ByGroup) {
+            let Instance::Repeated(members) = current else {
+                unreachable!("private ByGroup occurrence owns its member collection")
+            };
+            let Some(first) = members.first() else {
+                return Ok(Value::Null);
+            };
+            current = first;
+        }
         for segment in offset..=path.len() {
             match current {
                 Instance::Repeated(_) => {

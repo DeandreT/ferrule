@@ -436,6 +436,7 @@ fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {
 
 // Internal witnesses are produced by this traversal, never reconstructed
 // from a requested name, a second walk, or source pointer equality.
+#[derive(Clone, Copy)]
 pub(super) enum LegacySelected {
     Frame(usize),
     NamedBinding(usize),
@@ -522,14 +523,13 @@ impl<'a> LegacyWalkObserver<'a> for LegacyNoop<'_, 'a> {
     }
 }
 
-pub(super) fn walk_source_observed<'a, O: LegacyWalkObserver<'a>>(
-    context: &ScopeContext<'a>,
+/// The literal legacy selector decision, without walking or allocating. Paired
+/// callers use this same decision to admit the complete canonical suffix first.
+pub(super) fn legacy_source_selection(
+    context: &ScopeContext<'_>,
     path: &[&str],
-    observer: &mut O,
-) -> Result<Vec<O::Output>, O::Error> {
-    #[cfg(test)]
-    super::basic::record_walk_entry();
-    let base = context
+) -> Option<LegacySelected> {
+    context
         .frames
         .iter()
         .enumerate()
@@ -537,22 +537,47 @@ pub(super) fn walk_source_observed<'a, O: LegacyWalkObserver<'a>>(
         .find(|(_, frame)| match path.first() {
             Some(first) => frame.instance.field(first).is_some(),
             None => true,
-        });
-    // Selection is literal legacy order: actual active frame, actual first
-    // supplied named binding, then the actual last-frame fallback.
-    let named = if base.is_none() {
-        path.split_first().and_then(|(name, rest)| {
-            context
-                .named_inputs
-                .iter()
-                .enumerate()
-                .find(|(_, input)| input.name == *name)
-                .map(|(index, input)| (index, input, rest))
         })
-    } else {
-        None
-    };
-    let selected = if let Some((index, base)) = base {
+        .map(|(index, _)| LegacySelected::Frame(index))
+        .or_else(|| {
+            path.first().and_then(|name| {
+                context
+                    .named_inputs
+                    .iter()
+                    .position(|input| input.name == *name)
+                    .map(LegacySelected::NamedBinding)
+            })
+        })
+        .or_else(|| {
+            context
+                .frames
+                .len()
+                .checked_sub(1)
+                .map(LegacySelected::Frame)
+        })
+}
+
+pub(super) fn walk_source_observed<'a, O: LegacyWalkObserver<'a>>(
+    context: &ScopeContext<'a>,
+    path: &[&str],
+    observer: &mut O,
+) -> Result<Vec<O::Output>, O::Error> {
+    let selected = legacy_source_selection(context, path);
+    walk_source_observed_selected(context, path, selected, observer)
+}
+
+/// Uses the already selected immutable frame/binding; no second selector or
+/// source walk can disagree with the paired caller's admission decision.
+pub(super) fn walk_source_observed_selected<'a, O: LegacyWalkObserver<'a>>(
+    context: &ScopeContext<'a>,
+    path: &[&str],
+    selected: Option<LegacySelected>,
+    observer: &mut O,
+) -> Result<Vec<O::Output>, O::Error> {
+    #[cfg(test)]
+    super::basic::record_walk_entry();
+    let selected = if let Some(LegacySelected::Frame(index)) = selected {
+        let base = &context.frames[index];
         let prefix = if path.is_empty()
             && base
                 .collection
@@ -568,12 +593,11 @@ pub(super) fn walk_source_observed<'a, O: LegacyWalkObserver<'a>>(
         };
         observer.selected(LegacySelected::Frame(index), prefix.len())?;
         Some((base.instance, path, prefix, None))
-    } else if let Some((index, input, rest)) = named {
+    } else if let Some(LegacySelected::NamedBinding(index)) = selected {
+        let input = &context.named_inputs[index];
+        let rest = &path[1..];
         observer.selected(LegacySelected::NamedBinding(index), 1)?;
         Some((input.instance, rest, &[][..], Some(input.name)))
-    } else if let Some((index, base)) = context.frames.iter().enumerate().next_back() {
-        observer.selected(LegacySelected::Frame(index), 0)?;
-        Some((base.instance, path, &[][..], None))
     } else {
         None
     };
@@ -860,7 +884,9 @@ impl<'a> super::OwnedScopeContext<'a> {
         let mut budget = self.query_budget(owner, path, None)?;
         let (key, root) = self.resolve_owned_owner(owner)?;
         let base = self.owned_base(key, path);
-        let identity = base.is_some_and(|frame| frame.collection.len() == path.len());
+        let identity = base.is_some_and(|frame| {
+            frame.collection.len() == path.len() && frame.kind == super::OwnedOccurrenceKind::Item
+        });
         let selected = base.map_or(root, |frame| frame.instance);
         if !observer.selected(key, selected, identity)? {
             return Ok(Vec::new());
@@ -929,6 +955,7 @@ impl<'a> super::OwnedScopeContext<'a> {
                         collection: super::owned_string_path(&path[..consumed]),
                         instance: item,
                         index,
+                        kind: super::OwnedOccurrenceKind::Item,
                     });
                     budget.slots.charge(2)?;
                     pending.push(OwnedWalkTask::Repeated {

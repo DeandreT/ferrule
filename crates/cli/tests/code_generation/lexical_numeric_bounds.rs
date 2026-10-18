@@ -204,7 +204,11 @@ fn lexical_numeric_bounds_compiled_complete_oracles() -> TestResult<()> {
                     })
                     .collect::<Vec<_>>();
                 evidence.record(&format!("{name}-COMPLETE-RUNTIME-BODIES"), &bodies)?;
-                if bodies.len() != 74
+                let expected_runtime_count = wanted_names
+                    .iter()
+                    .filter(|path| path.starts_with("Runtime/"))
+                    .count();
+                if bodies.len() != expected_runtime_count
                     || bodies.iter().any(
                         |(_, actual, wanted)| !matches!(wanted, Ok(wanted) if wanted.as_slice() == actual.as_slice()),
                     )

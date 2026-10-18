@@ -10,6 +10,30 @@ An owner selects immutable primary or one exact named endpoint. Preserve name by
 
 Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
 
+## Group-by occurrence identity
+
+An owned By group carries a private grouped occurrence at its exact owner and
+absolute collection path. It exposes the first surviving ordered member for
+scalar reads, a compact group ordinal for positions, and its complete ordered
+members for nested collection iteration. A nested member creates an ordinary
+occurrence with its own position; other owners and incoming ancestor frames are
+preserved. An explicit empty frame at a By-group root reads the immutable
+endpoint root. The latest exact-owner frame governs selection, so a nested
+ordinary repeated-root member retains its active-item pin behavior.
+
+Group provenance comes from an authenticated source-walk terminal observation,
+including root and identity selections. Wrapper labels and pointer equality do
+not establish an owner. A group keeps its first member's intermediate prefix;
+enumerating members does not reconstruct each member's original crossed-parent
+frames. Wrapper-origin redirects preserve the endpoint-local path even when a
+legacy named alias names an endpoint root.
+
+Member-retention predicates use candidate contexts and retain a whole group when
+any member matches. Parent windows select retained groups after grouping; bindings
+and children use the resulting grouped context. These distinct roles also govern
+dependency discovery. See [the generated group-by contract](../code-generation.md#explicit-owned-group-by)
+for ordering, explicit profile selection and metadata admission.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.
