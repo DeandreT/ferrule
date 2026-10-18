@@ -134,7 +134,9 @@ bridge errors. Reached specialized terminals retain `UnsupportedBasicContext`
 with their exact kind. Owned leaf failures retain their original node and typed
 cause; absent messages remain distinct from explicitly empty messages. Deeper
 or named-row iterations, repeated-root `Source[]`, generated/dynamic/specialized
-failure profiles and public observers remain closed.
+failure profiles remain closed. Observer APIs are outside this generated profile.
+For native Basic `TraceSink`/`DebugHook` observers, see
+[Execution Tracing](tracing.md#basic-owned-source-observers).
 
 ## C#
 
