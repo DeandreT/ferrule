@@ -125,7 +125,7 @@ fn read_input(
 
 /// A default placeholder is either absent, empty, or one exact position-zero
 /// datapoint. A missing key is author-declared absence, not a normalized hole.
-fn default_pins(component: roxmltree::Node<'_, '_>) -> Option<Vec<Option<u32>>> {
+pub(super) fn default_pins(component: roxmltree::Node<'_, '_>) -> Option<Vec<Option<u32>>> {
     let mut sources = component
         .children()
         .filter(|node| node.has_tag_name("sources"));
@@ -157,7 +157,7 @@ fn default_pins(component: roxmltree::Node<'_, '_>) -> Option<Vec<Option<u32>>> 
 }
 
 /// Census saved connections before conflict normalization can remove a feed.
-fn raw_default_is_connected(component: roxmltree::Node<'_, '_>, key: u32) -> bool {
+pub(super) fn raw_default_is_connected(component: roxmltree::Node<'_, '_>, key: u32) -> bool {
     let Some(structure) = component.parent().and_then(|children| children.parent()) else {
         return true;
     };

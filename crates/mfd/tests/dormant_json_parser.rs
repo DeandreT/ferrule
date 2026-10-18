@@ -148,11 +148,6 @@ fn dormant_parser_still_requires_schema_and_unambiguous_parameter_metadata() {
             "requires a uniquely declared required global String input",
         ),
         (
-            "<edge vertexkey=\"30\"/>",
-            "<edge vertexkey=\"30\"/><edge vertexkey=\"40\"/>",
-            "requires a uniquely declared required global String input",
-        ),
-        (
             "<parameter usageKind=\"stringparse\"/>",
             "<parameter usageKind=\"stringparse\"/><entry name=\"compute-when\"/>",
             "has no supported property outputs",
@@ -176,6 +171,65 @@ fn dormant_parser_still_requires_schema_and_unambiguous_parameter_metadata() {
             .unwrap()
             .to_string()
             .contains("could not read schema")
+    );
+}
+
+#[test]
+fn required_parser_default_placeholders_preserve_exact_absence_and_refuse_ambiguity() {
+    let original = std::fs::read_to_string(fixture()).unwrap();
+    let scratch = Scratch::new();
+    let canonical = scratch.import(&original).unwrap().imported.project;
+    for replacement in [
+        "",
+        "<sources/>",
+        "<sources><datapoint/></sources>",
+        "<sources><datapoint pos=\"0\"/></sources>",
+        "<sources><datapoint pos=\"0\" key=\"40\"/></sources>",
+    ] {
+        let actual = scratch
+            .import(&original.replace("<sources><datapoint/></sources>", replacement))
+            .unwrap()
+            .imported
+            .project;
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(&canonical).unwrap(),
+            "{replacement}"
+        );
+    }
+    for replacement in [
+        "<sources><datapoint pos=\"1\"/></sources>",
+        "<sources><datapoint key=\"bad\"/></sources>",
+        "<sources><datapoint/><datapoint/></sources>",
+        "<sources><datapoint><unknown/></datapoint></sources>",
+        "<sources/><sources/>",
+        "<sources><datapoint key=\"41\"/></sources>",
+    ] {
+        let scratch = Scratch::new();
+        let error = scratch
+            .import(&original.replace("<sources><datapoint/></sources>", replacement))
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            error.contains("requires a uniquely declared required global String input"),
+            "{replacement}: {error}"
+        );
+    }
+    let scratch = Scratch::new();
+    let connected = original
+        .replace("<datapoint/>", "<datapoint key=\"40\"/>")
+        .replace(
+            "<edge vertexkey=\"30\"/>",
+            "<edge vertexkey=\"30\"/><edge vertexkey=\"40\"/>",
+        );
+    assert!(
+        scratch
+            .import(&connected)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("requires a uniquely declared required global String input")
     );
 }
 
