@@ -1,0 +1,15 @@
+use std::{error::Error as _,fs,io::Write as _,path::Path};
+pub fn run(directory:&Path)->Result<bool,Box<dyn std::error::Error>> {
+    let source=include_str!("legacy-input.json");let expected=include_str!("legacy-expected.json");
+    let all=legacy0::execute_json_outputs(source);
+    let selected=legacy0::execute_json_selected_target(source,codegen_runtime::TargetSelection::Primary);
+    let mut original=format!("SOURCE={source}\nEXPECTED={expected}\nALL={all:#?}\nSELECTED={selected:#?}\n");
+    for error in [all.as_ref().err(),selected.as_ref().err()].into_iter().flatten() {
+        original.push_str(&format!("Display={error}\n"));let mut source=error.source();
+        while let Some(error)=source {original.push_str(&format!("CauseDebug={error:#?}\nCauseDisplay={error}\n"));source=error.source();}
+    }
+    let mut file=fs::OpenOptions::new().create_new(true).write(true).open(directory.join("LEGACY-COMPLETE-ORIGINALS.txt"))?;
+    file.write_all(original.as_bytes())?;file.flush()?;
+    Ok(matches!(&all,Ok(output) if output.primary==expected&&output.extras.is_empty())&&
+        matches!(&selected,Ok(legacy0::SelectedJsonTargetOutput::Primary(document)) if document==expected))
+}

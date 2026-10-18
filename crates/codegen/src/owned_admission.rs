@@ -105,6 +105,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_group_by(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit Basic SequenceItemAt profile. Producer scalar inputs and
+/// index keep the receiving source environment; owned reads remain lazy and
+/// potential legacy aliases remain eager in every complete target catalogue.
+pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_sequence_item_at(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }

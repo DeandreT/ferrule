@@ -22,6 +22,8 @@ mod basic_owned_json_adapters;
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_row_failures.rs"]
 mod basic_owned_row_failures;
+#[path = "code_generation/basic_owned_sequence_item_at.rs"]
+mod basic_owned_sequence_item_at;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
 #[path = "code_generation/copy_current_source.rs"]

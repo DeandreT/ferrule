@@ -1,0 +1,12 @@
+{
+  "purpose": "Independent semantic-edge expectations for maintained internal component observers; not public mapping calls or a new observer API.",
+  "controls": [
+    {"case":"A07-shared-to-and-index-edges","consumer":40,"events":[{"node":30,"slot":0,"role":"Generate.to"},{"node":30,"slot":1,"role":"ItemAt.index"}],"index_evaluations":1,"shared_node_evaluations":2},
+    {"case":"A01-named-index-collision","consumer":40,"events":[{"node":10,"slot":0},{"node":11,"slot":1},{"node":30,"slot":2}],"index_evaluations":1},
+    {"case":"E03-empty-production-still-index","consumer":40,"events":[{"node":12,"slot":0},{"node":13,"slot":1},{"node":30,"slot":2}],"index_evaluations":1},
+    {"case":"E04-null-input-skips-delimiter","consumer":40,"events":[{"node":10,"slot":0},{"node":30,"slot":2}],"skipped_nodes":[11],"index_evaluations":1},
+    {"case":"E06-producer-prevents-index","consumer":40,"events":[{"node":10,"slot":0}],"skipped_nodes":[11,30],"index_evaluations":0},
+    {"case":"unknown-exact-owner","target_producer_callbacks":0,"target_index_callbacks":0}
+  ],
+  "boundary": "The Project harness compares full values/errors but does not establish exact callback counts. Wire these expectations through existing internal node-input facilities and private generated-test counters in component lanes. Never infer counts from matching scalar values."
+}

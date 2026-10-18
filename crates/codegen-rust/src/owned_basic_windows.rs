@@ -15,6 +15,22 @@ pub(crate) fn render_public_basic_owned_row_failure_source(
     render_public_basic_owned_source_profile(program, Profile::PrimaryRows)
 }
 
+pub(crate) fn render_public_basic_owned_sequence_item_at_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupBy,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SequenceItemAtPolicy {
+    Closed,
+    BasicScalarProducers,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Profile {
     Windows,
@@ -26,12 +42,24 @@ pub(super) fn render_public_basic_owned_source_profile(
     program: &Program,
     profile: Profile,
 ) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(program, profile, SequenceItemAtPolicy::Closed)
+}
+
+fn render_public_basic_owned_source_policy(
+    program: &Program,
+    profile: Profile,
+    item_at: SequenceItemAtPolicy,
+) -> Result<String, EmitError> {
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
-    match profile {
-        Profile::Windows => codegen::validate_basic_owned_window_emission(program)?,
-        Profile::PrimaryRows => codegen::validate_basic_owned_row_failure_emission(program)?,
-        Profile::GroupBy => codegen::validate_basic_owned_group_by_emission(program)?,
+    if item_at == SequenceItemAtPolicy::BasicScalarProducers {
+        codegen::validate_basic_owned_sequence_item_at_emission(program)?;
+    } else {
+        match profile {
+            Profile::Windows => codegen::validate_basic_owned_window_emission(program)?,
+            Profile::PrimaryRows => codegen::validate_basic_owned_row_failure_emission(program)?,
+            Profile::GroupBy => codegen::validate_basic_owned_group_by_emission(program)?,
+        }
     }
     let primary_row_failures = profile != Profile::Windows;
     let mut scopes = Vec::new();
@@ -69,6 +97,20 @@ pub(super) fn render_public_basic_owned_source_profile(
     // not. Retain each expression only in the contexts that actually call it.
     let basic_retained = expression_usage(program, &basic_scopes);
     let legacy_retained = rows::target_expression_usage(program, &legacy_scopes);
+    let item_at_items = program
+        .expressions
+        .iter()
+        .filter_map(|node| match &node.expression {
+            Expression::SequenceItemAt { sequence, .. }
+                if item_at == SequenceItemAtPolicy::BasicScalarProducers
+                    && (basic_retained.contains(&node.id)
+                        || legacy_retained.contains(&node.id)) =>
+            {
+                Some(sequence.item())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
     let mut basic_call_targets = BTreeSet::from(["scope_root".to_owned()]);
     basic_call_targets.extend(
         program
@@ -90,6 +132,27 @@ pub(super) fn render_public_basic_owned_source_profile(
              RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,\n\
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
+    if item_at == SequenceItemAtPolicy::BasicScalarProducers {
+        // Demand includes both paired functions and ordinary legacy islands.
+        // Add only the pure helpers actually called, without generated contexts.
+        let mut imports = BTreeSet::new();
+        for node in &program.expressions {
+            if (basic_retained.contains(&node.id) || legacy_retained.contains(&node.id))
+                && let Expression::SequenceItemAt { sequence, .. } = &node.expression
+            {
+                imports.extend(["aggregate", "AggregateFunction"]);
+                if let Some(helper) = scalar_sequence::runtime_helper(sequence) {
+                    imports.insert(helper);
+                }
+            }
+        }
+        if !imports.is_empty() {
+            source.push_str(&format!(
+                "use codegen_runtime::{{{}}};\n\n",
+                imports.into_iter().collect::<Vec<_>>().join(", "),
+            ));
+        }
+    }
     if program.expressions.iter().any(|node| {
         basic_retained.contains(&node.id)
             && matches!(&node.expression, Expression::OwnedSourceField(field)
@@ -125,8 +188,8 @@ pub(super) fn render_public_basic_owned_source_profile(
         );
     source.push_str(&entries);
     for node in &program.expressions {
-        if basic_retained.contains(&node.id) {
-            source.push_str(&render_expression_in_context(
+        if basic_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+            source.push_str(&render_expression_in_context_with_scalar_item_at(
                 node.id,
                 &node.expression,
                 "expression_",
@@ -138,6 +201,7 @@ pub(super) fn render_public_basic_owned_source_profile(
                     basic: true,
                     owned_leaf_nodes: true,
                 },
+                item_at == SequenceItemAtPolicy::BasicScalarProducers,
             )?);
         }
     }
@@ -161,8 +225,8 @@ pub(super) fn render_public_basic_owned_source_profile(
             source.push_str("use codegen_runtime::GroupedItems;\n");
         }
         for node in &program.expressions {
-            if legacy_retained.contains(&node.id) {
-                source.push_str(&render_expression_in_context(
+            if legacy_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+                source.push_str(&render_expression_in_context_with_scalar_item_at(
                     node.id,
                     &node.expression,
                     "legacy_expression_",
@@ -174,6 +238,7 @@ pub(super) fn render_public_basic_owned_source_profile(
                         basic: false,
                         owned_leaf_nodes: false,
                     },
+                    item_at == SequenceItemAtPolicy::BasicScalarProducers,
                 )?);
             }
         }
@@ -218,15 +283,19 @@ pub(super) fn render_public_basic_owned_source_profile(
             }
         }
     }
-    let plan = match profile {
-        Profile::Windows => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
-        }
-        Profile::PrimaryRows => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
-        }
-        Profile::GroupBy => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
+    let plan = if item_at == SequenceItemAtPolicy::BasicScalarProducers {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
+    } else {
+        match profile {
+            Profile::Windows => {
+                codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+            }
+            Profile::PrimaryRows => {
+                codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
+            }
+            Profile::GroupBy => {
+                codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
+            }
         }
     };
     source.push_str(render_checked_catalogue_import(program, false));
