@@ -75,7 +75,7 @@ fn proposal_has_independent_explicit_object_cells_without_promoting_history() {
         summarize(&ledger, &Selection::default())
             .unwrap()
             .selected_cells,
-        224
+        256
     );
     assert_eq!(ledger.target.release, "2026r2");
     assert_eq!(ledger.target.edition, "Enterprise");
@@ -137,7 +137,7 @@ fn proposal_has_independent_explicit_object_cells_without_promoting_history() {
             );
         }
     }
-    assert_eq!((unverified, unassessed), (48, 176));
+    assert_eq!((unverified, unassessed), (48, 208));
     let canonical = parse(BUNDLED_LEDGER).expect("canonical ledger validates independently");
     let broad = canonical
         .capabilities
@@ -157,6 +157,8 @@ fn source_leads_do_not_pass_a_focused_behavior_gate() {
         (CLOSED, "rust"),
         (CLOSED, "native_export"),
         (CLOSED, "vendor_backends.csharp"),
+        (CLOSED, "vendor_backends.xslt3"),
+        (CLOSED, "vendor_backends.built_in"),
     ] {
         let report = gate(&ledger, &selection(NATIVE, id, dimension)).unwrap();
         assert_eq!(report.summary.selected_cells, 1);
@@ -187,7 +189,7 @@ fn empty_unknown_and_duplicate_intersections_cannot_pass() {
     }
     // Empty axes mean all values, not a zero-cell success.
     let report = gate(&ledger, &Selection::default()).unwrap();
-    assert_eq!(report.summary.selected_cells, 224);
+    assert_eq!(report.summary.selected_cells, 256);
     assert!(!report.passed);
     assert!(
         report
@@ -224,7 +226,9 @@ fn historical_import_and_emission_cannot_be_promoted_to_vendor_execution() {
     for dimension in [
         "native_export",
         "vendor_backends.xslt1",
+        "vendor_backends.xslt3",
         "vendor_backends.csharp",
+        "vendor_backends.built_in",
     ] {
         for evidence in ["historical-import-roundtrip", "historical-emission"] {
             let mut document = document();
@@ -321,7 +325,7 @@ fn focused_summary_is_stable_and_full_profile_remains_incomplete() {
         )
         .unwrap();
         assert!(report.summary.selection.full_profiles);
-        assert_eq!(report.summary.selected_cells, 112);
+        assert_eq!(report.summary.selected_cells, 128);
         assert!(!report.passed);
         assert!(
             report
