@@ -17,8 +17,61 @@ use std::collections::BTreeSet;
 
 mod row_failures;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SequenceItemAtPolicy {
+    Closed,
+    BasicScalarProducers,
+}
+
+#[derive(Clone, Copy)]
+struct TargetExtension {
+    group_by: bool,
+    sequence_item_at: SequenceItemAtPolicy,
+}
+
+impl TargetExtension {
+    const CLOSED: Self = Self {
+        group_by: false,
+        sequence_item_at: SequenceItemAtPolicy::Closed,
+    };
+    const GROUP_BY: Self = Self {
+        group_by: true,
+        sequence_item_at: SequenceItemAtPolicy::Closed,
+    };
+    const SEQUENCE_ITEM_AT: Self = Self {
+        group_by: true,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+    };
+
+    fn permits_group_by(self) -> bool {
+        self.group_by
+    }
+
+    fn permits_sequence_item_at(self) -> bool {
+        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducers
+    }
+}
+
+fn pure_item_at_sequence(sequence: &codegen::GeneratedSequence) -> bool {
+    matches!(
+        sequence,
+        codegen::GeneratedSequence::Range { .. }
+            | codegen::GeneratedSequence::Tokenize { .. }
+            | codegen::GeneratedSequence::TokenizeByLength { .. }
+            | codegen::GeneratedSequence::TokenizeRegex { .. }
+    )
+}
+
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false, false, false, false, false, false)
+    render_basic_owned_mapping_profile(
+        program,
+        false,
+        false,
+        false,
+        false,
+        false,
+        TargetExtension::CLOSED,
+    )
 }
 
 fn render_basic_owned_mapping_profile(
@@ -28,9 +81,12 @@ fn render_basic_owned_mapping_profile(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
-    allow_group_by: bool,
+    extension: TargetExtension,
 ) -> Result<String, EmitError> {
-    if allow_group_by {
+    let allow_group_by = extension.permits_group_by();
+    if extension.permits_sequence_item_at() {
+        codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
+    } else if allow_group_by {
         codegen::validate_program_with_basic_owned_group_by(program)?;
     } else if allow_row_failures {
         codegen::validate_program_with_basic_owned_row_failures(program)?;
@@ -51,7 +107,7 @@ fn render_basic_owned_mapping_profile(
         allow_sort,
         allow_windows,
         allow_row_failures,
-        allow_group_by,
+        extension,
     )?;
     let mut body = String::new();
     let (primary, extras) = if allow_group_by {
@@ -432,14 +488,14 @@ fn validate_private_inventory(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
-    allow_group_by: bool,
+    extension: TargetExtension,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     let controls = ScopeControls {
         filters: allow_filters,
         sort: allow_sort,
         windows: allow_windows,
-        group_by: allow_group_by,
+        group_by: extension.permits_group_by(),
     };
     check_scope(
         program,
@@ -460,7 +516,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if allow_group_by {
+    if extension.permits_sequence_item_at() {
+        codegen::validate_basic_owned_sequence_item_at_emission(program)?;
+    } else if extension.permits_group_by() {
         codegen::validate_basic_owned_group_by_emission(program)?;
     } else if allow_row_failures {
         codegen::validate_basic_owned_row_failure_emission(program)?;
@@ -501,6 +559,11 @@ fn validate_private_inventory(
             .into());
         }
         let reason = match &node.expression {
+            Expression::SequenceItemAt { sequence, .. }
+                if extension.permits_sequence_item_at() && pure_item_at_sequence(sequence) =>
+            {
+                continue;
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::SourceField { .. }
@@ -794,7 +857,15 @@ fn render_basic_failures(
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false, false, false, false, false, false)
+    render_checked_basic_owned_mapping_profile(
+        program,
+        false,
+        false,
+        false,
+        false,
+        false,
+        TargetExtension::CLOSED,
+    )
 }
 
 fn render_checked_basic_owned_mapping_profile(
@@ -804,7 +875,7 @@ fn render_checked_basic_owned_mapping_profile(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
-    allow_group_by: bool,
+    extension: TargetExtension,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
         render_basic_owned_mapping_profile(
@@ -814,12 +885,14 @@ fn render_checked_basic_owned_mapping_profile(
             allow_sort,
             allow_windows,
             allow_row_failures,
-            allow_group_by,
+            extension,
         )?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if allow_group_by {
+    let plan = if extension.permits_sequence_item_at() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
+    } else if extension.permits_group_by() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
     } else if allow_row_failures {
         codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
@@ -973,7 +1046,13 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
     let mut source = render_checked_basic_owned_mapping_profile(
-        program, true, false, false, false, false, false,
+        program,
+        true,
+        false,
+        false,
+        false,
+        false,
+        TargetExtension::CLOSED,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
@@ -983,7 +1062,13 @@ pub(crate) fn render_public_basic_owned_filter_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
     let mut source = render_checked_basic_owned_mapping_profile(
-        program, true, true, false, false, false, false,
+        program,
+        true,
+        true,
+        false,
+        false,
+        false,
+        TargetExtension::CLOSED,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
@@ -992,8 +1077,15 @@ pub(crate) fn render_public_basic_owned_filter_mapping(
 pub(crate) fn render_public_basic_owned_sort_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, false, false, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        false,
+        false,
+        TargetExtension::CLOSED,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1097,8 +1189,15 @@ pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) 
 pub(crate) fn render_public_basic_owned_window_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, true, false, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        false,
+        TargetExtension::CLOSED,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1106,8 +1205,15 @@ pub(crate) fn render_public_basic_owned_window_mapping(
 pub(crate) fn render_public_basic_owned_row_failure_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::CLOSED,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1115,8 +1221,31 @@ pub(crate) fn render_public_basic_owned_row_failure_mapping(
 pub(crate) fn render_public_basic_owned_group_by_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true, true)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::GROUP_BY,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_sequence_item_at_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::SEQUENCE_ITEM_AT,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }

@@ -95,7 +95,7 @@ fn admit_roots<'a>(
         match &rule.iteration {
             FailureIteration::Source { collection } => admission.path(collection),
             FailureIteration::Sequence { sequence } => {
-                admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule)
+                admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule, false)
             }
         }
         let root_owned = matches!(&rule.iteration,
@@ -244,7 +244,7 @@ impl<'a> Admission<'a> {
                 None => {}
             }
             if let Some(sequence) = scope.sequence() {
-                self.sequence(sequence, None, context);
+                self.sequence(sequence, None, context, false);
             }
             if let Some((_, join)) = scope.join() {
                 for source in join.sources() {
@@ -450,12 +450,19 @@ impl<'a> Admission<'a> {
         sequence: &SequenceExpr,
         function: Option<FunctionId>,
         inherited: OwnedCapabilityContext,
+        basic_item_at: bool,
     ) {
-        let context = if matches!(sequence, SequenceExpr::RecursiveCollect { .. })
+        let context = if basic_item_at
+            && inherited == OwnedCapabilityContext::Basic
+            && basic_item_at_producer(sequence)
+        {
+            OwnedCapabilityContext::Basic
+        } else if matches!(sequence, SequenceExpr::RecursiveCollect { .. })
             && matches!(
                 inherited,
                 OwnedCapabilityContext::Basic | OwnedCapabilityContext::GeneratedItem
-            ) {
+            )
+        {
             OwnedCapabilityContext::TreeOperator
         } else if inherited == OwnedCapabilityContext::Basic {
             OwnedCapabilityContext::GeneratedItem
@@ -463,13 +470,20 @@ impl<'a> Admission<'a> {
             inherited
         };
         self.push(function, context, false, sequence.inputs());
-        self.push(function, context, false, sequence.owned_items());
+        // Producer arguments are parent scalars; the lexical declaration is
+        // still an ordinary generated item, never an endpoint-bearing input.
+        let item_context = if context == OwnedCapabilityContext::Basic {
+            OwnedCapabilityContext::GeneratedItem
+        } else {
+            context
+        };
+        self.push(function, item_context, false, sequence.owned_items());
         match sequence {
             SequenceExpr::RecursiveCollect { collection, .. } => self.path(collection),
             SequenceExpr::FilterMapV1(composition) => {
                 self.function(composition.predicate);
                 self.function(composition.mapper);
-                self.sequence(&composition.source, function, context);
+                self.sequence(&composition.source, function, context, false);
             }
             _ => {}
         }
@@ -571,7 +585,17 @@ impl<'a> Admission<'a> {
                 self.summary.used_owned = true;
             }
             let child_context = if context == OwnedCapabilityContext::Basic {
-                node_context(node)
+                if matches!(node, Node::SequenceItemAt { .. })
+                    && !basic_item_at_parents(
+                        project,
+                        graph.expect("node belongs to a graph"),
+                        node,
+                    )
+                {
+                    OwnedCapabilityContext::GeneratedItem
+                } else {
+                    node_context(node)
+                }
             } else {
                 context
             };
@@ -619,10 +643,12 @@ impl<'a> Admission<'a> {
                         self.path(&replacement.collection);
                     }
                 }
+                Node::SequenceItemAt { sequence, .. } => {
+                    self.sequence(sequence, function, child_context, true)
+                }
                 Node::SequenceExists { sequence, .. }
-                | Node::SequenceItemAt { sequence, .. }
                 | Node::SequenceAggregate { sequence, .. } => {
-                    self.sequence(sequence, function, child_context)
+                    self.sequence(sequence, function, child_context, false)
                 }
                 Node::JoinAggregate { plan, .. } => {
                     for source in plan.sources() {
@@ -663,7 +689,9 @@ pub(crate) fn failure_rule_uses_owned(graph: &mapping::Graph, rule: &mapping::Fa
 }
 
 fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if node_context(node) != OwnedCapabilityContext::Basic {
+    if matches!(node, Node::SequenceItemAt { .. })
+        || node_context(node) != OwnedCapabilityContext::Basic
+    {
         return false;
     }
     match node {
@@ -693,7 +721,9 @@ fn primary_row_failure_is_static(project: &Project, collection: &[String]) -> bo
 }
 
 fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if node_context(node) != OwnedCapabilityContext::Basic {
+    if matches!(node, Node::SequenceItemAt { .. })
+        || node_context(node) != OwnedCapabilityContext::Basic
+    {
         return false;
     }
     match node {
@@ -805,6 +835,58 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     }
 }
 
+fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
+    matches!(
+        sequence,
+        SequenceExpr::Generate { .. }
+            | SequenceExpr::Tokenize { .. }
+            | SequenceExpr::TokenizeByLength { .. }
+            | SequenceExpr::TokenizeRegex { .. }
+    )
+}
+
+/// ItemAt parent graphs remain Basic scalars (including nested eligible ItemAt).
+/// A closed operator in one argument cannot gain permission merely because an
+/// owned read is in another. Legacy islands keep their original classification.
+fn basic_item_at_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
+    let Node::SequenceItemAt { sequence, index } = node else {
+        return false;
+    };
+    if !basic_item_at_producer(sequence) {
+        return false;
+    }
+    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([*index]).collect();
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        let Some(node) = graph.nodes.get(&id) else {
+            continue;
+        };
+        match node {
+            Node::UserFunctionCall { .. } => return false,
+            Node::SourceField { path, frame }
+                if frame
+                    .as_deref()
+                    .unwrap_or(path)
+                    .first()
+                    .is_some_and(|name| {
+                        project
+                            .extra_sources
+                            .iter()
+                            .any(|source| source.name == *name && source.dynamic_path.is_some())
+                    }) =>
+            {
+                return false;
+            }
+            _ if node_context(node) != OwnedCapabilityContext::Basic => return false,
+            _ => pending.extend(node.dependencies()),
+        }
+    }
+    true
+}
+
 fn node_context(node: &Node) -> OwnedCapabilityContext {
     match node {
         // Arguments execute in the caller; function() visits the body separately.
@@ -814,6 +896,9 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         }
         Node::JoinField { .. } | Node::JoinPosition { .. } | Node::JoinAggregate { .. } => {
             OwnedCapabilityContext::Join
+        }
+        Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
+            OwnedCapabilityContext::Basic
         }
         Node::SequenceExists { .. }
         | Node::SequenceItemAt { .. }

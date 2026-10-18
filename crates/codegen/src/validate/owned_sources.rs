@@ -366,6 +366,27 @@ pub(super) enum BasicOwnedProfile {
     WindowsAndSortAndFilter,
     ByAndWindowsAndSortAndFilter,
 }
+
+/// Consumer permission is orthogonal to source controls and failure eligibility.
+/// Every preexisting public profile passes Closed.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SequenceItemAtPolicy {
+    Closed,
+    BasicScalarProducers,
+}
+
+impl SequenceItemAtPolicy {
+    fn permits(self, expression: &Expression) -> bool {
+        self == Self::BasicScalarProducers
+            && matches!(expression, Expression::SequenceItemAt { sequence, .. }
+                if matches!(sequence,
+                    crate::GeneratedSequence::Range { .. }
+                        | crate::GeneratedSequence::Tokenize { .. }
+                        | crate::GeneratedSequence::TokenizeByLength { .. }
+                        | crate::GeneratedSequence::TokenizeRegex { .. }))
+    }
+}
+
 impl BasicOwnedProfile {
     fn permits_filter(self, scope: &TargetScope) -> bool {
         self == Self::FilterOnly
@@ -481,6 +502,7 @@ impl BasicOwnedProfile {
 struct Admission<'a> {
     program: &'a Program,
     profile: BasicOwnedProfile,
+    sequence_item_at: SequenceItemAtPolicy,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -564,6 +586,9 @@ impl<'a> Admission<'a> {
                 }
             }
             let reason = match expression {
+                Expression::SequenceItemAt { .. } if self.sequence_item_at.permits(expression) => {
+                    None
+                }
                 Expression::SequenceExists { .. }
                 | Expression::SequenceItemAt { .. }
                 | Expression::SequenceAggregate { .. } => Some(Capability::GeneratedItem),
@@ -882,12 +907,27 @@ pub(super) fn validate_closed_contexts_with_profiles(
     profile: BasicOwnedProfile,
     primary_row_failures: bool,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_policies(
+        program,
+        profile,
+        primary_row_failures,
+        SequenceItemAtPolicy::Closed,
+    )
+}
+
+pub(super) fn validate_closed_contexts_with_policies(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    primary_row_failures: bool,
+    sequence_item_at: SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
     let mut admission = Admission {
         program,
         profile,
+        sequence_item_at,
         visited: Vec::new(),
     };
     admission.scope(
@@ -1092,6 +1132,21 @@ pub fn validate_basic_owned_group_by_emission(
     )
 }
 
+/// Explicitly admits SequenceItemAt over the existing four scalar producers.
+/// Producer arguments and index retain the receiving source context. By and
+/// prior controls compose here; all older profiles and failure scalar subsets
+/// retain their existing permissions.
+pub fn validate_basic_owned_sequence_item_at_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -1104,7 +1159,26 @@ fn validate_basic_owned_with_profiles(
     profile: BasicOwnedProfile,
     primary_row_failures: bool,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_profiles(program, profile, primary_row_failures)?;
+    validate_basic_owned_with_policies(
+        program,
+        profile,
+        primary_row_failures,
+        SequenceItemAtPolicy::Closed,
+    )
+}
+
+fn validate_basic_owned_with_policies(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    primary_row_failures: bool,
+    sequence_item_at: SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_policies(
+        program,
+        profile,
+        primary_row_failures,
+        sequence_item_at,
+    )?;
     basic_scope(
         program,
         &program.root,
@@ -1141,7 +1215,7 @@ fn validate_basic_owned_with_profiles(
         ));
     }
     basic_failures_with_profile(program, primary_row_failures)?;
-    let retained = basic_target_expressions(program, profile);
+    let retained = basic_target_expressions(program, profile, sequence_item_at);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
             && retained.contains(&node.id)
@@ -1154,6 +1228,9 @@ fn validate_basic_owned_with_profiles(
             ));
         }
         let reason = match &node.expression {
+            Expression::SequenceItemAt { .. } if sequence_item_at.permits(&node.expression) => {
+                continue;
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::SourceField { .. }
@@ -1378,6 +1455,7 @@ fn basic_expression_nodes(
 fn basic_target_expressions(
     program: &Program,
     profile: BasicOwnedProfile,
+    sequence_item_at: SequenceItemAtPolicy,
 ) -> std::collections::BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, profile: BasicOwnedProfile, output: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
@@ -1439,12 +1517,18 @@ fn basic_target_expressions(
         let Some(node) = program.expressions.iter().find(|node| node.id == id) else {
             continue;
         };
-        let Expression::ValueMap { input, .. } = &node.expression else {
-            continue;
+        let dependencies = match &node.expression {
+            Expression::ValueMap { input, .. } => vec![*input],
+            expression if sequence_item_at.permits(expression) => {
+                // Both producer scalar inputs and index are parent demands;
+                // generated item declarations grant no endpoint permission.
+                graph_dependencies::of(expression)
+            }
+            _ => continue,
         };
-        // ValueMap adds only its input edge to target admission. Failure
-        // traversal keeps its independent, closed ordinary scalar subset.
-        for dependency in basic_expression_nodes(program, [*input]) {
+        // Only target admission gains the explicitly permitted consumer edges.
+        // Failure traversal keeps its independent, closed scalar subset.
+        for dependency in basic_expression_nodes(program, dependencies) {
             if retained.insert(dependency) {
                 pending.push(dependency);
             }

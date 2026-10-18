@@ -26,6 +26,7 @@ mod joins;
 mod owned_admission;
 mod owned_group_by;
 mod owned_row_failures;
+mod owned_sequence_item_at;
 mod path_hierarchy;
 mod raise;
 mod recursive_filter;
