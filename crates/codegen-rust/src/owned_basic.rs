@@ -14,8 +14,11 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 mod windows;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
+#[path = "owned_basic_group_by.rs"]
+mod group_by;
 #[path = "owned_basic_rows.rs"]
 mod rows;
+pub(crate) use group_by::render_public_basic_owned_group_by_source;
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
     render_basic_owned_source_with_nodes(program, false, false)
@@ -547,7 +550,7 @@ fn render_checked_basic_owned_source_with_nodes(
     } else {
         codegen::legacy_named_input_admission_plan(program)?
     };
-    source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
+    source.push_str(render_checked_catalogue_import(program, true));
     source.push_str(&render_checked_catalogue(
         "PRIVATE_CHECKED_ALL_INPUTS",
         &plan.all_outputs,
@@ -565,6 +568,23 @@ fn render_checked_basic_owned_source_with_nodes(
     source.push_str(PRIVATE_CHECKED_REACH_COUNTERS);
     source.push_str(&render_checked_entries(program));
     Ok(source)
+}
+
+fn render_checked_catalogue_import(program: &Program, with_inputs: bool) -> &'static str {
+    // Empty tables still use the declaration type, but contain no mode values.
+    // Keep the established nonempty import spelling for existing artifacts.
+    match (with_inputs, program.extra_sources.is_empty()) {
+        (true, true) => {
+            "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput};\n\n"
+        }
+        (true, false) => {
+            "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n"
+        }
+        (false, true) => "\nuse codegen_runtime::{BasicNamedSourceDeclaration};\n\n",
+        (false, false) => {
+            "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n"
+        }
+    }
 }
 
 fn render_checked_catalogue(name: &str, catalogue: &codegen::NamedInputCatalogue<'_>) -> String {
@@ -729,8 +749,8 @@ use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRo
         1,
     );
     source = source.replacen(
-        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n",
-        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
+        render_checked_catalogue_import(program, true),
+        render_checked_catalogue_import(program, false),
         1,
     );
     source = source.replacen("pub(crate) struct NamedOutput", "pub struct NamedOutput", 1);
@@ -1117,7 +1137,7 @@ fn render_checked_basic_owned_sort_source(
 ) -> Result<String, EmitError> {
     let mut source = render_basic_owned_sort_source(program, owned_leaf_nodes)?;
     let plan = codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?;
-    source.push_str("\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n");
+    source.push_str(render_checked_catalogue_import(program, true));
     source.push_str(&render_checked_catalogue(
         "PRIVATE_CHECKED_ALL_INPUTS",
         &plan.all_outputs,
@@ -1168,8 +1188,8 @@ use codegen_runtime::{BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRo
         1,
     );
     source = source.replacen(
-        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode};\n\n",
-        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
+        render_checked_catalogue_import(program, true),
+        render_checked_catalogue_import(program, false),
         1,
     );
     source = source.replacen("pub(crate) struct NamedOutput", "pub struct NamedOutput", 1);

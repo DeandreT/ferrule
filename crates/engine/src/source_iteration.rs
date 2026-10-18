@@ -504,11 +504,13 @@ fn observe_walk<'a>(
                     collection: canonical_prefix.to_vec(),
                     item,
                     position_slot: slot,
+                    kind: crate::owned_context::OccurrenceKind::Item,
                 });
                 next_origins.push(SourceOrigin {
                     owner,
                     path: canonical_prefix.to_vec(),
                     item,
+                    kind: crate::owned_context::SourceOriginKind::Ordinary,
                 });
             }
             if path.is_empty() {
@@ -653,6 +655,7 @@ fn observe_walk<'a>(
                     owner,
                     path: canonical_prefix.to_vec(),
                     item: base,
+                    kind: crate::owned_context::SourceOriginKind::Ordinary,
                 });
             }
             output(ObservedExtension {

@@ -191,7 +191,7 @@ fn csv_x12_adapters_compiled_complete_oracles() -> TestResult<()> {
             &format!("{family}-COMPLETE-PATH-MEMBERSHIP"),
             &(&actual, &expected),
         )?;
-        if actual != expected || actual.len() != 87 {
+        if actual != expected || emitted.len() != expected.len() {
             return Err("complete CSV/X12 publish set differs".into());
         }
         for (name, body) in &emitted {
@@ -219,7 +219,11 @@ fn csv_x12_adapters_compiled_complete_oracles() -> TestResult<()> {
             })
             .collect::<Vec<_>>();
         evidence.record(&format!("{family}-COMPLETE-RUNTIME-BODY-READBACK"), &bodies)?;
-        if bodies.len() != 83
+        let expected_runtime_count = expected
+            .iter()
+            .filter(|path| path.starts_with("Runtime/"))
+            .count();
+        if bodies.len() != expected_runtime_count
             || bodies
                 .iter()
                 .any(|(_, original, body)| !matches!(original, Ok(original) if original == body))

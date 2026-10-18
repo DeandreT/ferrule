@@ -6,35 +6,48 @@ use super::*;
 pub(crate) fn render_public_basic_owned_window_source(
     program: &Program,
 ) -> Result<String, EmitError> {
-    render_public_basic_owned_source_profile(program, false)
+    render_public_basic_owned_source_profile(program, Profile::Windows)
 }
 
 pub(crate) fn render_public_basic_owned_row_failure_source(
     program: &Program,
 ) -> Result<String, EmitError> {
-    render_public_basic_owned_source_profile(program, true)
+    render_public_basic_owned_source_profile(program, Profile::PrimaryRows)
 }
 
-fn render_public_basic_owned_source_profile(
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Profile {
+    Windows,
+    PrimaryRows,
+    GroupBy,
+}
+
+pub(super) fn render_public_basic_owned_source_profile(
     program: &Program,
-    primary_row_failures: bool,
+    profile: Profile,
 ) -> Result<String, EmitError> {
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
-    if primary_row_failures {
-        codegen::validate_basic_owned_row_failure_emission(program)?;
-    } else {
-        codegen::validate_basic_owned_window_emission(program)?;
+    match profile {
+        Profile::Windows => codegen::validate_basic_owned_window_emission(program)?,
+        Profile::PrimaryRows => codegen::validate_basic_owned_row_failure_emission(program)?,
+        Profile::GroupBy => codegen::validate_basic_owned_group_by_emission(program)?,
     }
+    let primary_row_failures = profile != Profile::Windows;
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".into(), &mut scopes);
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
     let mut basic = BTreeSet::new();
-    mark_basic_scopes(program, &program.root, "scope_root", false, &mut basic);
+    let mark = if profile == Profile::GroupBy {
+        group_by::mark_basic_scopes
+    } else {
+        mark_basic_scopes
+    };
+    mark(program, &program.root, "scope_root", false, &mut basic);
     for (index, target) in program.extra_targets.iter().enumerate() {
-        mark_basic_scopes(
+        mark(
             program,
             &target.root,
             &format!("scope_extra_{index}"),
@@ -137,6 +150,16 @@ fn render_public_basic_owned_source_profile(
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
+        if profile == Profile::GroupBy
+            && legacy_scopes.iter().any(|(_, scope, _, _)| {
+                scope
+                    .iteration
+                    .as_ref()
+                    .is_some_and(|iteration| iteration.grouping().is_some())
+            })
+        {
+            source.push_str("use codegen_runtime::GroupedItems;\n");
+        }
         for node in &program.expressions {
             if legacy_retained.contains(&node.id) {
                 source.push_str(&render_expression_in_context(
@@ -157,19 +180,37 @@ fn render_public_basic_owned_source_profile(
     }
     for (name, scope, children, _) in scopes {
         if basic.contains(&name) {
-            source.push_str(&render_window_scope(&name, scope, &children));
+            source.push_str(&if profile == Profile::GroupBy
+                && scope
+                    .iteration
+                    .as_ref()
+                    .is_some_and(|iteration| iteration.grouping().is_some())
+            {
+                group_by::render_basic_group_by_scope(&name, scope, &children)
+            } else {
+                render_window_scope(&name, scope, &children)
+            });
         } else {
             let legacy_name = format!("legacy_{name}");
             let legacy_children = children
                 .iter()
                 .map(|child| format!("legacy_{child}"))
                 .collect::<Vec<_>>();
-            source.push_str(&render_legacy_scope(
-                program,
-                &legacy_name,
-                scope,
-                &legacy_children,
-            )?);
+            source.push_str(&if profile == Profile::GroupBy
+                && scope
+                    .iteration
+                    .as_ref()
+                    .is_some_and(|iteration| iteration.grouping().is_some())
+            {
+                group_by::render_legacy_grouping_scope(
+                    program,
+                    &legacy_name,
+                    scope,
+                    &legacy_children,
+                )?
+            } else {
+                render_legacy_scope(program, &legacy_name, scope, &legacy_children)?
+            });
             // A legacy parent calls its legacy children directly. Only entry
             // roots and children called by paired scopes need a Basic adapter.
             if basic_call_targets.contains(&name) {
@@ -177,14 +218,18 @@ fn render_public_basic_owned_source_profile(
             }
         }
     }
-    let plan = if primary_row_failures {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
-    } else {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+    let plan = match profile {
+        Profile::Windows => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
+        }
+        Profile::PrimaryRows => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
+        }
+        Profile::GroupBy => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
+        }
     };
-    source.push_str(
-        "\nuse codegen_runtime::{BasicNamedSourceDeclaration, BasicNamedSourceMode};\n\n",
-    );
+    source.push_str(render_checked_catalogue_import(program, false));
     source.push_str(&render_checked_catalogue(
         "PRIVATE_CHECKED_ALL_INPUTS",
         &plan.all_outputs,
@@ -243,7 +288,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     })
 }
 
-fn subtree_owned(program: &Program, scope: &TargetScope) -> bool {
+pub(super) fn subtree_owned(program: &Program, scope: &TargetScope) -> bool {
     local_owned(program, scope)
         || scope
             .children
@@ -251,7 +296,7 @@ fn subtree_owned(program: &Program, scope: &TargetScope) -> bool {
             .any(|child| subtree_owned(program, child))
 }
 
-fn mark_basic_scopes(
+pub(super) fn mark_basic_scopes(
     program: &Program,
     scope: &TargetScope,
     name: &str,
@@ -489,7 +534,7 @@ fn render_legacy_iteration(
     Ok(output)
 }
 
-fn render_legacy_item(
+pub(super) fn render_legacy_item(
     scope: &TargetScope,
     children: &[String],
     indent: &str,
@@ -555,14 +600,14 @@ fn render_legacy_item(
     output
 }
 
-fn render_legacy_prefilter(filter: Option<NodeId>, output: &mut String) {
+pub(super) fn render_legacy_prefilter(filter: Option<NodeId>, output: &mut String) {
     let Some(filter) = filter else {
         return;
     };
     output.push_str(&format!("    let mut filtered = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let filter_value = legacy_expression_{filter}(&candidate)?;\n        if require_bool({filter}, filter_value)? {{\n            filtered.push(candidate);\n        }}\n    }}\n    candidates = filtered;\n"));
 }
 
-fn render_legacy_bounds(iteration: &IterationPlan, output: &mut String) {
+pub(super) fn render_legacy_bounds(iteration: &IterationPlan, output: &mut String) {
     if iteration.windows().is_empty() && iteration.output() != IterationOutput::First {
         return;
     }

@@ -48,8 +48,9 @@ pub use json5_boundary::{
     validate_json5_boundary, validate_json5_format_options,
 };
 pub use lower::{
-    lower, lower_with_basic_owned_filters, lower_with_basic_owned_row_failures,
-    lower_with_basic_owned_sort, lower_with_basic_owned_windows,
+    lower, lower_with_basic_owned_filters, lower_with_basic_owned_group_by,
+    lower_with_basic_owned_row_failures, lower_with_basic_owned_sort,
+    lower_with_basic_owned_windows,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
@@ -68,6 +69,7 @@ pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
     NamedTargetInputCatalogue, legacy_named_input_admission_plan,
     legacy_named_input_admission_plan_with_basic_owned_filters,
+    legacy_named_input_admission_plan_with_basic_owned_group_by,
     legacy_named_input_admission_plan_with_basic_owned_row_failures,
     legacy_named_input_admission_plan_with_basic_owned_sort,
     legacy_named_input_admission_plan_with_basic_owned_windows,
@@ -85,8 +87,8 @@ pub use validate::{
     OwnedSourceStructureReason, ProgramValidationError, RecursiveSequencePathRole,
     SequenceExpressionRole, SequenceOwner, owned_expression_emission_error,
     validate_owned_emission, validate_program, validate_program_with_basic_owned_filters,
-    validate_program_with_basic_owned_row_failures, validate_program_with_basic_owned_sort,
-    validate_program_with_basic_owned_windows,
+    validate_program_with_basic_owned_group_by, validate_program_with_basic_owned_row_failures,
+    validate_program_with_basic_owned_sort, validate_program_with_basic_owned_windows,
 };
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,
@@ -97,8 +99,9 @@ pub use x12_boundary::{
 
 pub use validate::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_row_failure_emission,
-    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_group_by_emission,
+    validate_basic_owned_row_failure_emission, validate_basic_owned_sort_emission,
+    validate_basic_owned_window_emission,
 };
 
 #[cfg(test)]

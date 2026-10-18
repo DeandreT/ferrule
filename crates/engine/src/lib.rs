@@ -1066,5 +1066,9 @@ mod owned_collection_tests;
 mod owned_source_basic_tests;
 
 #[cfg(test)]
+#[path = "tests/owned_group_by.rs"]
+mod owned_group_by_tests;
+
+#[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

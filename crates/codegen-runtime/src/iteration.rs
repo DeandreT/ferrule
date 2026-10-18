@@ -92,7 +92,7 @@ pub fn apply_sequence_windows<T>(mut items: Vec<T>, windows: &[SequenceWindow]) 
     items
 }
 
-fn sort_value_ordering(left: &Value, right: &Value) -> Ordering {
+pub(crate) fn sort_value_ordering(left: &Value, right: &Value) -> Ordering {
     match (left, right) {
         (Value::Null | Value::JsonNull(_), Value::Null | Value::JsonNull(_)) => Ordering::Equal,
         (Value::Bool(left), Value::Bool(right)) => left.cmp(right),
