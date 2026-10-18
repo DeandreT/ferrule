@@ -103,6 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         JsonBoundaryError::InvalidOutput { .. } => "InvalidOutput",
                         JsonBoundaryError::Execution(_) => "Execution",
                         JsonBoundaryError::InvalidInput { .. } => "InvalidInput",
+                        JsonBoundaryError::InvalidUtf8(_) => "InvalidUtf8",
                         JsonBoundaryError::InvalidEmbeddedSchema { .. } => "InvalidEmbeddedSchema",
                         JsonBoundaryError::EmbeddedSchemaTooLarge { .. } => "EmbeddedSchemaTooLarge",
                         JsonBoundaryError::InputTooLarge { .. } => "InputTooLarge",

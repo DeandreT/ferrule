@@ -46,6 +46,12 @@ pub fn lower_with_basic_owned_row_failures(project: &Project) -> Result<Program,
     lower_with_validator(project, crate::validate_basic_owned_row_failure_emission)
 }
 
+/// Lowers static Basic By grouping and member retention, composing the qualified
+/// filter, sort, window and primary-row failure permissions without changing IR.
+pub fn lower_with_basic_owned_group_by(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(project, crate::validate_program_with_basic_owned_group_by)
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,

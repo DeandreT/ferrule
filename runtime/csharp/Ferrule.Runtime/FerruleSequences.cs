@@ -670,7 +670,7 @@ public static class FerruleSequences
         return left.Ordinal.CompareTo(right.Ordinal);
     }
 
-    private static int CompareSortValues(FerruleValue left, FerruleValue right)
+    internal static int CompareSortValues(FerruleValue left, FerruleValue right)
     {
         if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {

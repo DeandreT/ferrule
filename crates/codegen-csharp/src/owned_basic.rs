@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 mod row_failures;
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(program, false, false, false, false, false)
+    render_basic_owned_mapping_profile(program, false, false, false, false, false, false)
 }
 
 fn render_basic_owned_mapping_profile(
@@ -28,8 +28,11 @@ fn render_basic_owned_mapping_profile(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
+    allow_group_by: bool,
 ) -> Result<String, EmitError> {
-    if allow_row_failures {
+    if allow_group_by {
+        codegen::validate_program_with_basic_owned_group_by(program)?;
+    } else if allow_row_failures {
         codegen::validate_program_with_basic_owned_row_failures(program)?;
     } else if allow_windows {
         codegen::validate_program_with_basic_owned_windows(program)?;
@@ -48,9 +51,12 @@ fn render_basic_owned_mapping_profile(
         allow_sort,
         allow_windows,
         allow_row_failures,
+        allow_group_by,
     )?;
     let mut body = String::new();
-    let (primary, extras) = if allow_windows {
+    let (primary, extras) = if allow_group_by {
+        mapping::render_basic_scopes_with_group_by(program, &mut body)?
+    } else if allow_windows {
         mapping::render_basic_scopes_with_windows(program, &mut body)?
     } else {
         mapping::render_basic_scopes(program, &mut body)?
@@ -192,14 +198,22 @@ fn scope_error(scope: &TargetScope, route: SourceScopeLocation, reason: Reason) 
     )
 }
 
+#[derive(Clone, Copy)]
+struct ScopeControls {
+    filters: bool,
+    sort: bool,
+    windows: bool,
+    group_by: bool,
+}
+
 fn check_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
-    allow_filters: bool,
-    allow_sort: bool,
-    allow_windows: bool,
+    controls: ScopeControls,
+    inherited_owned: bool,
 ) -> Result<(), EmitError> {
+    let paired = inherited_owned || scope_needs_owned_sources(program, scope);
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
             IterationSource::OwnedSource(_) | IterationSource::Source(_) => None,
@@ -211,13 +225,16 @@ fn check_scope(
         if let Some(reason) = reason {
             return Err(scope_error(scope, route, reason));
         }
-        if (!allow_filters && iteration.filter().is_some())
-            || (!allow_sort && iteration.sort().is_some())
-            || iteration.grouping().is_some()
-            || iteration.post_group_filter().is_some()
-            || (!allow_windows && !iteration.windows().is_empty())
+        if (!controls.filters && iteration.filter().is_some())
+            || (!controls.sort && iteration.sort().is_some())
+            || (iteration.grouping().is_some()
+                && !(controls.group_by
+                    && (!paired
+                        || matches!(iteration.grouping(), Some(codegen::GroupingPlan::By { .. })))))
+            || (iteration.post_group_filter().is_some() && !controls.group_by)
+            || (!controls.windows && !iteration.windows().is_empty())
             || (iteration.output() != IterationOutput::Repeated
-                && !(allow_windows && iteration.output() == IterationOutput::First))
+                && !(controls.windows && iteration.output() == IterationOutput::First))
         {
             return Err(scope_error(scope, route, Reason::ScopeControl));
         }
@@ -242,14 +259,20 @@ fn check_scope(
     {
         return Err(scope_error(scope, route, Reason::DynamicLoader));
     }
+    let inherited_owned = inherited_owned
+        || scope.iteration.as_ref().is_some_and(|iteration| {
+            matches!(iteration.input(), IterationSource::OwnedSource(_))
+                || controls.group_by
+                    && paired
+                    && matches!(iteration.grouping(), Some(codegen::GroupingPlan::By { .. }))
+        });
     for (index, child) in scope.children.iter().enumerate() {
         check_scope(
             program,
             child,
             route.clone().descendant(SourceScopeStep::Child(index)),
-            allow_filters,
-            allow_sort,
-            allow_windows,
+            controls,
+            inherited_owned,
         )?;
     }
     Ok(())
@@ -279,6 +302,16 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {
             pending.extend(iteration.filter());
+            if let Some(grouping) = iteration.grouping() {
+                pending.push(match grouping {
+                    codegen::GroupingPlan::By { key }
+                    | codegen::GroupingPlan::AdjacentBy { key } => key,
+                    codegen::GroupingPlan::StartingWith { predicate }
+                    | codegen::GroupingPlan::EndingWith { predicate } => predicate,
+                    codegen::GroupingPlan::IntoBlocks { size } => size,
+                });
+            }
+            pending.extend(iteration.post_group_filter());
             if let Some(sort) = iteration.sort() {
                 pending.extend(sort.keys().map(|key| key.expression));
             }
@@ -399,15 +432,21 @@ fn validate_private_inventory(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
+    allow_group_by: bool,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
+    let controls = ScopeControls {
+        filters: allow_filters,
+        sort: allow_sort,
+        windows: allow_windows,
+        group_by: allow_group_by,
+    };
     check_scope(
         program,
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
-        allow_filters,
-        allow_sort,
-        allow_windows,
+        controls,
+        false,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
         check_scope(
@@ -417,12 +456,13 @@ fn validate_private_inventory(
                 index,
                 name: target.name.clone(),
             }),
-            allow_filters,
-            allow_sort,
-            allow_windows,
+            controls,
+            false,
         )?;
     }
-    if allow_row_failures {
+    if allow_group_by {
+        codegen::validate_basic_owned_group_by_emission(program)?;
+    } else if allow_row_failures {
         codegen::validate_basic_owned_row_failure_emission(program)?;
     } else {
         validate_basic_failures(program)?;
@@ -754,7 +794,7 @@ fn render_basic_failures(
 // Separate checked prototype; the prepared mapping above remains byte-exact.
 #[cfg(test)]
 pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_checked_basic_owned_mapping_profile(program, false, false, false, false, false)
+    render_checked_basic_owned_mapping_profile(program, false, false, false, false, false, false)
 }
 
 fn render_checked_basic_owned_mapping_profile(
@@ -764,6 +804,7 @@ fn render_checked_basic_owned_mapping_profile(
     allow_sort: bool,
     allow_windows: bool,
     allow_row_failures: bool,
+    allow_group_by: bool,
 ) -> Result<String, EmitError> {
     let mut source = if public_owned_nodes {
         render_basic_owned_mapping_profile(
@@ -773,11 +814,14 @@ fn render_checked_basic_owned_mapping_profile(
             allow_sort,
             allow_windows,
             allow_row_failures,
+            allow_group_by,
         )?
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if allow_row_failures {
+    let plan = if allow_group_by {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
+    } else if allow_row_failures {
         codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
     } else if allow_windows {
         codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
@@ -928,8 +972,9 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, false, false, false, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program, true, false, false, false, false, false,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -937,8 +982,9 @@ pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<Str
 pub(crate) fn render_public_basic_owned_filter_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
-    let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, false, false, false)?;
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program, true, true, false, false, false, false,
+    )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -947,7 +993,7 @@ pub(crate) fn render_public_basic_owned_sort_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
     let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, false, false)?;
+        render_checked_basic_owned_mapping_profile(program, true, true, true, false, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1012,6 +1058,17 @@ pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) 
     }
     if let Some(iteration) = &scope.iteration {
         roots.extend(iteration.filter());
+        if let Some(grouping) = iteration.grouping() {
+            roots.push(match grouping {
+                codegen::GroupingPlan::By { key } | codegen::GroupingPlan::AdjacentBy { key } => {
+                    key
+                }
+                codegen::GroupingPlan::StartingWith { predicate }
+                | codegen::GroupingPlan::EndingWith { predicate } => predicate,
+                codegen::GroupingPlan::IntoBlocks { size } => size,
+            });
+        }
+        roots.extend(iteration.post_group_filter());
         if let Some(sort) = iteration.sort() {
             roots.extend(sort.keys().map(|key| key.expression));
         }
@@ -1041,7 +1098,7 @@ pub(crate) fn render_public_basic_owned_window_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
     let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, true, false)?;
+        render_checked_basic_owned_mapping_profile(program, true, true, true, true, false, false)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }
@@ -1050,7 +1107,16 @@ pub(crate) fn render_public_basic_owned_row_failure_mapping(
     program: &Program,
 ) -> Result<String, EmitError> {
     let mut source =
-        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true)?;
+        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true, false)?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_group_by_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source =
+        render_checked_basic_owned_mapping_profile(program, true, true, true, true, true, true)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
 }

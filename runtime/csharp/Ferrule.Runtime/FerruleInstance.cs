@@ -132,6 +132,15 @@ public sealed class FerruleGroup : FerruleInstance
         _origin = null;
     }
 
+    internal static FerruleGroup FromBasicGroupWrapper(string name, FerruleRepeated members,
+        BasicGroupPrefixTemplate admission)
+    {
+        admission.ConsumeWrapper();
+        var fields = new FerruleField[1];
+        fields[0] = new FerruleField(name, members);
+        return new FerruleGroup(new ReadOnlyCollection<FerruleField>(fields));
+    }
+
     public IReadOnlyList<FerruleField> Fields => _fields;
 
     public bool TryGetField(
@@ -157,6 +166,13 @@ public sealed class FerruleGroup : FerruleInstance
 
 public sealed class FerruleRepeated : FerruleInstance
 {
+    private FerruleRepeated(ReadOnlyCollection<FerruleInstance> admitted) { Items = admitted; }
+    internal static FerruleRepeated FromBasicGroupMembers(FerruleInstance[] admitted,
+        BasicGroupPrefixTemplate admission)
+    {
+        admission.ConsumeMembers(admitted.Length);
+        return new FerruleRepeated(new ReadOnlyCollection<FerruleInstance>(admitted));
+    }
     public FerruleRepeated(IEnumerable<FerruleInstance> items)
     {
         Items = InstanceCollection.Copy(items, nameof(items));

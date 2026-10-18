@@ -439,7 +439,7 @@ fn static_document_adapters_compiled_complete_oracles() -> TestResult<()> {
             &format!("{family}-COMPLETE-PATH-MEMBERSHIP"),
             &(&actual, &expected),
         )?;
-        if actual != expected || actual.len() != 86 {
+        if actual != expected || emitted.len() != expected.len() {
             return Err("complete static companion publish set differs".into());
         }
         let runtime =
@@ -459,7 +459,11 @@ fn static_document_adapters_compiled_complete_oracles() -> TestResult<()> {
             &format!("{family}-COMPLETE-RUNTIME-BODY-READBACK"),
             &source_bodies,
         )?;
-        if source_bodies.len() != 82
+        let expected_runtime_count = expected
+            .iter()
+            .filter(|path| path.starts_with("Runtime/"))
+            .count();
+        if source_bodies.len() != expected_runtime_count
             || source_bodies
                 .iter()
                 .any(|(_, source, body)| !matches!(source,Ok(source) if source == body))

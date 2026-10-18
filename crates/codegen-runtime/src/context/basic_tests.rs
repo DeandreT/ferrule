@@ -4063,7 +4063,8 @@ fn filter644_original_metadata_limits_precede_all_false_callbacks() {
             owner: OwnedOwnerKey::Primary,
             path: Vec::new(),
             owned_frame: None,
-            raw_index: None
+            raw_index: None,
+            kind: OriginKind::Ordinary,
         };
         requested
     ];
@@ -4596,6 +4597,7 @@ fn basic_alias680_projection_validation_and_cumulative_limits_remain_typed() {
         cohort: Arc::clone(&rows[0].cohort),
         key: OwnedOwnerKey::Named(0),
         produced: 0,
+        wrapped: true,
     };
     let first = observer.legacy_path(&path(&["Rows"]));
     eprintln!(
@@ -5871,6 +5873,7 @@ fn basic_singleton693_publication_copy_cost_limits_and_typed_errors_remain_authe
             cohort: Arc::clone(&original.witness),
             key: OwnedOwnerKey::Primary,
             produced: 0,
+            wrapped: false,
         };
         assert_eq!(
             observer.selected(OwnedOwnerKey::Named(0), &singleton, false),

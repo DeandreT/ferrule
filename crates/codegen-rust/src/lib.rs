@@ -244,6 +244,26 @@ pub fn emit_with_basic_owned_row_failures(
     .map_err(EmitError::from)
 }
 
+/// Emit static Basic By grouping, member retention and the qualified controls.
+/// Global primary-row failures compose here; older emitters keep their gates.
+pub fn emit_with_basic_owned_group_by(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_by(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_group_by_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_group_by_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -2222,6 +2242,24 @@ fn render_grouping(
     candidates_are_reassigned: bool,
     output: &mut String,
 ) {
+    render_grouping_with_prefix(
+        input,
+        grouping,
+        post_group_filter,
+        candidates_are_reassigned,
+        output,
+        "expression_",
+    );
+}
+
+fn render_grouping_with_prefix(
+    input: &IterationSource,
+    grouping: GroupingPlan,
+    post_group_filter: Option<NodeId>,
+    candidates_are_reassigned: bool,
+    output: &mut String,
+    expression_prefix: &str,
+) {
     let wrapper = match input {
         IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
         IterationSource::Source(source) => source.path().last().map_or_else(
@@ -2244,9 +2282,9 @@ fn render_grouping(
     match grouping {
         GroupingPlan::By { key } => {
             output.push_str(&format!(
-                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n"
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = {expression_prefix}{key}(&candidate)?;\n"
             ));
-            render_post_group_filter(post_group_filter, output);
+            render_post_group_filter(post_group_filter, output, expression_prefix);
             let tuple = if post_group_filter.is_some() {
                 "(candidate, key, retained)"
             } else {
@@ -2263,9 +2301,9 @@ fn render_grouping(
         }
         GroupingPlan::AdjacentBy { key } => {
             output.push_str(&format!(
-                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n"
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = {expression_prefix}{key}(&candidate)?;\n"
             ));
-            render_post_group_filter(post_group_filter, output);
+            render_post_group_filter(post_group_filter, output, expression_prefix);
             let tuple = if post_group_filter.is_some() {
                 "(candidate, key, retained)"
             } else {
@@ -2282,9 +2320,9 @@ fn render_grouping(
         }
         GroupingPlan::StartingWith { predicate } => {
             output.push_str(&format!(
-                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let starts = expression_{predicate}(&candidate)?;\n        let starts = require_bool({predicate}, starts)?;\n"
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let starts = {expression_prefix}{predicate}(&candidate)?;\n        let starts = require_bool({predicate}, starts)?;\n"
             ));
-            render_post_group_filter(post_group_filter, output);
+            render_post_group_filter(post_group_filter, output, expression_prefix);
             let tuple = if post_group_filter.is_some() {
                 "(candidate, starts, retained)"
             } else {
@@ -2301,9 +2339,9 @@ fn render_grouping(
         }
         GroupingPlan::EndingWith { predicate } => {
             output.push_str(&format!(
-                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let ends = expression_{predicate}(&candidate)?;\n        let ends = require_bool({predicate}, ends)?;\n"
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let ends = {expression_prefix}{predicate}(&candidate)?;\n        let ends = require_bool({predicate}, ends)?;\n"
             ));
-            render_post_group_filter(post_group_filter, output);
+            render_post_group_filter(post_group_filter, output, expression_prefix);
             let tuple = if post_group_filter.is_some() {
                 "(candidate, ends, retained)"
             } else {
@@ -2320,13 +2358,13 @@ fn render_grouping(
         }
         GroupingPlan::IntoBlocks { size } => {
             output.push_str(&format!(
-                "    let group_size = item_count({size}, expression_{size}(context)?)?;\n"
+                "    let group_size = item_count({size}, {expression_prefix}{size}(context)?)?;\n"
             ));
             let function = if post_group_filter.is_some() {
                 output.push_str(
                     "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {\n",
                 );
-                render_post_group_filter(post_group_filter, output);
+                render_post_group_filter(post_group_filter, output, expression_prefix);
                 output
                     .push_str("        grouping_candidates.push((candidate, retained));\n    }\n");
                 "into_blocks_where_any"
@@ -2341,10 +2379,14 @@ fn render_grouping(
     }
 }
 
-fn render_post_group_filter(post_group_filter: Option<NodeId>, output: &mut String) {
+fn render_post_group_filter(
+    post_group_filter: Option<NodeId>,
+    output: &mut String,
+    expression_prefix: &str,
+) {
     if let Some(predicate) = post_group_filter {
         output.push_str(&format!(
-            "        let retained = expression_{predicate}(&candidate)?;\n        let retained = require_bool({predicate}, retained)?;\n"
+            "        let retained = {expression_prefix}{predicate}(&candidate)?;\n        let retained = require_bool({predicate}, retained)?;\n"
         ));
     }
 }

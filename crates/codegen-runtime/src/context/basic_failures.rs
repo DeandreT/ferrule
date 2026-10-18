@@ -94,6 +94,8 @@ impl<'ctx> BasicScopeContext<'ctx> {
             base: &[],
             prefix_len: 0,
             produced: 0,
+            raw_head: None,
+            wrapped: true,
         });
         let candidates = walk_source_observed(&self.legacy, path, &mut observed)?;
         cohort

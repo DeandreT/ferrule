@@ -14,6 +14,8 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/basic_owned_group_by.rs"]
+mod basic_owned_group_by;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
@@ -794,6 +796,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "GeneratedTargetBuilder.cs",
         "Runtime/FerruleAdjacencyTree.cs",
         "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleBasicGroupBy.cs",
         "Runtime/FerruleDelimitedText.cs",
         "Runtime/FerruleDynamicDocuments.cs",
         "Runtime/FerruleDynamicSources.cs",

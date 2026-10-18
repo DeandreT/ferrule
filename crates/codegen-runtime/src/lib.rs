@@ -36,13 +36,13 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
-    BasicNamedJsonDocumentRef, admit_basic_json_inputs,
+    BasicGroupByControls, BasicGroupByMetadata, BasicNamedSourceDeclaration, BasicNamedSourceInput,
+    BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate,
+    BasicSourceRoots, CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
 };
 pub use context::{
-    BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext,
-    BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
-    PhaseSelection, RetainedSourceCohort,
+    BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
+    BasicNamedJsonDocumentRef, admit_basic_json_inputs,
 };
 pub use context::{
     DeclaredNamedSourceRoot, OwnedScopeContext, OwnedSourceError, OwnedSourceIdentity,

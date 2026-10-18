@@ -372,7 +372,7 @@ fn compiled_family(
         &format!("{family}-COMPLETE-PUBLISH-MEMBERSHIP"),
         &(&actual, &expected),
     )?;
-    if actual != expected || actual.len() != 79 {
+    if actual != expected || emitted.len() != expected.len() {
         return Err("complete CSV/JSON publication differs".into());
     }
     let runtime =
@@ -389,7 +389,11 @@ fn compiled_family(
         })
         .collect::<Vec<_>>();
     evidence.record(&format!("{family}-COMPLETE-RUNTIME-BODIES"), &bodies)?;
-    if bodies.len() != 75
+    let expected_runtime_count = expected
+        .iter()
+        .filter(|path| path.starts_with("Runtime/"))
+        .count();
+    if bodies.len() != expected_runtime_count
         || bodies
             .iter()
             .any(|(_, source, body)| !matches!(source,Ok(source) if source==body))

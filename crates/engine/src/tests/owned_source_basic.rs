@@ -806,7 +806,7 @@ fn c02_c18_context_key_reuse_retains_actual_closed_domain_errors() {
 fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
     let (input, supplied) = fixture();
     let mut p = value_position_project(SourceOwner::Primary, &["Rows"]);
-    p.root.group_by = Some(1);
+    p.root.group_adjacent_by = Some(1);
     assert!(matches!(
         crate::run(&p, &input),
         Err(EngineError::UnsupportedOwnedContext {
@@ -815,7 +815,7 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
             ..
         })
     ));
-    p.root.group_by = None;
+    p.root.group_adjacent_by = None;
     p.root.set_output_path(Some(1));
     assert!(matches!(
         crate::run(&p, &input),
@@ -944,7 +944,7 @@ fn c14_c15_trace_debug_activation_is_selected_not_stored() {
     assert!(admission.used_owned);
     // An unsupported sibling is still excluded by isolated Primary evaluation,
     // but all-target and selected-named runs must refuse before any callback.
-    p.extra_targets[0].root.group_by = Some(2);
+    p.extra_targets[0].root.group_adjacent_by = Some(2);
     sink.0.set(0);
     hook.0.set(0);
     let execution = crate::ExecutionContext::new(Path::new("test.json"))
