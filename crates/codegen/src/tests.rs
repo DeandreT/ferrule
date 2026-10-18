@@ -24,6 +24,7 @@ mod filter_map_model;
 mod grouping;
 mod joins;
 mod owned_admission;
+mod owned_row_failures;
 mod path_hierarchy;
 mod raise;
 mod recursive_filter;

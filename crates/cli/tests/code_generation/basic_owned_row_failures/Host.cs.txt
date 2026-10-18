@@ -1,0 +1,217 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+    private static string? Count(nuint? value) => value?.ToString(CultureInfo.InvariantCulture);
+    private static FerruleInstance Instance(JsonNode value)
+    {
+        var tagged = value.AsObject();
+        if (tagged.ContainsKey("Scalar"))
+        {
+            var scalar = tagged["Scalar"];
+            return new FerruleScalar(scalar is null ? FerruleValue.Null : scalar.GetValueKind() switch
+            {
+                JsonValueKind.String => FerruleValue.FromString(scalar.GetValue<string>()),
+                JsonValueKind.True => FerruleValue.FromBoolean(true),
+                JsonValueKind.False => FerruleValue.FromBoolean(false),
+                JsonValueKind.Number => FerruleValue.FromInt64(scalar.GetValue<long>()),
+                _ => throw new InvalidOperationException("Only the frozen scalar domains are admitted."),
+            });
+        }
+        if (tagged["Group"] is JsonArray fields)
+            return new FerruleGroup(fields.Select(field => new FerruleField(
+                field![0]!.GetValue<string>(), Instance(field[1]!))));
+        if (tagged["Repeated"] is JsonArray items)
+            return new FerruleRepeated(items.Select(item => Instance(item!)));
+        throw new InvalidOperationException("Only frozen Basic Group/Repeated/scalar inputs are admitted.");
+    }
+    private static JsonNode Tree(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => Json(new { kind = "Scalar", value = new {
+            tag = scalar.Value.Kind.ToString(), value = scalar.Value.Kind switch {
+                FerruleValueKind.Null => (object?)null,
+                FerruleValueKind.String => scalar.Value.StringValue,
+                FerruleValueKind.Bool => scalar.Value.BooleanValue,
+                FerruleValueKind.Int64 => scalar.Value.Int64Value,
+                _ => throw new InvalidOperationException("Unexpected scalar tag in complete actual."),
+            } } })!,
+        FerruleGroup group => Json(new { kind = "Group", origin = new {
+            kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity,
+            literal = group.XmlTypeOrigin.Literal }, fields = group.Fields.Select(field => new {
+                name = field.Name, instance = Tree(field.Value) }).ToArray() })!,
+        FerruleRepeated repeated => Json(new { kind = "Repeated", items = repeated.Items.Select(Tree).ToArray() })!,
+        _ => throw new InvalidOperationException("Unexpected structural tag in complete actual."),
+    };
+    private static JsonObject Error(Exception error) => Json(new {
+        type = error.GetType().FullName, message = error.Message, hresult = error.HResult,
+        data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new {
+            key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+        inner = error.InnerException is null ? null : Error(error.InnerException),
+        runtime = error is FerruleRuntimeException runtime ? Json(new {
+            category = runtime.Error.ToString(), node = runtime.Node, function = runtime.Function,
+            expected_arity = runtime.ExpectedArity, actual_arity = runtime.ActualArity,
+            found_kind = runtime.FoundKind?.ToString(), aggregate = runtime.AggregateOperation?.ToString(),
+            detail = runtime.Detail, requested_items = runtime.RequestedItems?.ToString(CultureInfo.InvariantCulture),
+            maximum_items = runtime.MaximumItems?.ToString(CultureInfo.InvariantCulture), maximum_depth = runtime.MaximumDepth,
+            runtime_value = runtime.RuntimeValue?.ToString(), rule = runtime.FailureRule,
+            mapping_failure_message = runtime.MappingFailureMessage, mapping_exception_message = runtime.MappingExceptionMessage,
+            join = runtime.Join, user_function = runtime.UserFunction, function_parameter = runtime.FunctionParameter,
+            expected_scalar_type = runtime.ExpectedScalarType?.ToString(), runtime_parameter = runtime.RuntimeParameter,
+            source_field = runtime.SourceField, found_instance = runtime.FoundInstance, primary_root = runtime.PrimaryRoot,
+            owned_identity = runtime.OwnedSourceFailure is null ? (bool?)null : ReferenceEquals(runtime.OwnedSourceFailure, runtime.InnerException),
+            bridge_identity = runtime.BasicSourceBridgeFailure is null ? (bool?)null : ReferenceEquals(runtime.BasicSourceBridgeFailure, runtime.InnerException),
+        }) : null,
+        owned = error is FerruleOwnedSourceException owned ? Json(new {
+            category = owned.Error.ToString(), owner = owned.Owner is null ? null : Json(new {
+                primary = owned.Owner.IsPrimary, name = owned.Owner.Name }), requested_name = owned.RequestedName,
+            declarations = owned.DeclarationIndices, path = owned.Path, frame = owned.Frame, collection = owned.Collection,
+            segment = Count(owned.Segment), found = owned.FoundInstance?.ToString(), index = Count(owned.RequestedIndex),
+            limit = owned.LimitKind?.ToString(), used = Count(owned.Used), requested = Count(owned.Requested), maximum = Count(owned.Maximum),
+        }) : null,
+        traversal = error is FerruleOwnedSourceTraversalException traversal ? Json(new {
+            category = traversal.Error.ToString(), path = traversal.Path, segment = Count(traversal.Segment), found = traversal.Found.ToString(),
+        }) : null,
+    })!.AsObject();
+    private static JsonNode Output(object output)
+    {
+        var result = new JsonArray();
+        void Add(string? name, FerruleInstance instance) => result.Add(new JsonArray(Json(name), Tree(instance)));
+        switch (output)
+        {
+            case ExecutionOutputs all:
+                Add(null, all.Primary); foreach (var named in all.Extras) Add(named.Name, named.Instance); break;
+            case SelectedTargetOutput.Primary primary: Add(null, primary.Instance); break;
+            case SelectedTargetOutput.Named named: Add(named.Output.Name, named.Output.Instance); break;
+            default: throw new InvalidOperationException("Unexpected public output variant.");
+        }
+        return result;
+    }
+    private static JsonNode ExpectedError(JsonObject recipe)
+    {
+        var kind = recipe["kind"]!.GetValue<string>();
+        var node = recipe["node"]?.GetValue<uint>() ?? 0;
+        var message = recipe["message"]?.GetValue<string>();
+        if (kind == "MappingFailure")
+        {
+            var rule = recipe["rule"]!.GetValue<int>();
+            return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingFailure,
+                $"mapping failure rule {rule}: {message ?? "mapping exception was raised"}",
+                failureRule: rule, mappingFailureMessage: message));
+        }
+        if (kind == "MappingException")
+            return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingException,
+                $"node {node}: mapping exception: {message ?? "mapping exception was raised"}",
+                node: node, mappingExceptionMessage: message));
+        if (kind == "NotABool")
+        {
+            var booleanKind = recipe["found"]!.GetValue<string>();
+            return Error(new FerruleRuntimeException(FerruleRuntimeError.NotABool,
+                $"Graph node {node} expected a bool, found {booleanKind}.", node: node,
+                foundKind: booleanKind == "null" ? FerruleValueKind.Null : FerruleValueKind.String));
+        }
+        if (kind is not ("OwnedSource" or "InactivePosition"))
+            throw new InvalidOperationException("Unknown frozen error recipe.");
+        // Internal owned-error constructors are not called through a fabricated
+        // query. Every expected field below comes from the authored recipe and
+        // the public exception layout, never a returned error or helper result.
+        var inactive = kind == "InactivePosition";
+        var ownerName = inactive || recipe["owner"]!.GetValue<string>() == "Primary" ? null : recipe["owner"]!.GetValue<string>();
+        var cause = inactive ? "InactiveSourceFrame" : recipe["cause"]!.GetValue<string>();
+        var traversal = cause is "CannotTraverse" or "ExpectedScalar";
+        var path = inactive || cause == "SourceUnavailable" ? null : recipe["path"]!.DeepClone();
+        var segment = recipe["segment"]?.GetValue<int>().ToString(CultureInfo.InvariantCulture);
+        var found = recipe["found"]?.GetValue<string>();
+        var inner = Error(new Exception("Owned source operation failed."));
+        inner["type"] = "Ferrule.Runtime.FerruleOwnedSourceException";
+        inner["owned"] = Json(new {
+            category = traversal ? "Traversal" : cause,
+            owner = new { primary = ownerName is null, name = ownerName }, requested_name = ownerName,
+            declarations = (object?)null, path, frame = (object?)null,
+            collection = inactive ? recipe["collection"]!.DeepClone() : null,
+            segment, found, index = (string?)null, limit = (string?)null,
+            used = (string?)null, requested = (string?)null, maximum = (string?)null,
+        });
+        if (traversal)
+        {
+            var terminal = Error(new Exception("Owned source traversal failed."));
+            terminal["type"] = "Ferrule.Runtime.FerruleOwnedSourceTraversalException";
+            terminal["traversal"] = Json(new { category = cause, path, segment, found });
+            inner["inner"] = terminal;
+        }
+        var outer = Error(new FerruleRuntimeException(FerruleRuntimeError.OwnedSource, "owned source access failed", node: node));
+        outer["inner"] = inner;
+        outer["runtime"]!["owned_identity"] = true;
+        return outer;
+    }
+    private static JsonNode Expected(JsonObject call)
+    {
+        if (call["expected"]!["Err"] is JsonObject error) return new JsonObject { ["Err"] = ExpectedError(error) };
+        var outputs = new JsonArray();
+        foreach (var output in call["expected"]!["Ok"]!.AsArray())
+            outputs.Add(new JsonArray(output![0]?.DeepClone(), Tree(Instance(output[1]!))));
+        return new JsonObject { ["Ok"] = outputs };
+    }
+    private static object Invoke(string selection, FerruleInstance source, NamedInput[] inputs, FerruleOwnedSourceLimits limits, FerruleExecutionContext context)
+    {
+        if (selection == "All") return GeneratedMapping.ExecuteWithBasicOwnedSources(source, inputs, limits, context);
+        var target = selection == "Primary" ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named("audit");
+        return GeneratedMapping.ExecuteSelectedWithBasicOwnedSources(source, target, inputs, limits, context);
+    }
+    private static void Write(string directory, string name, string content)
+    {
+        using var stream = new FileStream(Path.Combine(directory, name), FileMode.CreateNew, FileAccess.Write);
+        using var writer = new StreamWriter(stream); writer.Write(content); writer.Flush();
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3) throw new InvalidOperationException("Need controls, model ordinal and fresh absolute originals directory.");
+        var model = int.Parse(args[1], CultureInfo.InvariantCulture);
+        if (!Path.IsPathFullyQualified(args[2]) || Path.Exists(args[2])) throw new InvalidOperationException("Fresh absolute originals directory required.");
+        Directory.CreateDirectory(args[2]);
+        var raw = File.ReadAllText(args[0]); Write(args[2], "COMPLETE-FROZEN-CONTROLS.json", raw);
+        var controls = JsonNode.Parse(raw)!.AsObject(); var checks = new List<JsonNode>();
+        var limits = new FerruleOwnedSourceLimits(8, 8, 32, 1_048_576, 128);
+        var context = new FerruleExecutionContext("row808.mapping", "row808.mapping", null);
+        var ordinal = 0;
+        foreach (var entry in controls["cases"]!.AsArray())
+        {
+            var item = entry!.AsObject(); var caseOrdinal = ordinal++;
+            if (item["model"]!.GetValue<int>() != model) continue;
+            var source = Instance(item["source"]!);
+            var inputs = item["inputs"]!.AsArray().Select(input => new NamedInput(input![0]!.GetValue<string>(), Instance(input[1]!))).ToArray();
+            JsonNode Input() => Json(new { source = Tree(source), inputs = inputs.Select(input => new { name = input.Name, instance = Tree(input.Instance) }).ToArray() })!;
+            var before = Input();
+            foreach (var entryCall in item["calls"]!.AsArray())
+            {
+                var call = entryCall!.AsObject(); var selection = call["selection"]!.GetValue<string>();
+                var prefix = $"{caseOrdinal:00}-{selection}";
+                Write(args[2], prefix + "-COMPLETE-INPUT.json", Json(new { inputs = before,
+                    call, limits = new { roots = 8, active_frames = 8, path_segments = 32, metadata_bytes = 1048576, walk_contexts = 128 },
+                    context = new { context.MappingFilePath, context.MainMappingFilePath, context.CurrentDateTime,
+                        parameters = Array.Empty<object>(), loader = (object?)null, cancellation = (object?)null } })!.ToJsonString());
+                var expected = Expected(call);
+                Write(args[2], prefix + "-COMPLETE-FROZEN-EXPECTED.json", expected.ToJsonString());
+                object actual;
+                try { actual = Invoke(selection, source, inputs, limits, context); }
+                catch (Exception error) { actual = error; }
+                var observed = actual is Exception failure ? new JsonObject { ["Err"] = Error(failure) }
+                    : new JsonObject { ["Ok"] = Output(actual) };
+                // Capture the full typed object/recursive causes and raw exception
+                // text before category, equality, count, or success inspection.
+                Write(args[2], prefix + "-COMPLETE-ACTUAL.json", observed.ToJsonString());
+                Write(args[2], prefix + "-COMPLETE-EXCEPTION.txt", actual is Exception original ? original.ToString() : "successful public output\n");
+                var after = Input(); Write(args[2], prefix + "-COMPLETE-AFTER-INPUT.json", after.ToJsonString());
+                checks.Add(Json(new { @case = item["id"]!.GetValue<string>(), selection,
+                    matched = JsonNode.DeepEquals(observed, expected) && JsonNode.DeepEquals(before, after) })!);
+            }
+        }
+        Write(args[2], "COMPLETE-COMPARISONS.json", Json(checks)!.ToJsonString());
+        var expectedCount = model switch { 0 => 72, 1 => 15, 2 => 6, _ => throw new InvalidOperationException("Frozen model ordinal.") };
+        return checks.Count == expectedCount && checks.All(row => row["matched"]!.GetValue<bool>()) ? 0 : 1;
+    }
+}

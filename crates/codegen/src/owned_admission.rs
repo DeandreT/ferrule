@@ -84,13 +84,38 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_windows(
     Ok(admission_plan(program))
 }
 
+/// Plan named-input admission for the explicit primary-row failure companion.
+/// Authenticated primary-row collections do not demand a same-name secondary
+/// input. Owned reads stay lazy; ordinary iteration and expression aliases keep
+/// their existing eager requirements.
+pub fn legacy_named_input_admission_plan_with_basic_owned_row_failures(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_basic_owned_row_failure_emission(program)?;
+    Ok(admission_plan_with_primary_row_failures(program, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
-    let primary_required = analyze(program, &program.root, Root::Primary).required;
+    admission_plan_with_primary_row_failures(program, false)
+}
+
+fn admission_plan_with_primary_row_failures(
+    program: &Program,
+    primary_row_failures: bool,
+) -> NamedInputAdmissionPlan<'_> {
+    let primary_required =
+        analyze(program, &program.root, Root::Primary, primary_row_failures).required;
     let primary = catalogue(program, &primary_required);
     let mut all_required = primary_required;
     let mut named_targets = Vec::with_capacity(program.extra_targets.len());
     for (index, target) in program.extra_targets.iter().enumerate() {
-        let required = analyze(program, &target.root, Root::Target(index)).required;
+        let required = analyze(
+            program,
+            &target.root,
+            Root::Target(index),
+            primary_row_failures,
+        )
+        .required;
         all_required.extend(required.iter().copied());
         named_targets.push(NamedTargetInputCatalogue {
             target_index: index,
@@ -167,6 +192,7 @@ struct Pending {
 }
 struct Analysis<'a> {
     program: &'a Program,
+    primary_row_failures: bool,
     main: BTreeMap<NodeId, &'a Expression>,
     functions: Vec<&'a UserFunctionProgram>,
     function_index: BTreeMap<FunctionId, usize>,
@@ -178,9 +204,10 @@ struct Analysis<'a> {
     visited: BTreeSet<(Namespace, usize, NodeId)>,
 }
 impl<'a> Analysis<'a> {
-    fn new(program: &'a Program) -> Self {
+    fn new(program: &'a Program, primary_row_failures: bool) -> Self {
         Self {
             program,
+            primary_row_failures,
             main: program
                 .expressions
                 .iter()
@@ -412,7 +439,14 @@ impl<'a> Analysis<'a> {
             let parent = self.root(Root::Failure(index));
             let current = match &rule.iteration {
                 FailureIteration::Source(source) => {
-                    self.path(source.path());
+                    // Only this companion's authenticated Primary row route
+                    // cannot select a named collection alias. Ordinary rules
+                    // and all legacy expression dependencies remain eager.
+                    if !self.primary_row_failures
+                        || !crate::is_basic_owned_primary_row_failure(program, rule)
+                    {
+                        self.path(source.path());
+                    }
                     self.child(parent, Step::Source(source.path().to_vec()))
                 }
                 FailureIteration::Generated(sequence) => {
@@ -567,8 +601,13 @@ impl<'a> Analysis<'a> {
         }
     }
 }
-fn analyze<'a>(program: &'a Program, scope: &TargetScope, root: Root) -> Analysis<'a> {
-    let mut analysis = Analysis::new(program);
+fn analyze<'a>(
+    program: &'a Program,
+    scope: &TargetScope,
+    root: Root,
+    primary_row_failures: bool,
+) -> Analysis<'a> {
+    let mut analysis = Analysis::new(program, primary_row_failures);
     let context = analysis.root(root);
     analysis.scope(scope, context);
     analysis.failures();
@@ -580,7 +619,7 @@ pub(crate) fn primary_visits_for_test(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
     validate_program(program)?;
-    let analysis = analyze(program, &program.root, Root::Primary);
+    let analysis = analyze(program, &program.root, Root::Primary, false);
     eprintln!(
         "Complete admission trace input={program:#?} environments={:#?} visits={:#?} required={:#?} inspected_dynamic={:#?}",
         analysis.environments, analysis.visited, analysis.required, analysis.inspected_dynamic
@@ -606,7 +645,7 @@ pub(crate) fn primary_visits_for_test_with_basic_owned_windows(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
     validate_program_with_basic_owned_windows(program)?;
-    let analysis = analyze(program, &program.root, Root::Primary);
+    let analysis = analyze(program, &program.root, Root::Primary, false);
     eprintln!(
         "Complete admission trace input={program:#?} environments={:#?} visits={:#?} required={:#?} inspected_dynamic={:#?}",
         analysis.environments, analysis.visited, analysis.required, analysis.inspected_dynamic

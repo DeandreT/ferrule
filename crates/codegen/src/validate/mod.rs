@@ -78,9 +78,25 @@ pub fn validate_program_with_basic_owned_windows(
     owned_sources::validate_basic_owned_window_emission(program)
 }
 
+/// Validate complete Program structure, window-profile targets and the explicit
+/// owned primary-row failure permission. Older validators retain their gates.
+pub fn validate_program_with_basic_owned_row_failures(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_row_failure_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
+) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_profiles(program, profile, false)
+}
+
+fn validate_program_with_owned_profiles(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    primary_row_failures: bool,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
@@ -132,7 +148,7 @@ fn validate_program_with_owned_profile(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_profile(program, profile)
+    owned_sources::validate_closed_contexts_with_profiles(program, profile, primary_row_failures)
 }
 
 fn validate_schema_metadata(
@@ -1323,7 +1339,8 @@ fn validate_scope(
 }
 
 pub use owned_sources::{
-    validate_basic_owned_emission, validate_basic_owned_filter_emission,
+    is_basic_owned_primary_row_failure, validate_basic_owned_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
 };
 

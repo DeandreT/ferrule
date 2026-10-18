@@ -2064,6 +2064,7 @@ public enum FerruleBasicSourceBridgeErrorKind
     LegacyPositionRange,
     InvalidCohortWitness,
     DuplicatePhaseCandidate,
+    UnsupportedPrimaryFailureContext,
 }
 
 public enum FerruleBasicSourceBridgeComponent
@@ -2222,6 +2223,11 @@ public sealed partial class ScopeContext
     internal object BasicRunStateIdentity => _filterMapRunState;
     internal IReadOnlyList<string> BasicCollectionPath(int index) => _collections[index].Path;
     internal int BasicCollectionIndex(int index) => _collections[index].Index;
+    internal bool IsPrimaryFailureRoot(FerruleInstance primary, FerruleGroup projection) =>
+        ReferenceEquals(_primarySource, primary) && _frames.Count == 2 &&
+        ReferenceEquals(_frames[0], projection) && ReferenceEquals(_frames[1], primary) &&
+        _collections.Count == 0 && _dynamicSourceLoader is null &&
+        _filterMapBoundary is null && _filterMapCallDepth == 0;
     internal void RequireBasicContext()
     {
         if (_dynamicSourceLoader is not null || _filterMapBoundary is not null || _filterMapCallDepth != 0)
@@ -2328,6 +2334,7 @@ public sealed class FerruleBasicSourceRoots
         int[] supplied, int[] unique, nuint retainedSlots)
     { _owned = owned; _projection = projection; _supplied = supplied; _unique = unique; _retainedSlots = retainedSlots; }
     internal FerruleOwnedSourceRoots OwnedRoots => _owned;
+    internal FerruleGroup Projection => _projection;
     internal FerruleOwnedSourceLimits Limits => _owned.Limits;
     internal int SuppliedCount => _supplied.Length;
     internal int SuppliedIndex(int index) => _supplied[index];
@@ -2501,6 +2508,19 @@ public sealed class FerruleBasicScopeContext
     internal int OriginCount => _origins.Length;
     internal int LegacyContainerCost => _legacyContainers;
     internal BasicFrameOrigin OriginAt(int index) => _origins[index];
+    internal bool IsPrimaryFailureRoot()
+    {
+        var primary = Roots.OwnedRoots.Instance(0);
+        return primary is FerruleGroup && ReferenceEquals(_owned.Roots, Roots.OwnedRoots) &&
+            _owned.FrameCount == 0 && LegacyView.IsPrimaryFailureRoot(primary, Roots.Projection) &&
+            _origins.Length == 2 && _origins[0].Projection && _origins[0].OwnerKey == -1 &&
+            _origins[0].Canonical.Count == 0 && _origins[0].RawOrdinal is null &&
+            !_origins[1].Projection && _origins[1].OwnerKey == 0 &&
+            _origins[1].Canonical.Count == 0 && _origins[1].RawOrdinal is null;
+    }
+    internal bool HasPrimaryFailureNamedFallback(string collection) =>
+        Roots.OwnedRoots.Instance(0) is FerruleGroup primary &&
+        !primary.TryGetField(collection, out _) && Roots.Projection.TryGetField(collection, out _);
     internal void Seed(BasicSourceBudget budget)
     {
         LegacyView.RequireBasicContext();
@@ -2577,6 +2597,17 @@ public sealed class FerruleBasicScopeContext
     public FerruleRetainedSourceCohort WalkOwnedSourceCohort(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path)
     {
         try { return FerruleRetainedSourceCohort.Walk(this, path, owner); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+    /// <summary>
+    /// Visits authenticated static primary failure rows after complete walk admission.
+    /// Unsupported terminal rows are refused only when reached, before the callback.
+    /// </summary>
+    public void VisitPrimaryFailureRows(IReadOnlyList<string> path, Action<FerruleBasicScopeContext> visit)
+    {
+        ArgumentNullException.ThrowIfNull(path); ArgumentNullException.ThrowIfNull(visit);
+        try { FerruleRetainedSourceCohort.VisitPrimaryFailureRows(this, path, visit); }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
@@ -2683,8 +2714,9 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
     private int _count;
     private bool _sealed;
     private readonly Witness _witness;
-    private FerruleRetainedSourceCohort(FerruleBasicScopeContext parent, BasicSourceBudget budget)
-    { _witness = new Witness(this, parent, budget); }
+    private FerruleRetainedSourceCohort(FerruleBasicScopeContext parent, BasicSourceBudget budget,
+        bool primaryFailureRows = false)
+    { _witness = new Witness(this, parent, budget, primaryFailureRows); }
     public int Count { get { RequireSealed(); return _count; } }
     public FerruleBasicSourceCandidate this[int index]
     { get { RequireSealed(); return (uint)index < (uint)_count ? _items[index] : throw new ArgumentOutOfRangeException(nameof(index)); } }
@@ -2698,11 +2730,13 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     internal Witness SourceWitness => _witness;
     internal static FerruleRetainedSourceCohort Walk(FerruleBasicScopeContext parent,
-        IReadOnlyList<string> path, FerruleOwnedSourceOwner? owner)
+        IReadOnlyList<string> path, FerruleOwnedSourceOwner? owner) => Walk(parent, path, owner, false);
+    private static FerruleRetainedSourceCohort Walk(FerruleBasicScopeContext parent,
+        IReadOnlyList<string> path, FerruleOwnedSourceOwner? owner, bool primaryFailureRows)
     {
         var budget = parent.Begin();
         budget.Charge(2); // original holder and shared per-walk witness, replacing the native output containers
-        var result = new FerruleRetainedSourceCohort(parent, budget);
+        var result = new FerruleRetainedSourceCohort(parent, budget, primaryFailureRows);
         try
         {
             if (owner.HasValue)
@@ -2717,6 +2751,35 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
             return result;
         }
         finally { result._witness.ReleaseScratch(); }
+    }
+    internal static void VisitPrimaryFailureRows(FerruleBasicScopeContext parent,
+        IReadOnlyList<string> path, Action<FerruleBasicScopeContext> visit)
+    {
+        if (path.Count != 1 || string.IsNullOrEmpty(path[0]) || !parent.IsPrimaryFailureRoot() ||
+            parent.HasPrimaryFailureNamedFallback(path[0]))
+            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedPrimaryFailureContext);
+        // Refuse an actually supplied named fallback before acquiring work, as
+        // native does. This negative guard is not a provenance witness: the
+        // observed legacy SelectedBase still independently authenticates Primary.
+        // This purpose-bound holder never escapes. In particular a specialized
+        // repeated terminal can exist in its complete metadata but is never
+        // published through a public cohort or passed to caller code.
+        var rows = Walk(parent, path, null, true);
+        try
+        {
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var context = rows[i].Context;
+                var terminal = context.LegacyView.Frames[^1];
+                if (terminal is FerruleDocumentSet or FerruleMappedSequence)
+                    throw new FerruleBasicSourceBridgeException(
+                        FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
+                        found: terminal is FerruleDocumentSet ? FerruleOwnedSourceInstanceKind.DocumentSet :
+                            FerruleOwnedSourceInstanceKind.MappedSequence);
+                visit(context);
+            }
+        }
+        finally { GC.KeepAlive(rows); }
     }
     private void ReserveOutput(BasicSourceBudget budget)
     {
@@ -2756,8 +2819,10 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
         private ScopeContext? _pendingLegacy;
         private OwnedQuery? _query;
         private bool _finished;
-        internal Witness(FerruleRetainedSourceCohort building, FerruleBasicScopeContext parent, BasicSourceBudget budget)
-        { _building = building; Parent = parent; _budget = budget; }
+        private readonly bool _primaryFailureRows;
+        internal Witness(FerruleRetainedSourceCohort building, FerruleBasicScopeContext parent, BasicSourceBudget budget,
+            bool primaryFailureRows)
+        { _building = building; Parent = parent; _budget = budget; _primaryFailureRows = primaryFailureRows; }
         internal FerruleBasicScopeContext Parent { get; }
         internal int OriginalCount { get; private set; }
         internal int SelectionCalls { get; private set; }
@@ -2783,13 +2848,21 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
         internal override void ProbeBase(FerruleInstance current)
         {
             if (current is FerruleDocumentSet or FerruleMappedSequence)
-                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
-                    found: InstanceKind(current));
+                throw new FerruleBasicSourceBridgeException(_primaryFailureRows ?
+                    FerruleBasicSourceBridgeErrorKind.UnsupportedPrimaryFailureContext : FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext,
+                    found: _primaryFailureRows ? null : InstanceKind(current));
         }
         internal override void SelectedBase(int frameIndex, FerruleInstance current)
         {
             SelectionCalls++;
             var origin = Parent.OriginAt(frameIndex);
+            // The selected legacy BASE, not its child payload, must be the
+            // actual Primary Group. A named projection cannot authenticate it,
+            // even when the named payload aliases the primary source tree.
+            if (_primaryFailureRows && (current is not FerruleGroup ||
+                !ReferenceEquals(current, Parent.Roots.OwnedRoots.Instance(0)) ||
+                origin.OwnerKey != 0 || origin.Canonical.Count != 0 || origin.Projection))
+                throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedPrimaryFailureContext);
             _owner = origin.OwnerKey; _canonical = origin.Canonical; _canonicalOwned = false; _projection = origin.Projection;
         }
         private static FerruleOwnedSourceInstanceKind InstanceKind(FerruleInstance current) => current switch

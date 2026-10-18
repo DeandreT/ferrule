@@ -1,0 +1,228 @@
+use codegen_runtime::{
+    BasicNamedSourceInput, ExecutionContext, Instance, InstanceKind, OwnedSourceError,
+    OwnedSourceIdentity, OwnedSourceLimits, RuntimeError, SourcePathError, TargetSelection,
+};
+use serde_json::{Value as Json, json};
+use std::{
+    error::Error as _,
+    fs,
+    io::Write as _,
+    path::{Path, PathBuf},
+};
+
+type Outcome = Result<Vec<(Option<String>, Instance)>, RuntimeError>;
+fn write(directory: &Path, name: &str, bytes: &[u8]) {
+    let mut output = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(directory.join(name))
+        .unwrap();
+    output.write_all(bytes).unwrap();
+    output.flush().unwrap();
+}
+fn expected_error(recipe: &Json) -> RuntimeError {
+    let node = recipe["node"].as_u64().unwrap_or(0) as u32;
+    let strings = |key: &str| {
+        recipe[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap().into())
+            .collect::<Vec<String>>()
+    };
+    match recipe["kind"].as_str().unwrap() {
+        "MappingFailure" => RuntimeError::MappingFailure {
+            rule: recipe["rule"].as_u64().unwrap() as usize,
+            message: recipe["message"].as_str().map(str::to_owned),
+        },
+        "MappingException" => RuntimeError::MappingException {
+            node,
+            message: recipe["message"].as_str().map(str::to_owned),
+        },
+        "NotABool" => RuntimeError::NotABool {
+            node,
+            found: match recipe["found"].as_str().unwrap() {
+                "null" => "null",
+                "string" => "string",
+                _ => panic!("literal bool domain"),
+            },
+        },
+        "InactivePosition" => RuntimeError::OwnedSourceAtNode {
+            node,
+            source: OwnedSourceError::InactiveSourceFrame {
+                owner: OwnedSourceIdentity::Primary,
+                collection: Some(strings("collection")),
+            },
+        },
+        "OwnedSource" => {
+            let owner = if recipe["owner"] == "Primary" {
+                OwnedSourceIdentity::Primary
+            } else {
+                OwnedSourceIdentity::Named(recipe["owner"].as_str().unwrap().into())
+            };
+            let source = match recipe["cause"].as_str().unwrap() {
+                "SourceUnavailable" => OwnedSourceError::SourceUnavailable {
+                    name: recipe["owner"].as_str().unwrap().into(),
+                },
+                "UniteratedRepetition" => OwnedSourceError::UniteratedRepetition {
+                    owner,
+                    path: strings("path"),
+                    segment: recipe["segment"].as_u64().unwrap() as usize,
+                },
+                "CannotTraverse" => OwnedSourceError::Traversal {
+                    owner,
+                    source: SourcePathError::CannotTraverse {
+                        path: strings("path"),
+                        segment: recipe["segment"].as_u64().unwrap() as usize,
+                        found: InstanceKind::Scalar,
+                    },
+                },
+                "ExpectedScalar" => OwnedSourceError::Traversal {
+                    owner,
+                    source: SourcePathError::ExpectedScalar {
+                        path: strings("path"),
+                        found: InstanceKind::Group,
+                    },
+                },
+                _ => panic!("literal owned cause"),
+            };
+            RuntimeError::OwnedSourceAtNode { node, source }
+        }
+        _ => panic!("literal runtime error"),
+    }
+}
+macro_rules! invoke {
+    ($module:ident,$selection:expr,$source:expr,$inputs:expr,$execution:expr,$limits:expr) => {{
+        if $selection == "All" {
+            $module::execute_with_basic_owned_sources($source, $inputs, Some($execution), $limits)
+                .map(|output| {
+                    let mut outputs = vec![(None, output.primary)];
+                    outputs.extend(
+                        output
+                            .extras
+                            .into_iter()
+                            .map(|extra| (Some(extra.name.to_owned()), extra.instance)),
+                    );
+                    outputs
+                })
+        } else {
+            let selection = if $selection == "Primary" {
+                TargetSelection::Primary
+            } else {
+                TargetSelection::Named("audit")
+            };
+            $module::execute_selected_with_basic_owned_sources(
+                $source,
+                $inputs,
+                Some($execution),
+                $limits,
+                selection,
+            )
+            .map(|output| match output {
+                $module::SelectedTargetOutput::Primary(instance) => vec![(None, instance)],
+                $module::SelectedTargetOutput::Named(output) => {
+                    vec![(Some(output.name.to_owned()), output.instance)]
+                }
+            })
+        }
+    }};
+}
+fn main() {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    assert_eq!(
+        args.len(),
+        2,
+        "controls and fresh absolute originals directory"
+    );
+    let directory = PathBuf::from(&args[1]);
+    assert!(directory.is_absolute() && !directory.exists());
+    fs::create_dir(&directory).unwrap();
+    let raw = fs::read(&args[0]).unwrap();
+    write(&directory, "COMPLETE-FROZEN-CONTROLS.json", &raw);
+    let controls: Json = serde_json::from_slice(&raw).unwrap();
+    let limits = OwnedSourceLimits {
+        max_roots: 8,
+        max_active_frames: 8,
+        max_path_segments: 32,
+        max_metadata_bytes: 1_048_576,
+        max_walk_contexts: 128,
+    };
+    let execution = ExecutionContext::new(Path::new("row808.mapping"));
+    let mut checks = Vec::new();
+    for (ordinal, case) in controls["cases"].as_array().unwrap().iter().enumerate() {
+        let source: Instance = serde_json::from_value(case["source"].clone()).unwrap();
+        let named: Vec<(String, Instance)> =
+            serde_json::from_value(case["inputs"].clone()).unwrap();
+        let source_before = source.clone();
+        let named_before = named.clone();
+        let inputs = named
+            .iter()
+            .map(|(name, instance)| BasicNamedSourceInput { name, instance })
+            .collect::<Vec<_>>();
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            let prefix = format!("{ordinal:02}-{selection}");
+            write(&directory,&format!("{prefix}-COMPLETE-INPUT.txt"),format!("source={source:#?}\nnamed={named:#?}\nlimits={limits:#?}\ncontext: mapping_file_path=row808.mapping; main_mapping_file_path=row808.mapping; current_datetime=None; parameters=None; loader=None; cancellation=None\ncall={call:#?}\n").as_bytes());
+            let expected: Outcome = if let Some(output) = call["expected"].get("Ok") {
+                Ok(serde_json::from_value(output.clone()).unwrap())
+            } else {
+                Err(expected_error(&call["expected"]["Err"]))
+            };
+            write(
+                &directory,
+                &format!("{prefix}-COMPLETE-FROZEN-EXPECTED.txt"),
+                format!("{expected:#?}\n").as_bytes(),
+            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Outcome {
+                match case["model"].as_u64().unwrap() {
+                    0 => invoke!(model0, selection, &source, &inputs, &execution, limits),
+                    1 => invoke!(model1, selection, &source, &inputs, &execution, limits),
+                    2 => invoke!(model2, selection, &source, &inputs, &execution, limits),
+                    _ => panic!("frozen model"),
+                }
+            }));
+            let mut original = match &result {
+                Ok(actual) => format!("complete-result={actual:#?}\n"),
+                Err(payload) => format!(
+                    "panic={:?};payload-type={:?}\n",
+                    payload
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| payload.downcast_ref::<&str>().copied()),
+                    payload.as_ref().type_id()
+                ),
+            };
+            if let Ok(Err(error)) = &result {
+                original.push_str(&format!("Display: {error}\n"));
+                let mut cause = error.source();
+                while let Some(error) = cause {
+                    original.push_str(&format!(
+                        "Cause Debug: {error:#?}\nCause Display: {error}\n"
+                    ));
+                    cause = error.source();
+                }
+            }
+            write(
+                &directory,
+                &format!("{prefix}-COMPLETE-ACTUAL.txt"),
+                original.as_bytes(),
+            );
+            write(
+                &directory,
+                &format!("{prefix}-COMPLETE-AFTER-INPUT.txt"),
+                format!("source={source:#?}\nnamed={named:#?}\n").as_bytes(),
+            );
+            checks.push(json!({"case":case["id"],"selection":selection,"matched":matches!(&result,Ok(actual) if *actual==expected)&&source==source_before&&named==named_before}));
+        }
+    }
+    write(
+        &directory,
+        "ALL93-COMPLETE-COMPARISONS.json",
+        &serde_json::to_vec_pretty(&checks).unwrap(),
+    );
+    assert_eq!(checks.len(), 93);
+    assert!(
+        checks.iter().all(|row| row["matched"] == true),
+        "row808 differs; complete originals retained"
+    );
+}
