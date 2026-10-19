@@ -42,7 +42,7 @@ fn design(format: &str, edges: &str) -> String {
                 "json",
                 "31",
                 format!(
-                    r#"<entry name="root"><entry name="Value" {}="{}"/></entry>"#,
+                    r#"<entry name="root"><entry name="Value" type="json-property" {}="{}"/></entry>"#,
                     if source { "outkey" } else { "inpkey" },
                     if source { 11 } else { 21 }
                 ),
@@ -168,7 +168,24 @@ fn unconnected_wrappers_and_same_named_payload_fields_are_executable() -> Result
             result.imported.project.target_path.as_deref(),
             Some("preview.dat")
         );
-        assert_eq!(result.imported.project.graph.nodes.len(), 1);
+        assert_eq!(
+            result.imported.project.graph.nodes.len(),
+            1,
+            "{format}: {:?}",
+            result.imported.project.root
+        );
+        let document = if format == "EDI" {
+            r#"{"ABC":{"Value":"retained"}}"#
+        } else {
+            r#"{"Value":"retained"}"#
+        };
+        let source = format_json::from_str(document, &result.imported.project.source)?;
+        let expected = format_json::from_str(document, &result.imported.project.target)?;
+        assert_eq!(
+            engine::run(&result.imported.project, &source)?,
+            expected,
+            "{format}"
+        );
     }
     let path = directory.0.join("payload-name.mfd");
     std::fs::write(
