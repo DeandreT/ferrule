@@ -183,26 +183,40 @@ fn read_records<R: std::io::Read>(
     let mut out = Vec::new();
     for (row_idx, result) in reader.records().enumerate() {
         let raw = result?;
-        if raw.len() > fields.len() {
-            return Err(CsvFormatError::ColumnCount {
-                row: row_idx,
-                expected: fields.len(),
-                got: raw.len(),
-            });
-        }
-        let mut row = Vec::with_capacity(fields.len());
-        for (column, (name, ty)) in fields.iter().enumerate() {
-            let value = match raw.get(column) {
-                None => Value::Null,
-                Some("") if preserve_empty_strings && *ty == ScalarType::String => {
-                    Value::String(String::new())
-                }
-                Some("") => Value::Null,
-                Some(cell) => parse_present_value(name, *ty, cell, row_idx)?,
-            };
-            row.push((name.to_string(), Instance::Scalar(value)));
-        }
-        out.push(Instance::Group((row).into()));
+        out.push(materialize_row(
+            &raw,
+            fields,
+            preserve_empty_strings,
+            row_idx,
+        )?);
     }
     Ok(out)
+}
+
+pub(super) fn materialize_row(
+    raw: &csv::StringRecord,
+    fields: &[(&str, ScalarType)],
+    preserve_empty_strings: bool,
+    row_idx: usize,
+) -> Result<Instance, CsvFormatError> {
+    if raw.len() > fields.len() {
+        return Err(CsvFormatError::ColumnCount {
+            row: row_idx,
+            expected: fields.len(),
+            got: raw.len(),
+        });
+    }
+    let mut row = Vec::with_capacity(fields.len());
+    for (column, (name, ty)) in fields.iter().enumerate() {
+        let value = match raw.get(column) {
+            None => Value::Null,
+            Some("") if preserve_empty_strings && *ty == ScalarType::String => {
+                Value::String(String::new())
+            }
+            Some("") => Value::Null,
+            Some(cell) => parse_present_value(name, *ty, cell, row_idx)?,
+        };
+        row.push((name.to_string(), Instance::Scalar(value)));
+    }
+    Ok(Instance::Group(row.into()))
 }

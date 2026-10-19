@@ -47,6 +47,15 @@ pub fn generate_project_with_csv_output(
     generate_project_impl(project_path, output_directory, target, Adapter::Csv)
 }
 
+/// Generate complete single-document CSV input/output methods for either backend.
+pub fn generate_project_with_csv_document_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    generate_project_impl(project_path, output_directory, target, Adapter::CsvDocument)
+}
+
 /// Generate the ordinary mapping APIs plus explicitly selected singular JSON5
 /// text and byte companions. File suffixes and stored identities do not select it.
 pub fn generate_project_with_json5_adapters(
@@ -170,6 +179,7 @@ pub fn generate_project_with_csv_json_adapters(
 enum Adapter {
     Ordinary,
     Csv,
+    CsvDocument,
     Json5,
     X12(
         Option<codegen::X12EnvelopeProfile>,
@@ -190,6 +200,33 @@ fn generate_project_impl(
     adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
+    let csv_document_policy = if adapter == Adapter::CsvDocument {
+        for (label, path, options) in [
+            (
+                "source",
+                project.source_path.as_deref(),
+                &project.source_options,
+            ),
+            (
+                "target",
+                project.target_path.as_deref(),
+                &project.target_options,
+            ),
+        ] {
+            let kind = options.tabular_kind;
+            let extension = path
+                .and_then(|p| Path::new(p).extension())
+                .and_then(|s| s.to_str());
+            if kind != Some(mapping::TabularBoundaryKind::Csv)
+                && (kind.is_some() || !extension.is_some_and(|s| s.eq_ignore_ascii_case("csv")))
+            {
+                bail!("generated CSV document {label} requires an explicit CSV format identity");
+            }
+        }
+        Some(codegen::CsvDocumentBoundaryPolicy::from_project(&project)?)
+    } else {
+        None
+    };
     let csv_json_policy = if adapter == Adapter::CsvJson {
         let policy = csv_json::policy(&project)?;
         codegen::prepare_csv_json_project_boundary(&project, &policy)?;
@@ -274,7 +311,9 @@ fn generate_project_impl(
                 package_name: "ferrule-generated-mapping".to_string(),
                 runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime_path.to_owned()),
             };
-            if let Some(policy) = &x12_policy {
+            if let Some(policy) = &csv_document_policy {
+                codegen_rust::emit_with_csv_document_adapters(&program, &options, policy)?
+            } else if let Some(policy) = &x12_policy {
                 codegen_rust::emit_with_x12(&program, &options, policy)?
             } else if adapter == Adapter::Json5 {
                 codegen_rust::emit_with_json5(&program, &options)?
@@ -286,7 +325,9 @@ fn generate_project_impl(
             }
         }
         GenerateTarget::CSharp => {
-            if let Some(policy) = &csv_json_policy {
+            if let Some(policy) = &csv_document_policy {
+                codegen_csharp::emit_with_csv_document_adapters(&program, policy)?
+            } else if let Some(policy) = &csv_json_policy {
                 codegen_csharp::emit_with_csv_json_adapters(&program, policy)?
             } else if let Some(policy) = &csv_x12_policy {
                 codegen_csharp::emit_with_csv_x12_adapters(&program, policy)?

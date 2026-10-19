@@ -30,6 +30,8 @@ mod basic_owned_sequence_item_at;
 mod collection_find;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/csv_document_adapters.rs"]
+mod csv_document_adapters;
 #[path = "code_generation/csv_json_adapters.rs"]
 mod csv_json_adapters;
 #[path = "code_generation/csv_output.rs"]

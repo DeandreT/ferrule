@@ -53,7 +53,9 @@ pub use context::{
     GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
-pub use csv::{CsvBoundaryError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes};
+pub use csv::{
+    CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes,
+};
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
     DynamicJsonSourceLoader, DynamicSourceItems, DynamicSourceLoader, MAX_DYNAMIC_SOURCE_BYTES,
@@ -68,7 +70,11 @@ pub use filter_map::{
     FilterMapPhase, FilterMapRun, MAX_FILTER_MAP_FUNCTION_DEPTH, MAX_FILTER_MAP_SOURCE_ITEMS,
     MAX_FILTER_MAP_WORK, filter_map_sequence,
 };
-pub use format_csv::{CsvFormatError, CsvWriteOptions};
+pub use format_csv::{
+    CsvFormatError, CsvReadError, CsvReadLimit, CsvReadOptions, CsvWriteOptions,
+    from_bytes_with_options_bounded as parse_csv_rows_bytes,
+    from_str_with_options_bounded as parse_csv_rows,
+};
 pub use format_edi::EdiFormatError;
 pub use format_json::source_document::{
     JsonSourceDocument, JsonSourceError, JsonSourceKind, JsonSourceLimits, JsonSourceValue,

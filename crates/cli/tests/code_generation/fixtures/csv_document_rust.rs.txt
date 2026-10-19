@@ -1,0 +1,37 @@
+use codegen_runtime::{CsvBoundaryError, CsvDocumentError, CsvFormatError, CsvReadError, CsvReadLimit, ExecutionContext, RuntimeError, RuntimeParameters, Value};
+use ferrule_generated_mapping::*;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mode = std::env::args().nth(1).unwrap();
+    let context = ExecutionContext::new(std::path::Path::new("authored.mapping"));
+    if mode == "unquoted" {
+        assert!(matches!(execute_csv_document("Key,Text,Count,Fail\na,x|y,1,false\n"),
+            Err(CsvDocumentError::Output(CsvBoundaryError::Format(CsvFormatError::UnquotedFieldBoundary { .. })))));
+    } else {
+        for i in 0..if mode == "grouped" { 2 } else { 3 } {
+            let bytes = std::fs::read(format!("input{i}.csv"))?;
+            let text = std::str::from_utf8(&bytes)?;
+            let expected = std::fs::read(format!("expected{i}.csv"))?;
+            assert_eq!(execute_csv_document(text)?.as_bytes(), expected);
+            assert_eq!(execute_csv_document_bytes(&bytes)?, expected);
+            assert_eq!(execute_csv_document_with_context(text, &context)?.as_bytes(), expected);
+            assert_eq!(execute_csv_document_bytes_with_context(&bytes, &context)?, expected);
+            assert_eq!(execute_csv_document(text)?.as_bytes(), expected);
+        }
+    }
+    assert!(matches!(execute_csv_document_bytes(&[0xff]), Err(CsvDocumentError::Input(CsvReadError::Encoding(_)))));
+    assert!(matches!(execute_csv_document("Key,Text,Count,Fail\na,x,1,true\nb,y,bad,false\n"),
+        Err(CsvDocumentError::Input(CsvReadError::Format(CsvFormatError::Parse { row: 1, .. })))));
+    assert!(matches!(execute_csv_document_bytes(&vec![b' '; 8 * 1024 * 1024 + 1]),
+        Err(CsvDocumentError::Input(CsvReadError::Limit { kind: CsvReadLimit::InputBytes, .. }))));
+    if mode == "rows" {
+        let input = "Key,Text,Count,Fail\na,x,1,false\nb,y,2,true\n";
+        assert!(matches!(execute_csv_document(input), Err(CsvDocumentError::Output(CsvBoundaryError::Execution(RuntimeError::MissingRuntimeParameter { .. })))));
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("Required", Value::String("supplied".into()))?;
+        let context = context.with_parameters(&parameters);
+        assert_eq!(execute_csv_document_with_context(input, &context)?, "\u{feff}Key|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n");
+    }
+    println!("complete CSV documents passed");
+    Ok(())
+}
