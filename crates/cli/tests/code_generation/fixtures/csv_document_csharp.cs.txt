@@ -1,0 +1,44 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static void Require(bool value) { if (!value) throw new Exception("CSV document assertion failed"); }
+static void InputError(Action action, FerruleCsvInputError error, int? row = null)
+{
+    try { action(); throw new Exception("input failure was accepted"); }
+    catch (FerruleCsvInputException e) { Require(e.Error == error && (row is null || e.Row == row)); }
+}
+var mode = args[0];
+var context = new FerruleExecutionContext("authored.mapping");
+if (mode == "unquoted")
+{
+    try { GeneratedMapping.ExecuteCsvDocument("Key,Text,Count,Fail\na,x|y,1,false\n"); throw new Exception("unquoted boundary accepted"); }
+    catch (FerruleCsvException e) { Require(e.Error == FerruleCsvError.UnquotedFieldBoundary); }
+}
+else
+{
+    for (var i = 0; i < (mode == "grouped" ? 2 : 3); i++)
+    {
+        var bytes = File.ReadAllBytes($"input{i}.csv");
+        var text = Encoding.UTF8.GetString(bytes);
+        var expected = File.ReadAllBytes($"expected{i}.csv");
+        Require(Encoding.UTF8.GetBytes(GeneratedMapping.ExecuteCsvDocument(text)).SequenceEqual(expected));
+        Require(GeneratedMapping.ExecuteCsvDocumentBytes(bytes).SequenceEqual(expected));
+        Require(Encoding.UTF8.GetBytes(GeneratedMapping.ExecuteCsvDocument(text, context)).SequenceEqual(expected));
+        Require(GeneratedMapping.ExecuteCsvDocumentBytes(bytes, context).SequenceEqual(expected));
+        Require(Encoding.UTF8.GetBytes(GeneratedMapping.ExecuteCsvDocument(text)).SequenceEqual(expected));
+    }
+}
+InputError(() => GeneratedMapping.ExecuteCsvDocumentBytes([0xff]), FerruleCsvInputError.Encoding);
+InputError(() => GeneratedMapping.ExecuteCsvDocument("Key,Text,Count,Fail\na,x,1,true\nb,y,bad,false\n"), FerruleCsvInputError.Parse, 1);
+InputError(() => GeneratedMapping.ExecuteCsvDocumentBytes(new byte[8 * 1024 * 1024 + 1]), FerruleCsvInputError.InputTooLarge);
+if (mode == "rows")
+{
+    const string input = "Key,Text,Count,Fail\na,x,1,false\nb,y,2,true\n";
+    try { GeneratedMapping.ExecuteCsvDocument(input); throw new Exception("missing parameter accepted"); }
+    catch (FerruleRuntimeException e) { Require(e.Error == FerruleRuntimeError.MissingRuntimeParameter); }
+    var parameters = new FerruleRuntimeParameters(new Dictionary<string, FerruleValue> { ["Required"] = FerruleValue.FromString("supplied") });
+    context = FerruleExecutionContext.WithParameters("authored.mapping", parameters);
+    Require(GeneratedMapping.ExecuteCsvDocument(input, context) == "\uFEFFKey|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n");
+}
+Console.WriteLine("complete CSV documents passed");

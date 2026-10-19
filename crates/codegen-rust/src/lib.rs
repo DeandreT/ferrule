@@ -18,6 +18,8 @@ use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod csv_api;
+mod csv_document;
+pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod failure;
 mod json5_api;
 mod owned_basic;
