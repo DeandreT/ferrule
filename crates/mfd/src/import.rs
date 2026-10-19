@@ -23,6 +23,7 @@ mod alternatives;
 mod compatibility;
 mod constructed_parser_scalar;
 mod constructed_variable_driver;
+mod csv_document_paths;
 mod db_query;
 mod db_where;
 mod dynamic_json;
@@ -1742,6 +1743,7 @@ fn import_resolved(
                         });
                     let flavor = text_el.and_then(|t| t.attribute("type")).unwrap_or("");
                     if flavor == "csv" {
+                        csv_document_paths::warn(component, &edges.feeds, &mut warnings);
                         match read_csv_component(&component, &mut warnings) {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped csv component `{name}`")),
