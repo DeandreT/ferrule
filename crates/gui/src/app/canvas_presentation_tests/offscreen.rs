@@ -185,8 +185,10 @@ fn canvas_kittest_interactions_preserve_mapping() {
 
 #[test]
 fn connection_picker_keyboard_keeps_the_exact_row_visible() {
-    let mut app = FerruleApp::default();
-    app.project = blank_project();
+    let mut app = FerruleApp {
+        project: blank_project(),
+        ..Default::default()
+    };
     app.project.source = ir::SchemaNode::group(
         "Source",
         vec![ir::SchemaNode::scalar("value", ir::ScalarType::String)],
