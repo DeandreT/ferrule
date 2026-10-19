@@ -17,6 +17,7 @@ mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
+pub mod source_document;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;

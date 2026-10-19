@@ -8,6 +8,8 @@ internal static partial class Program
     {
         var tests = new (string Name, Action Run)[]
         {
+            ("JSON source complete literal corpus", JsonSourceCorpus),
+            ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("root-view padded facts and exact clone", RootViewPaddedFactsAndClone),
             ("root-view padded constructor refusals", RootViewPaddedConstructorRefusals),
             ("root-view JSON ordinary data and Unknown", RootViewPaddedJsonData),
