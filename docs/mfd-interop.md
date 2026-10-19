@@ -27,11 +27,17 @@ may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
 
-CSV row imports diagnose connected `FileInstance` filename inputs and outputs.
-Their document-loading and output-document behavior is not represented by the
-row project, so executable import refuses them. Ordinary import keeps the row
-mapping with that diagnostic. Unconnected wrapper ports and static preview/output
-path metadata do not introduce filename-driven document behavior.
+CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
+inputs and outputs. Their document-loading and output-document behavior is not
+represented by the imported data mapping, so executable import refuses them.
+Ordinary import keeps the partial mapping with that diagnostic. Unconnected
+wrapper ports and static preview/output path metadata do not introduce
+filename-driven document behavior.
+
+XML imports retain their supported static connected paths and document-driven
+output scopes. A runtime-connected primary input filename or a target filename
+without a supported document driver produces a diagnostic rather than silently
+qualifying a mapping that uses only its saved preview path.
 
 Each physical MFD input connector may have one distinct source feed. The
 importer checks modern graph edges and legacy connections before lowering;

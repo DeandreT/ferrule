@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::schema::parse_u32;
 
-/// CSV lowering retains row/field ports, but does not lower the enclosing
+/// These readers retain data ports, but do not lower the enclosing
 /// filename inputs or outputs into acquisition and document-output scopes.
 pub(super) fn warn(
     component: roxmltree::Node<'_, '_>,
     feeds: &BTreeMap<u32, u32>,
+    format: &str,
     warnings: &mut Vec<String>,
 ) {
     let name = component.attribute("name").unwrap_or_default();
@@ -36,7 +37,7 @@ pub(super) fn warn(
     }
     for (direction, key) in connected {
         warnings.push(format!(
-            "CSV component `{name}` has connected FileInstance {direction} port `{key}`; filename-driven documents are unsupported"
+            "{format} component `{name}` has connected FileInstance {direction} port `{key}`; filename-driven documents are unsupported"
         ));
     }
 }

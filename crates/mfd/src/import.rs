@@ -23,9 +23,9 @@ mod alternatives;
 mod compatibility;
 mod constructed_parser_scalar;
 mod constructed_variable_driver;
-mod csv_document_paths;
 mod db_query;
 mod db_where;
+mod document_paths;
 mod dynamic_json;
 mod dynamic_xml_variable;
 mod exception;
@@ -1709,7 +1709,17 @@ fn import_resolved(
                                 &edges.feeds.values().copied().collect(),
                             ) {
                                 Ok(Some(parser)) => json_parsers.push(parser),
-                                Ok(None) => schema_components.push(sc),
+                                Ok(None) => {
+                                    if !sc.is_variable {
+                                        document_paths::warn(
+                                            component,
+                                            &edges.feeds,
+                                            "JSON",
+                                            &mut warnings,
+                                        );
+                                    }
+                                    schema_components.push(sc);
+                                }
                                 Err(reason) => warnings.push(format!(
                                     "JSON string parser `{name}` is unsupported: {reason}"
                                 )),
@@ -1743,14 +1753,24 @@ fn import_resolved(
                         });
                     let flavor = text_el.and_then(|t| t.attribute("type")).unwrap_or("");
                     if flavor == "csv" {
-                        csv_document_paths::warn(component, &edges.feeds, &mut warnings);
+                        document_paths::warn(component, &edges.feeds, "CSV", &mut warnings);
                         match read_csv_component(&component, &mut warnings) {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped csv component `{name}`")),
                         }
                     } else if flavor == "edi" {
                         match read_edi_component(&component, resources, &mut warnings) {
-                            Some(sc) => schema_components.push(sc),
+                            Some(sc) => {
+                                if !sc.is_variable {
+                                    document_paths::warn(
+                                        component,
+                                        &edges.feeds,
+                                        "EDI",
+                                        &mut warnings,
+                                    );
+                                }
+                                schema_components.push(sc);
+                            }
                             None => warnings.push(format!("skipped edi component `{name}`")),
                         }
                     } else if flavor == "flf" {
@@ -2523,6 +2543,20 @@ fn import_resolved(
         });
     }
 
+    for (input, path) in &primary.ports {
+        if !matches!(
+            selection,
+            StageSelection::OutOf { .. } | StageSelection::Between { .. }
+        ) && path.as_slice() == [schema::SOURCE_INPUT_DOCUMENT_PATH_PORT]
+            && let Some(feed) = builder.edge_from.get(input)
+            && builder.static_string_feed(*feed).is_none()
+        {
+            builder.warnings.push(format!(
+                "primary source `{}` has connected FileInstance input port `{input}`; runtime filename acquisition is unsupported",
+                primary.name
+            ));
+        }
+    }
     let source_path = primary
         .input_instance
         .clone()
@@ -2766,7 +2800,13 @@ fn build_target_scope(
                     );
                     Some(feed)
                 }
-                None => None,
+                None => {
+                    builder.warnings.push(format!(
+                        "target `{}` has a connected FileInstance path without a supported document driver; dynamic document output was skipped",
+                        target.name
+                    ));
+                    None
+                }
             }
         });
     let dynamic_target = dynamic_json::prepare_target(target, builder);
