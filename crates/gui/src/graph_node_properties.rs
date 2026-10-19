@@ -140,7 +140,7 @@ impl GraphViewer<'_> {
                 Node::Position { collection } => {
                     self.source_paths.show_collection_picker(
                         ui,
-                        ui.id().with("position_collection"),
+                        ui.scope_id().with("position_collection"),
                         collection,
                     );
                 }
@@ -185,7 +185,7 @@ impl GraphViewer<'_> {
                                 .char_limit(mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES),
                         );
                     });
-                    egui::ComboBox::from_id_salt(ui.id().with("runtime_parameter_type"))
+                    egui::ComboBox::from_id_salt(ui.scope_id().with("runtime_parameter_type"))
                         .selected_text(format!("{ty:?}").to_lowercase())
                         .show_ui(ui, |ui| {
                             for candidate in [
@@ -220,7 +220,7 @@ impl GraphViewer<'_> {
                         || function.clone(),
                         |builtin| builtin.display_name.to_owned(),
                     );
-                    egui::ComboBox::from_id_salt(ui.id().with("builtin"))
+                    egui::ComboBox::from_id_salt(ui.scope_id().with("builtin"))
                         .selected_text(selected)
                         .show_ui(ui, |ui| {
                             for builtin in functions::builtin_catalog().iter().filter(|builtin| {
@@ -302,7 +302,7 @@ impl GraphViewer<'_> {
                 } => {
                     ui.horizontal(|ui| {
                         let label = ui.label("Input conversion");
-                        egui::ComboBox::from_id_salt(ui.id().with("value_map_input_type"))
+                        egui::ComboBox::from_id_salt(ui.scope_id().with("value_map_input_type"))
                             .selected_text(input_type.map_or_else(
                                 || "unchanged".to_owned(),
                                 |ty| format!("{ty:?}").to_lowercase(),
@@ -449,7 +449,7 @@ impl GraphViewer<'_> {
                         ui.label("collection");
                         self.source_paths.show_collection_picker(
                             ui,
-                            ui.id().with("find_collection"),
+                            ui.scope_id().with("find_collection"),
                             collection,
                         );
                     });
@@ -556,11 +556,11 @@ impl GraphViewer<'_> {
                         egui::vec2(PATH_EDITOR_WIDTH, 0.0),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            egui::Grid::new(ui.id().with("aggregate_paths")).show(ui, |ui| {
+                            egui::Grid::new(ui.scope_id().with("aggregate_paths")).show(ui, |ui| {
                                 ui.label("collection");
                                 self.source_paths.show_collection_picker(
                                     ui,
-                                    ui.id().with("aggregate_collection"),
+                                    ui.scope_id().with("aggregate_collection"),
                                     collection,
                                 );
                                 ui.end_row();
@@ -569,7 +569,7 @@ impl GraphViewer<'_> {
                                 } else {
                                     ui.label("operation");
                                 }
-                                egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
+                                egui::ComboBox::from_id_salt(ui.scope_id().with("aggregate_op"))
                                     .selected_text(
                                         node_palette::AGGREGATE_OPS
                                             .iter()
@@ -590,7 +590,7 @@ impl GraphViewer<'_> {
                                     ui.label("value");
                                     self.source_paths.show_value_picker(
                                         ui,
-                                        ui.id().with("aggregate_value"),
+                                        ui.scope_id().with("aggregate_value"),
                                         collection,
                                         value,
                                     );

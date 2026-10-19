@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::canvas::{source_blocks, target_blocks};
 use egui_snarl::OutPinId;
@@ -149,7 +151,7 @@ fn raw_frame(
     let mut function_output = item;
     let mut rect = egui::Rect::NOTHING;
     let mut title = String::new();
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -197,7 +199,7 @@ fn raw_frame(
             title = viewer.title(&CanvasNode::Graph(item));
             rect = ui
                 .vertical(|ui| {
-                    viewer.show_output(&pin, ui, &mut snarl);
+                    super::tests::show_properties_with_header(&mut viewer, &pin, ui, &mut snarl);
                 })
                 .response
                 .rect;

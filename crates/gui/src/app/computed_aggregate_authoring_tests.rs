@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{AggregateOp, Binding, NamedTarget, ScopeIteration};
@@ -246,7 +248,7 @@ fn frame(
     editing: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -325,8 +327,8 @@ fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
 }
 fn salt(app: &FerruleApp) -> egui::Id {
     app.embedded_canvas_id(match app.mapping_workspace.active {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(i) => egui::Id::new(("named_target_canvas", i)),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(i) => egui::Id::unique(("named_target_canvas", i)),
         _ => panic!("mapping canvas"),
     })
 }
@@ -435,8 +437,18 @@ fn wire_value(
     );
 }
 fn open(app: &mut FerruleApp, context: &egui::Context, node: NodeId) {
-    let output = settle(app, context, true);
+    settle(app, context, true);
     let rect = bounds(app, context, node);
+    frame(
+        app,
+        context,
+        true,
+        vec![egui::Event::PointerMoved(egui::pos2(
+            rect.center().x,
+            rect.top() + 12.0,
+        ))],
+    );
+    let output = settle(app, context, true);
     let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
     let candidates = visible(&output, &pencil)
         .into_iter()

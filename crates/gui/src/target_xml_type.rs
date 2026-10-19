@@ -94,7 +94,7 @@ pub(crate) fn show(
     let mut action = None;
     ui.horizontal(|ui| {
         ui.label("XML type:");
-        egui::ComboBox::from_id_salt(ui.id().with("target_xml_type"))
+        egui::ComboBox::from_id_salt(ui.scope_id().with("target_xml_type"))
             .selected_text(label)
             .width(250.0)
             .show_ui(ui, |ui| {

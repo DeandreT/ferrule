@@ -318,7 +318,7 @@ fn three_compact_sequence_nodes_expose_properties_and_plain_position_headers() {
         });
         let before = snapshot(&fx, &snarl);
         crate::filter_map_editor::observations::begin();
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

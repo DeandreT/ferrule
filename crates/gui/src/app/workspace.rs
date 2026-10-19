@@ -505,6 +505,23 @@ impl FerruleApp {
 
     fn arrange_focused_canvas(&mut self, mode: ArrangeMode) {
         let document = self.mapping_workspace.focused;
+        if mode == ArrangeMode::Compact {
+            let canvas = match document {
+                MappingDocument::Main => Some(&mut self.main_canvas),
+                MappingDocument::Target(target) => {
+                    self.ensure_target_canvas(target);
+                    self.mapping_workspace.target_canvases.get_mut(&target)
+                }
+                MappingDocument::Function(function) => {
+                    self.ensure_function_canvas(function);
+                    self.mapping_workspace.function_canvases.get_mut(&function)
+                }
+            };
+            if let Some(canvas) = canvas {
+                canvas.pending_compact = true;
+            }
+            return;
+        }
         if self.arrange_document(document, mode) {
             self.status = match mode {
                 ArrangeMode::LeftToRight => "canvas arranged left to right",
@@ -1085,7 +1102,7 @@ impl FerruleApp {
             &self.project.target_options,
         );
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
-        let canvas_id = self.embedded_canvas_id(egui::Id::new("main_mapping_canvas"));
+        let canvas_id = self.embedded_canvas_id(egui::Id::unique("main_mapping_canvas"));
         sequence_consumer_duplication::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = project_source_blocks(&self.project);
@@ -1147,6 +1164,10 @@ impl FerruleApp {
                 &mut viewer,
                 &mut self.main_canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
+                    tools_id: self.main_canvas.tools_id,
+                    density: self.appearance.density(),
+                    wire: *self.appearance.wire(),
+                    request_compact: std::mem::take(&mut self.main_canvas.pending_compact),
                     id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: self.main_canvas.view_generation,

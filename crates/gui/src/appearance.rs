@@ -1,9 +1,12 @@
 //! Serializable graph-canvas appearance independent of editor document state.
 
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use std::fmt;
 
 use egui::{Color32, CornerRadius, Frame, Margin, Stroke, vec2};
-use egui_snarl::ui::{BackgroundPattern, Grid, PinPlacement, SnarlStyle, WireStyle};
+use egui_snarl::ui::{BackgroundPattern, Grid, NodeLayout, PinPlacement, SnarlStyle, WireStyle};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub const MIN_WIRE_WIDTH: f32 = 0.5;
@@ -18,6 +21,85 @@ pub const MIN_GRID_STROKE_WIDTH: f32 = 0.25;
 pub const MAX_GRID_STROKE_WIDTH: f32 = 4.0;
 pub const MIN_GRID_ANGLE_DEGREES: f32 = -180.0;
 pub const MAX_GRID_ANGLE_DEGREES: f32 = 180.0;
+
+/// Canvas-only sizing. Apply inside a child UI, never to the global context.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasDensity {
+    Standard,
+    Dense,
+    #[default]
+    #[serde(other)]
+    Compact,
+}
+
+impl CanvasDensity {
+    pub const ALL: [Self; 3] = [Self::Standard, Self::Compact, Self::Dense];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard",
+            Self::Compact => "Compact",
+            Self::Dense => "Dense",
+        }
+    }
+
+    pub const fn font_size(self) -> f32 {
+        match self {
+            Self::Standard => 14.0,
+            Self::Compact => 12.0,
+            Self::Dense => 11.0,
+        }
+    }
+
+    pub const fn node_margin(self) -> Margin {
+        Margin::same(match self {
+            Self::Standard => 8,
+            Self::Compact => 4,
+            Self::Dense => 3,
+        })
+    }
+
+    pub const fn header_margin(self) -> Margin {
+        match self {
+            Self::Standard => Margin::symmetric(8, 4),
+            Self::Compact => Margin::symmetric(6, 3),
+            Self::Dense => Margin::symmetric(5, 2),
+        }
+    }
+
+    pub const fn item_spacing(self) -> egui::Vec2 {
+        match self {
+            Self::Standard => vec2(8.0, 6.0),
+            Self::Compact => vec2(6.0, 3.0),
+            Self::Dense => vec2(4.0, 2.0),
+        }
+    }
+
+    /// Snarl uses this for both the painted pin and its native drag target.
+    /// Keep even Dense targets at least eight logical units across.
+    pub const fn pin_size(self) -> f32 {
+        match self {
+            Self::Standard => 12.0,
+            Self::Compact => 10.0,
+            Self::Dense => 8.0,
+        }
+    }
+
+    /// Changes this UI's local style only. Call within `ui.scope` around the
+    /// canvas; property popups must use the workbench style, not this style.
+    pub fn apply(self, ui: &mut egui::Ui) {
+        let style = ui.style_mut();
+        for font in style.text_styles.values_mut() {
+            font.size = self.font_size();
+        }
+        if let Some(font) = &mut style.override_font_id {
+            font.size = self.font_size();
+        }
+        style.spacing.item_spacing = self.item_spacing();
+        style.spacing.interact_size.y = (self.font_size() + 6.0).max(18.0);
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -495,6 +577,7 @@ impl Default for SemanticThemeColors {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EditorAppearance {
+    density: CanvasDensity,
     wire: WireAppearance,
     canvas: CanvasAppearance,
     colors: SemanticThemeColors,
@@ -517,6 +600,7 @@ impl EditorAppearance {
                 grid_angle_degrees: 0.0,
                 grid_stroke_width: 1.0,
             },
+            density: CanvasDensity::Compact,
             colors: SemanticThemeColors::preset(preset),
             follow_theme_colors: false,
         }
@@ -524,6 +608,14 @@ impl EditorAppearance {
 
     pub const fn wire(&self) -> &WireAppearance {
         &self.wire
+    }
+
+    pub const fn density(&self) -> CanvasDensity {
+        self.density
+    }
+
+    pub fn set_density(&mut self, density: CanvasDensity) {
+        self.density = density;
     }
 
     pub const fn canvas(&self) -> &CanvasAppearance {
@@ -565,6 +657,11 @@ impl EditorAppearance {
         style.pin_fill = Some(self.colors.wire.to_egui());
         style.pin_stroke = Some(Stroke::new(1.0, self.colors.node_border.to_egui()));
         style.pin_placement = Some(PinPlacement::Edge);
+        style.pin_size = Some(self.density.pin_size());
+        // Empty or icon-only rows must not put adjacent drag targets on top
+        // of each other. Text rows may grow beyond this lower bound.
+        style.node_layout =
+            Some(NodeLayout::coil().with_min_pin_row_height(self.density.pin_size() + 2.0));
 
         style.bg_frame = Some(Frame::new().fill(self.colors.canvas.to_egui()));
         style.bg_pattern = Some(match self.canvas.pattern {
@@ -581,14 +678,14 @@ impl EditorAppearance {
 
         style.node_frame = Some(
             Frame::new()
-                .inner_margin(Margin::same(8))
+                .inner_margin(self.density.node_margin())
                 .fill(self.colors.node_surface.to_egui())
                 .stroke(Stroke::new(1.0, self.colors.node_border.to_egui()))
                 .corner_radius(CornerRadius::same(4)),
         );
         style.header_frame = Some(
             Frame::new()
-                .inner_margin(Margin::symmetric(8, 4))
+                .inner_margin(self.density.header_margin())
                 .fill(self.colors.node_header.to_egui())
                 .stroke(Stroke::new(1.0, self.colors.node_border.to_egui()))
                 .corner_radius(CornerRadius::same(4)),
@@ -669,6 +766,112 @@ fn validate_number(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn density_preferences_roundtrip_and_only_change_scoped_canvas_text() {
+        let old: EditorAppearance = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.density(), CanvasDensity::Compact);
+        for density in CanvasDensity::ALL {
+            let mut appearance = EditorAppearance::default();
+            appearance.set_density(density);
+            let saved = serde_json::to_string(&appearance).unwrap();
+            assert_eq!(
+                serde_json::from_str::<EditorAppearance>(&saved).unwrap(),
+                appearance
+            );
+            let context = egui::Context::default();
+            let original = context.global_style().text_styles[&egui::TextStyle::Body].size;
+            let original_spacing = context.global_style().spacing.item_spacing;
+            let _ = context.run_test_ui(Default::default(), |ui| {
+                ui.scope(|ui| {
+                    density.apply(ui);
+                    assert_eq!(
+                        ui.style().text_styles[&egui::TextStyle::Body].size,
+                        density.font_size()
+                    );
+                    assert_eq!(ui.spacing().item_spacing, density.item_spacing());
+                    let galley = ui.fonts_mut(|fonts| {
+                        fonts.layout_no_wrap(
+                            "Authored canvas label".into(),
+                            egui::FontSelection::Default.resolve(ui.style()),
+                            Color32::WHITE,
+                        )
+                    });
+                    assert_eq!(
+                        galley.job.sections[0].format.font_id.size,
+                        density.font_size()
+                    );
+                    assert!(galley.size().x > 0.0 && galley.size().y > 0.0);
+                });
+                assert_eq!(
+                    ui.style().text_styles[&egui::TextStyle::Body].size,
+                    original
+                );
+                assert_eq!(ui.spacing().item_spacing, original_spacing);
+            });
+            assert_eq!(
+                context.global_style().text_styles[&egui::TextStyle::Body].size,
+                original
+            );
+        }
+    }
+
+    #[test]
+    fn density_presets_use_exact_margins_and_non_overlapping_native_pin_rows() {
+        for (density, node_margin, header_margin, spacing) in [
+            (
+                CanvasDensity::Standard,
+                Margin::same(8),
+                Margin::symmetric(8, 4),
+                vec2(8.0, 6.0),
+            ),
+            (
+                CanvasDensity::Compact,
+                Margin::same(4),
+                Margin::symmetric(6, 3),
+                vec2(6.0, 3.0),
+            ),
+            (
+                CanvasDensity::Dense,
+                Margin::same(3),
+                Margin::symmetric(5, 2),
+                vec2(4.0, 2.0),
+            ),
+        ] {
+            let mut appearance = EditorAppearance::default();
+            appearance.set_density(density);
+            let style = appearance.to_snarl_style();
+            assert_eq!(style.node_frame.unwrap().inner_margin, node_margin);
+            assert_eq!(style.header_frame.unwrap().inner_margin, header_margin);
+            assert_eq!(density.item_spacing(), spacing);
+            let pin_size = style.pin_size.unwrap();
+            assert!(pin_size >= 8.0);
+            assert!(style.node_layout.unwrap().min_pin_row_height >= pin_size + 2.0);
+        }
+    }
+
+    #[test]
+    fn missing_and_unknown_density_preserve_other_appearance_settings() {
+        for document in [
+            r#"{"wire":{"width":3.5}}"#,
+            r#"{"density":"future_preset","wire":{"width":3.5}}"#,
+        ] {
+            let appearance: EditorAppearance = serde_json::from_str(document).unwrap();
+            assert_eq!(appearance.density(), CanvasDensity::Compact);
+            assert_eq!(appearance.wire().width(), 3.5);
+        }
+        for (density, serialized) in [
+            (CanvasDensity::Standard, "\"standard\""),
+            (CanvasDensity::Compact, "\"compact\""),
+            (CanvasDensity::Dense, "\"dense\""),
+        ] {
+            assert_eq!(serde_json::to_string(&density).unwrap(), serialized);
+            assert_eq!(
+                serde_json::from_str::<CanvasDensity>(serialized).unwrap(),
+                density
+            );
+        }
+    }
 
     #[test]
     fn defaults_convert_every_supported_snarl_style_field() {

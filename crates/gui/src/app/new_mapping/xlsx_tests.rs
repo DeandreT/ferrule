@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use calamine::{Data, Reader, Xlsx};
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -628,7 +630,7 @@ fn desktop_wizard_frame(
     events: Vec<egui::Event>,
     tag: &str,
 ) -> anyhow::Result<egui::FullOutput> {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -701,6 +703,7 @@ fn desktop_wizard_reveal(
             vec![
                 egui::Event::PointerMoved(anchor),
                 egui::Event::MouseWheel {
+                    source: egui::MouseWheelSource::Unknown,
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(0.0, direction),
                     phase: egui::TouchPhase::Move,

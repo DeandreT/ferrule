@@ -1,0 +1,55 @@
+{
+  "source": {
+    "name": "Authored input",
+    "kind": { "kind": "group", "children": [
+      { "name": "name", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "description", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field03", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field04", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field05", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field06", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field07", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field08", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field09", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field10", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field11", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field12", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field13", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field14", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field15", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field16", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "field17", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "lastField", "kind": { "kind": "scalar", "ty": "string" } }
+    ] }
+  },
+  "target": {
+    "name": "Authored output",
+    "kind": { "kind": "group", "children": [
+      { "name": "display", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "upperName", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "empty", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "longValue", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "multiline", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "tail", "kind": { "kind": "scalar", "ty": "string" } }
+    ] }
+  },
+  "graph": { "nodes": {
+    "0": { "kind": "source_field", "path": ["name"] },
+    "1": { "kind": "call", "function": "exists", "args": [0] },
+    "2": { "kind": "call", "function": "not", "args": [1] },
+    "3": { "kind": "const", "value": "" },
+    "4": { "kind": "const", "value": "A longer authored literal with significant spaces  " },
+    "5": { "kind": "if", "condition": 2, "then": 3, "else": 0 },
+    "6": { "kind": "call", "function": "upper", "args": [0] },
+    "7": { "kind": "const", "value": "{\n  \"label\": \"Unicode 資料 🦀\"\n}" },
+    "8": { "kind": "source_field", "path": ["lastField"] }
+  } },
+  "root": { "bindings": [
+    { "target_field": "display", "node": 5 },
+    { "target_field": "upperName", "node": 6 },
+    { "target_field": "empty", "node": 3 },
+    { "target_field": "longValue", "node": 4 },
+    { "target_field": "multiline", "node": 7 },
+    { "target_field": "tail", "node": 8 }
+  ] }
+}

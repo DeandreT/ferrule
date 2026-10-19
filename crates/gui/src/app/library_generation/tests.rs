@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -469,7 +471,7 @@ fn csv_checkbox_toggles_only_the_generation_draft_and_is_disabled_while_waiting(
     let saved_before = std::fs::read(temp.0.join("csv-mapping.json"))?;
     let context = egui::Context::default();
     let frame = |app: &mut FerruleApp, events: Vec<egui::Event>| {
-        context.run_ui(
+        context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -929,7 +931,7 @@ fn setup_parent_choice_and_cancel_preserve_the_complete_editor_without_output() 
     let before_history = app.history.undo_len();
     let context = egui::Context::default();
     let frame = |app: &mut FerruleApp, events: Vec<egui::Event>| {
-        context.run_ui(
+        context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

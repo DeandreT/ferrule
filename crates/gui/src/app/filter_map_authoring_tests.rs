@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::filter_map_editor::observations::{self, Control};
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -150,7 +152,7 @@ fn frame(
 ) -> (egui::FullOutput, Vec<Control>) {
     eprintln!("frame input original size={size:?} enabled={enabled} events={events:#?}");
     observations::begin();
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
             events,

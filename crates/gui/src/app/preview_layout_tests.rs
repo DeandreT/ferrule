@@ -37,7 +37,7 @@ fn frame(
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
     app.theme.apply(context);
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, viewport)),
             time: Some(context.cumulative_frame_nr() as f64 / 60.0),
@@ -76,7 +76,7 @@ fn action_after_scrolling(
         frame(app, context, viewport, Vec::new());
     }
     let window = context
-        .memory(|memory| memory.area_rect(egui::Id::new(Some("Preview mapping"))))
+        .memory(|memory| memory.area_rect(egui::Id::unique(Some("Preview mapping"))))
         .expect("actual Preview window");
     let view = egui::Rect::from_min_size(egui::Pos2::ZERO, viewport);
     eprintln!(
@@ -91,6 +91,7 @@ fn action_after_scrolling(
         let mut events = vec![egui::Event::PointerMoved(pointer)];
         if index == 0 {
             events.push(egui::Event::MouseWheel {
+                source: egui::MouseWheelSource::Unknown,
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, -2_000.0),
                 phase: egui::TouchPhase::Move,

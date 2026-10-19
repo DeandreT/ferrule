@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::scope_editor::{ScopeOutputProfile, output_profile};
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
@@ -227,7 +229,7 @@ fn frame(
     editing_enabled: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

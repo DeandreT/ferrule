@@ -204,10 +204,9 @@ fn properties(
         output: 0,
     });
     let mut button = egui::Id::NULL;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         ui.add_enabled_ui(enabled, |ui| {
-            button = ui.next_auto_id();
-            fx.viewer().show_output(&pin, ui, snarl);
+            button = show_properties_with_header(&mut fx.viewer(), &pin, ui, snarl);
         });
     });
     eprintln!(
@@ -389,7 +388,7 @@ fn compact_value_map_headers_retain_complete_policy_accessibility_stationary_too
             let mut output = None;
             for _ in 0..2 {
                 let node = fx.call;
-                let painted = context.run_ui(input(&context, Vec::new()), |ui| {
+                let painted = context.run_test_ui(input(&context, Vec::new()), |ui| {
                     let mut viewer = fx.viewer();
                     viewer.protected_output = protected;
                     viewer.show_header(node, &[], &[], ui, &mut snarl);
@@ -418,7 +417,7 @@ fn compact_value_map_headers_retain_complete_policy_accessibility_stationary_too
             let hover = positions(&output, &icon)[0];
             for frame in 0..8 {
                 let node = fx.call;
-                output = context.run_ui(
+                output = context.run_test_ui(
                     input(
                         &context,
                         if frame == 0 {
@@ -593,7 +592,7 @@ fn canvas(
     let mut transform = None;
     let mut pins = Vec::new();
     let mut hovered = None;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         egui::CentralPanel::default().show(ui, |ui| {
             let mut viewer = fx.viewer();
             viewer.node_sizes = Some(&mut sizes);
@@ -602,7 +601,11 @@ fn canvas(
                 &mut viewer,
                 search,
                 crate::canvas_keyboard::CanvasOptions {
-                    id_salt: egui::Id::new("compact-value-map-real-canvas"),
+                    tools_id: egui::Id::unique("compact-value-map-tools"),
+                    density: crate::appearance::CanvasDensity::Standard,
+                    wire: Default::default(),
+                    request_compact: false,
+                    id_salt: egui::Id::unique("compact-value-map-real-canvas"),
                     show_minimap: false,
                     view_generation: 0,
                     style: crate::appearance::EditorAppearance::default().to_snarl_style(),
@@ -614,7 +617,7 @@ fn canvas(
             hovered = viewer.hovered_node_this_frame;
             pins = crate::canvas_keyboard::current_pin_interaction_ids(
                 context,
-                egui::Id::new("compact-value-map-real-canvas"),
+                egui::Id::unique("compact-value-map-real-canvas"),
                 0,
             )
             .iter()
@@ -647,6 +650,7 @@ fn canvas(
 
 fn wheel(delta: egui::Vec2) -> egui::Event {
     egui::Event::MouseWheel {
+        source: egui::MouseWheelSource::Unknown,
         unit: egui::MouseWheelUnit::Point,
         delta,
         phase: egui::TouchPhase::Move,
@@ -842,6 +846,14 @@ fn compact_value_map_real_canvas_geometry_pins_hover_and_popup_wheel_isolate_the
             "opposite wheel input did not restore the popup setup view"
         );
         let header = positions(&frame.output, &icon)[0];
+        canvas(
+            &mut fx,
+            &mut snarl,
+            &context,
+            &mut search,
+            vec![egui::Event::PointerMoved(header)],
+        );
+        frame = canvas(&mut fx, &mut snarl, &context, &mut search, Vec::new());
         let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
         let edit = positions(&frame.output, &pencil)
             .into_iter()
@@ -958,7 +970,7 @@ fn compact_value_map_real_canvas_geometry_pins_hover_and_popup_wheel_isolate_the
                 && (frame.transform.scaling - closed_transform.scaling).abs() < 0.001,
             "opposite wheel input did not restore the literal drag setup view"
         );
-        let literal = positions(&frame.output, "1")[0];
+        let literal = positions(&frame.output, "int 1")[0];
         let (drag_id, _, drag_at) = frame
             .pins
             .iter()

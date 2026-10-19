@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Node, ProtobufOptions, Scope};
@@ -44,7 +46,7 @@ message Person { string name = 1; int32 id = 2; }"#;
 
 fn render_options(path: &str, options: &mut FormatOptions) {
     let context = egui::Context::default();
-    let _ = context.run_ui(egui::RawInput::default(), |ui| {
+    let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
         egui::CentralPanel::default().show(ui, |ui| {
             show_target_format_options(ui, path, options);
         });
@@ -389,7 +391,7 @@ fn named_binary_source_and_target_keep_exact_file_and_payload_bytes_after_editin
         app.extra_target_draft.as_mut().unwrap().output_path =
             target_path.to_str().unwrap().to_owned();
         let context = egui::Context::default();
-        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+        let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
             app.show_extra_target_setup(ui.ctx())
         });
         assert_eq!(app.extra_target_draft.as_ref().unwrap().options, options);

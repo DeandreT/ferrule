@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, NamedSource, NamedTarget, Pipeline, PipelineInput, PipelineStage};
@@ -181,7 +183,7 @@ fn frame(
     context: &egui::Context,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -264,6 +266,18 @@ fn edit_constant(app: &mut FerruleApp, context: &egui::Context, old: &str) {
     for _ in 0..4 {
         output = frame(app, context, Vec::new());
     }
+    let mut labels = Vec::new();
+    for shape in &output.shapes {
+        text_positions(&shape.shape, &format!("string {old:?}"), &mut labels);
+        text_positions(
+            &shape.shape,
+            &format!("string {old:?} · output"),
+            &mut labels,
+        );
+    }
+    let header = *labels.last().expect("the constant header is visible");
+    frame(app, context, vec![egui::Event::PointerMoved(header)]);
+    output = frame(app, context, Vec::new());
     let mut pencils = Vec::new();
     for shape in &output.shapes {
         text_positions(
@@ -475,6 +489,7 @@ fn stage_canvas_real_property_wire_history_and_apply_leave_parent_and_other_stag
     let primary_pin = usize::from(primary.y > lookup.y);
     let from = pins[primary_pin].1;
     let to = pins[3].1;
+    frame(&mut app, &context, vec![egui::Event::PointerMoved(from)]);
     frame(
         &mut app,
         &context,
@@ -492,6 +507,11 @@ fn stage_canvas_real_property_wire_history_and_apply_leave_parent_and_other_stag
         &mut app,
         &context,
         vec![egui::Event::PointerMoved(from + egui::vec2(12.0, 0.0))],
+    );
+    assert_eq!(
+        context.dragged_id(),
+        Some(pins[primary_pin].0),
+        "the source pin owns the native drag"
     );
     frame(&mut app, &context, vec![egui::Event::PointerMoved(to)]);
     frame(
@@ -556,7 +576,7 @@ fn stage_named_and_function_canvases_edit_same_owned_snapshot_and_cancel_discard
     let original = crate::project_state::pipeline_snapshot_key(pipeline(&app));
     let parent = parent_state(&app);
     click(&mut app, &context, "Edit mapping on canvas");
-    let ordinary = egui::Id::new("main_mapping_canvas");
+    let ordinary = egui::Id::unique("main_mapping_canvas");
     assert_eq!(app.embedded_canvas_id(ordinary), ordinary);
     assert_ne!(child(&app).embedded_canvas_id(ordinary), ordinary);
     let first_session_id = child(&app).embedded_canvas_id(ordinary);

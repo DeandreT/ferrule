@@ -60,7 +60,7 @@ fn draw(
 ) -> Frame {
     let mut sizes = std::collections::BTreeMap::new();
     let mut pins = Vec::new();
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -80,7 +80,11 @@ fn draw(
                     &mut viewer,
                     search,
                     crate::canvas_keyboard::CanvasOptions {
-                        id_salt: egui::Id::new("compact-xml-real-pin-identities"),
+                        tools_id: egui::Id::unique("compact-xml-tools"),
+                        density: crate::appearance::CanvasDensity::Standard,
+                        wire: Default::default(),
+                        request_compact: false,
+                        id_salt: egui::Id::unique("compact-xml-real-pin-identities"),
                         show_minimap: false,
                         view_generation: 0,
                         style: crate::appearance::EditorAppearance::default().to_snarl_style(),
@@ -90,7 +94,7 @@ fn draw(
                 );
                 pins = crate::canvas_keyboard::current_pin_interaction_ids(
                     context,
-                    egui::Id::new("compact-xml-real-pin-identities"),
+                    egui::Id::unique("compact-xml-real-pin-identities"),
                     0,
                 )
                 .into_iter()

@@ -47,6 +47,8 @@ pub(super) struct DemoApp {
     project_json_dirty: bool,
     edited_constant: Option<NodeId>,
     focused_constant: Option<NodeId>,
+    pending_project_drop: Option<std::sync::mpsc::Receiver<Result<Vec<u8>, String>>>,
+    last_drop_frame: Option<u64>,
 }
 
 impl DemoApp {
@@ -87,6 +89,8 @@ impl DemoApp {
             project_json_dirty: false,
             edited_constant: None,
             focused_constant: None,
+            pending_project_drop: None,
+            last_drop_frame: None,
         }
     }
 
@@ -145,6 +149,7 @@ impl DemoApp {
     }
 
     fn install_project(&mut self, project: Project) {
+        self.pending_project_drop = None;
         let mut bindings = Vec::new();
         flat_bindings(&project.root, "", &mut bindings);
         self.snarl = build_snarl(&project, &bindings, self.canvas_compact);
@@ -273,27 +278,38 @@ impl DemoApp {
     }
 
     fn accept_dropped_project(&mut self, ctx: &egui::Context) {
-        let dropped = ctx.input(|input| input.raw.dropped_files.clone());
-        for file in dropped {
-            let text = file
-                .bytes
-                .map(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| error.to_string()))
-                .or_else(|| file.path.as_deref().and_then(read_native_drop));
-            let Some(text) = text else {
-                continue;
-            };
-            match text {
-                Ok(text) => {
-                    self.project_json = text;
-                    self.project_json_dirty = true;
-                    self.apply_project_json();
-                }
-                Err(error) => {
-                    self.status = "Project drop failed".to_string();
-                    self.diagnostic = Some(error);
-                }
+        let frame = ctx.cumulative_frame_nr();
+        if self.last_drop_frame != Some(frame)
+            && let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned())
+        {
+            self.last_drop_frame = Some(frame);
+            // A newer drop supersedes any read still in flight. The old reader
+            // owns only its sender, so it cannot apply stale contents later.
+            self.pending_project_drop = Some(read_project_drop(file, ctx));
+            self.status = "Reading dropped project".to_string();
+        }
+        let result = match self
+            .pending_project_drop
+            .as_ref()
+            .map(|read| read.try_recv())
+        {
+            Some(Ok(result)) => result,
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                Err("Dropped file read ended without a result".to_string())
             }
-            break;
+            _ => return,
+        };
+        self.pending_project_drop = None;
+        match result.and_then(|bytes| String::from_utf8(bytes).map_err(|error| error.to_string())) {
+            Ok(text) => {
+                self.project_json = text;
+                self.project_json_dirty = true;
+                self.apply_project_json();
+            }
+            Err(error) => {
+                self.status = "Project drop failed".to_string();
+                self.diagnostic = Some(error);
+            }
         }
     }
 
@@ -463,7 +479,7 @@ impl DemoApp {
                 min_scale: Some(minimum_scale),
                 ..SnarlStyle::new()
             })
-            .id(egui::Id::new((
+            .id(egui::Id::unique((
                 "web_mapping_canvas",
                 self.canvas_view_generation,
             )))
@@ -602,15 +618,22 @@ fn project_document_error(error: &ProjectDocumentError) -> String {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn read_native_drop(path: &std::path::Path) -> Option<Result<String, String>> {
-    (!path.as_os_str().is_empty())
-        .then(|| std::fs::read_to_string(path).map_err(|error| error.to_string()))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn read_native_drop(_path: &std::path::Path) -> Option<Result<String, String>> {
-    None
+fn read_project_drop(
+    file: egui::DroppedFileHandle,
+    _ctx: &egui::Context,
+) -> std::sync::mpsc::Receiver<Result<Vec<u8>, String>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = sender.send(file.bytes());
+    #[cfg(target_arch = "wasm32")]
+    {
+        let ctx = _ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let _ = sender.send(file.bytes_async().await);
+            ctx.request_repaint();
+        });
+    }
+    receiver
 }
 
 #[cfg(test)]

@@ -368,7 +368,7 @@ impl FerruleApp {
         editing_enabled: bool,
     ) {
         let canvas_id =
-            self.embedded_canvas_id(egui::Id::new(("named_target_canvas", target_index)));
+            self.embedded_canvas_id(egui::Id::unique(("named_target_canvas", target_index)));
         if !self.ensure_target_canvas(target_index) {
             ui.colored_label(self.palette.error, "Target definition is missing");
             return;
@@ -467,6 +467,10 @@ impl FerruleApp {
                 &mut viewer,
                 &mut canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
+                    tools_id: canvas.tools_id,
+                    density: self.appearance.density(),
+                    wire: *self.appearance.wire(),
+                    request_compact: std::mem::take(&mut canvas.pending_compact),
                     id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
@@ -518,7 +522,7 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         editing_enabled: bool,
     ) {
-        let canvas_id = self.embedded_canvas_id(egui::Id::new((
+        let canvas_id = self.embedded_canvas_id(egui::Id::unique((
             "function_mapping_canvas",
             function_id.get(),
         )));
@@ -598,6 +602,10 @@ impl FerruleApp {
                 &mut viewer,
                 &mut canvas.search,
                 crate::canvas_keyboard::CanvasOptions {
+                    tools_id: canvas.tools_id,
+                    density: self.appearance.density(),
+                    wire: *self.appearance.wire(),
+                    request_compact: std::mem::take(&mut canvas.pending_compact),
                     id_salt: canvas_id,
                     show_minimap: self.show_minimap,
                     view_generation: canvas.view_generation,
@@ -795,7 +803,7 @@ impl FerruleApp {
                         ui.text_edit_singleline(&mut parameter.name);
                         scalar_type_picker(
                             ui,
-                            ui.id().with(("parameter", index)),
+                            ui.scope_id().with(("parameter", index)),
                             &mut parameter.ty,
                         );
                         if ui.small_button("Remove").clicked() {
@@ -816,7 +824,7 @@ impl FerruleApp {
                 ui.horizontal(|ui| {
                     ui.label("Output");
                     ui.text_edit_singleline(&mut draft.output_name);
-                    scalar_type_picker(ui, ui.id().with("output"), &mut draft.output_type);
+                    scalar_type_picker(ui, ui.scope_id().with("output"), &mut draft.output_type);
                 });
                 if let Some(error) = &draft.error {
                     ui.colored_label(self.palette.error, error);

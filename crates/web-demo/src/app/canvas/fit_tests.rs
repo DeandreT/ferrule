@@ -271,7 +271,9 @@ fn frame(
         ..Default::default()
     };
     eprintln!("browser Fit actual frame input original: {input:#?}");
-    let output = context.run_ui(input, |ui| app.show_workspace(ui));
+    let mut output = context.run_ui(input, |ui| app.show_workspace(ui));
+    // This frame-only test inspects shapes; it has no texture renderer.
+    output.textures_delta.clear();
     eprintln!(
         "browser Fit actual frame original: project={:?}; bindings={:?}; nodes={:?}; wires={:?}; history={:?}; view={:?}; shapes={:#?}",
         serde_json::to_value(&app.project),

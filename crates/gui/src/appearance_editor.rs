@@ -31,14 +31,14 @@ pub fn show(
         return;
     }
     egui::Window::new("Appearance")
-        .id(egui::Id::new("appearance_editor"))
+        .id(egui::Id::unique("appearance_editor"))
         .open(open)
         .default_width(540.0)
         .min_width(420.0)
         .max_height(720.0)
         .resizable(true)
         .show(context, |ui| {
-            ui.horizontal(|ui| {
+                         ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(tab, AppearanceTab::Theme, "Theme");
                 ui.selectable_value(tab, AppearanceTab::Wires, "Wires");
                 ui.selectable_value(tab, AppearanceTab::Canvas, "Canvas");
@@ -49,7 +49,18 @@ pub fn show(
                 .show(ui, |ui| match tab {
                     AppearanceTab::Theme => show_theme(ui, theme),
                     AppearanceTab::Wires => show_wires(ui, appearance, palette),
-                    AppearanceTab::Canvas => show_canvas(ui, appearance),
+                    AppearanceTab::Canvas => {
+                        ui.horizontal(|ui| {
+                            ui.label("Canvas density");
+                            let mut density = appearance.density();
+                            for option in crate::appearance::CanvasDensity::ALL {
+                                ui.selectable_value(&mut density, option, option.label());
+                            }
+                            appearance.set_density(density);
+                        });
+                         ui.label("Compact is recommended. Canvas only; menus, dialogs and the inspector keep their normal size.");
+                        show_canvas(ui, appearance);
+                    }
                 });
         });
 }
