@@ -4539,6 +4539,34 @@ struct CorpusDocumentOutput {
     value: serde_json::Value,
 }
 
+fn file_set_member_is_within_root(member: &Path, canonical_root: &Path) -> io::Result<bool> {
+    Ok(member.is_absolute() && member.canonicalize()?.starts_with(canonical_root))
+}
+
+#[test]
+fn file_set_member_paths_use_canonical_identity() -> TestResult<()> {
+    let directory = TempDir::new("file_set_member_identity")?;
+    let root = directory.0.join("samples");
+    std::fs::create_dir(&root)?;
+    let member = root.join("source.xml");
+    let outside = directory.0.join("outside.xml");
+    std::fs::write(&member, "<Root/>")?;
+    std::fs::write(&outside, "<Root/>")?;
+    let canonical_root = root.canonicalize()?;
+
+    assert!(file_set_member_is_within_root(&member, &canonical_root)?);
+    assert!(file_set_member_is_within_root(
+        &member.canonicalize()?,
+        &canonical_root,
+    )?);
+    assert!(!file_set_member_is_within_root(&outside, &canonical_root)?);
+    assert!(!file_set_member_is_within_root(
+        Path::new("source.xml"),
+        &canonical_root,
+    )?);
+    Ok(())
+}
+
 fn run_file_set_case(
     case_dir: &Path,
     rust_target: &Path,
@@ -4593,7 +4621,7 @@ fn run_file_set_case(
         );
         let resolved = Path::new(member.source_path());
         assert!(
-            resolved.is_absolute() && resolved.starts_with(sample_root),
+            file_set_member_is_within_root(resolved, sample_root)?,
             "{sample}: source member locations stay within the sample root"
         );
         assert_ne!(
