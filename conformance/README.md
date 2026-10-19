@@ -57,10 +57,8 @@ Each capability independently assesses MFD import, interpreter execution,
 native MFD export acceptance, Ferrule self-roundtrip, GUI authoring,
 debugging, Ferrule Rust/C# generation, and vendor XSLT 1.0, XSLT 2.0, XSLT 3.0,
 XQuery 1.0, C++, Java, C# and BUILT-IN environments. These eight vendor
-environments follow the official Enterprise manual's
-[feature](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_featingencode.html)
-and [format](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_sourcestargets.html)
-matrices. Vendor BUILT-IN execution is distinct from Ferrule's `interpreter`;
+environments follow the feature and format matrices in the
+[pinned inventory](mfd-2026r2.json). Vendor BUILT-IN execution is distinct from Ferrule's `interpreter`;
 neither its applicability nor its results transfer between those dimensions.
 Vendor-backend applicability must be checked for the pinned release and exact
 operation: a matrix column does not establish that every format or operation is
@@ -364,3 +362,49 @@ run with one MSBuild worker and `DOTNET_PROCESSOR_COUNT=2`. Keep
 `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` on every child. The finite cohort covers
 only the explicit static Primary Group row-failure profile; public observers and
 the deeper or specialized ownership profiles retain their separate admission.
+
+## Source-bound Enterprise manual inventory
+
+[`mfd-2026r2.source-contracts.json`](mfd-2026r2.source-contracts.json) is the
+portable source-contract companion for the bounded manual inventory in the
+canonical ledger. It is not another executable ledger, a runtime evidence file,
+or a product-parity denominator. The strict version-2 capability and assessment
+schema is unchanged. Every added cell is `unassessed`, has empty evidence, and
+states that pinned operation/backend/profile applicability and execution proof
+are unknown. Existing canonical capabilities, assessments, evidence and profiles
+retain their original values.
+
+The companion pins the official Enterprise manual PDF and extraction by content
+hash. Literal source identities, signatures, contracts, options, conflicts,
+uncertainty, exact fragments, extraction lines, physical PDF pages and printed
+headers remain separate from implementation claims. Documentation URLs are source
+identities, not immutable installer or runtime bindings. Vendor BUILT-IN and
+Ferrule interpreter execution remain independent.
+
+The API source boundary is the original 120-page partition: generated-class
+pages 0–32, COM/setup/example pages 33–48, command/enum tables 49–61 and 118–119,
+and ActiveX member leaves 62–117. Appendix signatures have a separate source-page
+boundary. Prospective source scopes, enrichments of research IDs and contextual
+comparison records are different views; repeated placements and shared claims do
+not create additional capabilities.
+
+`research_id` preserves the exact source-inventory ID. `canonical_id` identifies
+the corresponding ledger row; seven new mixed-case source IDs have explicit,
+collision-checked lowercase ledger spellings. This does not rename any existing
+canonical ID, merge labels or assert an API alias. The research-base context
+register includes unadopted source-page identities: a null `canonical_id` means
+context only, not a missing canonical dependency. Broad containment and
+cross-language analogy never transfer evidence or support.
+
+Portable source comparison rows use per-view `row_defaults`: merge those
+defaults with each sparse `rows` entry to recover its complete portable record.
+Empty arrays/nulls are factored out without changing source identities, record
+order, duplicates or semantic decisions. Nonsemantic working metadata is not part
+of the durable source catalogue. These finite comparisons do not establish
+semantic novelty or whole-product disjointness.
+
+`inventory_complete` remains false. The companion retains the 191 nonleaf,
+319 function-signature and 43 xs:constructor gaps, the separate linked COM API
+manual, unlisted supporting APIs and unresolved source contracts. These sets are
+not asserted disjoint or additive. Independent applicability and behavioral/vendor
+execution evidence remain necessary for every dimension.
