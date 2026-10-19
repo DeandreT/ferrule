@@ -2009,16 +2009,16 @@ fn primary_row_failures_still_precede_starting_and_do_not_inherit_target_item_at
         options: Default::default(),
         root: p.root.clone(),
     });
-    let expected = EngineError::MappingFailure {
+    let expected = || EngineError::MappingFailure {
         rule: 1,
         message: Some("primary row".into()),
     };
     let execution = crate::ExecutionContext::new(Path::new("starting.json"));
-    assert_eq!(run(&p), Err(expected.clone()));
+    assert_eq!(run(&p), Err(expected()));
     assert_eq!(
         crate::run_outputs_with_sources_and_context(&p, &input("P"), supplied(), &execution)
             .map(|_| ()),
-        Err(expected.clone())
+        Err(expected())
     );
     for selection in [
         crate::TargetSelection::Primary,
@@ -2032,7 +2032,7 @@ fn primary_row_failures_still_precede_starting_and_do_not_inherit_target_item_at
                 &execution,
                 selection
             ),
-            Err(expected.clone())
+            Err(expected())
         );
     }
     p.graph.nodes.insert(
