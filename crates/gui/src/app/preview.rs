@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1990,7 +1993,7 @@ mod root_annotation_render_tests {
             }
         }
         let context = egui::Context::default();
-        let output = context.run_ui(Default::default(), |ui| {
+        let output = context.run_test_ui(Default::default(), |ui| {
             show_primary_root_origin(ui, origin)
         });
         let mut texts = Vec::new();

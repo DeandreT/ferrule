@@ -12,7 +12,7 @@ fn raise_headers_stay_compact_and_repaints_preserve_the_optional_message() {
     let mut settled = Vec::new();
     let error_icon = char::from(lucide_icons::Icon::CircleX).to_string();
     for frame in 0..8 {
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

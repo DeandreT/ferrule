@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, Value};
 use mapping::{
@@ -131,7 +133,7 @@ fn frame(
     enabled: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             time: Some(context.cumulative_frame_nr() as f64 / 10.0),
             screen_rect: Some(egui::Rect::from_min_size(
@@ -349,7 +351,7 @@ fn join_real_controls_preserve_duplicate_order_nil_exclusion_and_unsaved_preview
     let mut app = fixture(MappingDocument::Main, false);
     let context = egui::Context::default();
     crate::icons::install(&context);
-    let inspector = context.run_ui(
+    let inspector = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

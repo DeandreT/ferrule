@@ -140,6 +140,7 @@ fn source_pin_for_field(
         .iter()
         .take(1)
         .enumerate()
+        .filter(|(block, _)| !unavailable_blocks.contains(block))
         .flat_map(|(block, section)| {
             section
                 .leaves
@@ -347,14 +348,20 @@ pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::V
         .chain([title.chars().count()])
         .max()
         .unwrap_or(0);
+    // The first layout runs before fonts and actual node frames are available.
+    // Reserve the full title/filter/count header at Standard density, both
+    // possible proxy rows, and the footer. Saved positions are restored after
+    // this initial placement; interactive compaction uses measured geometry.
+    let density = crate::appearance::CanvasDensity::Standard;
+    let row_pitch = density.font_size() + 6.0 + density.item_spacing().y;
+    let visible = pin_labels
+        .len()
+        .min(crate::canvas_endpoints::VISIBLE_PIN_LIMIT);
+    let proxy_rows = if pin_labels.len() > visible { 2 } else { 0 };
+    let rows = 4 + visible + proxy_rows + 1;
     egui::vec2(
         (label_chars as f32 * 7.0 + 40.0).clamp(110.0, 230.0),
-        (34.0
-            + pin_labels
-                .len()
-                .min(crate::canvas_endpoints::VISIBLE_PIN_LIMIT) as f32
-                * 20.0)
-            .max(58.0),
+        rows as f32 * row_pitch + 16.0,
     )
 }
 
@@ -401,6 +408,7 @@ pub(crate) struct SourcePinPolicy<'a> {
 /// Reconciles the visual endpoint wires with the graph for the currently
 /// visible source and target field windows. Mapping nodes remain the source
 /// of truth, so scrolling never changes a binding.
+#[cfg(test)]
 pub(crate) fn sync_endpoint_wires(
     graph: &mapping::Graph,
     root_scope: &Scope,
@@ -447,15 +455,17 @@ pub(crate) fn sync_endpoint_wires_with_owned_items(
     );
 }
 
-pub(crate) fn sync_endpoint_wires_with_policy(
+/// Canonical wires use original schema indices for endpoints, independent of
+/// scrolling, filtering and search. Both membership and visual routing derive
+/// from this projection so a filtered view cannot hide an actual connection.
+pub(crate) fn semantic_canvas_wires(
     graph: &mapping::Graph,
     root_scope: &Scope,
     source_blocks: &[SourceBlock],
     target_blocks: &[TargetBlock],
-    scroll: &EndpointScrollState,
-    snarl: &mut Snarl<CanvasNode>,
+    snarl: &Snarl<CanvasNode>,
     policy: SourcePinPolicy<'_>,
-) {
+) -> std::collections::BTreeSet<(OutPinId, InPinId)> {
     let mut source_nodes = std::collections::BTreeMap::new();
     let mut target_nodes = std::collections::BTreeMap::new();
     let mut graph_nodes = std::collections::BTreeMap::new();
@@ -484,17 +494,11 @@ pub(crate) fn sync_endpoint_wires_with_policy(
             _ => None,
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    let visible_output = |id: NodeId| -> Option<OutPinId> {
+    let semantic_output = |id: NodeId| -> Option<OutPinId> {
         if let Some(&(block, semantic_pin)) = source_fields.get(&id) {
-            let section = source_blocks.get(block)?;
-            let output = scroll.visual_pin_for_semantic(
-                CanvasNode::SourceBlock(block),
-                semantic_pin,
-                section.leaves.len(),
-            )?;
             Some(OutPinId {
                 node: *source_nodes.get(&block)?,
-                output,
+                output: semantic_pin,
             })
         } else {
             Some(OutPinId {
@@ -510,7 +514,7 @@ pub(crate) fn sync_endpoint_wires_with_policy(
             continue;
         };
         for (input, argument) in node_inputs(node).into_iter().enumerate() {
-            if let Some(from) = visible_output(argument) {
+            if let Some(from) = semantic_output(argument) {
                 expected.insert((
                     from,
                     InPinId {
@@ -525,30 +529,114 @@ pub(crate) fn sync_endpoint_wires_with_policy(
     let mut bindings = Vec::new();
     walk_scopes(root_scope, &mut Vec::new(), target_blocks, &mut bindings);
     for (node_id, block, semantic_pin) in bindings {
-        let Some(section) = target_blocks.get(block) else {
-            continue;
-        };
-        let Some(input) = scroll.visual_pin_for_semantic(
-            CanvasNode::TargetBlock(block),
-            semantic_pin,
-            section.leaves.len(),
-        ) else {
-            continue;
-        };
-        if let (Some(from), Some(&to_node)) = (visible_output(node_id), target_nodes.get(&block)) {
+        if let (Some(from), Some(&to_node)) = (semantic_output(node_id), target_nodes.get(&block)) {
             expected.insert((
                 from,
                 InPinId {
                     node: to_node,
-                    input,
+                    input: semantic_pin,
                 },
             ));
         }
     }
 
-    let aggregate_inputs = graph_nodes
-        .iter()
-        .filter_map(|(&id, &node)| {
+    expected
+}
+
+pub(crate) fn update_endpoint_connections_with_policy(
+    graph: &mapping::Graph,
+    root_scope: &Scope,
+    source_blocks: &[SourceBlock],
+    target_blocks: &[TargetBlock],
+    scroll: &mut EndpointScrollState,
+    snarl: &Snarl<CanvasNode>,
+    policy: SourcePinPolicy<'_>,
+) -> bool {
+    let mut connected = std::collections::BTreeMap::<CanvasNode, Vec<usize>>::new();
+    for (from, to) in semantic_canvas_wires(
+        graph,
+        root_scope,
+        source_blocks,
+        target_blocks,
+        snarl,
+        policy,
+    ) {
+        if let Some(&CanvasNode::SourceBlock(block)) = snarl.get_node(from.node) {
+            connected
+                .entry(CanvasNode::SourceBlock(block))
+                .or_default()
+                .push(from.output);
+        }
+        if let Some(&CanvasNode::TargetBlock(block)) = snarl.get_node(to.node) {
+            connected
+                .entry(CanvasNode::TargetBlock(block))
+                .or_default()
+                .push(to.input);
+        }
+    }
+    let mut changed = false;
+    for (_, _, &node) in snarl.nodes_pos_ids() {
+        let total = match node {
+            CanvasNode::SourceBlock(block) => {
+                source_blocks.get(block).map(|block| block.leaves.len())
+            }
+            CanvasNode::TargetBlock(block) => {
+                target_blocks.get(block).map(|block| block.leaves.len())
+            }
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
+        };
+        if let Some(total) = total {
+            changed |=
+                scroll.set_connected(node, total, connected.remove(&node).unwrap_or_default());
+        }
+    }
+    changed
+}
+
+pub(crate) fn sync_endpoint_wires_with_policy(
+    graph: &mapping::Graph,
+    root_scope: &Scope,
+    source_blocks: &[SourceBlock],
+    target_blocks: &[TargetBlock],
+    scroll: &EndpointScrollState,
+    snarl: &mut Snarl<CanvasNode>,
+    policy: SourcePinPolicy<'_>,
+) {
+    let expected = semantic_canvas_wires(
+        graph,
+        root_scope,
+        source_blocks,
+        target_blocks,
+        snarl,
+        policy,
+    )
+    .into_iter()
+    .filter_map(|(mut from, mut to)| {
+        if let Some(&CanvasNode::SourceBlock(block)) = snarl.get_node(from.node) {
+            from.output = scroll.visual_pin_for_semantic(
+                CanvasNode::SourceBlock(block),
+                from.output,
+                source_blocks.get(block)?.leaves.len(),
+            )?;
+        }
+        if let Some(&CanvasNode::TargetBlock(block)) = snarl.get_node(to.node) {
+            to.input = scroll.visual_pin_for_semantic(
+                CanvasNode::TargetBlock(block),
+                to.input,
+                target_blocks.get(block)?.leaves.len(),
+            )?;
+        }
+        Some((from, to))
+    })
+    .collect::<std::collections::BTreeSet<_>>();
+
+    let aggregate_inputs = snarl
+        .nodes_pos_ids()
+        .filter_map(|(node, _, &canvas_node)| {
+            let id = match canvas_node {
+                CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => id,
+                CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_) => return None,
+            };
             (matches!(graph.nodes.get(&id), Some(Node::Aggregate { .. }))
                 || graph
                     .nodes
@@ -560,10 +648,15 @@ pub(crate) fn sync_endpoint_wires_with_policy(
             .then_some(node)
         })
         .collect::<std::collections::BTreeSet<_>>();
-    let endpoint_nodes = source_nodes
-        .values()
-        .chain(target_nodes.values())
-        .copied()
+    let endpoint_nodes = snarl
+        .nodes_pos_ids()
+        .filter_map(|(id, _, node)| {
+            matches!(
+                node,
+                CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
+            )
+            .then_some(id)
+        })
         .collect::<std::collections::BTreeSet<_>>();
     let existing = snarl.wires().collect::<std::collections::BTreeSet<_>>();
     for &(from, to) in &existing {
@@ -585,3 +678,7 @@ pub(crate) fn sync_endpoint_wires_with_policy(
 #[cfg(test)]
 #[path = "canvas/sequence_item_tests.rs"]
 mod sequence_item_tests;
+
+#[cfg(test)]
+#[path = "canvas/endpoint_filter_tests.rs"]
+mod endpoint_filter_tests;

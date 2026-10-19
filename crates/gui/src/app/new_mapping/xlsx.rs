@@ -154,7 +154,7 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                                     response.widget_info(|| egui::WidgetInfo {
                                         current_text_value: Some(row.clone()),
                                         ..egui::WidgetInfo::labeled(
-                                            egui::WidgetType::TextEdit,
+                                            egui::Role::TextInput,
                                             ui.is_enabled(),
                                             format!("Worksheet row for {}", field.name),
                                         )

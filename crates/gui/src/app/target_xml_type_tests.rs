@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::target_xml_type::{
     Action,
@@ -69,7 +71,7 @@ fn frame(
     enabled: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             time: Some(context.cumulative_frame_nr() as f64 / 10.0),
             screen_rect: Some(egui::Rect::from_min_size(
@@ -427,7 +429,7 @@ fn new_type_constants_clear_retained_nodes_in_primary_and_named_canvases() -> an
                 // measurements rather than only the placement fallback dimensions.
                 let mut output = None;
                 for _ in 0..4 {
-                    output = Some(context.run_ui(
+                    output = Some(context.run_test_ui(
                         egui::RawInput {
                             screen_rect: Some(egui::Rect::from_min_size(
                                 egui::Pos2::ZERO,
@@ -466,7 +468,7 @@ fn new_type_constants_clear_retained_nodes_in_primary_and_named_canvases() -> an
                 }
                 let mut labels = Vec::new();
                 for shape in &output.unwrap().shapes {
-                    positions(&shape.shape, "{urn:writer-typ…", &mut labels);
+                    positions(&shape.shape, &format!("string {identity:?}"), &mut labels);
                 }
                 assert!(!labels.is_empty(), "new type constant label is visible");
                 assert_retained_positions(document_canvas(&app, document), &retained);
@@ -518,18 +520,16 @@ fn history_key_frame(
         ..Default::default()
     };
     let mut consumed = false;
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         egui::RawInput {
-            modifiers,
-            events: [true, false]
-                .into_iter()
-                .map(|pressed| egui::Event::Key {
+            events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+                .chain([true, false].into_iter().map(|pressed| egui::Event::Key {
                     key,
                     physical_key: Some(key),
                     pressed,
                     repeat: false,
                     modifiers,
-                })
+                }))
                 .collect(),
             ..Default::default()
         },

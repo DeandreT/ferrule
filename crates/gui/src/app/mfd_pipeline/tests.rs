@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1055,11 +1057,10 @@ fn queued_import_guard_locks_mapping_controls_and_shortcuts_until_keep_editing()
             ..Default::default()
         };
         let mut retained = false;
-        let _ = context.run_ui(egui::RawInput {
-            modifiers,
-            events: [true, false].into_iter().map(|pressed| egui::Event::Key {
+        let _ = context.run_test_ui(egui::RawInput {
+            events: std::iter::once(egui::Event::ModifiersChanged(modifiers)).chain([true, false].into_iter().map(|pressed| egui::Event::Key {
                 key, physical_key: Some(key), pressed, repeat: false, modifiers,
-            }).collect(),
+            })).collect(),
             ..Default::default()
         }, |ui| {
             let enabled = app.ui_project_editing_enabled();

@@ -44,7 +44,8 @@ mod auto_connect_ui;
 #[path = "canvas.rs"]
 mod canvas_build;
 pub(crate) use canvas_build::{
-    SourcePinPolicy, sync_endpoint_wires_with_owned_items, sync_endpoint_wires_with_policy,
+    SourcePinPolicy, semantic_canvas_wires, sync_endpoint_wires_with_owned_items,
+    sync_endpoint_wires_with_policy, update_endpoint_connections_with_policy,
 };
 #[path = "csv_dialect.rs"]
 mod csv_dialect_ui;
@@ -88,8 +89,10 @@ pub(crate) mod sequence_consumer_duplication;
 #[path = "workspace.rs"]
 mod workspace_ui;
 
+pub(crate) use canvas_build::endpoint_block_size;
+#[cfg(test)]
+pub(crate) use canvas_build::sync_endpoint_wires;
 use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
-pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 3;
@@ -106,6 +109,7 @@ fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
 }
 
 struct CanvasDocumentState {
+    tools_id: egui::Id,
     snarl: Snarl<CanvasNode>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
@@ -113,6 +117,7 @@ struct CanvasDocumentState {
     view_generation: u64,
     viewport_width: f32,
     pending_focus: Option<egui::Pos2>,
+    pending_compact: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -285,7 +290,12 @@ impl CanvasDocumentState {
     }
 
     fn with_snarl(snarl: Snarl<CanvasNode>) -> Self {
+        static NEXT_TOOLS_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         Self {
+            tools_id: egui::Id::unique((
+                "canvas_document_tools",
+                NEXT_TOOLS_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            )),
             snarl,
             node_sizes: std::collections::BTreeMap::new(),
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
@@ -293,10 +303,12 @@ impl CanvasDocumentState {
             view_generation: 0,
             viewport_width: 1_200.0,
             pending_focus: None,
+            pending_compact: false,
         }
     }
 
     fn reset_endpoint_catalog_view(&mut self) {
+        self.tools_id = self.tools_id.with("new_endpoint_catalog");
         self.node_sizes.clear();
         self.endpoint_scroll = Default::default();
         self.search = Default::default();
@@ -1707,6 +1719,9 @@ impl eframe::App for FerruleApp {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod canvas_presentation_tests;
 
 #[cfg(test)]
 mod sort_controls_tests;

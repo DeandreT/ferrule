@@ -691,7 +691,7 @@ fn transposed_read_layout_under_disabled_ui_preserves_all_staged_values() -> any
     context.enable_accesskit();
     crate::icons::install(&context);
     let render = |events, draft: &mut XlsxBoundaryDraft| {
-        context.run_ui(
+        context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

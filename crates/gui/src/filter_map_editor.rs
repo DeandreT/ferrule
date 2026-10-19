@@ -1,6 +1,6 @@
 //! Focused controls for the supported scalar filter/map descriptor.
 
-use egui::{Ui, WidgetInfo, WidgetType};
+use egui::{Role, Ui, WidgetInfo};
 use ir::{ScalarType, Value};
 use mapping::{
     FilterMapCapture, FilterMapV1, FunctionId, Graph, Node, NodeId, SequenceExpr, UserFunction,
@@ -218,7 +218,7 @@ fn picker(
     forbidden: &BTreeSet<NodeId>,
     consumer: Option<NodeId>,
 ) {
-    let response = egui::ComboBox::from_id_salt(ui.id().with(name))
+    let response = egui::ComboBox::from_id_salt(ui.scope_id().with(name))
         .selected_text(label(graph, *value))
         .width(180.0)
         .show_ui(ui, |ui| {
@@ -231,13 +231,13 @@ fn picker(
             }
         })
         .response;
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, ui.is_enabled(), name));
+    response.widget_info(|| WidgetInfo::labeled(Role::ComboBox, ui.is_enabled(), name));
     #[cfg(test)]
     observations::record(name, &response, ui.clip_rect());
 }
 
 fn type_picker(ui: &mut Ui, name: &str, value: &mut ScalarType) {
-    let response = egui::ComboBox::from_id_salt(ui.id().with(name))
+    let response = egui::ComboBox::from_id_salt(ui.scope_id().with(name))
         .selected_text(format!("{value:?}").to_lowercase())
         .show_ui(ui, |ui| {
             for candidate in TYPES {
@@ -245,7 +245,7 @@ fn type_picker(ui: &mut Ui, name: &str, value: &mut ScalarType) {
             }
         })
         .response;
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, ui.is_enabled(), name));
+    response.widget_info(|| WidgetInfo::labeled(Role::ComboBox, ui.is_enabled(), name));
     #[cfg(test)]
     observations::record(name, &response, ui.clip_rect());
 }
@@ -262,7 +262,7 @@ fn stage(
         .get(id)
         .map_or("missing function", |function| function.name.as_str());
     ui.label(name);
-    let response = egui::ComboBox::from_id_salt(ui.id().with(name))
+    let response = egui::ComboBox::from_id_salt(ui.scope_id().with(name))
         .selected_text(selected)
         .width(210.0)
         .show_ui(ui, |ui| {
@@ -277,7 +277,7 @@ fn stage(
             }
         })
         .response;
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, ui.is_enabled(), name));
+    response.widget_info(|| WidgetInfo::labeled(Role::ComboBox, ui.is_enabled(), name));
     #[cfg(test)]
     observations::record(name, &response, ui.clip_rect());
     if functions
@@ -302,7 +302,7 @@ pub(crate) fn show(
         return;
     }
     egui::ScrollArea::vertical()
-        .id_salt(ui.id().with("filter_map_editor_scroll"))
+        .id_salt(ui.scope_id().with("filter_map_editor_scroll"))
         .max_height(ui.available_height().clamp(160.0, 480.0))
         .show(ui, |ui| {
             show_body(ui, sequence, graph, functions, items, consumer, item_at);
@@ -369,7 +369,7 @@ fn show_body(
     let mut move_capture = None;
     let capture_count = value.captures.len();
     egui::ScrollArea::vertical()
-        .id_salt(ui.id().with("filter_map_captures"))
+        .id_salt(ui.scope_id().with("filter_map_captures"))
         .max_height(220.0)
         .show(ui, |ui| {
             for (index, capture) in value.captures.iter_mut().enumerate() {

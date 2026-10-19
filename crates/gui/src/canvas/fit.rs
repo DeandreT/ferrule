@@ -1,5 +1,8 @@
 //! Fit the camera to measured node frames without moving graph nodes.
 
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use std::collections::BTreeMap;
 
 use egui::{Context, Id, Pos2, Rect, Ui};
@@ -284,7 +287,7 @@ mod tests {
     #[test]
     fn fit_first_resize_and_return_requests_preserve_explicit_navigation() {
         let context = Context::default();
-        let canvas = Id::new("fit-lifecycle");
+        let canvas = Id::unique("fit-lifecycle");
         let mut snarl = Snarl::new();
         let node = snarl.insert_node(Pos2::ZERO, CanvasNode::Graph(7));
         let measured = MeasuredNode {
@@ -343,7 +346,7 @@ mod tests {
         record();
         end_frame(&context, canvas, &snarl);
         for _ in 0..3 {
-            let _ = context.run_ui(Default::default(), |_| {});
+            let _ = context.run_test_ui(Default::default(), |_| {});
         }
         record();
         assert!(
@@ -356,7 +359,7 @@ mod tests {
     #[test]
     fn fit_measurements_require_each_live_identity_and_follow_its_position() {
         let context = Context::default();
-        let canvas = Id::new("fit-measurements");
+        let canvas = Id::unique("fit-measurements");
         let mut snarl = Snarl::new();
         let node = snarl.insert_node(egui::pos2(200.0, 100.0), CanvasNode::Graph(7));
         let measured = MeasuredNode {

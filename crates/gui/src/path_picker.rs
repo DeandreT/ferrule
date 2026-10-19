@@ -154,7 +154,7 @@ impl SourcePathCatalog {
     ) -> Option<(Vec<String>, Box<SchemaNode>)> {
         let mut chosen = None;
         ui.add_enabled_ui(self.xml_source_elements_available(), |ui| {
-            egui::ComboBox::from_id_salt(ui.id().with("xml_source_element"))
+            egui::ComboBox::from_id_salt(ui.scope_id().with("xml_source_element"))
                 .selected_text("Choose source element")
                 .width(170.0)
                 .show_ui(ui, |ui| {
@@ -190,7 +190,7 @@ impl SourcePathCatalog {
             .find(|choice| choice.path == *path)
             .map_or_else(|| open_object_label(path), |choice| choice.label.clone());
         let mut chosen = false;
-        egui::ComboBox::from_id_salt(ui.id().with("dynamic_source_object"))
+        egui::ComboBox::from_id_salt(ui.scope_id().with("dynamic_source_object"))
             .selected_text(selected)
             .width(170.0)
             .show_ui(ui, |ui| {
@@ -221,7 +221,7 @@ impl SourcePathCatalog {
         let choices = self.primary_root_fields.iter().collect::<Vec<_>>();
         show_path_picker(
             ui,
-            ui.id().with("primary_root_field"),
+            ui.scope_id().with("primary_root_field"),
             path,
             &choices,
             value_label,
@@ -239,7 +239,7 @@ impl SourcePathCatalog {
     }
 
     pub(crate) fn show_primary_root_type_picker(&self, ui: &mut Ui, identity: &mut String) {
-        egui::ComboBox::from_id_salt(ui.id().with("primary_root_type"))
+        egui::ComboBox::from_id_salt(ui.scope_id().with("primary_root_type"))
             .selected_text(identity.as_str())
             .width(170.0)
             .show_ui(ui, |ui| {

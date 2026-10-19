@@ -24,22 +24,20 @@ pub fn install(ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ui::ContextExt as _;
     use egui::epaint::text::FontsView;
     use egui::{Color32, FontDefinitions, FontId};
 
     fn with_fonts<T>(ctx: &egui::Context, mut inspect: impl FnMut(&mut FontsView<'_>) -> T) -> T {
         let mut result = None;
-        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let _ = ctx.run_test_ui(egui::RawInput::default(), |ui| {
             result = Some(ui.ctx().fonts_mut(|fonts| inspect(fonts)));
         });
         result.expect("the headless pass inspected fonts")
     }
 
     fn assert_characters(fonts: &mut FontsView<'_>, family: &FontFamily, text: &str) {
-        // epaint 0.35's has_glyph compares font faces, which also rejects valid
-        // characters supplied by the face that contains the replacement glyph.
-        let mut font = fonts.fonts.font(family);
-        let characters = font.characters();
+        let characters = fonts.characters(family);
         for character in text.chars() {
             assert!(
                 characters.contains_key(&character),
@@ -107,7 +105,7 @@ mod tests {
                 &family,
                 &char::from(lucide_icons::Icon::Play).to_string(),
             );
-            assert!(!fonts.fonts.font(&family).characters().contains_key(&'中'));
+            assert!(!fonts.characters(&family).contains_key(&'中'));
         });
     }
 }

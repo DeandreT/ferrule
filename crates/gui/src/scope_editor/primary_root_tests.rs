@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::Value;
 use mapping::Node;
@@ -61,7 +63,7 @@ fn frame(
     primary_root_bindings: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             time: Some(context.cumulative_frame_nr() as f64 / 10.0),
             screen_rect: Some(egui::Rect::from_min_size(

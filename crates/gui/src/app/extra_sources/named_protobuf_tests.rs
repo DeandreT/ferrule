@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Node, Scope};
@@ -100,7 +102,7 @@ fn named_protobuf_creation_preserves_imports_through_history_save_reopen_and_exe
     source_protobuf(&mut app).set_root_message("demo.Person".into());
     let selected = source_protobuf(&mut app).options()?;
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_source_setup(ui.ctx())
     });
     assert_eq!(source_protobuf(&mut app).options()?, selected);
@@ -127,7 +129,7 @@ fn named_protobuf_creation_preserves_imports_through_history_save_reopen_and_exe
     target_protobuf(&mut app).set_root_message("demo.Snapshot".into());
     let selected = target_protobuf(&mut app).options()?;
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_target_setup(ui.ctx())
     });
     assert_eq!(target_protobuf(&mut app).options()?, selected);
