@@ -21,6 +21,17 @@ pub const ADJACENT_RUNTIME_FILES: [(&str, &str); 3] = [
     ),
 ];
 
+pub const ADDED_RUNTIME_FILES: [(&str, &str); 2] = [
+    (
+        "Runtime/Json/FerruleJsonSourceDocument.cs",
+        "runtime/csharp/Ferrule.Runtime/Json/FerruleJsonSourceDocument.cs",
+    ),
+    (
+        "Runtime/Json/FerruleJsonSourceOccurrence.cs",
+        "runtime/csharp/Ferrule.Runtime/Json/FerruleJsonSourceOccurrence.cs",
+    ),
+];
+
 #[derive(Clone, Copy, Debug)]
 pub enum Policy {
     ExactHistorical,
@@ -57,6 +68,7 @@ pub fn row(path: &str, bytes: &[u8]) -> ManifestRow {
 pub fn snapshot(root: &Path) -> io::Result<SourceSnapshot> {
     ADJACENT_RUNTIME_FILES
         .iter()
+        .chain(ADDED_RUNTIME_FILES.iter())
         .map(|(artifact, source)| Ok(((*artifact).into(), fs::read(root.join(source))?)))
         .collect()
 }
@@ -65,33 +77,45 @@ pub fn snapshot_unchanged(root: &Path, original: &SourceSnapshot) -> io::Result<
     Ok(snapshot(root)? == *original)
 }
 
-/// Both inventories must be complete, ordered and unique. Only the three named
-/// runtime bodies have an alternate expected source; every other row is historical.
+/// Inventories must be complete, ordered and unique. The three reviewed replacement
+/// bodies and two added source files must match independently captured source bytes;
+/// every other row remains historical. ExactHistorical never admits additions.
 pub fn compare(
     historical: &[ManifestRow],
     actual: &[ManifestRow],
     sources: &SourceSnapshot,
 ) -> Comparison {
-    let paths_exact = historical.len() == actual.len()
-        && historical.windows(2).all(|pair| pair[0].0 < pair[1].0)
-        && historical
+    let historical_ordered = historical.windows(2).all(|pair| pair[0].0 < pair[1].0);
+    let mut expected_paths = historical
+        .iter()
+        .map(|entry| entry.0.as_str())
+        .collect::<Vec<_>>();
+    expected_paths.extend(ADDED_RUNTIME_FILES.iter().map(|(path, _)| *path));
+    expected_paths.sort_unstable();
+    let paths_exact = historical_ordered
+        && expected_paths.windows(2).all(|pair| pair[0] < pair[1])
+        && expected_paths
             .iter()
-            .zip(actual)
-            .all(|(old, new)| old.0 == new.0);
-    let sources_valid = sources.len() == ADJACENT_RUNTIME_FILES.len()
+            .copied()
+            .eq(actual.iter().map(|entry| entry.0.as_str()));
+    let sources_valid = sources.len() == ADJACENT_RUNTIME_FILES.len() + ADDED_RUNTIME_FILES.len()
         && sources
             .iter()
-            .zip(ADJACENT_RUNTIME_FILES)
+            .zip(
+                ADJACENT_RUNTIME_FILES
+                    .into_iter()
+                    .chain(ADDED_RUNTIME_FILES),
+            )
             .all(|((path, _), (artifact, _))| path == artifact)
         && ADJACENT_RUNTIME_FILES
             .iter()
             .all(|(path, _)| historical.iter().any(|entry| entry.0 == *path));
     let stable_files_exact = paths_exact
-        && historical.iter().zip(actual).all(|(old, new)| {
+        && historical.iter().all(|old| {
             ADJACENT_RUNTIME_FILES
                 .iter()
                 .any(|(path, _)| old.0 == *path)
-                || old == new
+                || actual.iter().any(|new| old == new)
         });
     let runtime_sources_exact = paths_exact
         && sources_valid
@@ -102,7 +126,7 @@ pub fn compare(
                 .is_some_and(|entry| *entry == row(path, bytes))
         });
     Comparison {
-        historical_exact: paths_exact && historical == actual,
+        historical_exact: historical_ordered && historical == actual,
         paths_exact,
         stable_files_exact,
         runtime_sources_exact,
@@ -114,6 +138,7 @@ fn reviewed_runtime_updates_do_not_forgive_other_artifact_changes() {
     let mut historical = vec![row("GeneratedMapping.cs", b"stable mapping")];
     let sources: SourceSnapshot = ADJACENT_RUNTIME_FILES
         .iter()
+        .chain(ADDED_RUNTIME_FILES.iter())
         .map(|(path, _)| ((*path).into(), format!("reviewed {path}").into_bytes()))
         .collect();
     for (path, _) in ADJACENT_RUNTIME_FILES {
@@ -121,6 +146,7 @@ fn reviewed_runtime_updates_do_not_forgive_other_artifact_changes() {
     }
     let mut actual = vec![historical[0].clone()];
     actual.extend(sources.iter().map(|(path, bytes)| row(path, bytes)));
+    actual.sort_by(|a, b| a.0.cmp(&b.0));
     let result = compare(&historical, &actual, &sources);
     assert!(result.accepts(Policy::ReviewedAdjacentRuntime));
     assert!(!result.accepts(Policy::ExactHistorical));
@@ -134,7 +160,28 @@ fn reviewed_runtime_updates_do_not_forgive_other_artifact_changes() {
     added.push(row("unexpected.cs", b"extra"));
     let mut missing = actual.clone();
     missing.remove(1);
-    for invalid in [changed_mapping, wrong_runtime, added, missing] {
+    let mut wrong_added = actual.clone();
+    let index = wrong_added
+        .iter()
+        .position(|entry| entry.0 == ADDED_RUNTIME_FILES[0].0)
+        .unwrap();
+    wrong_added[index] = row(ADDED_RUNTIME_FILES[0].0, b"unreviewed addition");
+    let mut missing_added = actual.clone();
+    missing_added.remove(index);
+    let mut duplicate = actual.clone();
+    duplicate.insert(index, actual[index].clone());
+    let mut reordered = actual.clone();
+    reordered.swap(0, 1);
+    for invalid in [
+        changed_mapping,
+        wrong_runtime,
+        added,
+        missing,
+        wrong_added,
+        missing_added,
+        duplicate,
+        reordered,
+    ] {
         assert!(!compare(&historical, &invalid, &sources).accepts(Policy::ReviewedAdjacentRuntime));
     }
     let mut changed_snapshot = sources.clone();

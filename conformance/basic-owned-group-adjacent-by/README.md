@@ -125,9 +125,11 @@ the corpus requires neither an external custody directory nor an old build.
 
 The ordinary `lower`/`emit` comparison uses the historical profile/options.
 Rust files remain exact; the complete historical Cargo template has exactly
-one explicit runtime-path operand. C# requires the exact 78 paths, historical
+one explicit runtime-path operand. C# retains all 78 historical paths, historical
 bytes for 75 stable files, and independently frozen source bytes only for
-FerruleBasicGroupBy.cs, ScopeContext.cs and FerruleInstance.cs. Preparation
+FerruleBasicGroupBy.cs, ScopeContext.cs and FerruleInstance.cs. The only additional
+files are Json/FerruleJsonSourceDocument.cs and Json/FerruleJsonSourceOccurrence.cs,
+also matched to independently frozen source bytes. Preparation
 retains each old/new size/hash, complete-file unified source diff and candidate
 snapshot **before any emission**. The parent-owned `legacy_artifact_policy`
 helper enforces that boundary. New-profile ordinary emission success is a

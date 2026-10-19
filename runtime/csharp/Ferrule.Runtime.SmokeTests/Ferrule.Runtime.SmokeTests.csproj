@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Content Include="../../../conformance/json-source/cases.json" Link="json-source-cases.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../../conformance/json-source/occurrences.json" Link="json-source-occurrences.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../Ferrule.Runtime/Ferrule.Runtime.csproj" />
   </ItemGroup>
 </Project>

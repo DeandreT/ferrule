@@ -43,8 +43,8 @@ row remains exact, independent of the runtime path.
 
 ## Reviewed C# runtime boundary
 
-All 78 artifact paths and the 75 stable files remain subject to exact historical
-manifest comparison. Only these three artifacts can use independently reviewed
+All 78 historical artifact paths are retained, and the 75 stable files remain
+subject to exact historical comparison. Only these three artifacts can use reviewed
 candidate source bytes instead:
 
 - `Runtime/FerruleBasicGroupBy.cs`
@@ -56,12 +56,18 @@ can produce complete old/new source diffs without retaining all historical
 packages. Each archival body must match its pinned historical row. It is test
 data, not an active runtime source.
 
+The current package also includes exactly two source-bound additions:
+`Runtime/Json/FerruleJsonSourceDocument.cs` and
+`Runtime/Json/FerruleJsonSourceOccurrence.cs`. They remain absent from the frozen
+historical inventory. Preparation records their complete source and addition diffs
+with a null historical row; it does not manufacture historical files for them.
+
 Before any emission, preparation snapshots the corresponding candidate repository
 sources, retains old/new sizes and hashes plus full source diffs, and binds the
 candidate snapshots. The parent-owned `legacy_artifact_policy` requires exact
-paths, historical stable rows and exact candidate-source rows; those sources
+historical paths plus those two additions, stable rows and exact candidate-source rows; those sources
 must remain unchanged. Historical equality is reported separately from the
-reviewed three-file policy. No `Runtime/**` exemption exists, and an additional
+reviewed replacement/addition policy. No `Runtime/**` exemption exists, and an additional
 changed file requires a separately reviewed policy change.
 
 The source fence includes this entire baseline package and the comparison helper.

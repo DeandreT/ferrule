@@ -763,6 +763,34 @@ fn freeze_runtime(
 ) -> TestResult<legacy_artifact_policy::SourceSnapshot> {
     let snapshot = legacy_artifact_policy::snapshot(&root()?)?;
     for (path, candidate) in &snapshot {
+        if legacy_artifact_policy::ADDED_RUNTIME_FILES
+            .iter()
+            .any(|(added, _)| path == added)
+        {
+            if historical_rows.iter().any(|row| row.0 == *path) {
+                return Err("reviewed addition unexpectedly exists in historical inventory".into());
+            }
+            evidence.write(&format!("legacy-reviewed-candidate/{path}"), candidate)?;
+            evidence.json(&format!("legacy-reviewed-candidate/{path}.sizes-hashes.json"),
+                &json!({"historical":null,"candidate_source":legacy_artifact_policy::row(path,candidate)}))?;
+            let text = std::str::from_utf8(candidate)?;
+            let mut diff = format!(
+                "--- /dev/null\n+++ source-candidate/{path}\n@@ -0,0 +1,{} @@\n",
+                text.lines().count()
+            );
+            for line in text.split_inclusive('\n') {
+                diff.push('+');
+                diff.push_str(line);
+                if !line.ends_with('\n') {
+                    diff.push_str("\n\\ No newline at end of file\n");
+                }
+            }
+            evidence.write(
+                &format!("legacy-reviewed-candidate/{path}.complete.diff"),
+                diff.as_bytes(),
+            )?;
+            continue;
+        }
         let historical = historical_runtime(path)?;
         let row = legacy_artifact_policy::row(path, historical);
         if !historical_rows.contains(&row) {
@@ -799,6 +827,54 @@ fn freeze_runtime(
     }
     Ok(snapshot)
 }
+
+#[test]
+fn reviewed_json_runtime_additions_keep_the_frozen_legacy_artifacts() -> TestResult<()> {
+    let temp = TempDir::new("reviewed-json-runtime-additions")?;
+    let evidence = Evidence(temp.0.clone());
+    let (_, _, historical) = historical_inventory()?;
+    let sources = freeze_runtime(&evidence, &historical)?;
+    let project = mapping::project_file::decode_str(include_str!(
+        "../../../../conformance/basic-owned-group-adjacent-by/legacy-project.json"
+    ))?;
+    let program = codegen::lower(&project)?;
+    let artifacts = codegen_csharp::emit(&program)?;
+    evidence.artifacts("actual", &artifacts)?;
+    let actual = artifact_manifest(&artifacts);
+    let comparison = legacy_artifact_policy::compare(&historical, &actual, &sources);
+    assert!(
+        comparison.accepts(legacy_artifact_policy::Policy::ReviewedAdjacentRuntime),
+        "{comparison:?}"
+    );
+    assert!(!comparison.accepts(legacy_artifact_policy::Policy::ExactHistorical));
+    assert_eq!(actual.len(), historical.len() + 2);
+    for (path, _) in legacy_artifact_policy::ADDED_RUNTIME_FILES {
+        let record: Json = serde_json::from_slice(&fs::read(temp.0.join(format!(
+            "legacy-reviewed-candidate/{path}.sizes-hashes.json"
+        )))?)?;
+        assert!(record["historical"].is_null());
+        assert!(
+            fs::read_to_string(
+                temp.0
+                    .join(format!("legacy-reviewed-candidate/{path}.complete.diff"))
+            )?
+            .starts_with("--- /dev/null\n")
+        );
+        assert!(
+            !temp
+                .0
+                .join(format!("legacy-baseline/historical-runtime/{path}"))
+                .exists()
+        );
+    }
+    assert!(legacy_artifact_policy::snapshot_unchanged(
+        &root()?,
+        &sources
+    )?);
+    assert!(historical_manifest_is_original(HISTORICAL_MANIFEST));
+    Ok(())
+}
+
 fn prepare_legacy(
     evidence: &Evidence,
     runtime: &Path,
