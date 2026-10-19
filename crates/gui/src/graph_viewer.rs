@@ -1917,7 +1917,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         if graph_node.is_some_and(graph_node_presentation::is_inline)
             && let Some(output) = _outputs.first()
         {
-            crate::canvas_tools::fanout(ui, self, output.id, snarl);
+            let _ = crate::canvas_tools::fanout(ui, self, output.id, snarl);
         }
         if let Some(hint) = header_hint {
             response.on_hover_text(hint);
@@ -2276,6 +2276,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
         };
         let Some(node_id) = Self::mapping_id(canvas_node) else {
+            // Output rows use a right-to-left layout. Reserve the measured badge
+            // first so the independently painted field/proxy label cannot sit
+            // underneath it. Restore the complete clip before drawing the pin.
+            let row_clip = ui.clip_rect();
+            if let Some(badge) = crate::canvas_tools::fanout(ui, self, pin.id, snarl) {
+                let mut label_clip = row_clip;
+                label_clip.max.x = (badge.left() - ui.spacing().item_spacing.x)
+                    .max(row_clip.left())
+                    .min(row_clip.right());
+                ui.set_clip_rect(label_clip);
+            }
             if let CanvasNode::SourceBlock(block) = canvas_node
                 && let Some(section) = self.source_blocks.get(block)
             {
@@ -2359,7 +2370,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     None => {}
                 }
             }
-            crate::canvas_tools::fanout(ui, self, pin.id, snarl);
+            ui.set_clip_rect(row_clip);
             self.record_pin_interaction_id(ui);
             let pin_info = if matches!(
                 self.endpoint_display_pin(canvas_node, pin.id.output),
@@ -2477,7 +2488,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             .get(&node_id)
             .is_some_and(graph_node_presentation::is_inline)
         {
-            crate::canvas_tools::fanout(ui, self, pin.id, snarl);
+            let _ = crate::canvas_tools::fanout(ui, self, pin.id, snarl);
         }
         self.record_pin_interaction_id(ui);
         PinInfo::circle()

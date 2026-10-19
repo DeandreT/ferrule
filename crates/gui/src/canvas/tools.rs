@@ -883,7 +883,7 @@ pub(crate) fn fanout(
     viewer: &mut GraphViewer<'_>,
     from: OutPinId,
     snarl: &Snarl<CanvasNode>,
-) {
+) -> Option<egui::Rect> {
     let edges = read(ui.ctx(), |state| {
         state
             .edges
@@ -917,6 +917,9 @@ pub(crate) fn fanout(
             });
             ui.ctx().request_repaint();
         }
+        Some(response.rect)
+    } else {
+        None
     }
 }
 

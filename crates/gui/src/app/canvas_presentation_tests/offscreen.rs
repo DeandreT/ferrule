@@ -34,6 +34,31 @@ fn capture(harness: &mut Harness<'_, FerruleApp>, directory: Option<&Path>, name
         .unwrap();
 }
 
+fn source_label_clears_badge(harness: &Harness<'_, FerruleApp>) {
+    let badge = harness.get_by_label("Choose one of 3 connections").rect();
+    let mut found = false;
+    for clipped in &harness.output().shapes {
+        if let egui::epaint::Shape::Text(text) = &clipped.shape
+            && text.galley.text() == "name"
+        {
+            let bounds = text.visual_bounding_rect();
+            assert!(
+                clipped.clip_rect.expand(0.5).contains_rect(bounds),
+                "source name is clipped"
+            );
+            assert!(
+                !badge.intersects(bounds),
+                "fan-out badge covers the source name"
+            );
+            found = true;
+        }
+    }
+    assert!(
+        found,
+        "the complete source name must be painted beside its badge"
+    );
+}
+
 fn scenarios(directory: Option<&Path>) {
     for density in crate::appearance::CanvasDensity::ALL {
         for scale in [1.0, 1.5] {
@@ -79,6 +104,7 @@ fn scenarios(directory: Option<&Path>) {
                 );
             harness.run();
             assert_eq!(harness.output().pixels_per_point, scale);
+            source_label_clears_badge(&harness);
             let prefix = format!("{density:?}-{}", (scale * 100.0) as u32);
             let image = |harness: &mut Harness<'_, FerruleApp>, name: &str| {
                 capture(harness, directory, &format!("{prefix}-{name}"));
@@ -121,6 +147,7 @@ fn scenarios(directory: Option<&Path>) {
             click(&mut harness, "Apply");
             let compact = positions(harness.state());
             assert_ne!(compact, before);
+            source_label_clears_badge(&harness);
             image(&mut harness, "applied");
             click(&mut harness, "Undo layout");
             assert_eq!(positions(harness.state()), before);
@@ -160,6 +187,7 @@ fn scenarios(directory: Option<&Path>) {
                 .expect("source endpoint filter inside its measured bounds")
                 .click();
             harness.run();
+            source_label_clears_badge(&harness);
             image(&mut harness, "connected");
             assert_eq!(positions(harness.state()), compact);
             assert_eq!(
