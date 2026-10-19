@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {"input":"Key,Text,Count,Fail\r\n", "expected":"﻿Key|Text|Count|Status\n"},
+    {"input":"Key,Text,Count,Fail\r\na,hello,2,false\r\n", "expected":"﻿Key|Text|Count|Status\na|hello|3|ok\n"},
+    {"input":"﻿Key,Text,Count,Fail\r\na,\"é,\"\"猫\"\"\r\nnext\",0,false\r\nb,,4,false\r\na,last,-2,false\r\n", "expected":"﻿Key|Text|Count|Status\na|\"é,\"\"猫\"\"\r\nnext\"|1|ok\nb||5|ok\na|last|-1|ok\n"}
+  ],
+  "grouped": [
+    {"input":"Key,Text,Count,Fail\na,x,1,false\nb,y,2,false\na,z,3,false\n", "expected":"﻿Key|Text|Count|Status\na|x+z|4|ok\nb|y|2|ok\n"},
+    {"input":"Key,Text,Count,Fail\n", "expected":"﻿Key|Text|Count|Status\n"}
+  ]
+}

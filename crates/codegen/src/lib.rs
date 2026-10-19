@@ -5,6 +5,7 @@
 //! [`ArtifactSet`] without owning filesystem policy.
 
 mod artifact;
+mod csv_document_boundary;
 mod csv_input_boundary;
 mod csv_json_boundary;
 mod csv_output;
@@ -23,6 +24,9 @@ mod x12_boundary;
 pub use artifact::{
     ArtifactPath, ArtifactPathError, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError,
     GeneratedFile,
+};
+pub use csv_document_boundary::{
+    CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, validate_csv_document_boundary,
 };
 pub use csv_input_boundary::{CsvInputBoundaryError, CsvInputField, CsvInputPolicy};
 pub use csv_json_boundary::{

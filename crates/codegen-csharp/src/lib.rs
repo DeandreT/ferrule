@@ -2,7 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+mod csv_document;
 mod csv_json;
+pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod csv_output;
 mod csv_x12;
 mod document_output_types;

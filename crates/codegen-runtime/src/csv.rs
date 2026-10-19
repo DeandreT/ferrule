@@ -7,6 +7,43 @@ use crate::{CsvFormatError, CsvWriteOptions, RuntimeError};
 /// Maximum serialized UTF-8 bytes for one generated CSV document.
 pub const MAX_CSV_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
+/// Stage-preserving failure from a complete CSV input/mapping/output call.
+#[derive(Debug)]
+pub enum CsvDocumentError {
+    Input(format_csv::CsvReadError),
+    Output(CsvBoundaryError),
+}
+
+impl fmt::Display for CsvDocumentError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input(error) => error.fmt(formatter),
+            Self::Output(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for CsvDocumentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Input(error) => error,
+            Self::Output(error) => error,
+        })
+    }
+}
+
+impl From<format_csv::CsvReadError> for CsvDocumentError {
+    fn from(error: format_csv::CsvReadError) -> Self {
+        Self::Input(error)
+    }
+}
+
+impl From<CsvBoundaryError> for CsvDocumentError {
+    fn from(error: CsvBoundaryError) -> Self {
+        Self::Output(error)
+    }
+}
+
 /// Typed CSV boundary failure. Native row errors retain their exact payload.
 #[derive(Debug)]
 pub enum CsvBoundaryError {
