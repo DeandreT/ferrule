@@ -1,0 +1,169 @@
+--- reference/conformance/basic-owned-group-adjacent-by/closed.rs
++++ source/conformance/basic-owned-group-starting-with/closed.rs
+@@ -25,7 +25,7 @@
+         }),
+     }
+ }
+-fn expression_error(
++pub(super) fn expression_error(
+     node: u32,
+     reason: codegen::OwnedSourceCapabilityReason,
+ ) -> codegen::ProgramValidationError {
+@@ -45,7 +45,7 @@
+         }),
+     }
+ }
+-fn diagnostic(error: codegen::ProgramValidationError) -> codegen::Diagnostic {
++pub(super) fn diagnostic(error: codegen::ProgramValidationError) -> codegen::Diagnostic {
+     let codegen::ProgramValidationError::OwnedSource { diagnostic } = error else {
+         panic!("owned error")
+     };
+@@ -69,11 +69,11 @@
+ }
+ pub fn projects() -> Vec<(&'static str, Project, Vec<codegen::Diagnostic>)> {
+     let mut controls = Vec::new();
+-    for (id, name) in [("E19-trimmed-owner", "Røws💠"), ("E19-case-owner", "rows")] {
++    for (id, name) in [("E21-unknown-owner", "Unknown"), ("E21-trimmed-owner", "Røws💠"), ("E21-case-owner", "rows")] {
+         let mut p = projects::base();
+         p.graph
+             .nodes
+-            .insert(1, projects::field(name, &["Rows", "Key"], Some(&["Rows"])));
++            .insert(1, projects::field(name, &["Rows", "Start"], Some(&["Rows"])));
+         controls.push((
+             id,
+             p,
+@@ -83,12 +83,11 @@
+             )],
+         ));
+     }
+-    for (mode, id) in [(0, "Q02-starting"), (1, "Q02-ending"), (2, "Q02-blocks")] {
++    for (mode, id) in [(1, "Q02-ending"), (2, "Q02-blocks")] {
+         let mut p = projects::base();
+         let g = &mut p.root.children[0];
+-        g.group_adjacent_by = None;
++        g.group_starting_with = None;
+         match mode {
+-            0 => g.group_starting_with = Some(901),
+             1 => g.group_ending_with = Some(901),
+             _ => g.group_into_blocks = Some(912),
+         }
+@@ -102,30 +101,32 @@
+         ),
+         (
+             1,
+-            "Q03-conflicting-modes",
++            "Q03-conflicting-By-Starting",
+             "scope grouping modes are mutually exclusive",
+         ),
+         (
+             2,
+-            "Q03-missing-key",
+-            "group-adjacent-by key references missing node 99",
++            "Q03-missing-predicate",
++            "group-starting-with predicate references missing node 99",
+         ),
+         (
+             3,
+             "Q03-missing-post",
+             "post-group filter references missing node 99",
+         ),
++        (4, "Q03-conflicting-Adjacent-Starting", "scope grouping modes are mutually exclusive"),
+     ] {
+         let mut p = projects::base();
+         let g = &mut p.root.children[0];
+         match mode {
+             0 => {
+-                g.group_adjacent_by = None;
++                g.group_starting_with = None;
+                 g.post_group_filter = Some(901);
+             }
+             1 => g.group_by = Some(1),
+-            2 => g.group_adjacent_by = Some(99),
+-            _ => g.post_group_filter = Some(99),
++            2 => g.group_starting_with = Some(99),
++            3 => g.post_group_filter = Some(99),
++            _ => g.group_adjacent_by = Some(1),
+         }
+         controls.push((id, p, vec![validation("scope `Groups`", message)]));
+     }
+@@ -136,7 +137,7 @@
+         source_free,
+         vec![validation(
+             "scope `Groups`",
+-            "group-adjacent-by key has no iterated source",
++            "group-starting-with predicate has no iterated source",
+         )],
+     ));
+     for (id, node, reason) in [
+@@ -317,10 +318,6 @@
+     let mut controls = Vec::new();
+     for (id, grouping) in [
+         (
+-            "Q02-direct-starting",
+-            codegen::GroupingPlan::StartingWith { predicate: 901 },
+-        ),
+-        (
+             "Q02-direct-ending",
+             codegen::GroupingPlan::EndingWith { predicate: 901 },
+         ),
+@@ -341,12 +338,12 @@
+     }
+     for (id, key, post, expected) in [
+         (
+-            "Q03-direct-missing-key",
++            "Q03-direct-missing-predicate",
+             99,
+             None,
+             codegen::ProgramValidationError::MissingGroupingExpression {
+                 target_path: projects::path(&["Groups"]),
+-                role: codegen::GroupingExpressionRole::AdjacentKey,
++                role: codegen::GroupingExpressionRole::StartingPredicate,
+                 expression: 99,
+             },
+         ),
+@@ -365,9 +362,9 @@
+             owner: mapping::SourceOwner::Primary,
+             path: projects::path(&["Rows"]),
+         })
+-        .with_grouping(codegen::GroupingPlan::AdjacentBy { key });
++        .with_grouping(codegen::GroupingPlan::StartingWith { predicate:key });
+         if let Some(post) = post {
+-            plan = plan.with_filtered_grouping(codegen::GroupingPlan::AdjacentBy { key }, post);
++            plan = plan.with_filtered_grouping(codegen::GroupingPlan::StartingWith { predicate:key }, post);
+         }
+         p.root.children[0].iteration = Some(plan);
+         controls.push((id, p, expected));
+@@ -520,7 +517,7 @@
+         .expression = E::OwnedSourceField(mapping::OwnedSourceField {
+         source: mapping::OwnedSourceRef {
+             owner: projects::owner("unavailableDynamic"),
+-            path: projects::path(&["Rows", "Key"]),
++            path: projects::path(&["Rows", "Start"]),
+         },
+         frame: Some(projects::path(&["Rows"])),
+     });
+@@ -538,7 +535,7 @@
+                     owner: codegen::OwnedSourceDiagnosticOwner::Named {
+                         name: "unavailableDynamic".into(),
+                     },
+-                    path: projects::path(&["Rows", "Key"]),
++                    path: projects::path(&["Rows", "Start"]),
+                     frame: Some(projects::path(&["Rows"])),
+                 }),
+                 reason: R::DynamicOwner,
+@@ -613,7 +610,7 @@
+             .user_functions
+             .push(codegen::UserFunctionProgram {
+                 id: mapping::FunctionId::new(id),
+-                library: "corpus442".into(),
++                library: "corpus443".into(),
+                 name: format!("stage{id}"),
+                 parameters: vec![
+                     codegen::UserFunctionParameter {
+@@ -734,5 +731,6 @@
+         codegen::lower_with_basic_owned_row_failures(project),
+         codegen::lower_with_basic_owned_group_by(project),
+         codegen::lower_with_basic_owned_sequence_item_at(project),
++        codegen::lower_with_basic_owned_group_adjacent_by(project),
+     ]
+ }

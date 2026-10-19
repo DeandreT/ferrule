@@ -1,4 +1,4 @@
-//! Explicit By emission over authentic paired cohorts. Ordinary grouping islands
+//! Explicit scoped grouping over authentic paired cohorts. Ordinary grouping islands
 //! keep their existing holder, candidate ordering and source-only context.
 
 use super::*;
@@ -21,8 +21,8 @@ pub(super) fn mark_basic_scopes(
     if current {
         basic.insert(name.to_owned());
     }
-    // A permitted paired keyed operation mints an authenticated grouped occurrence even
-    // when its source selector is legacy and only its key/post demands owned
+    // A permitted paired operation mints an authenticated grouped occurrence even
+    // when its source selector is legacy and only its key/boundary/post demands owned
     // evaluation. Its descendants inherit that grouped ancestry; siblings do
     // not. Older profiles retain their original iteration-only propagation.
     let inherited = inherited_paired_frame
@@ -47,11 +47,27 @@ pub(super) fn render_basic_group_by_scope(
     scope: &TargetScope,
     children: &[String],
 ) -> String {
-    let iteration = scope.iteration.as_ref().expect("paired keyed iteration");
-    let (group_key, operation) = match iteration.grouping() {
-        Some(GroupingPlan::By { key }) => (key, "map_group_by_source_cohort"),
-        Some(GroupingPlan::AdjacentBy { key }) => (key, "map_group_adjacent_by_source_cohort"),
-        _ => unreachable!("the explicit paired profile admits By/AdjacentBy only"),
+    let iteration = scope.iteration.as_ref().expect("paired grouped iteration");
+    let (group_expression, operation, controls, starting) = match iteration.grouping() {
+        Some(GroupingPlan::By { key }) => (
+            key,
+            "map_group_by_source_cohort",
+            "BasicGroupByControls",
+            false,
+        ),
+        Some(GroupingPlan::AdjacentBy { key }) => (
+            key,
+            "map_group_adjacent_by_source_cohort",
+            "BasicGroupByControls",
+            false,
+        ),
+        Some(GroupingPlan::StartingWith { predicate }) => (
+            predicate,
+            "map_group_starting_with_source_cohort",
+            "BasicGroupStartingWithControls",
+            true,
+        ),
+        _ => unreachable!("the explicit paired profile admits By/AdjacentBy/StartingWith only"),
     };
     let keys = iteration
         .sort()
@@ -70,10 +86,10 @@ pub(super) fn render_basic_group_by_scope(
             owner_literal(&input.source().owner),
             render_string_path(&input.source().path)
         ),
-        _ => unreachable!("the explicit By profile admits static source cohorts only"),
+        _ => unreachable!("the explicit grouped profile admits static source cohorts only"),
     };
     let mut source = format!(
-        "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    struct Controls;\n    impl codegen_runtime::BasicGroupByControls<RuntimeError> for Controls {{\n        fn metadata(&self) -> codegen_runtime::BasicGroupByMetadata<'_> {{\n            codegen_runtime::BasicGroupByMetadata {{ directions: &["
+        "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    struct Controls;\n    impl codegen_runtime::{controls}<RuntimeError> for Controls {{\n        fn metadata(&self) -> codegen_runtime::BasicGroupByMetadata<'_> {{\n            codegen_runtime::BasicGroupByMetadata {{ directions: &["
     );
     for key in &keys {
         source.push_str(if key.descending {
@@ -136,7 +152,12 @@ pub(super) fn render_basic_group_by_scope(
         );
     }
     source.push_str("        }\n");
-    source.push_str(&format!("        fn group_key(&mut self, group_key_context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {{\n            expression_{group_key}(group_key_context)\n        }}\n        fn retain_member(&mut self, member_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n"));
+    if starting {
+        source.push_str(&format!("        fn starts_group(&mut self, boundary_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n            let value = expression_{group_expression}(boundary_context)?;\n            require_bool({group_expression}, value)\n        }}\n"));
+    } else {
+        source.push_str(&format!("        fn group_key(&mut self, group_key_context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {{\n            expression_{group_expression}(group_key_context)\n        }}\n"));
+    }
+    source.push_str("        fn retain_member(&mut self, member_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {\n");
     if let Some(post) = iteration.post_group_filter() {
         source.push_str(&format!("            let value = expression_{post}(member_context)?;\n            require_bool({post}, value)\n"));
     } else {

@@ -5,6 +5,10 @@ use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{Node, OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};
 use std::collections::{BTreeMap, BTreeSet};
 
+// Reuse the established static scaffold, not any observed output or diagnostic.
+#[path = "owned_group_starting_with.rs"]
+mod starting_with;
+
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }

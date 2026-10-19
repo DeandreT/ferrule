@@ -1117,7 +1117,8 @@ fn eval_basic_owned_scope<'a>(
     let ancestry = state.owned_ancestry
         || own
         || scope.group_by.is_some()
-        || scope.group_adjacent_by.is_some();
+        || scope.group_adjacent_by.is_some()
+        || scope.group_starting_with.is_some();
     let filter_before_sort = scope.filter.is_some()
         && scope.has_sort()
         && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
@@ -1284,15 +1285,16 @@ fn eval_basic_owned_scope<'a>(
     if scope.iteration_output == IterationOutput::First {
         windows.push(EvaluatedWindow::First(1));
     }
-    let keyed_grouping = scope
+    let grouping = scope
         .group_by
-        .map(|key| (key, BasicKeyedPartition::By))
+        .map(BasicGroupPartition::By)
+        .or_else(|| scope.group_adjacent_by.map(BasicGroupPartition::AdjacentBy))
         .or_else(|| {
             scope
-                .group_adjacent_by
-                .map(|key| (key, BasicKeyedPartition::AdjacentBy))
+                .group_starting_with
+                .map(BasicGroupPartition::StartingWith)
         });
-    if let Some((key, partition)) = keyed_grouping {
+    if let Some(partition) = grouping {
         let produced = eval_basic_owned_groups(
             program,
             scope,
@@ -1305,7 +1307,6 @@ fn eval_basic_owned_scope<'a>(
             &extensions,
             &budget,
             &windows,
-            key,
             partition,
             ancestry,
             filter_before_sort,
@@ -1485,7 +1486,9 @@ fn eval_basic_owned_scope<'a>(
 
 /// A bucket retains candidate associations, not a second occurrence identity.
 /// The first association supplies both representative and intermediate prefix.
-struct BasicKeyedBucket {
+struct BasicGroupBucket {
+    // Preserve the existing Value cell. Starting leaves it Null and never
+    // treats its Boolean predicate as a key or charges grouping-key text.
     key: Value,
     first: usize,
     members: Vec<usize>,
@@ -1495,9 +1498,10 @@ struct BasicKeyedBucket {
 /// This private partition choice does not admit other grouping families or
 /// change the shared native metadata layout and WorkBudget.
 #[derive(Clone, Copy)]
-enum BasicKeyedPartition {
-    By,
-    AdjacentBy,
+enum BasicGroupPartition {
+    By(NodeId),
+    AdjacentBy(NodeId),
+    StartingWith(NodeId),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1513,8 +1517,7 @@ fn eval_basic_owned_groups<'a>(
     extensions: &[crate::source_iteration::ObservedExtension<'a>],
     budget: &crate::owned_context::WorkBudget,
     windows: &[EvaluatedWindow],
-    key: NodeId,
-    partition: BasicKeyedPartition,
+    partition: BasicGroupPartition,
     ancestry: bool,
     filter_before_sort: bool,
     selection_phase: TraceFilterPhase,
@@ -1526,7 +1529,7 @@ fn eval_basic_owned_groups<'a>(
 
     let state = program
         .owned_context
-        .expect("owned keyed grouping receiving context");
+        .expect("owned grouping receiving context");
     let access = |source| EngineError::OwnedSourceAccess {
         node: None,
         scope: Some(Box::new(trace_scope.source_scope.clone())),
@@ -1535,7 +1538,7 @@ fn eval_basic_owned_groups<'a>(
     // Keep the native explicit metadata ledger. Source-tree copies below remain
     // payload ownership, not a claim of a process-memory/allocation-total bound.
     budget.reserve(extensions.len()).map_err(access)?;
-    let mut groups: Vec<BasicKeyedBucket> = Vec::new();
+    let mut groups: Vec<BasicGroupBucket> = Vec::new();
     for (index, extension) in extensions.iter().enumerate() {
         reserve_observed_copy(
             budget,
@@ -1567,7 +1570,7 @@ fn eval_basic_owned_groups<'a>(
         let mut item_positions = positions.to_vec();
         item_positions.extend_from_slice(&extension.extension.positions);
         // Unlike ordinary window selection, this is deliberately fused: the
-        // current candidate's key and post predicate precede the next filter.
+        // current candidate's key/boundary and post precede the next filter.
         if !filter_before_sort
             && !passes_scope_filter(
                 candidate_program,
@@ -1580,13 +1583,29 @@ fn eval_basic_owned_groups<'a>(
         {
             continue;
         }
-        let value = eval_expr(
-            candidate_program,
-            key,
-            &item_context,
-            &item_positions,
-            &mut HashSet::new(),
-        )?;
+        let value = match partition {
+            BasicGroupPartition::By(key) | BasicGroupPartition::AdjacentBy(key) => eval_expr(
+                candidate_program,
+                key,
+                &item_context,
+                &item_positions,
+                &mut HashSet::new(),
+            )?,
+            BasicGroupPartition::StartingWith(_) => Value::Null,
+        };
+        // Evaluate even the first boundary, and require its exact Bool before
+        // post. A leading false prefix still creates the first nonempty group.
+        let starts_group = match partition {
+            BasicGroupPartition::StartingWith(predicate) => passes_scope_filter(
+                candidate_program,
+                Some(predicate),
+                TraceFilterPhase::GroupStarting,
+                trace_scope,
+                &item_context,
+                &item_positions,
+            )?,
+            BasicGroupPartition::By(_) | BasicGroupPartition::AdjacentBy(_) => false,
+        };
         let retained = passes_scope_filter(
             candidate_program,
             scope.post_group_filter,
@@ -1602,8 +1621,17 @@ fn eval_basic_owned_groups<'a>(
         // whose post predicate has not retained them. Retention is applied
         // after partitioning, so dropping a separator can never join runs.
         let existing = match partition {
-            BasicKeyedPartition::By => groups.iter_mut().find(|group| group.key == value),
-            BasicKeyedPartition::AdjacentBy => groups.last_mut().filter(|group| group.key == value),
+            BasicGroupPartition::By(_) => groups.iter_mut().find(|group| group.key == value),
+            BasicGroupPartition::AdjacentBy(_) => {
+                groups.last_mut().filter(|group| group.key == value)
+            }
+            BasicGroupPartition::StartingWith(_) => {
+                if starts_group {
+                    None
+                } else {
+                    groups.last_mut()
+                }
+            }
         };
         if let Some(group) = existing {
             group.members.push(index);
@@ -1612,7 +1640,7 @@ fn eval_basic_owned_groups<'a>(
             if let Value::String(text) = &value {
                 budget.charge(text.len()).map_err(access)?;
             }
-            groups.push(BasicKeyedBucket {
+            groups.push(BasicGroupBucket {
                 key: value,
                 first: index,
                 members: vec![index],
@@ -1639,12 +1667,18 @@ fn eval_basic_owned_groups<'a>(
             || TraceEvent::GroupProduced {
                 scope: trace_scope.clone(),
                 grouping: match partition {
-                    BasicKeyedPartition::By => TraceGrouping::By { node: key },
-                    BasicKeyedPartition::AdjacentBy => TraceGrouping::AdjacentBy { node: key },
+                    BasicGroupPartition::By(node) => TraceGrouping::By { node },
+                    BasicGroupPartition::AdjacentBy(node) => TraceGrouping::AdjacentBy { node },
+                    BasicGroupPartition::StartingWith(node) => TraceGrouping::StartingWith { node },
                 },
                 group_index: index + 1,
                 member_count: group.members.len(),
-                key: Some(TraceValue::new(&group.key)),
+                key: match partition {
+                    BasicGroupPartition::By(_) | BasicGroupPartition::AdjacentBy(_) => {
+                        Some(TraceValue::new(&group.key))
+                    }
+                    BasicGroupPartition::StartingWith(_) => None,
+                },
                 retained: group.retained,
                 positions: trace_positions(&item_positions),
             },
@@ -1674,7 +1708,7 @@ fn eval_basic_owned_groups<'a>(
             .last()
             .copied()
             .or(identity_base)
-            .expect("source keyed grouping has a selected value");
+            .expect("source grouping has a selected value");
         let (owner, collection) = match scope.source_selector() {
             Some(mapping::SourceSelectorRef::Owned(source)) => (
                 Some(state.roots.key(&source.owner).map_err(access)?),
@@ -1850,7 +1884,7 @@ fn eval_basic_owned_groups<'a>(
                 collection: collection.to_vec(),
                 item: members,
                 position_slot: slot,
-                kind: OccurrenceKind::KeyedGroup,
+                kind: OccurrenceKind::GroupMembers,
             };
             if let Some((index, _)) = terminal {
                 frames[index] = frame;
@@ -1868,14 +1902,14 @@ fn eval_basic_owned_groups<'a>(
                     owner,
                     path: collection.to_vec(),
                     item: wrapper,
-                    kind: SourceOriginKind::KeyedGroupWrapper,
+                    kind: SourceOriginKind::GroupWrapper,
                 });
             }
             origins.push(SourceOrigin {
                 owner,
                 path: collection.to_vec(),
                 item: members,
-                kind: SourceOriginKind::KeyedGroupMembers,
+                kind: SourceOriginKind::GroupMembers,
             });
         }
         let grouped = OwnedContext {

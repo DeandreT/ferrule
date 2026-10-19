@@ -2005,11 +2005,11 @@ fn ordinary_empty_member_pin_uses_latest_item_even_with_older_root_by_group() {
                 for member in members.iter() {
                     let c = member.context();
                     // Establish that this is the newest Item over a retained
-                    // KeyedGroup at the very same empty collection, not a fresh root.
+                    // GroupMembers at the very same empty collection, not a fresh root.
                     let frames = &c.owned.frames;
                     assert_eq!(frames.len(), 2);
                     assert!(frames[0].collection.is_empty());
-                    assert!(frames[0].kind == OwnedOccurrenceKind::KeyedGroup);
+                    assert!(frames[0].kind == OwnedOccurrenceKind::GroupMembers);
                     assert!(frames[1].collection.is_empty());
                     assert!(frames[1].kind == OwnedOccurrenceKind::Item);
                     let value = c.owned_field(owner, &["Label"], Some(&[]))?;

@@ -1,0 +1,19 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+internal static class Driver
+{
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3 || !Path.IsPathFullyQualified(args[2]) || Path.Exists(args[2])) throw new InvalidOperationException("Input, expected and fresh absolute evidence directory required.");
+        Directory.CreateDirectory(args[2]); var source = File.ReadAllText(args[0]); var expected = File.ReadAllText(args[1]);
+        object all; object selected;
+        try { all = GeneratedMapping.ExecuteJsonOutputs(source); } catch (Exception caught) { all = caught; }
+        try { selected = GeneratedMapping.ExecuteJsonSelectedTarget(source, FerruleTargetSelection.Primary()); } catch (Exception caught) { selected = caught; }
+        string Original(object value) => value is Exception error ? error.ToString() : JsonSerializer.Serialize(value);
+        using (var file = new FileStream(Path.Combine(args[2], "LEGACY-COMPLETE-ORIGINALS.txt"), FileMode.CreateNew, FileAccess.Write))
+        using (var writer = new StreamWriter(file)) { writer.Write($"SOURCE={source}\nEXPECTED={expected}\nALL={Original(all)}\nSELECTED={Original(selected)}\n"); writer.Flush(); }
+        return all is JsonExecutionOutputs outputs && outputs.Primary == expected && outputs.Extras.Count == 0 &&
+            selected is SelectedJsonTargetOutput.Primary primary && primary.Document == expected ? 0 : 1;
+    }
+}

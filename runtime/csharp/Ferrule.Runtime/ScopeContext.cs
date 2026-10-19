@@ -1211,7 +1211,7 @@ public sealed partial class ScopeContext
         int? JoinPosition = null,
         bool Grouped = false,
         string? DocumentPath = null,
-        bool BasicKeyedGroup = false)
+        bool BasicGroupMembers = false)
     {
         private int _index = Index;
         public int Index { get => _index; init => _index = value; }
@@ -1719,12 +1719,12 @@ internal sealed class OwnedBuffer<T>
 /// <summary>Separate direct owned core; never substitutes for legacy ScopeContext.</summary>
 public sealed partial class FerruleOwnedScopeContext
 {
-    // Authenticated synthetic member containers minted only by paired By/AdjacentBy.
-    // Ordinary member occurrences remain Items, even inside a keyed group.
+    // Authenticated synthetic member containers minted only by paired By,
+    // AdjacentBy and StartingWith. Nested ordinary occurrences remain Items.
     internal readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool KeyedGroup = false);
+        bool GroupMembers = false);
     internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool KeyedGroup = false);
+        bool GroupMembers = false);
     private readonly Occurrence[] _frames;
     private FerruleOwnedScopeContext(FerruleOwnedSourceRoots roots, Occurrence[] frames) { Roots = roots; _frames = frames; }
     internal static FerruleOwnedScopeContext CreateRoot(FerruleOwnedSourceRoots roots)
@@ -1736,7 +1736,7 @@ public sealed partial class FerruleOwnedScopeContext
     internal FerruleOwnedSourceRoots Roots { get; }
     internal int FrameCount => _frames.Length;
     internal Observation FrameAt(int index)
-    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.KeyedGroup); }
+    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.GroupMembers); }
     private static bool Prefix(IReadOnlyList<string> path, IReadOnlyList<string> prefix)
     {
         if (prefix.Count > path.Count) return false;
@@ -1782,18 +1782,18 @@ public sealed partial class FerruleOwnedScopeContext
         // The Basic path supplies the static exact-owner declaration proof.
         // An explicit empty pin selects the registered nonrepeating root, even
         // when a descendant or another owner has an active occurrence. At [] the
-        // latest exact-owner occurrence alone decides keyed-group vs ordinary Item:
+        // latest exact-owner occurrence alone decides member-container vs ordinary Item:
         // a newer member Item shadows its older root group, never another owner's.
         var rootGroup = Match(key, Array.Empty<string>(), true);
         var registeredRoot = frame is { Count: 0 } &&
             ((declaredNonrepeating && Roots.Instance(key) is not FerruleRepeated) ||
-              (rootGroup >= 0 && _frames[rootGroup].KeyedGroup));
+              (rootGroup >= 0 && _frames[rootGroup].GroupMembers));
         var selected = registeredRoot ? -1 : Match(key, frame ?? path, frame is not null);
         if (frame is not null && selected < 0 && !registeredRoot)
             throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: frame);
         var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
         var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
-        if (selected >= 0 && _frames[selected].KeyedGroup)
+        if (selected >= 0 && _frames[selected].GroupMembers)
         {
             var members = (FerruleRepeated)current;
             if (members.Items.Count == 0) return FerruleValue.Null;
@@ -1886,7 +1886,7 @@ public sealed partial class FerruleOwnedScopeContext
             // output owns its separately admitted immutable path snapshot.
             var path = new string[f.Path.Count];
             for (var j = 0; j < path.Length; j++) path[j] = f.Path[j];
-            copy[i] = new(f.Owner, path, f.Item, f.Index, f.KeyedGroup);
+            copy[i] = new(f.Owner, path, f.Item, f.Index, f.GroupMembers);
         }
         return new FerruleOwnedScopeContext(roots, copy);
     }
@@ -1915,7 +1915,7 @@ public sealed partial class FerruleOwnedScopeContext
         var q = observed is null ? new OwnedQuery(this, owner, path, null) : observed.CreateQuery(this, owner, path);
         var key = Roots.Resolve(owner, q);
         var identity = Match(key, path, true);
-        if (identity >= 0 && !_frames[identity].KeyedGroup)
+        if (identity >= 0 && !_frames[identity].GroupMembers)
         {
             var identityItem = _frames[identity].Item;
             observed?.SelectedBase(key, identityItem, _frames[identity].Path.Count, true, identity);
@@ -2287,7 +2287,7 @@ internal readonly struct BasicSourceBudget
     }
 }
 
-internal enum BasicOriginKind { Ordinary, KeyedGroupWrapper, KeyedGroupMembers }
+internal enum BasicOriginKind { Ordinary, GroupWrapper, GroupMembers }
 internal readonly record struct BasicFrameOrigin(int OwnerKey, IReadOnlyList<string> Canonical,
     nuint? RawOrdinal = null, bool Projection = false, BasicOriginKind Kind = BasicOriginKind.Ordinary,
     string? WrapperField = null, int GroupCollection = -1);
@@ -2311,7 +2311,7 @@ public sealed partial class ScopeContext
         if (_dynamicSourceLoader is not null || _filterMapBoundary is not null || _filterMapCallDepth != 0)
             throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext);
         for (var i = 0; i < _collections.Count; i++)
-            if (_collections[i].Join.HasValue || (_collections[i].Grouped && !_collections[i].BasicKeyedGroup) || _collections[i].DocumentPath is not null)
+            if (_collections[i].Join.HasValue || (_collections[i].Grouped && !_collections[i].BasicGroupMembers) || _collections[i].DocumentPath is not null)
                 throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.UnsupportedBasicContext);
     }
     internal void SeedBasicLegacy(BasicSourceBudget budget)
@@ -2801,6 +2801,27 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
     { get { RequireSealed(); return (uint)index < (uint)_count ? _items[index] : throw new ArgumentOutOfRangeException(nameof(index)); } }
     private void RequireSealed()
     { if (!_sealed) throw new InvalidOperationException("Source cohort is not published."); }
+#if FERRULE_COMPONENT_ORACLES
+    // CR-REQUEST ONLY: guarded negative-fixture seam, not a production API.
+    // Corrupt a fresh three-row walk without updating its authenticated witness.
+    internal void StartingWitnessFaultForTests(int fault, FerruleBasicSourceCandidate? donor = null)
+    {
+        RequireSealed();
+        if (_count != 3) throw new InvalidOperationException("Expected the literal three-row fixture.");
+        var c = _items[1];
+        switch (fault)
+        {
+            case 0: _items[1] = new(c.Context, c.SourceWitness, _items[0].SourceId, c.Cursor, c.GroupTerminal); break;
+            case 1: _count--; break;
+            case 2: (_items[0], _items[1]) = (_items[1], _items[0]); break;
+            case 3: _items[1] = new(c.Context, c.SourceWitness, c.SourceId, c.Cursor,
+                c.GroupTerminal!.Value with { OriginCut = int.MaxValue }); break;
+            case 4: _items[1] = new(c.Context, c.SourceWitness, c.SourceId, c.Cursor); break;
+            case 5: _items[1] = new(c.Context, donor!.SourceWitness, c.SourceId, c.Cursor, c.GroupTerminal); break;
+            default: throw new ArgumentOutOfRangeException(nameof(fault));
+        }
+    }
+#endif
     FerruleBasicSourceCandidate BasicCompleteRows.At(int index) => this[index];
     nuint BasicSourceIds.SourceIdAt(int index) => this[index].SourceId;
     Witness BasicCompleteRows.SourceWitness => _witness;
@@ -2934,7 +2955,7 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
                         _selectedAliasOwner = Parent.Roots.ProjectionKey(_legacySelection.First);
                         canonical = 0; redirects = true;
                     }
-                    else redirects = origin.Kind == BasicOriginKind.KeyedGroupWrapper &&
+                    else redirects = origin.Kind == BasicOriginKind.GroupWrapper &&
                         StringComparer.Ordinal.Equals(_legacySelection.First, origin.WrapperField);
                 }
             }
@@ -2982,8 +3003,8 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
             if (origin.Kind != BasicOriginKind.Ordinary)
             {
                 _initialPrefix = Parent.LegacyView.BasicCollectionPath(origin.GroupCollection);
-                _initialPrefixCount = _initialPrefix.Count - (origin.Kind == BasicOriginKind.KeyedGroupWrapper ? 1 : 0);
-                _redirect = origin.Kind == BasicOriginKind.KeyedGroupWrapper ? origin.WrapperField : null;
+                _initialPrefixCount = _initialPrefix.Count - (origin.Kind == BasicOriginKind.GroupWrapper ? 1 : 0);
+                _redirect = origin.Kind == BasicOriginKind.GroupWrapper ? origin.WrapperField : null;
             }
         }
         private static FerruleOwnedSourceInstanceKind InstanceKind(FerruleInstance current) => current switch

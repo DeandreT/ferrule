@@ -1,0 +1,13 @@
+["Group",[["Groups",["Repeated",[
+  ["Group",[["First",["String","one"]],["Position",["Int",1]],["Members",["Repeated",[
+    ["Group",[["Label",["String","one"]]],{"kind":"Unknown","identity":null,"literal":null}],
+    ["Group",[["Label",["String","two"]]],{"kind":"Unknown","identity":null,"literal":null}]
+  ]]]],{"kind":"Unknown","identity":null,"literal":null}],
+  ["Group",[["First",["String","three"]],["Position",["Int",2]],["Members",["Repeated",[
+    ["Group",[["Label",["String","three"]]],{"kind":"Unknown","identity":null,"literal":null}]
+  ]]]],{"kind":"Unknown","identity":null,"literal":null}],
+  ["Group",[["First",["String","four"]],["Position",["Int",3]],["Members",["Repeated",[
+    ["Group",[["Label",["String","four"]]],{"kind":"Unknown","identity":null,"literal":null}],
+    ["Group",[["Label",["String","five"]]],{"kind":"Unknown","identity":null,"literal":null}]
+  ]]]],{"kind":"Unknown","identity":null,"literal":null}]
+]]]],{"kind":"Unknown","identity":null,"literal":null}]

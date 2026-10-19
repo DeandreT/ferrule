@@ -1,0 +1,10 @@
+[package]
+name = "ferrule-generated-mapping"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+codegen-runtime = { path = "/home/deandre/.cache/ferrule-qualification/starting443-historical-generator-v1/source/crates/codegen-runtime" }
+
+[workspace]

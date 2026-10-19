@@ -1,0 +1,11 @@
+--- a/crates/cli/tests/code_generation/basic_owned_sequence_item_at/Host.rs.txt
++++ b/crates/cli/tests/code_generation/basic_owned_sequence_item_at/Host.rs.txt
+@@ -12,7 +12,7 @@
+ fn strings(recipe:&Json,key:&str)->Vec<String> {recipe[key].as_array().unwrap().iter().map(|s|s.as_str().unwrap().into()).collect()}
+ fn error(recipe:&Json)->RuntimeError {
+     let node=recipe["node"].as_u64().map(|n|n as u32);
+-    let found=match recipe["found"].as_str() {Some("bool")=>"bool",Some("string")=>"string",_=>"null"};
++    let found=match recipe["found"].as_str() {Some("bool")=>"bool",Some("string")=>"string",Some("json null")=>"json null",Some("int")=>"int",Some("float")=>"float",Some("xml nil")=>"xml nil",_=>"null"};
+     match recipe["kind"].as_str().unwrap() {
+         "FunctionType"|"FunctionInvalidArgument"=>codec::function_error(recipe).into(),
+         "GeneratedSequenceTooLarge"=>RuntimeError::GeneratedSequenceTooLarge {requested:recipe["requested"].as_str().unwrap().parse().unwrap(),max:recipe["maximum"].as_str().unwrap().parse().unwrap()},

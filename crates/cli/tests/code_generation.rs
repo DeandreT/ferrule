@@ -18,6 +18,8 @@ mod aggregates;
 mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
 mod basic_owned_group_by;
+#[path = "code_generation/basic_owned_group_starting_with.rs"]
+mod basic_owned_group_starting_with;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_nested_phases.rs"]

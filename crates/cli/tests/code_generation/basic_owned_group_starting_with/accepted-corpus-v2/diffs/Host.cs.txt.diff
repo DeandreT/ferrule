@@ -1,0 +1,16 @@
+--- a/crates/cli/tests/code_generation/basic_owned_sequence_item_at/Host.cs.txt
++++ b/crates/cli/tests/code_generation/basic_owned_sequence_item_at/Host.cs.txt
+@@ -118,7 +118,12 @@
+         if (kind == "MappingFailure") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingFailure, "frozen", failureRule: recipe["rule"]!.GetValue<int>(), mappingFailureMessage: message));
+         if (kind == "UnknownTarget") return Error(new FerruleRuntimeException(FerruleRuntimeError.UnknownTarget, "frozen", detail: recipe["name"]!.GetValue<string>()));
+         if (kind is "NotABool" or "NotAnItemCount") return Error(new FerruleRuntimeException(kind == "NotABool" ? FerruleRuntimeError.NotABool : FerruleRuntimeError.NotAnItemCount,
+-            "frozen", node: node, foundKind: recipe["found"]!.GetValue<string>() == "bool" ? FerruleValueKind.Bool : FerruleValueKind.String));
++            "frozen", node: node, foundKind: recipe["found"]!.GetValue<string>() switch {
++                "bool" => FerruleValueKind.Bool, "string" => FerruleValueKind.String,
++                "null" => FerruleValueKind.Null, "json null" => FerruleValueKind.JsonNull,
++                "int" => FerruleValueKind.Int64, "float" => FerruleValueKind.Double,
++                "xml nil" => FerruleValueKind.XmlNil,
++                _ => FerruleValueKind.String }));
+         if (kind != "OwnedSource") throw new InvalidOperationException("Closed authored error recipe.");
+         var owner = recipe["owner"]!.GetValue<string>(); var name = owner == "Primary" ? null : owner;
+         var cause = recipe["cause"]!.GetValue<string>(); var traversal = cause is "CannotTraverse" or "ExpectedScalar";

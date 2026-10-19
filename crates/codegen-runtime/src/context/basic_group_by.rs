@@ -1,12 +1,13 @@
-//! Authenticated paired keyed grouping, with one preflight and cumulative text ledger.
+//! Authenticated paired grouping, with one preflight and cumulative text ledger.
 
 use super::super::{OwnedOccurrenceKind, collection_frame};
 use super::*;
 use crate::{SequenceWindow, SortDirection};
 use std::cmp::Ordering;
 
-/// Static keyed-group controls shared by paired By and AdjacentBy, snapshotted
-/// before any group expression is evaluated.
+/// Static controls shared by paired By, AdjacentBy and StartingWith, snapshotted
+/// before any grouping expression is evaluated. The historical name does not
+/// select a partition policy.
 pub struct BasicGroupByMetadata<'a> {
     pub directions: &'a [SortDirection],
     pub filter_before_sort: bool,
@@ -27,6 +28,70 @@ pub trait BasicGroupByControls<E> {
     -> Result<SequenceWindow, E>;
     fn group_key(&mut self, context: &BasicScopeContext<'_>) -> Result<Value, E>;
     fn retain_member(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E>;
+}
+
+/// Generated Boolean boundary controls for paired StartingWith. Bounds receive
+/// the parent; all other controls receive structural or sorted candidates.
+/// The boundary is evaluated even for the first candidate, before post retention.
+pub trait BasicGroupStartingWithControls<E> {
+    fn metadata(&self) -> BasicGroupByMetadata<'_>;
+    fn filter(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E>;
+    fn sort_key(&mut self, key: usize, context: &BasicScopeContext<'_>) -> Result<Value, E>;
+    fn window(&mut self, bound: usize, parent: &BasicScopeContext<'_>)
+    -> Result<SequenceWindow, E>;
+    fn starts_group(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E>;
+    fn retain_member(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E>;
+}
+
+// Borrowed stack-only dispatch. It is never retained in Prepared, boxed, cloned
+// or converted into a key-producing public adapter. These are the only paired
+// operations that can reach member-container publication.
+enum GroupControls<'a, E> {
+    By(&'a mut dyn BasicGroupByControls<E>),
+    Adjacent(&'a mut dyn BasicGroupByControls<E>),
+    Starting(&'a mut dyn BasicGroupStartingWithControls<E>),
+}
+enum PartitionDecision {
+    By(Value),
+    Adjacent(Value),
+    Start(bool),
+}
+impl<E> GroupControls<'_, E> {
+    fn filter(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E> {
+        match self {
+            Self::By(c) | Self::Adjacent(c) => c.filter(context),
+            Self::Starting(c) => c.filter(context),
+        }
+    }
+    fn sort_key(&mut self, key: usize, context: &BasicScopeContext<'_>) -> Result<Value, E> {
+        match self {
+            Self::By(c) | Self::Adjacent(c) => c.sort_key(key, context),
+            Self::Starting(c) => c.sort_key(key, context),
+        }
+    }
+    fn window(
+        &mut self,
+        bound: usize,
+        parent: &BasicScopeContext<'_>,
+    ) -> Result<SequenceWindow, E> {
+        match self {
+            Self::By(c) | Self::Adjacent(c) => c.window(bound, parent),
+            Self::Starting(c) => c.window(bound, parent),
+        }
+    }
+    fn partition(&mut self, context: &BasicScopeContext<'_>) -> Result<PartitionDecision, E> {
+        match self {
+            Self::By(c) => c.group_key(context).map(PartitionDecision::By),
+            Self::Adjacent(c) => c.group_key(context).map(PartitionDecision::Adjacent),
+            Self::Starting(c) => c.starts_group(context).map(PartitionDecision::Start),
+        }
+    }
+    fn retain_member(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E> {
+        match self {
+            Self::By(c) | Self::Adjacent(c) => c.retain_member(context),
+            Self::Starting(c) => c.retain_member(context),
+        }
+    }
 }
 
 fn sum(a: usize, b: usize) -> Result<usize, RuntimeError> {
@@ -383,7 +448,7 @@ impl<'src> GroupPrefixTemplate<'src> {
             collection: self.owned_path,
             instance: members,
             index: ordinal,
-            kind: OwnedOccurrenceKind::KeyedGroup,
+            kind: OwnedOccurrenceKind::GroupMembers,
         });
         if let Some(wrapper) = wrapper {
             context.legacy.frames.push(ScopeFrame {
@@ -398,7 +463,7 @@ impl<'src> GroupPrefixTemplate<'src> {
                 path: self.wrapper_path,
                 owned_frame: None,
                 raw_index: None,
-                kind: OriginKind::KeyedGroupWrapper,
+                kind: OriginKind::GroupWrapper,
             });
         }
         context.legacy.frames.push(collection_frame(
@@ -413,7 +478,7 @@ impl<'src> GroupPrefixTemplate<'src> {
             path: self.member_path,
             owned_frame: Some(slot),
             raw_index: Some(ordinal),
-            kind: OriginKind::KeyedGroupMembers,
+            kind: OriginKind::GroupMembers,
         });
         context
     }
@@ -439,13 +504,6 @@ struct Bucket {
     tail: usize,
     count: usize,
     retained: bool,
-}
-// This is an operation choice, not stored metadata or a public capability. Both
-// modes use the identical n-bucket/n-key/member-link/template storage layout.
-#[derive(Clone, Copy)]
-enum PartitionMode {
-    By,
-    Adjacent,
 }
 struct Configuration {
     explicit_windows: usize,
@@ -479,6 +537,25 @@ fn prepare<'p, 'src, E, C>(
 where
     C: BasicGroupByControls<E>,
 {
+    prepare_with_metadata(parent, original, || controls.metadata())
+}
+
+fn prepare_starting<'p, 'src, E, C>(
+    parent: &BasicScopeContext<'src>,
+    original: &'p RetainedSourceCohort<'src>,
+    controls: &C,
+) -> Result<Prepared<'p, 'src>, RuntimeError>
+where
+    C: BasicGroupStartingWithControls<E>,
+{
+    prepare_with_metadata(parent, original, || controls.metadata())
+}
+
+fn prepare_with_metadata<'m, 'p, 'src>(
+    parent: &BasicScopeContext<'src>,
+    original: &'p RetainedSourceCohort<'src>,
+    metadata: impl FnOnce() -> BasicGroupByMetadata<'m>,
+) -> Result<Prepared<'p, 'src>, RuntimeError> {
     let limits = parent.owned.registry.limits;
     let n = original.len();
     phase_count(n, limits.max_walk_contexts)?;
@@ -516,7 +593,7 @@ where
         }
         budget.phase_slots(spare)?;
     }
-    let metadata = controls.metadata();
+    let metadata = metadata();
     let k = metadata.directions.len();
     let sorted = k != 0;
     let h = sum(
@@ -678,7 +755,14 @@ impl<'ctx> BasicScopeContext<'ctx> {
         C: BasicGroupByControls<E>,
         T: for<'g> FnMut(&BasicScopeContext<'g>) -> Result<Instance, E>,
     {
-        self.map_keyed_source_cohort(original, controls, target, PartitionMode::By)
+        let mut p = prepare::<E, C>(self, original, controls).map_err(E::from)?;
+        self.execute_grouped_source_cohort(
+            original,
+            &mut GroupControls::By(controls),
+            target,
+            &mut p,
+        )?;
+        Ok(p.output)
     }
 
     /// Map exact adjacent runs under a single bounded paired operation. Only
@@ -697,22 +781,55 @@ impl<'ctx> BasicScopeContext<'ctx> {
         C: BasicGroupByControls<E>,
         T: for<'g> FnMut(&BasicScopeContext<'g>) -> Result<Instance, E>,
     {
-        self.map_keyed_source_cohort(original, controls, target, PartitionMode::Adjacent)
+        let mut p = prepare::<E, C>(self, original, controls).map_err(E::from)?;
+        self.execute_grouped_source_cohort(
+            original,
+            &mut GroupControls::Adjacent(controls),
+            target,
+            &mut p,
+        )?;
+        Ok(p.output)
     }
 
-    fn map_keyed_source_cohort<E, C, T>(
+    /// Map Boolean starting boundaries under the shared bounded paired operation.
+    /// A true candidate starts and belongs to a new group; an initial false
+    /// prefix is one real group. Boundary then post run for every selected
+    /// candidate, before retained-group windows or targets. No grouping-key text
+    /// is returned or charged; reserved key storage remains Null and unused.
+    pub fn map_group_starting_with_source_cohort<E, C, T>(
         &self,
         original: &RetainedSourceCohort<'ctx>,
         controls: &mut C,
         target: &mut T,
-        mode: PartitionMode,
     ) -> Result<Vec<Instance>, E>
     where
         E: From<RuntimeError>,
-        C: BasicGroupByControls<E>,
+        C: BasicGroupStartingWithControls<E>,
         T: for<'g> FnMut(&BasicScopeContext<'g>) -> Result<Instance, E>,
     {
-        let mut p = prepare::<E, C>(self, original, controls).map_err(E::from)?;
+        let mut p = prepare_starting::<E, C>(self, original, controls).map_err(E::from)?;
+        self.execute_grouped_source_cohort(
+            original,
+            &mut GroupControls::Starting(controls),
+            target,
+            &mut p,
+        )?;
+        Ok(p.output)
+    }
+
+    // Both public execution and cfg(test) completion observation borrow this
+    // same prepared object through all callbacks, including early errors.
+    fn execute_grouped_source_cohort<'p, E, T>(
+        &self,
+        original: &'p RetainedSourceCohort<'ctx>,
+        controls: &mut GroupControls<'_, E>,
+        target: &mut T,
+        p: &mut Prepared<'p, 'ctx>,
+    ) -> Result<(), E>
+    where
+        E: From<RuntimeError>,
+        T: for<'g> FnMut(&BasicScopeContext<'g>) -> Result<Instance, E>,
+    {
         for (id, candidate) in original.candidates.iter().enumerate() {
             if !p.config.prefilter || !p.config.filter || controls.filter(candidate.context())? {
                 p.order.push(id);
@@ -754,19 +871,33 @@ impl<'ctx> BasicScopeContext<'ctx> {
             if !p.config.prefilter && p.config.filter && !controls.filter(context)? {
                 continue;
             }
-            let key = controls.group_key(context)?;
-            charge_key(&mut p.budget, &key).map_err(E::from)?;
+            let decision = controls.partition(context)?;
+            if let PartitionDecision::By(key) | PartitionDecision::Adjacent(key) = &decision {
+                charge_key(&mut p.budget, key).map_err(E::from)?;
+            }
             let retained = !p.config.post || controls.retain_member(context)?;
-            let group = match mode {
-                PartitionMode::By => p
-                    .buckets
-                    .iter()
-                    .position(|bucket| p.keys[bucket.first] == key),
-                PartitionMode::Adjacent => p
-                    .buckets
-                    .last()
-                    .filter(|bucket| p.keys[bucket.first] == key)
-                    .map(|_| p.buckets.len() - 1),
+            let (group, key) = match decision {
+                PartitionDecision::By(key) => (
+                    p.buckets
+                        .iter()
+                        .position(|bucket| p.keys[bucket.first] == key),
+                    Some(key),
+                ),
+                PartitionDecision::Adjacent(key) => (
+                    p.buckets
+                        .last()
+                        .filter(|bucket| p.keys[bucket.first] == key)
+                        .map(|_| p.buckets.len() - 1),
+                    Some(key),
+                ),
+                PartitionDecision::Start(starts) => (
+                    if starts {
+                        None
+                    } else {
+                        p.buckets.len().checked_sub(1)
+                    },
+                    None,
+                ),
             };
             if let Some(group) = group {
                 let bucket = &mut p.buckets[group];
@@ -775,7 +906,9 @@ impl<'ctx> BasicScopeContext<'ctx> {
                 bucket.count += 1;
                 bucket.retained |= retained;
             } else {
-                p.keys[id] = key;
+                if let Some(key) = key {
+                    p.keys[id] = key;
+                }
                 p.buckets.push(Bucket {
                     first: id,
                     head: id,
@@ -814,8 +947,66 @@ impl<'ctx> BasicScopeContext<'ctx> {
             let context = template.finish(&payload, ordinal + 1);
             p.output.push(target(&context)?);
         }
-        Ok(p.output)
+        Ok(())
     }
+}
+
+#[cfg(test)]
+fn prepared_snapshot_for_test(p: &Prepared<'_, '_>) -> ([usize; 12], bool) {
+    (
+        [
+            p.directions.capacity(),
+            p.cache.capacity(),
+            p.windows.capacity(),
+            p.order.capacity(),
+            p.scratch.capacity(),
+            p.next.capacity(),
+            p.buckets.capacity(),
+            p.keys.capacity(),
+            p.output.capacity(),
+            p.plans.capacity(),
+            p.templates.capacity(),
+            p.selection.capacity(),
+        ],
+        p.keys.iter().all(|key| matches!(key, Value::Null)),
+    )
+}
+
+#[cfg(test)]
+fn starting_prepared_snapshot_for_test<E, C>(
+    parent: &BasicScopeContext<'_>,
+    original: &RetainedSourceCohort<'_>,
+    controls: &C,
+) -> Result<([usize; 12], usize, usize, bool), RuntimeError>
+where
+    C: BasicGroupStartingWithControls<E>,
+{
+    let p = prepare_starting::<E, C>(parent, original, controls)?;
+    let (capacities, null_keys) = prepared_snapshot_for_test(&p);
+    Ok((capacities, p.budget.slots, p.budget.maximum, null_keys))
+}
+
+#[cfg(test)]
+fn starting_run_snapshot_for_test<'src, E, C, T>(
+    parent: &BasicScopeContext<'src>,
+    original: &RetainedSourceCohort<'src>,
+    controls: &mut C,
+    target: &mut T,
+) -> Result<(Vec<Instance>, [usize; 12], bool), E>
+where
+    E: From<RuntimeError>,
+    C: BasicGroupStartingWithControls<E>,
+    T: for<'g> FnMut(&BasicScopeContext<'g>) -> Result<Instance, E>,
+{
+    let mut p = prepare_starting::<E, C>(parent, original, controls).map_err(E::from)?;
+    parent.execute_grouped_source_cohort(
+        original,
+        &mut GroupControls::Starting(controls),
+        target,
+        &mut p,
+    )?;
+    let (capacities, null_keys) = prepared_snapshot_for_test(&p);
+    Ok((p.output, capacities, null_keys))
 }
 
 #[cfg(test)]

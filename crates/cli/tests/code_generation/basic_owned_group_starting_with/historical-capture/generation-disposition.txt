@@ -1,0 +1,1 @@
+Two successful ordinary generation commands; two Rust files and 78 C# files. No generated consumer was compiled or executed, and no new-profile emission occurred.

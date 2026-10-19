@@ -1,0 +1,11 @@
+copy	byte_equality
+source/conformance/basic-owned-group-starting-with/legacy-project.json	IDENTICAL_TO_LITERAL_BASELINE
+postimages/conformance/basic-owned-group-starting-with/legacy-project.json	IDENTICAL_TO_LITERAL_BASELINE
+source/conformance/basic-owned-group-starting-with/legacy-input.json	IDENTICAL_TO_LITERAL_BASELINE
+postimages/conformance/basic-owned-group-starting-with/legacy-input.json	IDENTICAL_TO_LITERAL_BASELINE
+source/conformance/basic-owned-group-starting-with/legacy-input.tree.json	IDENTICAL_TO_LITERAL_BASELINE
+postimages/conformance/basic-owned-group-starting-with/legacy-input.tree.json	IDENTICAL_TO_LITERAL_BASELINE
+source/conformance/basic-owned-group-starting-with/legacy-expected.json	IDENTICAL_TO_LITERAL_BASELINE
+postimages/conformance/basic-owned-group-starting-with/legacy-expected.json	IDENTICAL_TO_LITERAL_BASELINE
+source/conformance/basic-owned-group-starting-with/legacy-expected.tree.json	IDENTICAL_TO_LITERAL_BASELINE
+postimages/conformance/basic-owned-group-starting-with/legacy-expected.tree.json	IDENTICAL_TO_LITERAL_BASELINE

@@ -1,0 +1,7 @@
+origin=/home/deandre/.cache/ferrule-qualification/starting443-corpus-custody-failure-v1/observed-old_profiles.rs
+destination=./source/conformance/basic-owned-group-starting-with/old_profiles.rs
+sha256=bfb6cc637778716270b4003eedb1c320c6abaeb7cf8c19f22136bebaa7ee89fd
+bytes=3138
+byte_equality=IDENTICAL_TO_PARENT_PRESERVED_BODY
+v1_original_body=UNAVAILABLE
+successor_is_custody_repair=NO

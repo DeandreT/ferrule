@@ -35,6 +35,16 @@ pub(crate) fn render_public_basic_owned_group_adjacent_by_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_group_starting_with_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupStartingWith,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -47,17 +57,24 @@ pub(super) enum Profile {
     PrimaryRows,
     GroupBy,
     GroupAdjacentBy,
+    GroupStartingWith,
 }
 
 impl Profile {
-    fn has_keyed_groups(self) -> bool {
-        matches!(self, Self::GroupBy | Self::GroupAdjacentBy)
+    fn has_scoped_groups(self) -> bool {
+        matches!(
+            self,
+            Self::GroupBy | Self::GroupAdjacentBy | Self::GroupStartingWith
+        )
     }
 
     pub(super) fn permits_grouping(self, grouping: Option<GroupingPlan>) -> bool {
         match grouping {
-            Some(GroupingPlan::By { .. }) => self.has_keyed_groups(),
-            Some(GroupingPlan::AdjacentBy { .. }) => self == Self::GroupAdjacentBy,
+            Some(GroupingPlan::By { .. }) => self.has_scoped_groups(),
+            Some(GroupingPlan::AdjacentBy { .. }) => {
+                matches!(self, Self::GroupAdjacentBy | Self::GroupStartingWith)
+            }
+            Some(GroupingPlan::StartingWith { .. }) => self == Self::GroupStartingWith,
             _ => false,
         }
     }
@@ -78,6 +95,9 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_group_starting_with_emission(program)?;
+        }
         (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
         }
@@ -103,7 +123,7 @@ fn render_public_basic_owned_source_policy(
     }
     let mut basic = BTreeSet::new();
     let mut mark = |scope: &TargetScope, name: &str| {
-        if profile.has_keyed_groups() {
+        if profile.has_scoped_groups() {
             group_by::mark_basic_scopes(program, scope, name, false, &mut basic, profile);
         } else {
             mark_basic_scopes(program, scope, name, false, &mut basic);
@@ -244,7 +264,7 @@ fn render_public_basic_owned_source_policy(
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
-        if profile.has_keyed_groups()
+        if profile.has_scoped_groups()
             && legacy_scopes.iter().any(|(_, scope, _, _)| {
                 scope
                     .iteration
@@ -288,7 +308,7 @@ fn render_public_basic_owned_source_policy(
                 .iter()
                 .map(|child| format!("legacy_{child}"))
                 .collect::<Vec<_>>();
-            source.push_str(&if profile.has_keyed_groups()
+            source.push_str(&if profile.has_scoped_groups()
                 && scope
                     .iteration
                     .as_ref()
@@ -311,6 +331,11 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
+                program,
+            )?
+        }
         (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(program)?
         }

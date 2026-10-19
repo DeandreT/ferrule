@@ -1,0 +1,2 @@
+/home/deandre/.cache/ferrule-qualification/starting443-corpus-v1/PACKET.sha256	29	215645492	81a4	1000	1000	1	12125	2026-10-18 12:42:36.764289853 -0700	2026-10-18 12:42:36.764289853 -0700
+/home/deandre/.cache/ferrule-qualification/starting443-corpus-v1/source/conformance/basic-owned-group-starting-with/old_profiles.rs	29	215641969	81a4	1000	1000	1	3138	2026-10-18 12:43:03.592920749 -0700	2026-10-18 12:43:03.592920749 -0700

@@ -1,0 +1,40 @@
+--- reference/conformance/basic-owned-group-adjacent-by/closed_specialized.rs
++++ source/conformance/basic-owned-group-starting-with/closed_specialized.rs
+@@ -423,7 +423,7 @@
+ }
+ 
+ fn project_core() -> Project {
+-    let mut p = projects::base();
++    let mut p = projects::refusal_base();
+     for (id, node) in [
+         (
+             2000,
+@@ -767,10 +767,10 @@
+                     // Candidate key validation still has active_source=Rows.
+                     // Do not also retain this join-containing consumer as a
+                     // grouped target binding, where that anchor is absent.
+-                    p.root.children[0].group_adjacent_by = Some(2003);
++                    p.root.children[0].group_starting_with = Some(2003);
+                     p.root.children[0].bindings[1].node = 5;
+                 } else {
+-                    p.root.children[0].group_adjacent_by = Some(2013);
++                    p.root.children[0].group_starting_with = Some(2013);
+                 }
+             } else if matches!(recipe, Recipe::JoinMember) {
+                 project_join_member(&mut p);
+@@ -1055,13 +1055,13 @@
+                     program_index(&mut p, 2013);
+                     let iteration = p.root.children[0].iteration.take().unwrap();
+                     p.root.children[0].iteration = Some(
+-                        iteration.with_grouping(codegen::GroupingPlan::AdjacentBy { key: 2003 }),
++                        iteration.with_grouping(codegen::GroupingPlan::StartingWith { predicate: 2003 }),
+                     );
+                     p.root.children[0].bindings[1].expression = 5;
+                 } else {
+                     let iteration = p.root.children[0].iteration.take().unwrap();
+                     p.root.children[0].iteration = Some(
+-                        iteration.with_grouping(codegen::GroupingPlan::AdjacentBy { key: 2013 }),
++                        iteration.with_grouping(codegen::GroupingPlan::StartingWith { predicate: 2013 }),
+                     );
+                 }
+             } else if matches!(recipe, Recipe::JoinMember) {
