@@ -362,7 +362,7 @@ impl FerruleApp {
             let mut launch = false;
             let mut cancel = false;
             egui::Window::new("Run JSON request")
-                .id(egui::Id::new("rest_request_setup"))
+                .id(egui::Id::unique("rest_request_setup"))
                 .open(&mut open)
                 .collapsible(false)
                 .show(context, |ui| {
@@ -401,7 +401,7 @@ impl FerruleApp {
         }
         if self.pending_rest_run.is_some() {
             egui::Window::new("Live request")
-                .id(egui::Id::new("rest_request_progress"))
+                .id(egui::Id::unique("rest_request_progress"))
                 .collapsible(false)
                 .show(context, |ui| {
                     ui.label("Waiting for the request or mapping to finish.");
@@ -412,7 +412,7 @@ impl FerruleApp {
         }
         if let Some(result) = &mut self.rest_run_result {
             let mut open = true;
-            egui::Window::new("Live request result (in memory)").id(egui::Id::new("rest_request_result")).open(&mut open).show(context, |ui| {
+            egui::Window::new("Live request result (in memory)").id(egui::Id::unique("rest_request_result")).open(&mut open).show(context, |ui| {
                 ui.label(format!("{} record(s); no configured output file was written.", result.outcome.records_written));
                 if let Some(artifact) = result.outcome.artifacts.first() {
                     ui.label(format!("{}: {} bytes", artifact.path.display(), artifact.bytes.len()));

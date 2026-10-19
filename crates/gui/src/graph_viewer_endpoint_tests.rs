@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::canvas::{source_blocks, target_blocks};
 use ir::{ScalarType, SchemaNode};
@@ -213,7 +215,7 @@ fn endpoint_titles_use_role_icons_and_ellipsize_within_allocated_width() {
             let mut header_rect = egui::Rect::NOTHING;
             let mut output = egui::FullOutput::default();
             for _ in 0..3 {
-                output = context.run_ui(
+                output = context.run_test_ui(
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,
@@ -357,7 +359,7 @@ impl EndpointHeaderFixture {
         x12: bool,
         events: Vec<egui::Event>,
     ) -> egui::FullOutput {
-        context.run_ui(
+        context.run_test_ui(
             egui::RawInput {
                 time: Some(context.cumulative_frame_nr() as f64 / 10.0),
                 screen_rect: Some(egui::Rect::from_min_size(

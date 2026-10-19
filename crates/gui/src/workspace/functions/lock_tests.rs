@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use mapping::{FormatOptions, NamedTarget, Scope};
 
@@ -29,7 +31,7 @@ fn frame(
     editing_enabled: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

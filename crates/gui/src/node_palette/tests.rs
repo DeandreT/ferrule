@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 
 #[test]
@@ -6,7 +8,7 @@ fn source_document_path_keyboard_creation_follows_the_primary_file_set_capabilit
         let context = egui::Context::default();
         let mut selected = None;
         let mut run = |events| {
-            let output = context.run_ui(
+            let output = context.run_test_ui(
                 egui::RawInput {
                     events,
                     ..Default::default()
@@ -200,7 +202,7 @@ fn keyboard_root_creation_choices_follow_the_active_canvas_policy() {
             let context = egui::Context::default();
             let mut selected = None;
             let mut run = |events| {
-                let _ = context.run_ui(
+                let _ = context.run_test_ui(
                     egui::RawInput {
                         events,
                         ..Default::default()
@@ -231,7 +233,7 @@ fn keyboard_root_creation_choices_follow_the_active_canvas_policy() {
 
 fn palette_frame(context: &egui::Context, events: Vec<egui::Event>) -> Option<NodeTemplate> {
     let mut selected = None;
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         egui::RawInput {
             events,
             ..Default::default()
@@ -405,7 +407,7 @@ fn overflow_palette_frame(
     *time += 0.1;
     PALETTE_RESPONSE_CAPTURE.with(|capture| *capture.borrow_mut() = Some(Vec::new()));
     let mut chosen = None;
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -647,6 +649,7 @@ fn manual_wheel_and_pointer_selection_remain_free_after_keyboard_reveal() {
         vec![
             egui::Event::PointerMoved(item_at.response.rect.center()),
             egui::Event::MouseWheel {
+                source: egui::MouseWheelSource::Unknown,
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, 75.0),
                 phase: egui::TouchPhase::Move,
@@ -726,7 +729,7 @@ fn filter_map_keyboard_creation_requires_project_stage_capability() {
             let context = egui::Context::default();
             let mut selected = None;
             let mut run = |events| {
-                let output = context.run_ui(
+                let output = context.run_test_ui(
                     egui::RawInput {
                         events,
                         ..Default::default()

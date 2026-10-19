@@ -138,7 +138,7 @@ fn header_frame(
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
     let node = fx.call;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         let mut viewer = fx.viewer();
         viewer.protected_output = protected;
         viewer.show_header(node, &[], &[], ui, snarl);
@@ -164,10 +164,9 @@ fn properties(
         output: 0,
     });
     let mut button = egui::Id::NULL;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         ui.add_enabled_ui(enabled, |ui| {
-            button = ui.next_auto_id();
-            fx.viewer().show_output(&pin, ui, snarl);
+            button = show_properties_with_header(&mut fx.viewer(), &pin, ui, snarl);
         });
     });
     eprintln!(
@@ -251,7 +250,7 @@ fn compact_dynamic_headers_retain_complete_object_frame_hover_accessibility_and_
         (
             vec!["abcdefghijklmno資料📦long".into()],
             None,
-            "dynamic abcdefghijklmno…",
+            "dynamic abcdefghijklmno資料📦long",
             "automatic".to_owned(),
         ),
     ];
@@ -471,7 +470,7 @@ fn compact_dynamic_settled_geometry_keeps_unicode_paths_out_of_closed_nodes_and_
         for _ in 0..8 {
             let mut sizes = std::collections::BTreeMap::new();
             let mut senses = Vec::new();
-            let painted = context.run_ui(input(&context, Vec::new()), |ui| {
+            let painted = context.run_test_ui(input(&context, Vec::new()), |ui| {
                 let mut viewer = fx.viewer();
                 viewer.node_sizes = Some(&mut sizes);
                 SnarlWidget::new()
@@ -528,7 +527,7 @@ fn compact_dynamic_settled_geometry_keeps_unicode_paths_out_of_closed_nodes_and_
             .expect("computed property header icon visible");
         let mut detected = None;
         for _ in 0..2 {
-            let _ = context.run_ui(
+            let _ = context.run_test_ui(
                 input(&context, vec![egui::Event::PointerMoved(hover)]),
                 |ui| {
                     let mut viewer = fx.viewer();

@@ -19,6 +19,10 @@ pub struct CanvasInteraction {
 }
 
 pub struct CanvasOptions {
+    pub tools_id: egui::Id,
+    pub density: crate::appearance::CanvasDensity,
+    pub wire: crate::appearance::WireAppearance,
+    pub request_compact: bool,
     pub id_salt: egui::Id,
     pub show_minimap: bool,
     pub view_generation: u64,
@@ -48,7 +52,7 @@ pub fn show(
     options: CanvasOptions,
     ui: &mut egui::Ui,
 ) -> CanvasInteraction {
-    let canvas_id = egui::Id::new((CANVAS_ID, options.id_salt, options.view_generation));
+    let canvas_id = egui::Id::unique((CANVAS_ID, options.id_salt, options.view_generation));
     let mut style = options.style;
     let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     let focused = ui.ctx().input(|input| {
@@ -76,6 +80,9 @@ pub fn show(
         ui.ctx().request_repaint();
     }
     viewer.pin_interaction_ids.clear();
+    if viewer.sync_endpoint_view(snarl) {
+        ui.ctx().request_repaint();
+    }
     let hover_marker = canvas_id.with("hovered_node");
     let focus_marker = canvas_id.with("minimap_focus");
     let transform_marker = canvas_id.with("transform");
@@ -97,7 +104,22 @@ pub fn show(
         .id(canvas_id)
         .style(style)
         .get_selected_nodes(ui);
-    let find = !ui.ctx().egui_wants_keyboard_input()
+    crate::canvas_tools::begin(ui.ctx(), options.tools_id, viewer, snarl);
+    crate::canvas_tools::toolbar(
+        ui,
+        viewer,
+        snarl,
+        &selected,
+        crate::canvas_tools::ToolbarOptions {
+            wire: options.wire,
+            requested: options.request_compact,
+            search_open: search.is_open(),
+        },
+    );
+    let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+    let find = !crate::canvas_tools::picker_open(ui.ctx())
+        && !GraphViewer::properties_open(ui.ctx())
+        && !ui.ctx().egui_wants_keyboard_input()
         && ui
             .ctx()
             .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
@@ -126,7 +148,11 @@ pub fn show(
             .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
         ui.ctx().request_repaint();
     }
-    let delete = !ui.ctx().egui_wants_keyboard_input()
+    let delete = !search.is_open()
+        && !crate::canvas_tools::picker_open(ui.ctx())
+        && !egui::Popup::is_any_open(ui.ctx())
+        && !GraphViewer::properties_open(ui.ctx())
+        && !ui.ctx().egui_wants_keyboard_input()
         && ui.ctx().input_mut(|input| {
             input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
                 || input.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)
@@ -156,7 +182,10 @@ pub fn show(
         fit_viewport,
         snarl,
         maximum_zoom,
-        viewer.camera_focus.is_some() || wire_dragging || pointer_navigation,
+        viewer.camera_focus.is_some()
+            || wire_dragging
+            || pointer_navigation
+            || crate::canvas_tools::consume_fit_change(ui.ctx()),
     );
     if let Some(fitted) = fitted {
         viewer.camera_focus = Some((fitted.graph_center, fitted.screen_center, Some(fitted.zoom)));
@@ -169,10 +198,16 @@ pub fn show(
                 .min(minimum_zoom * magnification),
         );
     }
-    SnarlWidget::new()
-        .id(canvas_id)
-        .style(style)
-        .show(snarl, viewer, ui);
+    viewer.endpoint_scroll.begin_geometry_frame();
+    viewer.sync_endpoint_view(snarl);
+    crate::canvas_tools::begin(ui.ctx(), options.tools_id, viewer, snarl);
+    ui.scope(|ui| {
+        options.density.apply(ui);
+        SnarlWidget::new()
+            .id(canvas_id)
+            .style(style)
+            .show(snarl, viewer, ui);
+    });
     if let Some(transform) = viewer.canvas_transform {
         ui.ctx()
             .data_mut(|data| data.insert_temp(transform_marker, CanvasTransform(transform)));
@@ -186,6 +221,12 @@ pub fn show(
         viewer.target_blocks,
         viewer.endpoint_scroll,
     );
+    // Header filters, scrollbars, search and graph edits can change the visible
+    // semantic-to-visual pin projection during the pass. Reconcile after native
+    // node interaction has finished; never mutate the mapping to update a view.
+    if viewer.sync_endpoint_view(snarl) {
+        ui.ctx().request_repaint();
+    }
     if options.show_minimap
         && let (Some(transform), Some(node_sizes)) =
             (viewer.canvas_transform, viewer.node_sizes.as_deref())
@@ -239,7 +280,7 @@ pub(crate) fn current_fit_rects(
     view_generation: u64,
     snarl: &Snarl<CanvasNode>,
 ) -> Option<(egui::Rect, Vec<(SnarlNodeId, egui::Rect)>)> {
-    let canvas_id = egui::Id::new((CANVAS_ID, id_salt, view_generation));
+    let canvas_id = egui::Id::unique((CANVAS_ID, id_salt, view_generation));
     let transform =
         context.data(|data| data.get_temp::<CanvasTransform>(canvas_id.with("transform")))?;
     let (viewport, rects) = fit::measured_rects(context, canvas_id, snarl)?;
@@ -258,7 +299,7 @@ pub fn current_pin_interaction_ids(
     id_salt: egui::Id,
     view_generation: u64,
 ) -> Vec<egui::Id> {
-    let canvas_id = egui::Id::new((CANVAS_ID, id_salt, view_generation));
+    let canvas_id = egui::Id::unique((CANVAS_ID, id_salt, view_generation));
     context.data(|data| {
         data.get_temp::<PinInteractionIds>(canvas_id.with("pin_interaction_ids"))
             .unwrap_or_default()
@@ -322,8 +363,8 @@ mod tests {
 
     #[test]
     fn edge_pan_activation_accepts_only_recorded_pin_drags() {
-        let pin = egui::Id::new("pin");
-        let node = egui::Id::new("node");
+        let pin = egui::Id::unique("pin");
+        let node = egui::Id::unique("node");
 
         assert!(pin_drag_active(true, Some(pin), &[pin]));
         assert!(!pin_drag_active(true, Some(node), &[pin]));

@@ -1,5 +1,5 @@
 use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
-use egui::{Button, FontData, FontFamily, FontId, Response, RichText, Ui, WidgetInfo, WidgetType};
+use egui::{Button, FontData, FontFamily, FontId, Response, RichText, Role, Ui, WidgetInfo};
 use lucide_icons::{Icon, LUCIDE_FONT_BYTES};
 
 const FONT_NAME: &str = "ferrule-lucide";
@@ -28,7 +28,7 @@ pub fn button(ui: &mut Ui, enabled: bool, icon: Icon, label: impl Into<String>) 
             crate::theme::METRICS.icon_button_size,
         )),
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &label));
     response.on_hover_text(label)
 }
 

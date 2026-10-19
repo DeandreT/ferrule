@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::canvas_layout::arrange_snarl;
 use crate::layout_store::layout_path;
@@ -2705,7 +2707,7 @@ fn debug_preview_steps_before_target_writes_and_continues() {
     assert!(app.run_report.is_none());
 
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| app.show_preview_setup(ui.ctx()));
+    let _ = context.run_test_ui(Default::default(), |ui| app.show_preview_setup(ui.ctx()));
     assert!(
         app.pending_preview.is_some(),
         "showing paused UI is nonblocking"
@@ -3031,13 +3033,13 @@ fn position_condition_ui_rejects_zero_and_preserves_overlong_input() {
     };
     let context = egui::Context::default();
     let mut valid = true;
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         valid = preview_ui::show_breakpoint_position_condition(ui, &mut condition);
     });
     assert!(!valid);
     condition.text = "9".repeat(100);
     let original = condition.text.clone();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         valid = preview_ui::show_breakpoint_position_condition(ui, &mut condition);
     });
     assert!(!valid);
@@ -3128,7 +3130,7 @@ fn pipeline_runner_keeps_dirty_project_open_and_reports_written_output() -> anyh
     draft.inputs[0].path = "orders.json".into();
     draft.outputs[0].path = "result.json".into();
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_pipeline_run_setup(ui.ctx());
     });
     app.start_pipeline_run();

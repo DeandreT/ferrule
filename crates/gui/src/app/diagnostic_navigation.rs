@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 
 use engine::{
@@ -716,7 +719,7 @@ mod tests {
             );
 
             let context = egui::Context::default();
-            let output = context.run_ui(
+            let output = context.run_test_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,

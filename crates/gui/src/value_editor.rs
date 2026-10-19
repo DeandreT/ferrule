@@ -1,6 +1,9 @@
 //! Small widgets for editing `ir::Value`s in place: a `Const` node's literal,
 //! and a `ValueMap` node's lookup table.
 
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use egui::Ui;
 use ir::Value;
 
@@ -60,7 +63,7 @@ pub fn title_preview(value: &Value) -> String {
 }
 
 pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
-    egui::ComboBox::from_id_salt(ui.id().with("value_kind"))
+    egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
         .selected_text(value.type_name())
         .show_ui(ui, |ui| {
             if ui
@@ -185,7 +188,7 @@ pub fn show_value_map_editor(
             scroll_style.bar_width = 9.0;
             scroll_style.handle_min_length = 28.0;
             ui.style_mut().spacing.scroll = scroll_style;
-            let scroll = egui::ScrollArea::vertical()
+            let mut scroll = egui::ScrollArea::vertical()
                 .id_salt("value_map_table_scroll")
                 .max_height(VALUE_MAP_MAX_HEIGHT)
                 .auto_shrink([false, true])
@@ -195,31 +198,38 @@ pub fn show_value_map_editor(
                     scroll_bar: true,
                     drag: egui::scroll_area::DragScroll::Never,
                     mouse_wheel: true,
-                })
-                .show(ui, |ui| {
-                    let grid = if compact {
-                        egui::Grid::new("value_map_table_compact").num_columns(4)
-                    } else {
-                        egui::Grid::new("value_map_table").num_columns(9)
-                    };
-                    grid.striped(true).spacing([4.0, 3.0]).show(ui, |ui| {
-                        for (row, entries) in table.chunks_mut(2).enumerate() {
-                            show_value_map_entry(ui, row * 2, &mut entries[0], &mut remove_idx);
-                            if !compact {
-                                ui.weak("|");
-                                if let Some(entry) = entries.get_mut(1) {
-                                    show_value_map_entry(ui, row * 2 + 1, entry, &mut remove_idx);
-                                } else {
-                                    for _ in 0..4 {
-                                        ui.label("");
-                                    }
+                });
+            let wheel_offset_id = ui.scope_id().with("value_map_wheel_offset");
+            if let Some(offset) = ui
+                .ctx()
+                .data_mut(|data| data.remove_temp::<f32>(wheel_offset_id))
+            {
+                scroll = scroll.vertical_scroll_offset(offset);
+            }
+            let scroll = scroll.show(ui, |ui| {
+                let grid = if compact {
+                    egui::Grid::new("value_map_table_compact").num_columns(4)
+                } else {
+                    egui::Grid::new("value_map_table").num_columns(9)
+                };
+                grid.striped(true).spacing([4.0, 3.0]).show(ui, |ui| {
+                    for (row, entries) in table.chunks_mut(2).enumerate() {
+                        show_value_map_entry(ui, row * 2, &mut entries[0], &mut remove_idx);
+                        if !compact {
+                            ui.weak("|");
+                            if let Some(entry) = entries.get_mut(1) {
+                                show_value_map_entry(ui, row * 2 + 1, entry, &mut remove_idx);
+                            } else {
+                                for _ in 0..4 {
+                                    ui.label("");
                                 }
                             }
-                            ui.end_row();
                         }
-                    });
+                        ui.end_row();
+                    }
                 });
-            apply_value_map_wheel(ui, &scroll, wheel_delta_y);
+            });
+            apply_value_map_wheel(ui, &scroll, wheel_delta_y, wheel_offset_id);
         });
         if let Some(i) = remove_idx {
             table.remove(i);
@@ -236,7 +246,7 @@ pub fn show_value_map_editor(
             }
             ui.push_id("value_map_default_cell", |ui| {
                 if changed {
-                    let id = ui.id().with("value_map_cell_draft");
+                    let id = ui.scope_id().with("value_map_cell_draft");
                     ui.ctx().data_mut(|data| data.remove::<MapCellDraft>(id));
                 }
                 if let Some(value) = default {
@@ -255,7 +265,7 @@ fn show_value_map_entry(
 ) {
     let key_draft_id = ui
         .push_id(("value_map_key", index), |ui| {
-            let draft_id = ui.id().with("value_map_cell_draft");
+            let draft_id = ui.scope_id().with("value_map_cell_draft");
             edit_map_value(ui, from, &format!("Entry {} key", index + 1), true);
             draft_id
         })
@@ -263,7 +273,7 @@ fn show_value_map_entry(
     ui.weak("->");
     let value_draft_id = ui
         .push_id(("value_map_value", index), |ui| {
-            let draft_id = ui.id().with("value_map_cell_draft");
+            let draft_id = ui.scope_id().with("value_map_cell_draft");
             edit_map_value(ui, to, &format!("Entry {} value", index + 1), true);
             draft_id
         })
@@ -292,6 +302,7 @@ fn apply_value_map_wheel(
     ui: &mut Ui,
     scroll: &egui::scroll_area::ScrollAreaOutput<()>,
     wheel_delta_y: Option<f32>,
+    wheel_offset_id: egui::Id,
 ) {
     let Some(delta_y) = wheel_delta_y else {
         return;
@@ -301,18 +312,19 @@ fn apply_value_map_wheel(
     }
 
     let next_offset = value_map_wheel_offset(
-        scroll.state.offset.y,
+        scroll.state.clamped_offset().y,
         delta_y,
         scroll.content_size.y,
         scroll.inner_rect.height(),
     );
-    if next_offset == scroll.state.offset.y {
+    if next_offset == scroll.state.clamped_offset().y {
         return;
     }
 
-    let mut state = scroll.state;
-    state.offset.y = next_offset;
-    state.store(ui.ctx(), scroll.id);
+    // Apply via ScrollArea's public builder on the next pass. Its state offset
+    // is private because egui now coordinates it with kinetic scroll physics.
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(wheel_offset_id, next_offset));
     ui.ctx().request_repaint();
 }
 
@@ -404,7 +416,7 @@ impl MapCellDraft {
 }
 
 fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
-    let draft_id = ui.id().with("value_map_cell_draft");
+    let draft_id = ui.scope_id().with("value_map_cell_draft");
     let mut draft = ui
         .ctx()
         .data_mut(|data| data.get_temp::<MapCellDraft>(draft_id))
@@ -432,7 +444,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
         response.widget_info(|| egui::WidgetInfo {
             current_text_value: Some(draft.kind.label().to_owned()),
             ..egui::WidgetInfo::labeled(
-                egui::WidgetType::ComboBox,
+                egui::Role::ComboBox,
                 ui.is_enabled(),
                 format!("{label} type"),
             )
@@ -445,7 +457,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
         );
         response.widget_info(|| {
             egui::WidgetInfo::labeled(
-                egui::WidgetType::Button,
+                egui::Role::Button,
                 ui.is_enabled() && valid,
                 format!("Apply {label}"),
             )
@@ -570,7 +582,7 @@ mod tests {
         let context = egui::Context::default();
         crate::icons::install(&context);
 
-        let _ = context.run_ui(Default::default(), |ui| {
+        let _ = context.run_test_ui(Default::default(), |ui| {
             size = ui
                 .with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                     ui.scope(|ui| show_value_map_editor(ui, &mut table, &mut default, None))

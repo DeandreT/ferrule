@@ -72,7 +72,7 @@ impl FerruleApp {
             return;
         };
         self.stage_canvas_generation = generation;
-        let namespace = egui::Id::new((
+        let namespace = egui::Id::unique((
             "embedded_pipeline_stage",
             generation,
             &path,
@@ -206,7 +206,7 @@ impl FerruleApp {
         let mut discard = false;
         let mut keep = false;
         egui::Window::new("Unapplied stage mapping changes")
-            .id(egui::Id::new("pipeline_stage_close_guard"))
+            .id(egui::Id::unique("pipeline_stage_close_guard"))
             .collapsible(false)
             .resizable(false)
             .show(context, |ui| {

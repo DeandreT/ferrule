@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 
 fn app() -> FerruleApp {
@@ -52,7 +54,7 @@ fn frame(
     editing: bool,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             time: Some(context.cumulative_frame_nr() as f64 / 10.0),
             screen_rect: Some(egui::Rect::from_min_size(
@@ -230,7 +232,7 @@ fn source_field_popup_keyboard_edit_saves_pending_history_and_roundtrips_undo_re
         coalesce: bool,
         events: Vec<egui::Event>,
     ) -> egui::FullOutput {
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
                 time: Some(context.cumulative_frame_nr() as f64 / 10.0),
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -309,6 +311,15 @@ fn source_field_popup_keyboard_edit_saves_pending_history_and_roundtrips_undo_re
     for _ in 0..7 {
         output = canvas_frame(&mut app, &context, now, false, Vec::new());
     }
+    let header = position(&output, "name");
+    canvas_frame(
+        &mut app,
+        &context,
+        now,
+        false,
+        vec![egui::Event::PointerMoved(header)],
+    );
+    output = canvas_frame(&mut app, &context, now, false, Vec::new());
     let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
     click_canvas(&mut app, &context, now, position(&output, &pencil));
     for _ in 0..4 {

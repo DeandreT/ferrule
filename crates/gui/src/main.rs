@@ -13,6 +13,8 @@ mod canvas_layout;
 mod canvas_minimap;
 #[path = "canvas/search.rs"]
 mod canvas_search;
+#[path = "canvas/tools.rs"]
+mod canvas_tools;
 mod diagnostics;
 mod document;
 mod extra_sources;
@@ -35,8 +37,13 @@ mod schema_scalar;
 mod schema_tree;
 mod scope_editor;
 mod target_xml_type;
+#[cfg(test)]
+mod test_ui;
 mod theme;
 mod value_editor;
+#[cfg(test)]
+#[path = "canvas/vendor_hook_tests.rs"]
+mod vendor_hook_tests;
 mod wire_colors;
 mod workspace_layout;
 mod x12_tooltips;

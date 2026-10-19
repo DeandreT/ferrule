@@ -554,7 +554,7 @@ fn output_frame(
         output: 0,
     });
     let mut error = None;
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -758,7 +758,7 @@ fn palette_frame(
     events: Vec<egui::Event>,
 ) -> Option<String> {
     let mut error = None;
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::scope_editor::computed_properties::{self, Profile};
 use ir::{Instance, ScalarType, ScalarTypeSet, SchemaNode, Value};
@@ -435,7 +437,7 @@ fn computed_property_profiles_reject_other_domains_owners_and_same_frame_control
         let (mut candidate, context) = setup(&retained, true, MappingDocument::Main);
         candidate.mapping_workspace.active = document;
         if document == MappingDocument::Main {
-            candidate.embedded_stage_namespace = Some(egui::Id::new("test-embedded-stage"));
+            candidate.embedded_stage_namespace = Some(egui::Id::unique("test-embedded-stage"));
         }
         // The selected document is part of the saved layout, so establish this
         // read-only fixture's baseline after its route has actually rendered.
@@ -484,7 +486,7 @@ fn computed_property_profiles_reject_other_domains_owners_and_same_frame_control
     let context = egui::Context::default();
     let mut last = None;
     for _ in 0..4 {
-        last = Some(context.run_ui(
+        last = Some(context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -509,7 +511,7 @@ fn computed_property_profiles_reject_other_domains_owners_and_same_frame_control
     );
     assert_eq!(points.len(), 1);
     for pressed in [true, false] {
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

@@ -168,8 +168,8 @@ fn native_pin(
     output: bool,
 ) -> egui::Pos2 {
     let salt = match document {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(index) => egui::Id::new(("named_target_canvas", index)),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(index) => egui::Id::unique(("named_target_canvas", index)),
         MappingDocument::Function(_) => unreachable!(),
     };
     let ids = crate::canvas_keyboard::current_pin_interaction_ids(
@@ -340,8 +340,8 @@ fn node_rect(
         .find_map(|(id, node)| (*node == wanted).then_some(id))
         .unwrap();
     let salt = match document {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(index) => egui::Id::new(("named_target_canvas", index)),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(index) => egui::Id::unique(("named_target_canvas", index)),
         MappingDocument::Function(_) => unreachable!(),
     };
     let ids = crate::canvas_keyboard::current_pin_interaction_ids(
@@ -373,6 +373,16 @@ fn open_editor(
         return rendered;
     }
     let bounds = node_rect(app, context, document, CanvasNode::Graph(1));
+    frame(
+        app,
+        context,
+        true,
+        vec![egui::Event::PointerMoved(egui::pos2(
+            bounds.center().x,
+            bounds.top() + 12.0,
+        ))],
+    );
+    let rendered = settle(app, context, true);
     let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
     let positions = visible_texts(&rendered, &pencil)
         .into_iter()

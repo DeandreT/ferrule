@@ -11,9 +11,13 @@ pub struct CanvasSearchState {
     query: String,
     match_cursor: usize,
     request_focus: bool,
+    revealed_endpoint: Option<(CanvasNode, usize)>,
 }
 
 impl CanvasSearchState {
+    pub(crate) fn is_open(&self) -> bool {
+        self.endpoint.is_some()
+    }
     pub fn open_selected(&mut self, selected: &[SnarlNodeId], snarl: &Snarl<CanvasNode>) -> bool {
         let Some(&node_id) = selected.first().filter(|_| selected.len() == 1) else {
             return false;
@@ -65,6 +69,28 @@ impl CanvasSearchState {
             })
             .collect()
     }
+
+    fn update_reveal(
+        &mut self,
+        source_blocks: &[SourceBlock],
+        target_blocks: &[TargetBlock],
+        scroll: &mut EndpointScrollState,
+    ) -> bool {
+        let active = self.active_match(source_blocks, target_blocks);
+        let mut changed = false;
+        if let Some((previous, total)) = self.revealed_endpoint
+            && active.is_none_or(|(node, _)| node != previous)
+        {
+            changed |= scroll.clear_reveal(previous, total);
+            self.revealed_endpoint = None;
+        }
+        if let Some((node, semantic)) = active {
+            let total = endpoint_fields(node, source_blocks, target_blocks).len();
+            changed |= scroll.reveal(node, total, semantic);
+            self.revealed_endpoint = Some((node, total));
+        }
+        changed
+    }
 }
 
 pub fn show(
@@ -76,12 +102,18 @@ pub fn show(
     target_blocks: &[TargetBlock],
     scroll: &mut EndpointScrollState,
 ) {
+    if state.update_reveal(source_blocks, target_blocks, scroll) {
+        ctx.request_repaint();
+    }
     let Some(endpoint) = state.endpoint else {
         return;
     };
     let fields = endpoint_fields(endpoint, source_blocks, target_blocks);
     if fields.is_empty() {
         state.endpoint = None;
+        if state.update_reveal(source_blocks, target_blocks, scroll) {
+            ctx.request_repaint();
+        }
         return;
     }
 
@@ -163,6 +195,9 @@ pub fn show(
     }
     if close {
         state.endpoint = None;
+        if state.update_reveal(source_blocks, target_blocks, scroll) {
+            ctx.request_repaint();
+        }
         return;
     }
 
@@ -177,10 +212,9 @@ pub fn show(
         } else if move_match > 0 {
             state.match_cursor = (state.match_cursor + 1) % matches.len();
         }
-        let field = matches[state.match_cursor];
-        if scroll.reveal(endpoint, fields.len(), field) {
-            ctx.request_repaint();
-        }
+    }
+    if state.update_reveal(source_blocks, target_blocks, scroll) {
+        ctx.request_repaint();
     }
 }
 
@@ -218,6 +252,46 @@ fn endpoint_fields<'a>(
 mod tests {
     use super::*;
     use crate::canvas::{SourceLeaf, TargetLeaf};
+
+    #[test]
+    fn clearing_closing_and_switching_search_remove_temporary_filtered_fields() {
+        let schema = ir::SchemaNode::group(
+            "source",
+            (0..5)
+                .map(|index| ir::SchemaNode::scalar(format!("s{index}"), ir::ScalarType::String))
+                .collect(),
+        );
+        let sources = crate::canvas::source_blocks(&schema);
+        let targets = crate::canvas::target_blocks(&schema);
+        let source = CanvasNode::SourceBlock(0);
+        let target = CanvasNode::TargetBlock(0);
+        let mut scroll = EndpointScrollState::default();
+        scroll.set_connected(source, 5, [1]);
+        scroll.set_connected(target, 5, [2]);
+        scroll.set_connected_only(source, true);
+        scroll.set_connected_only(target, true);
+        let mut search = CanvasSearchState {
+            endpoint: Some(source),
+            query: "s3".into(),
+            ..Default::default()
+        };
+        assert!(search.update_reveal(&sources, &targets, &mut scroll));
+        assert_eq!(scroll.eligible_indices(source, 5), vec![1, 3]);
+        search.query.clear();
+        assert!(search.update_reveal(&sources, &targets, &mut scroll));
+        assert_eq!(scroll.eligible_indices(source, 5), vec![1]);
+        search.query = "s4".into();
+        search.update_reveal(&sources, &targets, &mut scroll);
+        assert_eq!(scroll.eligible_indices(source, 5), vec![1, 4]);
+        search.endpoint = Some(target);
+        assert!(search.update_reveal(&sources, &targets, &mut scroll));
+        assert_eq!(scroll.eligible_indices(source, 5), vec![1]);
+        assert_eq!(scroll.eligible_indices(target, 5), vec![2, 4]);
+        search.endpoint = None;
+        assert!(search.update_reveal(&sources, &targets, &mut scroll));
+        assert_eq!(scroll.eligible_indices(target, 5), vec![2]);
+        assert!(!search.update_reveal(&sources, &targets, &mut scroll));
+    }
 
     #[test]
     fn search_matches_compact_labels_and_full_paths_case_insensitively() {

@@ -1,0 +1,56 @@
+# Minimal library manifest derived from the crates.io egui-snarl 0.11.0 package.
+# See README.md for provenance and the local patch boundary.
+[package]
+edition = "2024"
+rust-version = "1.95"
+name = "egui-snarl"
+version = "0.11.0"
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Node-graphs for egui"
+documentation = "https://docs.rs/egui-snarl"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/zakarumych/egui-snarl"
+
+[features]
+serde = ["dep:serde", "egui/serde", "slab/serde"]
+
+[lib]
+name = "egui_snarl"
+path = "src/lib.rs"
+
+[[test]]
+name = "viewer_hooks"
+path = "tests/viewer_hooks.rs"
+
+[dependencies.ahash]
+version = "0.8.12"
+default-features = false
+
+[dependencies.egui]
+version = "0.37"
+
+[dependencies.egui-probe]
+version = "0.12.0"
+features = ["derive"]
+optional = true
+
+[dependencies.egui-scale]
+version = "0.6.1"
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+optional = true
+
+[dependencies.slab]
+version = "0.4"
+
+[dependencies.smallvec]
+version = "1.15"
+features = ["const_new"]

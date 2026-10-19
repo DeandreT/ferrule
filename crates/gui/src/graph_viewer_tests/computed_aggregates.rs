@@ -135,7 +135,7 @@ fn frame(
         output: 0,
     });
     let mut function_output = 0;
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -151,7 +151,7 @@ fn frame(
                 if isolated {
                     viewer.function_output = Some(&mut function_output);
                 }
-                viewer.show_output(&pin, ui, snarl);
+                show_properties_with_header(&mut viewer, &pin, ui, snarl);
                 eprintln!("Calculated properties original error={:?}", viewer.error);
             });
         },

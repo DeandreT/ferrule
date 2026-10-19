@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, DynamicSourcePath, NamedSource, SequenceExpr};
@@ -148,7 +150,7 @@ fn frame(
     context: &egui::Context,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -229,6 +231,7 @@ fn scroll_expression_picker(app: &mut FerruleApp, context: &egui::Context) {
         vec![
             egui::Event::PointerMoved(position),
             egui::Event::MouseWheel {
+                source: egui::MouseWheelSource::Unknown,
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, -600.0),
                 phase: egui::TouchPhase::Move,

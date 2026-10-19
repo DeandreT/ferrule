@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Node, Scope, ScopeIteration, TabularBoundaryKind};
@@ -106,7 +108,7 @@ fn named_fixed_width_target_saves_reopens_and_emits_exact_unicode_bytes_from_bot
     assert!(draft.schema_is_ready());
     let untouched_options = draft.options.clone();
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_target_setup(ui.ctx())
     });
     assert_eq!(
@@ -130,7 +132,7 @@ fn named_fixed_width_target_saves_reopens_and_emits_exact_unicode_bytes_from_bot
     let draft = app.extra_target_draft.as_mut().unwrap();
     draft.name = "fixed-renamed".into();
     draft.output_path = renamed_path.to_str().unwrap().to_owned();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_target_setup(ui.ctx())
     });
     assert_eq!(

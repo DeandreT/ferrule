@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Node, Scope, ScopeIteration, TabularBoundaryKind};
@@ -97,7 +99,7 @@ fn named_csv_dialects_survive_history_save_reopen_and_both_execution_hosts() -> 
     assert!(source.schema_is_ready());
     let source_staged = format!("{:?}", app.extra_source_draft);
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_source_setup(ui.ctx());
     });
     assert_eq!(format!("{:?}", app.extra_source_draft), source_staged);
@@ -151,7 +153,7 @@ fn named_csv_dialects_survive_history_save_reopen_and_both_execution_hosts() -> 
     target_dialect.utf8_bom = true;
     assert!(target.schema_is_ready());
     let target_staged = format!("{:?}", app.extra_target_draft);
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_target_setup(ui.ctx());
     });
     assert_eq!(format!("{:?}", app.extra_target_draft), target_staged);

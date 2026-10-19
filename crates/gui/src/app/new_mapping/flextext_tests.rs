@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use mapping::{FlexLineEnding, ScopeConstruction};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -108,7 +110,7 @@ fn flextext_boundaries_keep_independent_layouts_through_history_save_reopen_and_
     let target_options = staged_draft(&mut app, SchemaSide::Target).options()?;
     assert_ne!(source_options, target_options);
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_new_mapping_setup(ui.ctx())
     });
     assert_eq!(
@@ -260,7 +262,7 @@ fn flextext_optional_data_paths_stay_empty_and_invalid_paths_cannot_finish() -> 
             .write_bom()
     );
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_new_mapping_setup(ui.ctx())
     });
     assert!(

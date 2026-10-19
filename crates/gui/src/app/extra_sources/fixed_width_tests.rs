@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::extra_sources::ExtraSourceDraftError;
 use ir::{ScalarType, SchemaNode};
@@ -116,7 +118,7 @@ fn named_fixed_width_input_survives_history_save_reopen_and_both_hosts() -> anyh
     assert!(draft.schema_is_ready());
     let staged = format!("{:?}", app.extra_source_draft);
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_extra_source_setup(ui.ctx())
     });
     assert_eq!(format!("{:?}", app.extra_source_draft), staged);

@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, NamedTarget, Node, UserFunction};
@@ -158,7 +160,7 @@ fn complete_original(app: &FerruleApp) -> (String, String, Vec<String>, usize, u
 
 fn settle(app: &mut FerruleApp, context: &egui::Context, size: egui::Vec2) {
     for _ in 0..12 {
-        let _ = context.run_ui(
+        let _ = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                 ..Default::default()
@@ -174,9 +176,9 @@ fn settle(app: &mut FerruleApp, context: &egui::Context, size: egui::Vec2) {
 fn assert_complete_visible_frames(app: &FerruleApp, context: &egui::Context) {
     let document = app.mapping_workspace.active;
     let salt = app.embedded_canvas_id(match document {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(id) => egui::Id::new(("named_target_canvas", id)),
-        MappingDocument::Function(id) => egui::Id::new(("function_mapping_canvas", id.get())),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(id) => egui::Id::unique(("named_target_canvas", id)),
+        MappingDocument::Function(id) => egui::Id::unique(("function_mapping_canvas", id.get())),
     });
     let canvas = canvas(app, document);
     let actual = crate::canvas_keyboard::current_fit_rects(

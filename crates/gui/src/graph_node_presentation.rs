@@ -1,30 +1,52 @@
 //! Compact canvas summaries; the graph remains the source of operation names.
 
-use egui::{Response, Ui, WidgetInfo, WidgetType};
+use std::sync::Arc;
+
+use egui::{Response, Role, TextStyle, Ui, Vec2, WidgetInfo};
 use functions::BuiltinCategory;
 use lucide_icons::Icon;
 use mapping::{AggregateOp, Node, RuntimeValue};
 
-const SUMMARY_CHAR_LIMIT: usize = 16;
-const PIN_CHAR_LIMIT: usize = 18;
+pub(super) const MIN_HEADER_WIDTH: f32 = 32.0;
+pub(super) const MAX_HEADER_WIDTH: f32 = 320.0;
+const MAX_MANUAL_HEADER_WIDTH: f32 = 480.0;
+// A work/allocation bound, not a character-based visible-width policy. The
+// actual font galley below decides where the single-line preview is elided.
+const MAX_LITERAL_PREVIEW_CHARS: usize = 4096;
 
+#[derive(Clone)]
 pub(super) struct Header {
     icon: Icon,
     summary: String,
+    accessible_label: String,
 }
 
-fn compact(text: &str, limit: usize) -> String {
-    let text = text
-        .chars()
-        .map(|ch| if matches!(ch, '\r' | '\n') { ' ' } else { ch })
-        .collect::<String>();
-    if text.chars().count() <= limit {
-        text
-    } else {
-        let mut short = text.chars().take(limit - 1).collect::<String>();
-        short.push('…');
-        short
+/// Quoted, escaped presentation only; this never changes a stored literal.
+pub(super) fn literal_preview(value: &ir::Value) -> String {
+    let ir::Value::String(text) = value else {
+        return match value {
+            ir::Value::Null => "null".into(),
+            _ => crate::value_editor::display_string(value),
+        };
+    };
+    let mut preview = String::from("\"");
+    let mut chars = text.chars();
+    for ch in chars.by_ref().take(MAX_LITERAL_PREVIEW_CHARS) {
+        match ch {
+            '\n' => preview.push_str("\\n"),
+            '\r' => preview.push_str("\\r"),
+            '\t' => preview.push_str("\\t"),
+            '\\' => preview.push_str("\\\\"),
+            '"' => preview.push_str("\\\""),
+            ch if ch.is_control() => preview.extend(ch.escape_debug()),
+            ch => preview.push(ch),
+        }
     }
+    if chars.next().is_some() {
+        preview.push('…');
+    }
+    preview.push('"');
+    preview
 }
 
 fn builtin_icon(category: BuiltinCategory) -> Icon {
@@ -259,14 +281,12 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
     let (icon, summary) = match node {
         Node::OwnedSourceField(field) => (
             Icon::ArrowRightFromLine,
-            compact(
-                field
-                    .source
-                    .path
-                    .last()
-                    .map_or("owned root", String::as_str),
-                SUMMARY_CHAR_LIMIT,
-            ),
+            field
+                .source
+                .path
+                .last()
+                .map_or("owned root", String::as_str)
+                .to_owned(),
         ),
         Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
         Node::Const { value } => {
@@ -277,15 +297,11 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 ir::Value::Bool(_) => Icon::Binary,
                 ir::Value::Null | ir::Value::JsonNull(_) | ir::Value::XmlNil(_) => Icon::CircleHelp,
             };
-            let display = crate::value_editor::display_string(value);
-            let summary = if display.is_empty() {
-                if matches!(value, ir::Value::Null) {
-                    "null".to_string()
-                } else {
-                    "empty".to_string()
+            let summary = match value {
+                ir::Value::Null | ir::Value::JsonNull(_) | ir::Value::XmlNil(_) => {
+                    value.type_name().to_owned()
                 }
-            } else {
-                compact(&display, SUMMARY_CHAR_LIMIT)
+                _ => format!("{} {}", value.type_name(), literal_preview(value)),
             };
             (icon, summary)
         }
@@ -295,51 +311,38 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 builtin.map_or(Icon::FunctionSquare, |builtin| {
                     builtin_icon(builtin.category)
                 }),
-                compact(
-                    builtin.map_or(function.as_str(), |builtin| builtin.display_name),
-                    SUMMARY_CHAR_LIMIT,
-                ),
+                builtin
+                    .map_or(function.as_str(), |builtin| builtin.display_name)
+                    .to_owned(),
             )
         }
         Node::UserFunctionCall { .. } => (
             Icon::FunctionSquare,
-            compact(
-                title.strip_prefix("Call: ").unwrap_or(title),
-                SUMMARY_CHAR_LIMIT,
-            ),
+            title.strip_prefix("Call: ").unwrap_or(title).to_owned(),
         ),
-        Node::If { .. } => (Icon::GitBranch, String::new()),
+        Node::If { .. } => (Icon::GitBranch, "If / else".into()),
         Node::Raise { .. } => (Icon::CircleX, "error".into()),
         Node::Position { .. } | Node::JoinPosition { .. } => (Icon::ListOrdered, String::new()),
         Node::SourceField { path, .. } => {
             if matches!(title, "Stage input" | "Mapped output") {
                 (Icon::ListOrdered, title.into())
             } else if let Some(item) = title.strip_prefix("Generated item #") {
-                (
-                    Icon::ListOrdered,
-                    compact(&format!("item #{item}"), SUMMARY_CHAR_LIMIT),
-                )
+                (Icon::ListOrdered, format!("item #{item}"))
             } else {
                 (
                     Icon::ArrowRightFromLine,
-                    path.last().map_or_else(
-                        || "current".into(),
-                        |field| compact(field, SUMMARY_CHAR_LIMIT),
-                    ),
+                    path.last().cloned().unwrap_or_else(|| "current".into()),
                 )
             }
         }
         Node::SourceRootField { path, required } => (
             Icon::ArrowRightFromLine,
-            compact(
-                &format!(
-                    "{} {}",
-                    if *required { "required" } else { "primary" },
-                    path.last()
-                        .filter(|field| !field.is_empty())
-                        .map_or("field?", String::as_str),
-                ),
-                SUMMARY_CHAR_LIMIT,
+            format!(
+                "{} {}",
+                if *required { "required" } else { "primary" },
+                path.last()
+                    .filter(|field| !field.is_empty())
+                    .map_or("field?", String::as_str),
             ),
         ),
         Node::SourceRootXmlTypeEquals {
@@ -351,38 +354,29 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 .map_or(canonical_expanded_type.as_str(), |(_, local)| local);
             (
                 Icon::Check,
-                compact(
-                    &format!(
-                        "type = {}",
-                        if local_type.is_empty() {
-                            "?"
-                        } else {
-                            local_type
-                        }
-                    ),
-                    SUMMARY_CHAR_LIMIT,
+                format!(
+                    "type = {}",
+                    if local_type.is_empty() {
+                        "?"
+                    } else {
+                        local_type
+                    }
                 ),
             )
         }
         Node::JoinField { join, path, .. } => (
             Icon::ArrowRightFromLine,
-            compact(
-                &format!(
-                    "#{} {}",
-                    join.get(),
-                    path.last().map_or("current", String::as_str),
-                ),
-                SUMMARY_CHAR_LIMIT,
+            format!(
+                "#{} {}",
+                join.get(),
+                path.last().map_or("current", String::as_str),
             ),
         ),
         Node::DynamicSourceField { object, .. } => (
             Icon::Braces,
             format!(
                 "dynamic {}",
-                object.last().map_or_else(
-                    || "current".into(),
-                    |field| compact(field, SUMMARY_CHAR_LIMIT),
-                ),
+                object.last().map_or("current", String::as_str),
             ),
         ),
         Node::SourceDocumentPath => (Icon::FileText, "path".into()),
@@ -396,25 +390,19 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             if name.is_empty() {
                 "input?".into()
             } else {
-                compact(name, SUMMARY_CHAR_LIMIT)
+                name.clone()
             },
         ),
         Node::FunctionParameter { .. } => (
             Icon::Variable,
-            compact(
-                title.strip_prefix("Input: ").unwrap_or(title),
-                SUMMARY_CHAR_LIMIT,
-            ),
+            title.strip_prefix("Input: ").unwrap_or(title).to_owned(),
         ),
         Node::ValueMap { table, .. } => (
             Icon::ArrowRightLeft,
-            compact(
-                &format!(
-                    "{} {}",
-                    table.len(),
-                    if table.len() == 1 { "entry" } else { "entries" }
-                ),
-                SUMMARY_CHAR_LIMIT,
+            format!(
+                "{} {}",
+                table.len(),
+                if table.len() == 1 { "entry" } else { "entries" }
             ),
         ),
         Node::Lookup { collection, .. } => (
@@ -422,7 +410,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             if collection.is_empty() {
                 "lookup".into()
             } else {
-                compact(&collection.join("/"), SUMMARY_CHAR_LIMIT)
+                collection.join("/")
             },
         ),
         Node::CollectionFind { .. } => (Icon::Search, "find".into()),
@@ -433,13 +421,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         | Node::JoinAggregate { function, .. } => (Icon::Sigma, aggregate_label(*function).into()),
         Node::XmlMixedContent { path, .. } => (
             Icon::FileCode,
-            format!(
-                "mixed {}",
-                path.last().map_or_else(
-                    || "current".into(),
-                    |field| compact(field, SUMMARY_CHAR_LIMIT),
-                ),
-            ),
+            format!("mixed {}", path.last().map_or("current", String::as_str),),
         ),
         Node::XmlSerialize { .. } => (Icon::FileCode, "serialize".into()),
         _ => return None,
@@ -453,7 +435,11 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
     } else {
         summary
     };
-    Some(Header { icon, summary })
+    Some(Header {
+        icon,
+        summary: summary.replace('\r', "\\r").replace('\n', "\\n"),
+        accessible_label: hint(node, &complete_title(Some(node), full_title.to_owned())),
+    })
 }
 
 pub(super) fn show_endpoint_header(ui: &mut Ui, source: bool, full_title: &str) -> Response {
@@ -465,7 +451,7 @@ pub(super) fn show_endpoint_header(ui: &mut Ui, source: bool, full_title: &str) 
     let title = full_title.strip_prefix(prefix).unwrap_or(full_title);
     let response = ui
         .horizontal(|ui| {
-            let icon = ui.label(crate::icons::text(icon, 16.0));
+            let icon = ui.label(crate::icons::text(icon, icon_font_size(ui)));
             let title = ui.add(
                 egui::Label::new(title)
                     .truncate()
@@ -474,23 +460,180 @@ pub(super) fn show_endpoint_header(ui: &mut Ui, source: bool, full_title: &str) 
             icon.union(title)
         })
         .inner;
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, full_title));
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, ui.is_enabled(), full_title));
     response
 }
 
-pub(super) fn show_header(ui: &mut Ui, header: Header, full_title: &str) -> Response {
+fn icon_font_size(ui: &Ui) -> f32 {
+    egui::FontSelection::Default.resolve(ui.style()).size + 2.0
+}
+
+fn icon_galley(ui: &Ui, icon: Icon) -> Arc<egui::Galley> {
+    egui::WidgetText::from(crate::icons::text(icon, icon_font_size(ui))).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        TextStyle::Body,
+    )
+}
+
+fn text_galley(ui: &Ui, text: &str, max_width: f32) -> Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple(
+        text.to_owned(),
+        egui::FontSelection::Default.resolve(ui.style()),
+        ui.visuals().text_color(),
+        max_width.max(0.0),
+    );
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    job.break_on_newline = false;
+    ui.fonts_mut(|fonts| fonts.layout_job(job))
+}
+
+/// Measured header content size, excluding Snarl's node/header frames and
+/// any edit/open-function control. Uses the active font, zoom and DPI.
+pub(super) fn header_size(ui: &Ui, header: &Header) -> Vec2 {
+    let icon = icon_galley(ui, header.icon).size();
+    if header.summary.is_empty() {
+        return Vec2::new(icon.x.max(MIN_HEADER_WIDTH), icon.y);
+    }
+    let gap = ui.spacing().item_spacing.x;
+    let text = text_galley(
+        ui,
+        &header.summary,
+        (MAX_HEADER_WIDTH - icon.x - gap).max(0.0),
+    );
+    Vec2::new(
+        (icon.x + gap + text.size().x).clamp(MIN_HEADER_WIDTH, MAX_HEADER_WIDTH),
+        icon.y.max(text.size().y),
+    )
+}
+
+/// Preferred content width, not an instruction to resize or move saved nodes.
+/// The caller must keep an explicit manual width until Reset to auto size.
+pub(super) fn node_width(ui: &Ui, node: &Node, full_title: &str, is_output: bool) -> f32 {
+    let preferred = header(node, full_title, is_output).map_or_else(
+        || text_galley(ui, full_title, MAX_HEADER_WIDTH).size().x,
+        |header| header_size(ui, &header).x,
+    );
+    // Unlike elided general labels, the three conditional meanings must
+    // always remain readable. This is only geometry; their order is unchanged.
+    let input_width = if matches!(node, Node::If { .. }) {
+        text_galley(ui, "condition", f32::INFINITY).size().x
+    } else {
+        0.0
+    };
+    preferred
+        .max(input_width)
+        .clamp(MIN_HEADER_WIDTH, MAX_HEADER_WIDTH)
+}
+
+fn resolved_header_width(ui: &Ui, header: &Header, manual_width: Option<f32>) -> f32 {
+    manual_width
+        .filter(|width| width.is_finite())
+        .unwrap_or_else(|| header_size(ui, header).x)
+        .clamp(MIN_HEADER_WIDTH, MAX_MANUAL_HEADER_WIDTH)
+}
+
+fn show_header_contents(ui: &mut Ui, header: &Header, width: f32) -> Response {
+    let icon = icon_galley(ui, header.icon);
+    let text_width = (width - icon.size().x - ui.spacing().item_spacing.x).max(0.0);
+    let icon = ui.add(egui::Label::new(icon).selectable(false));
+    if header.summary.is_empty() {
+        icon
+    } else {
+        icon.union(
+            ui.add(
+                egui::Label::new(text_galley(ui, &header.summary, text_width))
+                    .selectable(false)
+                    .show_tooltip_when_elided(false),
+            ),
+        )
+    }
+}
+
+pub(super) fn show_header(
+    ui: &mut Ui,
+    header: Header,
+    full_title: &str,
+    manual_width: Option<f32>,
+) -> Response {
+    let preferred = resolved_header_width(ui, &header, manual_width);
+    ui.set_min_width(preferred);
+    ui.set_max_width(preferred);
     let response = ui
-        .horizontal(|ui| {
-            let icon = ui.label(crate::icons::text(header.icon, 16.0));
-            if header.summary.is_empty() {
-                icon
-            } else {
-                icon.union(ui.label(header.summary))
-            }
-        })
+        .horizontal(|ui| show_header_contents(ui, &header, preferred))
         .inner;
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, full_title));
+    let accessible_label = if header.accessible_label.is_empty() {
+        full_title
+    } else {
+        &header.accessible_label
+    };
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, ui.is_enabled(), accessible_label));
     response
+}
+
+/// Single-line alternative for callers that host editing in the header.
+/// The second response is the keyboard-focusable edit trigger/popup anchor;
+/// `.clicked()` includes native Enter/Space activation. No popup or canvas
+/// focus policy is implemented here. Hidden controls retain their space and
+/// keyboard target, and reveal themselves when focused or hovered.
+pub(super) fn show_header_with_edit(
+    ui: &mut Ui,
+    header: Header,
+    full_title: &str,
+    manual_width: Option<f32>,
+    reveal_edit: bool,
+    edit_enabled: bool,
+) -> (Response, Response) {
+    let edit_size = ui.spacing().interact_size.y.max(18.0);
+    let edit_space = edit_size + ui.spacing().item_spacing.x;
+    let preferred = manual_width
+        .filter(|width| width.is_finite())
+        .unwrap_or_else(|| header_size(ui, &header).x + edit_space)
+        .clamp(MIN_HEADER_WIDTH + edit_space, MAX_MANUAL_HEADER_WIDTH);
+    ui.set_min_width(preferred);
+    ui.set_max_width(preferred);
+    ui.horizontal(|ui| {
+        let response = show_header_contents(ui, &header, preferred - edit_space);
+        response.widget_info(|| {
+            WidgetInfo::labeled(Role::Label, ui.is_enabled(), &header.accessible_label)
+        });
+        let edit = ui
+            .add_enabled_ui(edit_enabled, |ui| {
+                let (rect, edit) =
+                    ui.allocate_exact_size(Vec2::splat(edit_size), egui::Sense::click());
+                let label = format!("Edit {full_title} · F2");
+                edit.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), &label));
+                if reveal_edit || edit.hovered() || edit.has_focus() {
+                    let visuals = ui.style().interact(&edit);
+                    ui.painter().rect(
+                        rect,
+                        visuals.corner_radius,
+                        visuals.weak_bg_fill,
+                        visuals.bg_stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                    let icon = icon_galley(ui, Icon::Pencil);
+                    ui.painter().galley(
+                        rect.center() - icon.size() * 0.5,
+                        icon,
+                        visuals.text_color(),
+                    );
+                }
+                edit.on_hover_text(label)
+            })
+            .inner;
+        (response, edit)
+    })
+    .inner
+}
+
+/// Header-aligned native pins are suitable for these individual cards only.
+/// This neither merges operations nor changes their input/output identities.
+pub(super) fn is_inline(node: &Node) -> bool {
+    matches!(node, Node::Const { .. })
+        || matches!(node, Node::Call { function, args } if args.len() == 1 && matches!(function.as_str(), "exists" | "not"))
 }
 
 pub(super) fn has_properties(node: &Node) -> bool {
@@ -523,11 +666,17 @@ pub(super) fn has_properties(node: &Node) -> bool {
 
 pub(super) fn hint(node: &Node, full_title: &str) -> String {
     match node {
-        Node::Const { value } => format!(
-            "{full_title}\nType: {}\n{}",
-            value.type_name(),
-            crate::value_editor::display_string(value)
-        ),
+        Node::Const { value } => {
+            let literal = match value {
+                ir::Value::String(text) => format!("{text:?}"),
+                ir::Value::Null => "null".into(),
+                _ => crate::value_editor::display_string(value),
+            };
+            format!(
+                "{full_title}\nType: {}\nLiteral: {literal}",
+                value.type_name()
+            )
+        }
         Node::Call { function, .. } => functions::builtin(function).map_or_else(
             || full_title.to_owned(),
             |builtin| {
@@ -602,7 +751,15 @@ pub(super) fn input_pin_hint(node: Option<&Node>, index: usize) -> Option<String
     ))
 }
 
+pub(super) fn conditional_input_label(node: &Node, index: usize) -> Option<&'static str> {
+    matches!(node, Node::If { .. })
+        .then(|| ["condition", "then", "else"].get(index).copied())
+        .flatten()
+}
+
 pub(super) fn show_input(ui: &mut Ui, label: &str, node: Option<&Node>, index: usize) {
+    let conditional = node.and_then(|node| conditional_input_label(node, index));
+    let label = conditional.unwrap_or(label);
     let hint = if let Some(Node::Call { function, .. }) = node {
         super::builtin_parameter(function, index).map_or_else(
             || label.to_owned(),
@@ -611,7 +768,16 @@ pub(super) fn show_input(ui: &mut Ui, label: &str, node: Option<&Node>, index: u
     } else {
         label.to_owned()
     };
-    let response = ui.label(compact(label, PIN_CHAR_LIMIT));
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, label));
+    let widget = egui::Label::new(label).show_tooltip_when_elided(false);
+    let response = if conditional.is_some() {
+        ui.add(widget.extend())
+    } else {
+        ui.add(widget.truncate())
+    };
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, ui.is_enabled(), label));
     response.on_hover_text(hint);
 }
+
+#[cfg(test)]
+#[path = "graph_node_presentation_tests.rs"]
+mod tests;
