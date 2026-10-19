@@ -23,7 +23,7 @@ impl TempDir {
         )?;
         std::fs::write(
             path.join("message.Config"),
-            r#"<Config><Format standard="X12"/><Elements><Data name="Value" type="string"/><Segment name="ABC"><Data ref="Value"/></Segment></Elements><Message><MessageType>777</MessageType><Group name="Message_777"><Segment ref="ABC"/></Group></Message></Config>"#,
+            r#"<Config><Format standard="HL7"/><Elements><Data name="Value" type="string"/><Segment name="ABC"><Data ref="Value"/></Segment></Elements><Message><MessageType>DOC</MessageType><Group name="DOC"><Segment ref="ABC"/></Group></Message></Config>"#,
         )?;
         Ok(Self(path))
     }
@@ -52,11 +52,11 @@ fn design(format: &str, edges: &str) -> String {
                 "text",
                 "16",
                 format!(
-                    r#"<entry name="Message_777"><entry name="ABC"><entry name="Value" {}="{}"/></entry></entry>"#,
+                    r#"<entry name="DOC"><entry name="ABC"><entry name="Value" {}="{}"/></entry></entry>"#,
                     if source { "outkey" } else { "inpkey" },
                     if source { 11 } else { 21 }
                 ),
-                r#"<text type="edi" kind="EDIX12" config="message.Config"/>"#,
+                r#"<text type="edi" kind="EDIHL7" config="message.Config"/>"#,
             ),
             _ => (
                 "xml",
