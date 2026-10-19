@@ -296,7 +296,7 @@ fn csv_document_artifacts_preserve_existing_files_and_exact_runtime_sources() ->
 
     let options = codegen_rust::Options {
         package_name: "csv_document_inventory".into(),
-        runtime_path: "../codegen-runtime".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path("../codegen-runtime".into()),
     };
     let baseline = codegen_rust::emit_with_csv_output(&program, &options, &policy.target)?;
     let emitted = codegen_rust::emit_with_csv_document_adapters(&program, &options, &policy)?;
