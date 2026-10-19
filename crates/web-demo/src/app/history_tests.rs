@@ -2,7 +2,108 @@ use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Scope};
 
+#[derive(Debug)]
+struct MemoryDrop {
+    path: std::path::PathBuf,
+    bytes: Vec<u8>,
+}
+
+impl egui::DroppedFile for MemoryDrop {
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        Ok(self.bytes.clone())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn bytes_async(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+        Box::pin(async { Ok(self.bytes.clone()) })
+    }
+}
+
+fn memory_drop(name: &str, bytes: Vec<u8>) -> egui::DroppedFileHandle {
+    std::sync::Arc::new(MemoryDrop {
+        path: name.into(),
+        bytes,
+    })
+}
+
 const SOURCE: &str = "{\"Unused\":\"source\"}";
+
+#[test]
+fn delayed_drop_preserves_project_until_read_finishes_and_reports_read_failures() {
+    let (mut app, context) = fixture();
+    let original = whole(&app.project);
+    let history = app.history.state();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.pending_project_drop = Some(receiver);
+    frame(&mut app, &context, Vec::new());
+    assert_eq!(whole(&app.project), original);
+    assert_eq!(app.history.state(), history);
+    sender.send(Err("Cannot read dropped file".into())).unwrap();
+    frame(&mut app, &context, Vec::new());
+    assert_eq!(whole(&app.project), original);
+    assert_eq!(app.history.state(), history);
+    assert_eq!(app.status, "Project drop failed");
+    assert_eq!(app.diagnostic.as_deref(), Some("Cannot read dropped file"));
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.pending_project_drop = Some(receiver);
+    sender
+        .send(Ok(whole(&project("delayed")).into_bytes()))
+        .unwrap();
+    frame(&mut app, &context, Vec::new());
+    assert_eq!(whole(&app.project), whole(&project("delayed")));
+    assert!(app.pending_project_drop.is_none());
+    app.restore_project(false);
+    assert_eq!(whole(&app.project), original);
+}
+
+#[test]
+fn new_project_retires_pending_drop_results() {
+    let (mut app, context) = fixture();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.pending_project_drop = Some(receiver);
+    app.install_project(project("newer"));
+    assert!(
+        sender
+            .send(Ok(whole(&project("stale")).into_bytes()))
+            .is_err()
+    );
+    frame(&mut app, &context, Vec::new());
+    assert_eq!(whole(&app.project), whole(&project("newer")));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn newer_file_drop_supersedes_in_flight_read() {
+    let (mut app, context) = fixture();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.pending_project_drop = Some(receiver);
+    input_frame(
+        &mut app,
+        &context,
+        egui::RawInput {
+            dropped_files: vec![memory_drop(
+                "newer.json",
+                whole(&project("newer")).into_bytes(),
+            )],
+            ..Default::default()
+        },
+    );
+    assert!(
+        sender
+            .send(Ok(whole(&project("stale")).into_bytes()))
+            .is_err()
+    );
+    frame(&mut app, &context, Vec::new());
+    assert_eq!(whole(&app.project), whole(&project("newer")));
+}
 
 fn project(value: &str) -> Project {
     let mut project = demo_project();
@@ -75,7 +176,9 @@ fn input_frame(
     ));
     input.time = Some(context.cumulative_frame_nr() as f64 / 10.0);
     eprintln!("browser-history input original: {input:#?}");
-    let output = context.run_ui(input, |ui| app.show_workspace(ui));
+    let mut output = context.run_ui(input, |ui| app.show_workspace(ui));
+    // This frame-only test inspects shapes; it has no texture renderer.
+    output.textures_delta.clear();
     eprintln!(
         "browser-history full original: model={};draft={:?};source={:?};output={:?};formats={:?}/{:?};status={:?};diagnostic={:?};history={:?};paint={:?}",
         whole(&app.project),
@@ -295,11 +398,7 @@ fn browser_history_valid_apply_drop_invalid_inputs_and_reset_have_explicit_bound
         &mut app,
         &context,
         egui::RawInput {
-            dropped_files: vec![egui::DroppedFile {
-                name: "mapping.json".into(),
-                bytes: Some(dropped.clone().into_bytes().into()),
-                ..Default::default()
-            }],
+            dropped_files: vec![memory_drop("mapping.json", dropped.clone().into_bytes())],
             ..Default::default()
         },
     );
@@ -317,11 +416,7 @@ fn browser_history_valid_apply_drop_invalid_inputs_and_reset_have_explicit_bound
             &mut app,
             &context,
             egui::RawInput {
-                dropped_files: vec![egui::DroppedFile {
-                    name: "bad.json".into(),
-                    bytes: Some(bytes.into()),
-                    ..Default::default()
-                }],
+                dropped_files: vec![memory_drop("bad.json", bytes)],
                 ..Default::default()
             },
         );

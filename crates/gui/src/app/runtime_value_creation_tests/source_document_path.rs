@@ -110,8 +110,8 @@ fn native_pin(
     output: bool,
 ) -> egui::Pos2 {
     let salt = match document {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(index) => egui::Id::new(("named_target_canvas", index)),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(index) => egui::Id::unique(("named_target_canvas", index)),
         MappingDocument::Function(_) => unreachable!(),
     };
     let ids = crate::canvas_keyboard::current_pin_interaction_ids(

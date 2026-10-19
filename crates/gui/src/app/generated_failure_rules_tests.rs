@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, DynamicSourcePath, FormatOptions, NamedSource, NamedTarget};
@@ -106,7 +108,7 @@ fn frame(
     context: &egui::Context,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -200,17 +202,21 @@ fn pick(
     click_nth(app, context, current, occurrence);
     let mut output = settle(app, context);
     if positions(&output, wanted).is_empty() {
-        // The popup has its own bounded scroll area. Scroll over its last
-        // visible upper entry, not an off-screen text galley or the editor.
-        let anchor = *positions(&output, FALSE)
-            .last()
-            .expect("visible expression popup entry");
+        // Popup scrolling survives reopening, so a particular early row may
+        // already be above the viewport. Anchor to the visible foreground popup.
+        let anchor = popup_scroll_point(&output, context).unwrap_or_else(|| {
+            panic!(
+                "visible expression popup entry; {}",
+                message_popup_diagnostics(&output, &[], current, wanted)
+            )
+        });
         frame(
             app,
             context,
             vec![
                 egui::Event::PointerMoved(anchor),
                 egui::Event::MouseWheel {
+                    source: egui::MouseWheelSource::Unknown,
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(0.0, -600.0),
                     phase: egui::TouchPhase::Move,
@@ -224,6 +230,33 @@ fn pick(
         .last()
         .unwrap_or_else(|| panic!("visible popup choice {wanted:?}"));
     click_at(app, context, point);
+}
+
+fn popup_scroll_point(output: &egui::FullOutput, context: &egui::Context) -> Option<egui::Pos2> {
+    fn visit(
+        shape: &egui::epaint::Shape,
+        clip: egui::Rect,
+        context: &egui::Context,
+    ) -> Option<egui::Pos2> {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                let point = text.visual_bounding_rect().center();
+                (clip.contains(point)
+                    && context
+                        .layer_id_at(point)
+                        .is_some_and(|layer| layer.order == egui::Order::Foreground))
+                .then_some(point)
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                shapes.iter().find_map(|shape| visit(shape, clip, context))
+            }
+            _ => None,
+        }
+    }
+    output
+        .shapes
+        .iter()
+        .find_map(|shape| visit(&shape.shape, shape.clip_rect, context))
 }
 
 fn message_popup_diagnostics(
@@ -302,6 +335,7 @@ fn pick_toward_start(
             vec![
                 egui::Event::PointerMoved(anchor),
                 egui::Event::MouseWheel {
+                    source: egui::MouseWheelSource::Unknown,
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(0.0, 600.0),
                     phase: egui::TouchPhase::Move,

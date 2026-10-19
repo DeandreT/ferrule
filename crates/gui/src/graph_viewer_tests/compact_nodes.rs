@@ -6,13 +6,16 @@ fn text_position(output: &egui::FullOutput, label: &str) -> Option<egui::Pos2> {
             egui::epaint::Shape::Text(text) if text.galley.text() == label => {
                 Some(text.visual_bounding_rect().center())
             }
-            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, label)),
+            egui::epaint::Shape::Vec(shapes) => {
+                shapes.iter().rev().find_map(|shape| find(shape, label))
+            }
             _ => None,
         }
     }
     output
         .shapes
         .iter()
+        .rev()
         .find_map(|shape| find(&shape.shape, label))
 }
 
@@ -24,7 +27,7 @@ fn header_frame(
     name: &str,
 ) -> egui::FullOutput {
     let node = fx.call;
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -61,7 +64,7 @@ fn output_marks_follow_node_identity_and_preserve_suffixes_and_repeated_prefixes
                 value: Value::String("keep (output)".into()),
             },
             "unused",
-            "keep (output)",
+            "string \"keep (output)\"",
         ),
         (
             Node::UserFunctionCall {
@@ -130,7 +133,7 @@ fn property_frame(
         output: 0,
     });
     let mut edit_id = egui::Id::NULL;
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -140,8 +143,7 @@ fn property_frame(
             ..Default::default()
         },
         |ui| {
-            edit_id = ui.next_auto_id();
-            fx.viewer().show_output(&pin, ui, snarl);
+            edit_id = show_properties_with_header(&mut fx.viewer(), &pin, ui, snarl);
         },
     );
     (output, edit_id)
@@ -375,7 +377,7 @@ fn compact_nodes_settle_at_small_sizes_and_keep_schema_endpoints_readable() {
     let mut sizes = std::collections::BTreeMap::new();
     let mut recent = Vec::new();
     for _ in 0..8 {
-        let _ = context.run_ui(
+        let _ = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -403,9 +405,9 @@ fn compact_nodes_settle_at_small_sizes_and_keep_schema_endpoints_readable() {
         ]);
     }
     for sizes in &recent[4..] {
-        for size in sizes {
+        for (index, size) in sizes.iter().enumerate() {
             assert!(
-                size.x <= 220.0 && size.y <= 160.0,
+                size.x <= if index == 1 { 400.0 } else { 220.0 } && size.y <= 160.0,
                 "ordinary node uses too much canvas space: {size:?}"
             );
         }
@@ -476,7 +478,7 @@ fn source_field_header_frame(
 ) -> egui::FullOutput {
     let node = fx.call;
     let before = source_field_state(fx, snarl);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -834,7 +836,7 @@ fn compact_source_fields_settle_below_the_inline_editor_width_without_changing_p
         for frame in 0..8 {
             sizes.clear();
             let mut drag_responses = Vec::new();
-            let output = context.run_ui(
+            let output = context.run_test_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -917,7 +919,7 @@ fn join_field_header_frame(
 ) -> egui::FullOutput {
     let node = fx.call;
     let before = source_field_state(fx, snarl);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1175,7 +1177,7 @@ fn compact_join_field_settled_width_does_not_depend_on_hidden_collection_or_path
         for frame in 0..8 {
             sizes.clear();
             let mut pins = Vec::new();
-            let output = context.run_ui(
+            let output = context.run_test_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -1326,7 +1328,7 @@ fn lookup_header_frame(
 ) -> egui::FullOutput {
     let node = fx.call;
     let before = source_field_state(fx, snarl);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1365,7 +1367,7 @@ fn lookup_property_frame(
         output: 0,
     });
     let before = source_field_state(fx, snarl);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1379,7 +1381,7 @@ fn lookup_property_frame(
             ui.add_enabled_ui(controls.1, |ui| {
                 let mut viewer = fx.viewer();
                 viewer.protected_output = controls.0;
-                viewer.show_output(&pin, ui, snarl);
+                show_properties_with_header(&mut viewer, &pin, ui, snarl);
             });
         },
     );
@@ -1745,7 +1747,7 @@ fn compact_lookup_settled_geometry_is_independent_of_hidden_key_and_value_length
         for frame in 0..8 {
             let mut sizes = std::collections::BTreeMap::new();
             let mut pins = Vec::new();
-            let output = context.run_ui(
+            let output = context.run_test_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,

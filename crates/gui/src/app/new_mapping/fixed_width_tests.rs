@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use mapping::{Binding, Node, ScopeIteration};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -112,7 +114,7 @@ fn primary_fixed_width_layouts_save_reopen_run_and_native_reimport() -> anyhow::
     let target_options = staged(&mut app, SchemaSide::Target).options()?;
     assert_ne!(source_options, target_options);
     let context = egui::Context::default();
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         app.show_new_mapping_setup(ui.ctx())
     });
     assert_eq!(

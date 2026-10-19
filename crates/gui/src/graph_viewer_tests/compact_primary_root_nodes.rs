@@ -140,7 +140,7 @@ fn header_frame(
 ) -> egui::FullOutput {
     let root = fx.call;
     let before = state(fx, snarl);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -177,7 +177,7 @@ fn property_frame(
         output: 0,
     });
     let mut edit_id = egui::Id::NULL;
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -188,10 +188,9 @@ fn property_frame(
             ..Default::default()
         },
         |ui| {
-            edit_id = ui.next_auto_id();
             let mut viewer = fx.viewer();
             viewer.primary_root_authoring = allowed;
-            viewer.show_output(&pin, ui, snarl);
+            edit_id = show_properties_with_header(&mut viewer, &pin, ui, snarl);
         },
     );
     eprintln!(
@@ -286,7 +285,7 @@ fn compact_primary_headers_keep_full_identity_required_marker_hover_and_output_a
                 path: vec!["資料📦資料📦資料📦資料📦資料📦資料📦".into()],
                 required: true,
             },
-            "required 資料📦資料📦…",
+            "required 資料📦資料📦資料📦資料📦資料📦資料📦",
             lucide_icons::Icon::ArrowRightFromLine,
             "\nPrimary source root\nPath: 資料📦資料📦資料📦資料📦資料📦資料📦\nRequired read: yes\nA missing value stops execution when this field is read.".into(),
         ),
@@ -665,7 +664,7 @@ fn compact_primary_nodes_settle_with_long_unicode_identities_and_keep_pin_drag_a
             for _ in 0..8 {
                 let mut sizes = std::collections::BTreeMap::new();
                 let mut senses = Vec::new();
-                let painted = context.run_ui(
+                let painted = context.run_test_ui(
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,
@@ -763,7 +762,7 @@ fn compact_primary_nodes_settle_with_long_unicode_identities_and_keep_pin_drag_a
             let hover = hover_positions[0];
             let mut detected = None;
             for _ in 0..2 {
-                let _ = context.run_ui(
+                let _ = context.run_test_ui(
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,
@@ -872,14 +871,14 @@ fn transformed_hover_frame(
 ) -> HoverObservation {
     let root = fx.call;
     let graph_point = snarl.get_node_info(root).unwrap().pos;
-    let canvas_id = egui::Id::new("compact-primary-existing-frame-hover");
+    let canvas_id = egui::Id::unique("compact-primary-existing-frame-hover");
     let frame_id = canvas_id.with(("snarl-node", root)).with("frame");
     let mut observation = HoverObservation {
         detected: None,
         frame: None,
         popup: None,
     };
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

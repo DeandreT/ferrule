@@ -1,9 +1,41 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
 use egui_snarl::ui::SnarlWidget;
 use egui_snarl::{InPinId, OutPinId};
 use ir::{ScalarType, SchemaNode};
 use mapping::NamedSource;
+
+/// Render the real header trigger before its anchored property editor.
+/// Node focus reveals the hover/focus-only pencil in these isolated fixtures.
+pub(super) fn show_properties_with_header(
+    viewer: &mut GraphViewer<'_>,
+    pin: &OutPin,
+    ui: &mut Ui,
+    snarl: &mut Snarl<CanvasNode>,
+) -> egui::Id {
+    crate::canvas_tools::begin(
+        ui.ctx(),
+        ui.scope_id().with("property-fixture"),
+        viewer,
+        snarl,
+    );
+    let node = snarl[pin.id.node];
+    if !crate::canvas_tools::focused_node(ui.ctx(), node) {
+        crate::canvas_tools::node_click(ui.ctx(), node);
+    }
+    viewer.show_header(pin.id.node, &[], std::slice::from_ref(pin), ui, snarl);
+    let id = GraphViewer::mapping_id(node).unwrap();
+    let edit = ui
+        .ctx()
+        .data(|data| {
+            data.get_temp::<egui::Response>(ui.layer_id().id.with(("node_edit_anchor", id)))
+        })
+        .expect("real header edit response");
+    viewer.show_output(pin, ui, snarl);
+    edit.id
+}
 
 struct Fixture {
     graph: Graph,
@@ -120,6 +152,162 @@ fn wider_endpoints_reveal_more_of_deep_field_paths() {
 }
 
 #[test]
+fn exact_focus_survives_filtered_pin_remapping_and_stays_in_its_document() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        1,
+        Node::SourceField {
+            path: vec!["age".into()],
+            frame: None,
+        },
+    );
+    fx.graph.nodes.insert(
+        0,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![1],
+        },
+    );
+    fx.graph.nodes.insert(
+        2,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![1],
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let other = snarl.insert_node(egui::pos2(200.0, 200.0), CanvasNode::Graph(2));
+    let source = fx.source;
+    let first = InPinId {
+        node: fx.call,
+        input: 0,
+    };
+    let second = InPinId {
+        node: other,
+        input: 0,
+    };
+    let context = egui::Context::default();
+    let document = egui::Id::unique("focus-document");
+    let mut viewer = fx.viewer();
+    viewer.sync_endpoint_view(&mut snarl);
+    let before = serde_json::to_string(&viewer.graph).unwrap();
+    crate::canvas_tools::begin(&context, document, &viewer, &snarl);
+    let out = OutPinId {
+        node: source,
+        output: 1,
+    };
+    crate::canvas_tools::wire_click(&context, &mut viewer, &snarl, &[(out, first)]);
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        Some(true)
+    );
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, second),
+        Some(false)
+    );
+    viewer
+        .endpoint_scroll
+        .set_connected_only(CanvasNode::SourceBlock(0), true);
+    viewer.sync_endpoint_view(&mut snarl);
+    crate::canvas_tools::begin(&context, document, &viewer, &snarl);
+    let out = OutPinId {
+        node: source,
+        output: 0,
+    };
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        Some(true)
+    );
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, second),
+        Some(false)
+    );
+    crate::canvas_tools::begin(
+        &context,
+        egui::Id::unique("another-document"),
+        &viewer,
+        &snarl,
+    );
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        None
+    );
+    crate::canvas_tools::begin(&context, document, &viewer, &snarl);
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        Some(true)
+    );
+    crate::canvas_tools::wire_click(
+        &context,
+        &mut viewer,
+        &snarl,
+        &[(out, first), (out, second)],
+    );
+    assert!(crate::canvas_tools::picker_open(&context));
+    assert_eq!(serde_json::to_string(&viewer.graph).unwrap(), before);
+    assert_eq!(snarl.wires().count(), 2);
+    let frame = |key, viewer: &mut GraphViewer<'_>, snarl: &mut Snarl<CanvasNode>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1200.0, 800.0),
+            )),
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let _ = context.run_test_ui(input, |ui| {
+            crate::canvas_tools::toolbar(
+                ui,
+                viewer,
+                snarl,
+                &[],
+                crate::canvas_tools::ToolbarOptions {
+                    wire: Default::default(),
+                    requested: false,
+                    search_open: false,
+                },
+            );
+        });
+    };
+    frame(egui::Key::ArrowDown, &mut viewer, &mut snarl);
+    frame(egui::Key::Enter, &mut viewer, &mut snarl);
+    assert!(!crate::canvas_tools::picker_open(&context));
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        Some(false)
+    );
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, second),
+        Some(true)
+    );
+    crate::canvas_tools::wire_click(
+        &context,
+        &mut viewer,
+        &snarl,
+        &[(out, first), (out, second)],
+    );
+    frame(egui::Key::Escape, &mut viewer, &mut snarl);
+    assert!(!crate::canvas_tools::picker_open(&context));
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, second),
+        Some(true)
+    );
+    frame(egui::Key::Escape, &mut viewer, &mut snarl);
+    assert_eq!(
+        crate::canvas_tools::wire_bright(&context, &viewer, &snarl, out, first),
+        None
+    );
+    assert_eq!(serde_json::to_string(&viewer.graph).unwrap(), before);
+    assert_eq!(snarl.wires().count(), 2);
+}
+
+#[test]
 fn minimap_focus_sets_zoom_and_centers_the_requested_graph_point() {
     let graph_point = egui::pos2(640.0, 360.0);
     let screen_point = egui::pos2(500.0, 400.0);
@@ -216,7 +404,7 @@ fn recorded_pin_ids_match_snarl_drag_widgets() {
 
     let context = egui::Context::default();
     crate::icons::install(&context);
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         ui.set_min_size(egui::vec2(800.0, 600.0));
         let mut viewer = fx.viewer();
         SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
@@ -241,7 +429,7 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
 
     let context = egui::Context::default();
     crate::icons::install(&context);
-    let _ = context.run_ui(Default::default(), |ui| {
+    let _ = context.run_test_ui(Default::default(), |ui| {
         ui.set_min_size(egui::vec2(800.0, 600.0));
         let mut viewer = GraphViewer {
             graph: &mut fx.graph,
@@ -361,7 +549,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
 
     for _ in 0..24 {
         crate::theme::ThemeState::default().apply(&context);
-        let _ = context.run_ui(Default::default(), |ui| {
+        let _ = context.run_test_ui(Default::default(), |ui| {
             ui.set_min_size(egui::vec2(900.0, 700.0));
             egui::CentralPanel::default().show(ui, |ui| {
                 let mut viewer = GraphViewer {
@@ -401,7 +589,11 @@ fn lookup_node_width_stabilizes_across_repaints() {
                     &mut viewer,
                     &mut search,
                     crate::canvas_keyboard::CanvasOptions {
-                        id_salt: egui::Id::new("endpoint-wheel-test"),
+                        tools_id: egui::Id::unique("endpoint-wheel-tools"),
+                        density: crate::appearance::CanvasDensity::Standard,
+                        wire: Default::default(),
+                        request_compact: false,
+                        id_salt: egui::Id::unique("endpoint-wheel-test"),
                         show_minimap: false,
                         view_generation: 0,
                         style,
@@ -1802,7 +1994,7 @@ fn root_editor_frame(
         node: fx.call,
         output: 0,
     });
-    context.run_ui(
+    context.run_test_ui(
         egui::RawInput {
             time: Some(context.cumulative_frame_nr() as f64 / 10.0),
             screen_rect: Some(egui::Rect::from_min_size(
@@ -1815,7 +2007,7 @@ fn root_editor_frame(
         |ui| {
             let mut viewer = fx.viewer();
             viewer.primary_root_authoring = allowed;
-            viewer.show_output(&pin, ui, snarl);
+            show_properties_with_header(&mut viewer, &pin, ui, snarl);
         },
     )
 }

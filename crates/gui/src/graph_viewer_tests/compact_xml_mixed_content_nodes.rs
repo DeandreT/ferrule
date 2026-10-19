@@ -216,7 +216,7 @@ fn header_frame(
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
     let node = fx.call;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         let mut viewer = fx.viewer();
         viewer.protected_output = protected;
         viewer.show_header(node, &[], &[], ui, snarl);
@@ -242,10 +242,9 @@ fn properties(
         output: 0,
     });
     let mut button = egui::Id::NULL;
-    let output = context.run_ui(input(context, events), |ui| {
+    let output = context.run_test_ui(input(context, events), |ui| {
         ui.add_enabled_ui(enabled, |ui| {
-            button = ui.next_auto_id();
-            fx.viewer().show_output(&pin, ui, snarl);
+            button = show_properties_with_header(&mut fx.viewer(), &pin, ui, snarl);
         });
     });
     eprintln!(
@@ -352,7 +351,7 @@ fn compact_mixed_headers_retain_full_path_frame_count_tooltip_accessibility_and_
                 replacement("Bold", &["Bold"], 8),
                 replacement("Plain", &[], 9),
             ],
-            "mixed abcdefghijklmno…",
+            "mixed abcdefghijklmno資料📦long",
             "automatic".to_owned(),
             3,
         ),
@@ -598,6 +597,7 @@ fn compact_mixed_disabled_unknown_metadata_and_actual_scrolling_retain_every_ord
             &context,
             true,
             vec![egui::Event::MouseWheel {
+                source: egui::MouseWheelSource::Unknown,
                 unit: egui::MouseWheelUnit::Point,
                 delta: egui::vec2(0.0, -120.0),
                 phase: egui::TouchPhase::Move,
@@ -676,7 +676,7 @@ fn compact_mixed_closed_width_keeps_hidden_unicode_identity_out_of_nodes_and_pre
                 node: fx.call,
                 input: slot,
             });
-            let painted = context.run_ui(input(&context, Vec::new()), |ui| {
+            let painted = context.run_test_ui(input(&context, Vec::new()), |ui| {
                 fx.viewer().show_input(&pin, ui, &mut snarl);
             });
             eprintln!(
@@ -697,7 +697,7 @@ fn compact_mixed_closed_width_keeps_hidden_unicode_identity_out_of_nodes_and_pre
             let mut sizes = std::collections::BTreeMap::new();
             let mut pin_ids = Vec::new();
             let mut drag = Vec::new();
-            let painted = context.run_ui(input(&context, Vec::new()), |ui| {
+            let painted = context.run_test_ui(input(&context, Vec::new()), |ui| {
                 let mut viewer = fx.viewer();
                 viewer.node_sizes = Some(&mut sizes);
                 SnarlWidget::new()
@@ -761,7 +761,7 @@ fn compact_mixed_closed_width_keeps_hidden_unicode_identity_out_of_nodes_and_pre
             visible_position(&output.unwrap(), &glyph).expect("real mixed header is visible");
         let mut detected = None;
         for _ in 0..2 {
-            let _ = context.run_ui(
+            let _ = context.run_test_ui(
                 input(&context, vec![egui::Event::PointerMoved(hover)]),
                 |ui| {
                     let mut viewer = fx.viewer();

@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::SchemaNode;
 use mapping::{FormatOptions, ProtobufOptions};
@@ -84,7 +86,7 @@ fn explicit_input_formats_override_sqlite_controls_and_render_without_mutation()
             draft.options = options.clone();
             assert!(!source_uses_sqlite(draft));
             let context = egui::Context::default();
-            let _ = context.run_ui(egui::RawInput::default(), |ui| {
+            let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
                 app.show_extra_source_setup(ui.ctx())
             });
             let draft = app.extra_source_draft.as_ref().unwrap();
@@ -140,7 +142,7 @@ fn workbook_fallback_does_not_hide_sqlite_controls_for_db_paths() {
         "contacts.capture"
     ));
     let context = egui::Context::default();
-    let _ = context.run_ui(egui::RawInput::default(), |ui| {
+    let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
         app.show_extra_source_setup(ui.ctx());
     });
     assert_eq!(app.extra_source_draft.as_ref().unwrap().options, options);

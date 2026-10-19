@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 
 fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
@@ -581,7 +583,7 @@ fn nested_source_rows_are_searchable_stage_specific_and_visible_in_replay() {
     let context = egui::Context::default();
     crate::icons::install(&context);
     let mut open = true;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view)
     });
     assert!(!output.shapes.is_empty());
@@ -668,7 +670,7 @@ fn source_row_history_indexes_candidates_and_shows_bounded_fields() {
     let context = egui::Context::default();
     crate::icons::install(&context);
     let mut open = true;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert!(open);
@@ -840,7 +842,7 @@ fn replay_action_click_opens_the_chosen_retained_event() {
         },
     });
     let mut button_rect = egui::Rect::NOTHING;
-    let output = context.run_ui(input(Vec::new()), |ui| {
+    let output = context.run_test_ui(input(Vec::new()), |ui| {
         button_rect = replay_action(ui, 2, "Replay").rect;
         ui.add(egui::Label::new("selectable trace text").selectable(true));
     });
@@ -853,7 +855,7 @@ fn replay_action_click_opens_the_chosen_retained_event() {
         pressed,
         modifiers: egui::Modifiers::default(),
     };
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         input(vec![egui::Event::PointerMoved(pos), pointer(true)]),
         |ui| {
             if replay_action(ui, 2, "Replay").clicked() {
@@ -863,7 +865,7 @@ fn replay_action_click_opens_the_chosen_retained_event() {
         },
     );
     assert_eq!(view.page, ReportPage::Output);
-    let _ = context.run_ui(input(vec![pointer(false)]), |ui| {
+    let _ = context.run_test_ui(input(vec![pointer(false)]), |ui| {
         if replay_action(ui, 2, "Replay").clicked() {
             view.replay_from(2);
         }
@@ -943,7 +945,7 @@ fn replay_renders_empty_and_recorded_runs() {
     let context = egui::Context::default();
     crate::icons::install(&context);
     let mut open = true;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert!(open);
@@ -955,7 +957,7 @@ fn replay_renders_empty_and_recorded_runs() {
         .push(trace_event(8, ir::Value::Int(42)));
     view = RunReportView::new(view.report);
     view.page = ReportPage::Replay;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert_eq!(view.replay_event, Some(0));
@@ -1024,7 +1026,7 @@ fn history_renders_an_empty_pipeline_trace() {
     let context = egui::Context::default();
     crate::icons::install(&context);
     let mut open = true;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert!(open);
@@ -1116,7 +1118,7 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
     let context = egui::Context::default();
     crate::icons::install(&context);
 
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
 
@@ -1126,14 +1128,14 @@ fn results_window_renders_and_loads_only_the_selected_preview() {
     assert!(view.report.outputs[1].preview.is_none());
 
     view.page = ReportPage::Trace;
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert!(!output.shapes.is_empty());
 
     view.page = ReportPage::History;
     assert_eq!(view.history_node, Some(NodeHistoryKey::Graph(7)));
-    let output = context.run_ui(Default::default(), |ui| {
+    let output = context.run_test_ui(Default::default(), |ui| {
         show(ui.ctx(), &mut open, &mut view);
     });
     assert!(!output.shapes.is_empty());

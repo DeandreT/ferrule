@@ -1,5 +1,8 @@
 //! Session-only exception-order choice shared by both MFD import workflows.
 
+#[cfg(test)]
+use crate::test_ui::ContextExt as _;
+
 use std::path::Path;
 
 use super::FerruleApp;
@@ -167,7 +170,7 @@ mod tests {
         let enabled = app.ui_project_editing_enabled();
         let mut rect = None;
         let mut response_id = None;
-        let _ = context.run_ui(
+        let _ = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

@@ -35,6 +35,7 @@ struct Edge {
 
 #[derive(Clone, Copy)]
 struct EndpointGeometry<'a> {
+    ports: &'a BTreeMap<(SnarlNodeId, bool, usize), f32>,
     source_positions: &'a BTreeMap<SnarlNodeId, f32>,
     target_positions: &'a BTreeMap<SnarlNodeId, f32>,
     source_extent: f32,
@@ -64,10 +65,41 @@ pub fn arrange_snarl_with_mode(
     mode: ArrangeMode,
     viewport_width: f32,
 ) {
-    let positions = layout_positions(snarl, measured_sizes, wire, mode, viewport_width);
+    let positions = layout_positions(
+        snarl,
+        measured_sizes,
+        wire,
+        mode,
+        viewport_width,
+        &BTreeMap::new(),
+    );
     for (node, next) in positions {
         if let Some(info) = snarl.get_node_info_mut(node) {
             info.pos = next;
+        }
+    }
+}
+
+/// The interactive preview uses measured pin offsets from the same rendered
+/// geometry as the wire hit targets. Legacy first-load arrangement stays usable
+/// before there is a rendered presentation to measure.
+pub(crate) fn arrange_snarl_measured(
+    snarl: &mut Snarl<CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+    ports: &BTreeMap<(SnarlNodeId, bool, usize), f32>,
+    wire: WireAppearance,
+    viewport_width: f32,
+) {
+    for (node, position) in layout_positions(
+        snarl,
+        measured_sizes,
+        wire,
+        ArrangeMode::Compact,
+        viewport_width,
+        ports,
+    ) {
+        if let Some(info) = snarl.get_node_info_mut(node) {
+            info.pos = position;
         }
     }
 }
@@ -134,6 +166,7 @@ fn layout_positions(
     wire: WireAppearance,
     mode: ArrangeMode,
     viewport_width: f32,
+    ports: &BTreeMap<(SnarlNodeId, bool, usize), f32>,
 ) -> BTreeMap<SnarlNodeId, Pos2> {
     let semantics: BTreeMap<_, _> = snarl
         .nodes_pos_ids()
@@ -153,7 +186,7 @@ fn layout_positions(
             matches!(node, CanvasNode::Graph(_) | CanvasNode::Placeholder(_)).then_some(id)
         })
         .collect();
-    let edges: Vec<_> = snarl
+    let mut edges: Vec<_> = snarl
         .wires()
         .map(|(from, to)| Edge {
             from: from.node,
@@ -162,6 +195,7 @@ fn layout_positions(
             input: to.input,
         })
         .collect();
+    edges.sort_by_key(|edge| (edge.from, edge.to, edge.output, edge.input));
 
     let mut depths = BTreeMap::new();
     for &node in &graph_nodes {
@@ -184,6 +218,7 @@ fn layout_positions(
             &target_positions,
             &graph_nodes,
             &edges,
+            ports,
             &mut upstream,
             &mut BTreeSet::new(),
         );
@@ -194,6 +229,7 @@ fn layout_positions(
             &target_positions,
             &graph_nodes,
             &edges,
+            ports,
             &mut downstream,
             &mut BTreeSet::new(),
         );
@@ -218,6 +254,7 @@ fn layout_positions(
         &graph_nodes,
         &edges,
         EndpointGeometry {
+            ports,
             source_positions: &source_positions,
             target_positions: &target_positions,
             source_extent,
@@ -238,6 +275,7 @@ fn layout_positions(
         &semantics,
         measured_sizes,
         &packed_y,
+        ports,
     );
     let layout_columns = collect_layout_columns(
         &semantics,
@@ -477,6 +515,7 @@ fn endpoint_anchor(
     target_positions: &BTreeMap<SnarlNodeId, f32>,
     graph_nodes: &BTreeSet<SnarlNodeId>,
     edges: &[Edge],
+    ports: &BTreeMap<(SnarlNodeId, bool, usize), f32>,
     memo: &mut BTreeMap<SnarlNodeId, Option<f32>>,
     visiting: &mut BTreeSet<SnarlNodeId>,
 ) -> Option<f32> {
@@ -491,7 +530,7 @@ fn endpoint_anchor(
         .filter_map(|edge| match direction {
             Direction::Upstream if edge.to == node => {
                 if let Some(y) = source_positions.get(&edge.from) {
-                    Some(y + pin_center(edge.output))
+                    Some(y + measured_pin(ports, edge.from, false, edge.output))
                 } else if graph_nodes.contains(&edge.from) {
                     endpoint_anchor(
                         edge.from,
@@ -500,6 +539,7 @@ fn endpoint_anchor(
                         target_positions,
                         graph_nodes,
                         edges,
+                        ports,
                         memo,
                         visiting,
                     )
@@ -509,7 +549,7 @@ fn endpoint_anchor(
             }
             Direction::Downstream if edge.from == node => {
                 if let Some(y) = target_positions.get(&edge.to) {
-                    Some(y + pin_center(edge.input))
+                    Some(y + measured_pin(ports, edge.to, true, edge.input))
                 } else if graph_nodes.contains(&edge.to) {
                     endpoint_anchor(
                         edge.to,
@@ -518,6 +558,7 @@ fn endpoint_anchor(
                         target_positions,
                         graph_nodes,
                         edges,
+                        ports,
                         memo,
                         visiting,
                     )
@@ -621,7 +662,10 @@ fn neighbor_rank(
     average(edges.iter().filter_map(|edge| match direction {
         Direction::Upstream if edge.to == node => {
             if let Some(y) = endpoints.source_positions.get(&edge.from) {
-                Some((y + pin_center(edge.output)) / endpoints.source_extent)
+                Some(
+                    (y + measured_pin(endpoints.ports, edge.from, false, edge.output))
+                        / endpoints.source_extent,
+                )
             } else if graph_nodes.contains(&edge.from) {
                 ranks.get(&edge.from).copied()
             } else {
@@ -629,10 +673,10 @@ fn neighbor_rank(
             }
         }
         Direction::Downstream if edge.from == node => {
-            let target_rank = endpoints
-                .target_positions
-                .get(&edge.to)
-                .map(|y| (y + pin_center(edge.input)) / endpoints.target_extent);
+            let target_rank = endpoints.target_positions.get(&edge.to).map(|y| {
+                (y + measured_pin(endpoints.ports, edge.to, true, edge.input))
+                    / endpoints.target_extent
+            });
             let input_bias = target_rank.unwrap_or_default() * 0.02;
             if let Some(rank) = target_rank {
                 Some(rank)
@@ -704,12 +748,41 @@ fn routing_channels(
     semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
     measured_sizes: &BTreeMap<CanvasNode, Vec2>,
     packed_y: &BTreeMap<SnarlNodeId, f32>,
+    ports: &BTreeMap<(SnarlNodeId, bool, usize), f32>,
 ) -> BTreeMap<usize, f32> {
     let base = routing_channel(wire);
     let target_stage = depths.values().copied().max().unwrap_or(0) + 2;
     let mut channels = (0..target_stage)
         .map(|boundary| (boundary, base))
         .collect::<BTreeMap<_, _>>();
+    let mut fanout = BTreeMap::<SnarlNodeId, usize>::new();
+    let mut convergence = BTreeMap::<SnarlNodeId, usize>::new();
+    for edge in edges {
+        *fanout.entry(edge.from).or_default() += 1;
+        *convergence.entry(edge.to).or_default() += 1;
+    }
+    for edge in edges {
+        let from = if source_positions.contains_key(&edge.from) {
+            0
+        } else {
+            depths.get(&edge.from).copied().unwrap_or(0) + 1
+        };
+        let to = if target_positions.contains_key(&edge.to) {
+            target_stage
+        } else {
+            depths.get(&edge.to).copied().unwrap_or(0) + 1
+        };
+        let extra = (fanout[&edge.from]
+            .max(convergence[&edge.to])
+            .saturating_sub(1) as f32
+            * 8.0)
+            .min(160.0);
+        for boundary in from.min(to)..from.max(to) {
+            channels
+                .entry(boundary)
+                .and_modify(|channel| *channel = channel.max(base + extra));
+        }
+    }
     if matches!(wire.geometry(), WireGeometry::Straight)
         || !matches!(
             wire.frame_adjustment(),
@@ -718,19 +791,27 @@ fn routing_channels(
     {
         return channels;
     }
-    let maximum = (base * 3.0).min(320.0);
+    let maximum = (base * 3.0).min(320.0).max(base);
     for edge in edges {
         let from_y = if let Some(y) = source_positions.get(&edge.from) {
-            y + pin_center(edge.output)
+            y + measured_pin(ports, edge.from, false, edge.output)
         } else if let Some(center) = node_center(edge.from, semantics, measured_sizes, packed_y) {
-            center
+            packed_y[&edge.from]
+                + ports
+                    .get(&(edge.from, false, edge.output))
+                    .copied()
+                    .unwrap_or(center - packed_y[&edge.from])
         } else {
             continue;
         };
         let to_y = if let Some(y) = target_positions.get(&edge.to) {
-            y + pin_center(edge.input)
+            y + measured_pin(ports, edge.to, true, edge.input)
         } else if let Some(center) = node_center(edge.to, semantics, measured_sizes, packed_y) {
-            center
+            packed_y[&edge.to]
+                + ports
+                    .get(&(edge.to, true, edge.input))
+                    .copied()
+                    .unwrap_or(center - packed_y[&edge.to])
         } else {
             continue;
         };
@@ -748,9 +829,9 @@ fn routing_channels(
         } else {
             continue;
         };
-        let span = to_stage.saturating_sub(from_stage).max(1) as f32;
+        let span = to_stage.abs_diff(from_stage).max(1) as f32;
         let required = ((to_y - from_y).abs() / 8.0_f32.sqrt() / span + 32.0).clamp(base, maximum);
-        for boundary in from_stage..to_stage {
+        for boundary in from_stage.min(to_stage)..from_stage.max(to_stage) {
             channels
                 .entry(boundary)
                 .and_modify(|channel| *channel = channel.max(required))
@@ -772,6 +853,18 @@ fn node_center(
 
 fn pin_center(pin: usize) -> f32 {
     PIN_TOP + pin as f32 * ENDPOINT_PIN_PITCH
+}
+
+fn measured_pin(
+    ports: &BTreeMap<(SnarlNodeId, bool, usize), f32>,
+    node: SnarlNodeId,
+    input: bool,
+    pin: usize,
+) -> f32 {
+    ports
+        .get(&(node, input, pin))
+        .copied()
+        .unwrap_or_else(|| pin_center(pin))
 }
 
 fn average(values: impl Iterator<Item = f32>) -> Option<f32> {
@@ -898,6 +991,7 @@ mod tests {
             &graph_nodes,
             &edges,
             EndpointGeometry {
+                ports: &BTreeMap::new(),
                 source_positions: &source_positions,
                 target_positions: &target_positions,
                 source_extent: 1_000.0,
@@ -1062,6 +1156,7 @@ mod tests {
             &semantics,
             &BTreeMap::new(),
             &packed_y,
+            &BTreeMap::new(),
         );
 
         assert!(channels[&1] > base);

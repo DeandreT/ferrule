@@ -45,7 +45,7 @@ pub fn show(
             .min(viewport.height() * 0.22)
             .max(MIN_SIZE.y),
     );
-    let size_id = egui::Id::new("mapping_minimap_size");
+    let size_id = egui::Id::unique("mapping_minimap_size");
     let requested_size = ui
         .ctx()
         .data(|data| data.get_temp::<egui::Vec2>(size_id))

@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use egui_snarl::ui::SnarlViewer as _;
 use ir::{Instance, ScalarType, SchemaNode, Value, XmlTypeOrigin};
@@ -1622,18 +1624,16 @@ fn request_is_one_canvas_one_frame_and_keyboard_history_restores_the_complete_co
             shift: redo,
             ..Default::default()
         };
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
-                modifiers,
-                events: [true, false]
-                    .into_iter()
-                    .map(|pressed| egui::Event::Key {
+                events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+                    .chain([true, false].into_iter().map(|pressed| egui::Event::Key {
                         key: egui::Key::Z,
                         physical_key: Some(egui::Key::Z),
                         pressed,
                         repeat: false,
                         modifiers,
-                    })
+                    }))
                     .collect(),
                 ..Default::default()
             },

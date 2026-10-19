@@ -33,3 +33,6 @@ rfd = { workspace = true }
 format-json = { workspace = true }
 format-xlsx = { workspace = true }
 calamine = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
+egui_kittest = { version = "0.37", features = ["wgpu"] }
+egui_system_font_provider = "0.37"

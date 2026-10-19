@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -86,6 +88,9 @@ impl Endpoint {
                     }
                     Err(_) => break,
                 };
+                // Windows can inherit the listener's nonblocking mode. A
+                // transient WouldBlock is not an empty completed HTTP request.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(2)))
                     .unwrap();
@@ -188,7 +193,7 @@ fn form_frame(
         egui::Rect::NOTHING,
         false,
     );
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -297,7 +302,7 @@ fn result_window_text(app: &mut FerruleApp, context: &egui::Context) -> String {
     let mut text = String::new();
     // Two real window frames allow its first layout pass to settle.
     for _ in 0..2 {
-        let output = context.run_ui(
+        let output = context.run_test_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -455,7 +460,7 @@ fn pending_request_locks_ordinary_actions_and_close_waits_for_owned_worker() {
     let project_before = mapping::project_file::encode_pretty(&app.project).unwrap();
     let [undo, redo, _] = history_shortcuts();
     let editing = app.project_editing_enabled();
-    let _ = context.run_ui(
+    let _ = context.run_test_ui(
         egui::RawInput {
             events: vec![egui::Event::Key {
                 key: egui::Key::R,

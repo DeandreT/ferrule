@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, NamedTarget};
@@ -252,7 +254,7 @@ fn frame(
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
     retained.record("actual-input-events", &events);
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -433,9 +435,9 @@ fn click(
 }
 fn canvas_salt(app: &FerruleApp) -> egui::Id {
     app.embedded_canvas_id(match app.mapping_workspace.active {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(i) => egui::Id::new(("named_target_canvas", i)),
-        MappingDocument::Function(id) => egui::Id::new(("function_mapping_canvas", id.get())),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(i) => egui::Id::unique(("named_target_canvas", i)),
+        MappingDocument::Function(id) => egui::Id::unique(("function_mapping_canvas", id.get())),
     })
 }
 fn bounds(app: &FerruleApp, context: &egui::Context) -> egui::Rect {
@@ -465,8 +467,19 @@ fn bounds(app: &FerruleApp, context: &egui::Context) -> egui::Rect {
         * response.rect
 }
 fn open(app: &mut FerruleApp, context: &egui::Context, retained: &Retained) {
-    let output = settle(app, context, retained, true);
+    settle(app, context, retained, true);
     let bounds = bounds(app, context);
+    frame(
+        app,
+        context,
+        retained,
+        true,
+        vec![egui::Event::PointerMoved(egui::pos2(
+            bounds.center().x,
+            bounds.top() + 12.0,
+        ))],
+    );
+    let output = settle(app, context, retained, true);
     assert!(
         egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0))
             .contains_rect(bounds)

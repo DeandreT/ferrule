@@ -6,6 +6,8 @@ use crate::appearance::EditorAppearance;
 use crate::theme::ThemeState;
 
 const STORAGE_KEY: &str = "ferrule.editor_preferences";
+// Additive appearance fields (including canvas density) migrate through serde
+// defaults without discarding the user's existing theme and wire settings.
 const CURRENT_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,7 +71,7 @@ mod tests {
     use eframe::Storage as _;
 
     use super::*;
-    use crate::appearance::{AppearancePreset, WireColorMode, WireGeometry};
+    use crate::appearance::{AppearancePreset, CanvasDensity, WireColorMode, WireGeometry};
     use crate::theme::ThemePreference;
 
     #[derive(Default)]
@@ -107,6 +109,7 @@ mod tests {
             .expect("straight wire geometry is valid");
         wire.set_color_mode(WireColorMode::UniquePerWire);
         preferences.appearance.set_wire(wire);
+        preferences.appearance.set_density(CanvasDensity::Dense);
 
         let mut storage = MemoryStorage::default();
         store(&mut storage, &preferences);
@@ -139,5 +142,41 @@ mod tests {
         storage.set_string(STORAGE_KEY, r#"{"version":1}"#.to_string());
 
         assert!(load(Some(&storage)).show_minimap);
+    }
+
+    #[test]
+    fn old_preferences_default_density_without_resetting_other_choices() {
+        let mut storage = MemoryStorage::default();
+        for appearance in [
+            r#"{"wire":{"width":3.5}}"#,
+            r#"{"density":"future_preset","wire":{"width":3.5}}"#,
+        ] {
+            storage.set_string(
+                STORAGE_KEY,
+                format!(
+                    r#"{{"version":1,"theme":{{"preference":"light"}},"appearance":{appearance},"show_minimap":false,"mfd_package_manifest":"authored-package.json"}}"#,
+                ),
+            );
+            let preferences = load(Some(&storage));
+            assert_eq!(preferences.appearance.density(), CanvasDensity::Compact);
+            assert_eq!(preferences.appearance.wire().width(), 3.5);
+            assert_eq!(preferences.theme.preference, ThemePreference::Light);
+            assert!(!preferences.show_minimap);
+            assert_eq!(
+                preferences.mfd_package_manifest.as_deref(),
+                Some("authored-package.json")
+            );
+        }
+    }
+
+    #[test]
+    fn every_density_persists_independently_of_document_data() {
+        let mut storage = MemoryStorage::default();
+        for density in CanvasDensity::ALL {
+            let mut preferences = EditorPreferences::default();
+            preferences.appearance.set_density(density);
+            store(&mut storage, &preferences);
+            assert_eq!(load(Some(&storage)), preferences);
+        }
     }
 }

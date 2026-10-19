@@ -1,3 +1,5 @@
+use crate::test_ui::ContextExt as _;
+
 use super::super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, DynamicBinding, FormatOptions, Graph, NamedTarget};
@@ -342,7 +344,7 @@ fn frame(
 ) -> egui::FullOutput {
     retained.record("widget-input-events", &events);
     let enabled = app.ui_project_editing_enabled();
-    let output = context.run_ui(
+    let output = context.run_test_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

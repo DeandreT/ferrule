@@ -323,7 +323,7 @@ pub(super) fn show_available(
 ) -> Option<NodeTemplate> {
     #[cfg(test)]
     tests::begin_palette_response_capture();
-    let state_id = ui.id().with("node_palette");
+    let state_id = ui.scope_id().with("node_palette");
     let frame = ui.ctx().cumulative_frame_nr();
     let mut state = ui
         .data_mut(|data| data.get_temp::<PaletteState>(state_id))

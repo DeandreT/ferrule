@@ -84,7 +84,7 @@ impl std::fmt::Display for DuplicationError {
 // Requests exist only between the current canvas's begin/take calls. Applying
 // them outside the viewer borrow provides the complete current Project.
 fn request_key() -> egui::Id {
-    egui::Id::new("sequence_consumer_duplication_request")
+    egui::Id::unique("sequence_consumer_duplication_request")
 }
 
 pub(crate) fn request(context: &egui::Context, node: NodeId) {

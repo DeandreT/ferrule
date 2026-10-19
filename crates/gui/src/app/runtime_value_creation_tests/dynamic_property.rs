@@ -138,8 +138,8 @@ fn arrange_fixture(app: &mut FerruleApp, context: &egui::Context, document: Mapp
 
 fn canvas_salt(app: &FerruleApp, document: MappingDocument) -> egui::Id {
     let salt = match document {
-        MappingDocument::Main => egui::Id::new("main_mapping_canvas"),
-        MappingDocument::Target(index) => egui::Id::new(("named_target_canvas", index)),
+        MappingDocument::Main => egui::Id::unique("main_mapping_canvas"),
+        MappingDocument::Target(index) => egui::Id::unique(("named_target_canvas", index)),
         MappingDocument::Function(_) => {
             panic!("source-property fixtures never wire an isolated function")
         }
@@ -319,6 +319,16 @@ fn open_editor(
         return output;
     }
     let bounds = node_rect(app, context, document, CanvasNode::Graph(2));
+    frame(
+        app,
+        context,
+        true,
+        vec![egui::Event::PointerMoved(egui::pos2(
+            bounds.center().x,
+            bounds.top() + 12.0,
+        ))],
+    );
+    let output = settle(app, context, true);
     let pencil = char::from(lucide_icons::Icon::Pencil).to_string();
     let candidates = visible_texts(&output, &pencil)
         .into_iter()
