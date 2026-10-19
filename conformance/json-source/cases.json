@@ -1,0 +1,35 @@
+{
+  "valid": [
+    {
+      "id": "ordered-decoded-duplicate-names",
+      "input": "{\"name\":\"first\",\"\\u006eame\":\"second\",\"Name\":\"upper\",\"雪\":\"😀\",\"\":null}",
+      "expected": ["object", [["name", ["string", "first"]], ["name", ["string", "second"]], ["Name", ["string", "upper"]], ["雪", ["string", "😀"]], ["", ["null"]]]]
+    },
+    {
+      "id": "lexical-numbers-and-kinds",
+      "input": "[-0,1.2300e+04,9007199254740993,1e10000,\"17\",17,false,true,null,[],{}]",
+      "expected": ["array", [["number", "-0"], ["number", "1.2300e+04"], ["number", "9007199254740993"], ["number", "1e10000"], ["string", "17"], ["number", "17"], ["boolean", false], ["boolean", true], ["null"], ["array", []], ["object", []]]]
+    },
+    {
+      "id": "nested-occurrences-and-unmapped-values",
+      "input": "{\"header\":17,\"rows\":[{\"v\":\"a\",\"v\":null},{\"v\":\"b\"}],\"identity\":\"payload-only\"}",
+      "expected": ["object", [
+        ["header", ["number", "17"]],
+        ["rows", ["array", [
+          ["object", [["v", ["string", "a"]], ["v", ["null"]]]],
+          ["object", [["v", ["string", "b"]]]]
+        ]]],
+        ["identity", ["string", "payload-only"]]
+      ]]
+    },
+    {"id":"empty-object", "input":"{}", "expected":["object",[]]},
+    {"id":"primitive-root", "input":"null", "expected":["null"]},
+    {"id":"bom-and-trivia", "input":"﻿ \r\n{\"x\":2}\t", "expected":["object",[["x",["number","2"]]]]},
+    {"id":"escaped-structural-text", "input":"\"[\\\"{\\\\}]\"", "expected":["string","[\"{\\}]"]}
+  ],
+  "invalid": [
+    "", "  ", "{} []", "[1,]", "{\"x\":1,}", "{'x':1}", "{x:1}",
+    "01", "+1", "NaN", "Infinity", "-Infinity", "1.", "1e", "/*x*/null",
+    "\"\\ud800\"", "{\"\\udc00\":0}", "{\"x\":\"\\ud800\"}", "﻿{}﻿"
+  ]
+}
