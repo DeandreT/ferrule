@@ -1473,6 +1473,43 @@ fn explicit_reference_requires_one_owning_mapping() -> Result<(), Box<dyn Error>
 }
 
 #[test]
+fn explicit_reference_rejects_a_local_xml_file_set_input() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let samples = workspace.0.join("samples");
+    std::fs::create_dir(&samples)?;
+    std::fs::write(samples.join("records-a.xml"), "<Root/>")?;
+    std::fs::write(samples.join("records-b.xml"), "<Root/>")?;
+    let mapping = samples.join("mapping.mfd");
+    std::fs::write(
+        &mapping,
+        r#"<mapping><component library="xml"><document outputinstance="records-b.xml"/></component></mapping>"#,
+    )?;
+    let options = FormatOptions {
+        xml_document: true,
+        local_xml_file_set: true,
+        ..FormatOptions::default()
+    };
+
+    let (_, input_paths) = load_source(
+        &samples,
+        &samples,
+        "records-*.xml",
+        &SchemaNode::group("Root", Vec::new()),
+        &options,
+    )?;
+    let error = explicit_reference(
+        &mapping,
+        &samples,
+        Some("records-b.xml"),
+        &input_paths,
+        &FormatOptions::default(),
+    )
+    .unwrap_err();
+    assert!(error.contains("also used as an input"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn generated_reference_manifests_resolve_only_contained_outputs() -> Result<(), Box<dyn Error>> {
     let workspace = SurveyWorkspace::new()?;
     let references = workspace.0.join("references");
