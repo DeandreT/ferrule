@@ -436,10 +436,10 @@ impl EmissionGate {
         }
         verify_merged_registry_42686c55()?;
         verify_live_adjacent_42686c55(&fixture_root()?.join("accepted-corpus-v2"))?;
-        if let Some(pin) = &self.p_source_pin {
-            if selected_p_source_pin()?.as_ref() != Some(pin) {
-                return Err("P target/proposed candidate identity changed after acceptance".into());
-            }
+        if let Some(pin) = &self.p_source_pin
+            && selected_p_source_pin()?.as_ref() != Some(pin)
+        {
+            return Err("P target/proposed candidate identity changed after acceptance".into());
         }
         Ok(())
     }

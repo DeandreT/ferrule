@@ -225,6 +225,8 @@ impl PreparedInputFence {
         Ok(record)
     }
 
+    // These parameters preserve separate traversal and custody state.
+    #[allow(clippy::too_many_arguments)]
     fn visit(
         &self,
         root: &Path,

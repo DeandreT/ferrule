@@ -8,9 +8,11 @@ use std::{fs, io::Write as _};
 // These modules are byte-bound independent corpus inputs. Keep their mounted
 // bodies identical to the archived originals when formatting this harness.
 #[rustfmt::skip]
+#[allow(clippy::possible_missing_else, clippy::too_many_arguments)]
 #[path = "../../../../conformance/basic-owned-group-starting-with/cases.rs"]
 mod cases;
 #[rustfmt::skip]
+#[allow(clippy::possible_missing_else)]
 #[path = "../../../../conformance/basic-owned-group-starting-with/projects.rs"]
 mod projects;
 #[rustfmt::skip]

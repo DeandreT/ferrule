@@ -312,6 +312,8 @@ fn record_bound_process(
     }
     Ok(output?)
 }
+// Keep each independently bound host-contract input explicit at the call site.
+#[allow(clippy::too_many_arguments)]
 fn make_host_contract(
     evidence: &Evidence,
     label: &str,

@@ -206,8 +206,8 @@ internal static partial class Program
     private static FerruleInstance StartingAccountingOutput(FerruleBasicScopeContext c) => Group(
         Field("First", Scalar(c.ResolveOwnedField(OwnedNamedOwner("Ω"), new[] { "巣", "行" }))),
         Field("Position", Scalar(FerruleValue.FromInt64((long)c.OwnedPosition(OwnedNamedOwner("Ω"), new[] { "巣", "行" })))),
-        Field("Members", Repeated(c.WalkSourceCohort(Array.Empty<string>()).Select(x => Scalar(
-            x.Context.ResolveOwnedField(OwnedNamedOwner("Ω"), new[] { "巣", "行" }))).ToArray())));
+        // Observe the published member chain without starting a second budgeted walk.
+        Field("Members", (FerruleRepeated)c.LegacyView.Frames[^1]));
     private static FerruleInstance StartingAccountingExpected() => Group(Field("First", Scalar(FerruleValue.FromInt64(1))),
         Field("Position", Scalar(FerruleValue.FromInt64(1))), Field("Members", Repeated(Scalar(FerruleValue.FromInt64(1)), Scalar(FerruleValue.FromInt64(2)))));
     private static StartingControls StartingAccounting(List<string> log) => new()
@@ -272,7 +272,8 @@ internal static partial class Program
             }
             else
             {
-                AdjExpect("G443.R13-known206-sort8-no-bool-text", root.MapGroupStartingWithSourceCohort(original, c, Target), StartingAccountingExpected());
+                AdjExpect("G443.R13-known206-sort8-no-bool-text", BasicReached("G443.R13-complete-subject",
+                    () => root.MapGroupStartingWithSourceCohort(original, c, Target)), StartingAccountingExpected());
                 Equal("s0,s1,s0,s1,w,b,p,b,p,t", string.Join(',', log)); c.Counts(1, 0, 4, 1, 2, 2); Equal(1, targets);
             }
         }
@@ -507,7 +508,7 @@ internal static partial class Program
             }
             else
             {
-                AdjExpect("G443.R16-old-key-exact",Run(),StartingAccountingExpected());
+                AdjExpect("G443.R16-old-key-exact",BasicReached("G443.R16-complete-subject",Run),StartingAccountingExpected());
                 Equal("s0,s1,s0,s1,w,g,p,g,p,t",string.Join(',',events));Equal(2,posts);Equal(1,targets);Equal(9,controls.SemanticCalls);
             }
             Equal(1,controls.MetadataCalls);
