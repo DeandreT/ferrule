@@ -53,10 +53,10 @@ mod dynamic_source_load_tests;
 mod owned_observer_preflight_tests;
 
 pub use code_generation::{
-    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_json_adapters,
-    generate_project_with_csv_output, generate_project_with_csv_x12_adapters,
-    generate_project_with_csv_x12_envelope_profile, generate_project_with_json5_adapters,
-    generate_project_with_static_document_adapters,
+    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_document_adapters,
+    generate_project_with_csv_json_adapters, generate_project_with_csv_output,
+    generate_project_with_csv_x12_adapters, generate_project_with_csv_x12_envelope_profile,
+    generate_project_with_json5_adapters, generate_project_with_static_document_adapters,
     generate_project_with_static_document_envelope_profiles, generate_project_with_x12_adapters,
     generate_project_with_x12_envelope_profiles,
 };

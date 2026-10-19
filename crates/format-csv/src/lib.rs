@@ -16,11 +16,17 @@ use mapping::{CsvTextRepairDependency, FormatOptions};
 use thiserror::Error;
 
 mod bounded;
+mod bounded_read;
 mod encoding;
 mod fixed_width;
 mod read;
 
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
+pub use bounded_read::{
+    CsvReadError, CsvReadLimit, MAX_CSV_INPUT_BYTES, MAX_CSV_INPUT_CELL_BYTES,
+    MAX_CSV_INPUT_COLUMNS, MAX_CSV_INPUT_NODES, MAX_CSV_INPUT_RECORDS,
+    from_bytes_with_options_bounded, from_str_with_options_bounded,
+};
 
 pub use read::{
     CsvReadOptions, from_str, from_str_with_dialect, from_str_with_options, from_str_with_quote,

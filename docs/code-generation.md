@@ -506,6 +506,45 @@ scalar unions and conflicting physical adapters are refused before any
 generated files are published. Dynamic loaded documents and mapped rows remain
 materialized, so the CSV output limit is not a total memory limit.
 
+## Complete CSV Documents
+
+Use `--csv-document-adapters` with either backend to accept a complete CSV input
+and return one complete CSV output. Both endpoints need explicit CSV identities
+(`tabular_kind: "csv"`, or a `.csv` path when no tabular identity is stored).
+The adapter accepts closed, non-repeating row schemas with unique, nonempty
+scalar column names and canonical metadata. The mapping must produce repeated
+primary rows. Named endpoints and dynamic document iteration are refused.
+
+Rust adds `parse_csv`, `parse_csv_bytes`, `execute_csv_document`,
+`execute_csv_document_bytes`, and both execution methods' `_with_context`
+variants. C# adds `ParseCsv`, `ParseCsvBytes`, `ExecuteCsvDocument` and
+`ExecuteCsvDocumentBytes`; execution methods also accept an execution context.
+The library APIs are `generate_project_with_csv_document_adapters`,
+`codegen::CsvDocumentBoundaryPolicy` and each backend's
+`emit_with_csv_document_adapters`.
+
+The stored input and output dialects are independent. Input uses positional
+columns, skips the first logical record when headers are enabled, accepts UTF-8
+with or without a leading BOM, and keeps the native permissive CSV syntax.
+Missing columns are null; present empty text follows
+`csv_preserve_empty_strings`. Input is fully parsed before mapping begins, and
+all mapping work finishes before serialization. A call returns a complete
+document or an error, never a partial document. Grouped rows still form one
+output document, including a header-only result when the selected output policy
+requires a header and the mapping produces no rows.
+
+Input admission limits are 8 MiB of physical UTF-8, 1 MiB per decoded cell,
+100,000 logical records including a skipped header, 256 columns and 1,000,000
+instance nodes. Output uses the existing 64 MiB CSV writer limit, LF record
+terminators and its selected quoting/header/BOM policy. These are data limits,
+not process-memory bounds. Rust preserves input causes in
+`CsvDocumentError::Input` and mapping/writer causes in
+`CsvDocumentError::Output`; C# preserves the existing typed CSV-input,
+mapping-runtime and CSV-writer exceptions.
+
+These APIs take document contents. Filename enumeration, acquisition,
+multi-document partitioning and publication require separate host contracts.
+
 ## Flat CSV Input to X12
 
 Select `--csv-x12-adapters` with `--language csharp` to generate flat CSV text
