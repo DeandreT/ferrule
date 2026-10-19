@@ -77,6 +77,18 @@ fn schema_v2_preserves_every_legacy_row_and_assessment() {
             );
             current["description"] = previous["description"].clone();
         }
+        if legacy == LEGACY_CANONICAL {
+            // Inventory additions do not change the archived capability prefix.
+            // Other tests validate every current row and all required dimensions.
+            let historical_count = previous["capabilities"]
+                .as_array()
+                .expect("historical capabilities")
+                .len();
+            current["capabilities"]
+                .as_array_mut()
+                .expect("current capabilities")
+                .truncate(historical_count);
+        }
         for capability in current["capabilities"]
             .as_array_mut()
             .expect("capabilities")

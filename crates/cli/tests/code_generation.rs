@@ -872,6 +872,8 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/Json/FerruleJson.PropertyNames.cs",
         "Runtime/Json/FerruleJson.UniqueItems.cs",
         "Runtime/Json/FerruleJson.cs",
+        "Runtime/Json/FerruleJsonSourceDocument.cs",
+        "Runtime/Json/FerruleJsonSourceOccurrence.cs",
         "Runtime/ScalarPathResolver.cs",
         "Runtime/ScopeContext.CollectionFind.cs",
         "Runtime/ScopeContext.cs",

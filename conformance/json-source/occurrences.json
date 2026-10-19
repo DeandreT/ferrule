@@ -1,0 +1,9 @@
+{
+  "schema": {"name":"Output","kind":{"kind":"group","children":[{"name":"documents","repeating":true,"kind":{"kind":"group","children":[{"name":"identity","kind":{"kind":"scalar","ty":"string"}},{"name":"rows","repeating":true,"kind":{"kind":"group","children":[{"name":"owner","kind":{"kind":"scalar","ty":"string"}},{"name":"value","kind":{"kind":"scalar","ty":"string"}}]}}]}}]}},
+  "documents": [
+    {"request":"z-first","identity":"same.json","input":"{\"identity\":\"spoof\",\"rows\":[{\"owner\":\"first\",\"value\":\"a\",\"value\":7,\"value\":\"b\"},{\"owner\":\"second\",\"value\":\"c\",\"value\":null},{\"owner\":\"empty\",\"value\":3}],\"rows\":[{\"owner\":\"last\",\"value\":\"e\"}]}"},
+    {"request":"a-second","identity":"same.json","input":"{\"value\":\"outer\",\"rows\":[{\"owner\":\"third\",\"value\":\"d\",\"nested\":{\"value\":\"outside\"}},{\"owner\":\"missing\"}]}"},
+    {"request":"last","identity":"other.json","input":"{\"rows\":\"wrong-kind\"}"}
+  ],
+  "expected": "{\"documents\":[{\"identity\":\"same.json\",\"rows\":[{\"owner\":\"first\",\"value\":\"a\"},{\"owner\":\"first\",\"value\":\"b\"},{\"owner\":\"second\",\"value\":\"c\"},{\"owner\":\"last\",\"value\":\"e\"}]},{\"identity\":\"same.json\",\"rows\":[{\"owner\":\"third\",\"value\":\"d\"}]},{\"identity\":\"other.json\",\"rows\":[]}]}"
+}

@@ -21,6 +21,7 @@ mod generated_sequence;
 mod iteration;
 mod json;
 mod json5;
+mod json_source;
 mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;
@@ -92,6 +93,9 @@ pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
     parse_json_bytes, parse_json_bytes_with_utf8_cause, serialize_json, serialize_json_bytes,
     serialize_json_compact, serialize_json_compact_bytes,
+};
+pub use json_source::{
+    JsonSourceDocuments, JsonSourceLoadError, JsonSourceOccurrence, MAX_JSON_SOURCE_DOCUMENTS,
 };
 pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
