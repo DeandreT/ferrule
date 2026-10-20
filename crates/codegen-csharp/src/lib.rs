@@ -210,6 +210,17 @@ pub fn emit_with_basic_owned_failure_sources(program: &Program) -> Result<Artifa
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits an owned path-hierarchy input collection with the EndingWith controls,
+/// scalar ItemAt producers, primary-row failures and owned failure-source walks.
+/// The directory, file and name fields only describe output; older companions
+/// keep refusing the operator.
+pub fn emit_with_basic_owned_path_hierarchy(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
+    codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_path_hierarchy_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -311,6 +322,8 @@ mod tests {
     mod owned_basic;
     #[path = "owned_failure_sources.rs"]
     mod owned_failure_sources;
+    #[path = "owned_path_hierarchy.rs"]
+    mod owned_path_hierarchy;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,

@@ -267,6 +267,28 @@ pub fn emit_with_basic_owned_group_by(
     .map_err(EmitError::from)
 }
 
+/// Emit an owned path-hierarchy input collection with the EndingWith controls,
+/// scalar ItemAt producers, primary-row failures and owned failure-source walks.
+/// Legacy hierarchies keep the ordinary emitter; every older companion keeps
+/// refusing owned hierarchies.
+pub fn emit_with_basic_owned_path_hierarchy(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_path_hierarchy_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
 /// pure scalar producers. Existing emitters and failure-expression gates stay closed.
 pub fn emit_with_basic_owned_sequence_item_at(
@@ -806,7 +828,8 @@ fn expression_usage(
             TargetConstruction::Group
             | TargetConstruction::CopyCurrentSource
             | TargetConstruction::XmlMixedContent { .. }
-            | TargetConstruction::PathHierarchy { .. } => {}
+            | TargetConstruction::PathHierarchy { .. }
+            | TargetConstruction::OwnedPathHierarchy { .. } => {}
         }
     }
     for rule in &program.failure_rules {
@@ -2808,6 +2831,35 @@ fn render_scope_item(
         let collection = render_string_path(collection);
         output.push_str(&format!(
             "{indent}let output = path_hierarchy(\n{indent}    {context},\n{indent}    &[{collection}],\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent})?;\n",
+            rust_string(separator),
+            rust_string(directories),
+            rust_string(files),
+            rust_string(name),
+        ));
+        return output;
+    }
+    if let TargetConstruction::OwnedPathHierarchy {
+        collection,
+        separator,
+        directories,
+        files,
+        name,
+    } = &scope.construction
+    {
+        // Only paired Basic scopes render this construction; the owner is the
+        // exact stored endpoint and the field names describe output only.
+        let owner = match &collection.owner {
+            mapping::SourceOwner::Primary => "codegen_runtime::SourceOwnerRef::Primary".to_string(),
+            mapping::SourceOwner::Named { name } => {
+                format!(
+                    "codegen_runtime::SourceOwnerRef::Named({})",
+                    rust_string(name)
+                )
+            }
+        };
+        output.push_str(&format!(
+            "{indent}let output = codegen_runtime::owned_path_hierarchy(\n{indent}    {context},\n{indent}    {owner},\n{indent}    &[{}],\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent})?;\n",
+            render_string_path(&collection.path),
             rust_string(separator),
             rust_string(directories),
             rust_string(files),

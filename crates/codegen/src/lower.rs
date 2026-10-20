@@ -104,6 +104,17 @@ pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Prog
     )
 }
 
+/// Lowers an owned path-hierarchy input collection with the composed EndingWith
+/// controls, scalar-producer ItemAt, primary-row failures and owned failure-source
+/// walks. Legacy hierarchies keep their ordinary route; graph and wire lowering
+/// are unchanged.
+pub fn lower_with_basic_owned_path_hierarchy(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_path_hierarchy,
+    )
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
@@ -654,6 +665,15 @@ fn lower_scope(
             files: plan.files().to_string(),
             name: plan.name().to_string(),
         },
+        ScopeConstruction::OwnedPathHierarchy { plan } => {
+            crate::TargetConstruction::OwnedPathHierarchy {
+                collection: plan.collection().clone(),
+                separator: plan.separator().to_string(),
+                directories: plan.directories().to_string(),
+                files: plan.files().to_string(),
+                name: plan.name().to_string(),
+            }
+        }
         ScopeConstruction::AdjacencyTree { plan } => {
             roots.extend(plan.root());
             crate::TargetConstruction::AdjacencyTree {
