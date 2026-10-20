@@ -114,6 +114,15 @@ The construction admits only Basic contexts. Interpreter, generated Rust and
 generated C# share the legacy builder's ordering, bounds and error categories.
 Native export and GUI authoring remain closed.
 
+## Recursive collection roots
+
+An owned recursive collection walk selects its root collection from exactly its
+declared endpoint, beside the unchanged legacy `recursive_collect` form. Child,
+descent and value paths stay relative to each selected group and never select
+an endpoint, and the generated item stays a private declaration. Only a Basic
+parent-context ItemAt consumes the owned producer. See the
+[recursive collection contract](owned-recursive-collect.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

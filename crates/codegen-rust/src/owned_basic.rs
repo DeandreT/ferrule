@@ -19,6 +19,7 @@ pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
 pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
 pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
 pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
+pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
@@ -394,7 +395,7 @@ pub(super) fn failure_refusal(index: usize, reason: Capability) -> EmitError {
     .into()
 }
 
-fn owner_literal(owner: &SourceOwner) -> String {
+pub(crate) fn owner_literal(owner: &SourceOwner) -> String {
     match owner {
         SourceOwner::Primary => "SourceOwnerRef::Primary".into(),
         SourceOwner::Named { name } => format!("SourceOwnerRef::Named({})", rust_string(name)),

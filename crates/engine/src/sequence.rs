@@ -232,6 +232,35 @@ pub(super) fn eval_sequence_in_progress(
                 &separator,
             )
         }
+        SequenceExpr::OwnedRecursiveCollect(collect) => {
+            // Prefix and separator keep the legacy parent phases and order;
+            // only the root collection selection differs.
+            let prefix = eval_sequence_arg(
+                program,
+                consumer,
+                collect.prefix,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?
+            .map(|value| scalar_text(&value))
+            .transpose()?
+            .unwrap_or_default();
+            let separator = eval_sequence_arg(
+                program,
+                consumer,
+                collect.separator,
+                1,
+                context,
+                positions,
+                in_progress,
+            )?
+            .map(|value| scalar_text(&value))
+            .transpose()?
+            .unwrap_or_default();
+            crate::recursive_collect_owned::collect(program, consumer, collect, &prefix, &separator)
+        }
     }
 }
 
@@ -279,7 +308,7 @@ fn recursive_collect(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn collect_recursive_group(
+pub(super) fn collect_recursive_group(
     group: &Instance,
     children: &[String],
     descent_value: &[String],

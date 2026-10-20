@@ -116,6 +116,16 @@ pub fn lower_with_basic_owned_group_into_blocks(project: &Project) -> Result<Pro
     )
 }
 
+/// Lowers SequenceItemAt over explicitly owned recursive collection walks with
+/// the owned adjacency-tree profile. Older companions keep refusing the owned
+/// producer; lowering itself is unchanged.
+pub fn lower_with_basic_owned_recursive_collect(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_recursive_collect,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -1034,6 +1044,18 @@ fn lower_generated_sequence(
             separator: *separator,
             item: *item,
         },
+        mapping::SequenceExpr::OwnedRecursiveCollect(collect) => {
+            GeneratedSequence::OwnedRecursiveCollect {
+                collection: collect.collection.clone(),
+                children: collect.children.clone(),
+                descent_value: collect.descent_value.clone(),
+                values: collect.values.clone(),
+                value: collect.value.clone(),
+                prefix: collect.prefix,
+                separator: collect.separator,
+                item: collect.item,
+            }
+        }
         mapping::SequenceExpr::Generate { from, to, item } => GeneratedSequence::Range {
             from: *from,
             to: *to,

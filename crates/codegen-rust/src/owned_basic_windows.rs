@@ -97,10 +97,23 @@ pub(crate) fn render_public_basic_owned_adjacency_tree_source(
     )
 }
 
+/// The owned adjacency-tree profile plus ItemAt over owned recursive walks.
+pub(crate) fn render_public_basic_owned_recursive_collect_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::AdjacencyTree,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
     BasicScalarProducers,
+    /// The four scalar producers plus the owned recursive collection walk.
+    BasicScalarAndOwnedRecursiveProducers,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -208,6 +221,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_adjacency_tree_emission(program)?;
         }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_recursive_collect_emission(program)?;
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
         }
@@ -265,7 +281,7 @@ fn render_public_basic_owned_source_policy(
         .iter()
         .filter_map(|node| match &node.expression {
             Expression::SequenceItemAt { sequence, .. }
-                if item_at == SequenceItemAtPolicy::BasicScalarProducers
+                if item_at != SequenceItemAtPolicy::Closed
                     && (basic_retained.contains(&node.id)
                         || legacy_retained.contains(&node.id)) =>
             {
@@ -295,7 +311,7 @@ fn render_public_basic_owned_source_policy(
              RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,\n\
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
-    if item_at == SequenceItemAtPolicy::BasicScalarProducers {
+    if item_at != SequenceItemAtPolicy::Closed {
         // Demand includes both paired functions and ordinary legacy islands.
         // Add only the pure helpers actually called, without generated contexts.
         let mut imports = BTreeSet::new();
@@ -364,7 +380,7 @@ fn render_public_basic_owned_source_policy(
                     basic: true,
                     owned_leaf_nodes: true,
                 },
-                item_at == SequenceItemAtPolicy::BasicScalarProducers,
+                item_at != SequenceItemAtPolicy::Closed,
             )?);
         }
     }
@@ -403,7 +419,7 @@ fn render_public_basic_owned_source_policy(
                         basic: false,
                         owned_leaf_nodes: false,
                     },
-                    item_at == SequenceItemAtPolicy::BasicScalarProducers,
+                    item_at != SequenceItemAtPolicy::Closed,
                 )?);
             }
         }
@@ -460,6 +476,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
+        }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
@@ -539,10 +558,12 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     let retained = rows::target_expression_usage(program, &one);
     program.expressions.iter().any(|node| {
         retained.contains(&node.id)
-            && matches!(
-                &node.expression,
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-            )
+            && match &node.expression {
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                // An owned producer reads its root through the paired context.
+                Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
+                _ => false,
+            }
     })
 }
 

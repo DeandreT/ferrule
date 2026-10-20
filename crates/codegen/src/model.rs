@@ -1195,6 +1195,18 @@ pub enum GeneratedSequence {
         separator: NodeId,
         item: NodeId,
     },
+    /// The same walk from one explicitly owned root collection. Relative
+    /// paths stay group-relative and `item` stays a private declaration.
+    OwnedRecursiveCollect {
+        collection: mapping::OwnedSourceRef,
+        children: Vec<String>,
+        descent_value: Vec<String>,
+        values: Vec<String>,
+        value: Vec<String>,
+        prefix: NodeId,
+        separator: NodeId,
+        item: NodeId,
+    },
     Range {
         from: Option<NodeId>,
         to: NodeId,
@@ -1237,6 +1249,7 @@ impl GeneratedSequence {
             | Self::TokenizeByLength { item, .. }
             | Self::TokenizeRegex { item, .. }
             | Self::RecursiveCollect { item, .. }
+            | Self::OwnedRecursiveCollect { item, .. }
             | Self::Range { item, .. } => *item,
             Self::FilterMapV1(composition) => composition.item,
         }
@@ -1257,6 +1270,9 @@ impl GeneratedSequence {
                 ..
             } => ([Some(*input), Some(*pattern), *flags], &[]),
             Self::RecursiveCollect {
+                prefix, separator, ..
+            }
+            | Self::OwnedRecursiveCollect {
                 prefix, separator, ..
             } => ([Some(*prefix), Some(*separator), None], &[]),
             Self::Range { from, to, .. } => ([*from, Some(*to), None], &[]),
@@ -1281,6 +1297,14 @@ impl GeneratedSequence {
         }
         .into_iter()
         .flatten()
+    }
+
+    /// The explicitly owned root collection, for owned producers only.
+    pub fn owned_source(&self) -> Option<&mapping::OwnedSourceRef> {
+        match self {
+            Self::OwnedRecursiveCollect { collection, .. } => Some(collection),
+            _ => None,
+        }
     }
 
     pub fn stage_functions(&self) -> impl Iterator<Item = FunctionId> {

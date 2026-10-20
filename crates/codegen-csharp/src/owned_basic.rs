@@ -21,6 +21,8 @@ mod row_failures;
 enum SequenceItemAtPolicy {
     Closed,
     BasicScalarProducers,
+    /// The four scalar producers plus the owned recursive collection walk.
+    BasicScalarAndOwnedRecursiveProducers,
 }
 
 #[derive(Clone, Copy)]
@@ -159,6 +161,15 @@ impl TargetExtension {
         adjacency_tree: true,
     };
 
+    /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
+    const RECURSIVE_COLLECT: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+    };
+
     fn permits_path_hierarchy(self) -> bool {
         self.path_hierarchy
     }
@@ -194,18 +205,27 @@ impl TargetExtension {
     }
 
     fn permits_sequence_item_at(self) -> bool {
-        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducers
+        self.sequence_item_at != SequenceItemAtPolicy::Closed
     }
-}
 
-fn pure_item_at_sequence(sequence: &codegen::GeneratedSequence) -> bool {
-    matches!(
-        sequence,
-        codegen::GeneratedSequence::Range { .. }
-            | codegen::GeneratedSequence::Tokenize { .. }
-            | codegen::GeneratedSequence::TokenizeByLength { .. }
-            | codegen::GeneratedSequence::TokenizeRegex { .. }
-    )
+    fn permits_owned_recursive_collect(self) -> bool {
+        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers
+    }
+
+    /// Whether this profile renders ItemAt over `sequence` in the paired context.
+    fn item_at_sequence(self, sequence: &codegen::GeneratedSequence) -> bool {
+        matches!(
+            sequence,
+            codegen::GeneratedSequence::Range { .. }
+                | codegen::GeneratedSequence::Tokenize { .. }
+                | codegen::GeneratedSequence::TokenizeByLength { .. }
+                | codegen::GeneratedSequence::TokenizeRegex { .. }
+        ) || self.permits_owned_recursive_collect()
+            && matches!(
+                sequence,
+                codegen::GeneratedSequence::OwnedRecursiveCollect { .. }
+            )
+    }
 }
 
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
@@ -231,7 +251,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.adjacency_tree {
+    if extension.permits_owned_recursive_collect() {
+        codegen::validate_program_with_basic_owned_recursive_collect(program)?;
+    } else if extension.adjacency_tree {
         codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
     } else if extension.permits_path_hierarchy() {
         codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
@@ -712,7 +734,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.adjacency_tree {
+    if extension.permits_owned_recursive_collect() {
+        codegen::validate_basic_owned_recursive_collect_emission(program)?;
+    } else if extension.adjacency_tree {
         codegen::validate_basic_owned_adjacency_tree_emission(program)?;
     } else if extension.permits_path_hierarchy() {
         codegen::validate_basic_owned_path_hierarchy_emission(program)?;
@@ -770,7 +794,7 @@ fn validate_private_inventory(
         }
         let reason = match &node.expression {
             Expression::SequenceItemAt { sequence, .. }
-                if extension.permits_sequence_item_at() && pure_item_at_sequence(sequence) =>
+                if extension.permits_sequence_item_at() && extension.item_at_sequence(sequence) =>
             {
                 continue;
             }
@@ -1107,7 +1131,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.adjacency_tree {
+    let plan = if extension.permits_owned_recursive_collect() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
+    } else if extension.adjacency_tree {
         codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
     } else if extension.permits_path_hierarchy() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
@@ -1351,10 +1377,12 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
             continue;
         }
         if let Some(node) = program.expressions.iter().find(|node| node.id == id) {
-            if matches!(
-                node.expression,
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-            ) {
+            if match &node.expression {
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                // An owned producer reads its root through the paired context.
+                Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
+                _ => false,
+            } {
                 return true;
             }
             pending.extend(retained_expression_inputs(&node.expression));
@@ -1592,6 +1620,22 @@ pub(crate) fn render_public_basic_owned_group_into_blocks_mapping(
         true,
         true,
         TargetExtension::GROUP_INTO_BLOCKS,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_recursive_collect_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::RECURSIVE_COLLECT,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

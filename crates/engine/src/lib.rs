@@ -29,6 +29,7 @@ mod owned_source_context;
 mod path_hierarchy;
 mod pipeline;
 mod primary_filename;
+mod recursive_collect_owned;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
@@ -1098,6 +1099,9 @@ mod owned_sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;
+#[cfg(test)]
+#[path = "tests/owned_recursive_collect.rs"]
+mod owned_recursive_collect_tests;
 #[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

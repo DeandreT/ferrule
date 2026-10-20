@@ -513,7 +513,12 @@ pub(super) fn validate_scope(
                 ("recursive sequence prefix", *prefix),
                 ("recursive sequence separator", *separator),
             ],
+            mapping::SequenceExpr::OwnedRecursiveCollect(collect) => vec![
+                ("recursive sequence prefix", collect.prefix),
+                ("recursive sequence separator", collect.separator),
+            ],
         };
+        super::graph::validate_owned_sequence(project, sequence, &location, issues);
         references.extend(
             sequence
                 .owned_items()

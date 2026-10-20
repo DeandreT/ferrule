@@ -171,6 +171,9 @@ impl<'a> Analysis<'a> {
         if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
             self.inspect_path(collection);
         }
+        if let Some(source) = sequence.owned_source() {
+            self.inspect_owner(&source.owner);
+        }
     }
 
     fn inspect_graph(&mut self) {

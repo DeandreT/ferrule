@@ -39,6 +39,7 @@ pub use join::{InnerJoinKey, InnerJoinStage};
 pub use named_input_admission::{
     BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode,
 };
+pub(crate) use recursive::collect_from_root as collect_recursive_root;
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 pub use resolve::{OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimitKind};
 
