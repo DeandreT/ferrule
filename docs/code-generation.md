@@ -357,6 +357,29 @@ shape. An end boundary consumes no grouping-key text credits. The
 [Ending contract](design/owned-group-ending-with.md) defines the full callback,
 authenticated-member, resource and qualification requirements.
 
+## Explicit owned fixed-block grouping
+
+Use `codegen::lower_with_basic_owned_group_into_blocks`, then
+`codegen_rust::emit_with_basic_owned_group_into_blocks(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_into_blocks(&program)`. The
+matching validation and named-input companions select the same explicit
+profile, which also admits By, AdjacentBy, StartingWith and EndingWith.
+Existing execution entry names, five-field policy and earlier profile gates,
+including Ending's, remain intact.
+
+The block size is a parent expression evaluated once after the window bounds and
+before candidate controls, even for an empty cohort. It converts like an item
+count; zero after clamping is a typed `InvalidBlockSize` and a non-count is a
+typed `NotAnItemCount`. Selected candidates fill blocks in order and the last
+block may be partial. Retention runs per candidate and keeps whole blocks;
+windows select retained blocks afterward. Only selected blocks evaluate
+bindings and children.
+
+The runtimes use a parent block-size control with the unchanged grouping
+metadata shape and charge no grouping-key text. The
+[IntoBlocks contract](design/owned-group-into-blocks.md) defines the full
+callback, authenticated-member, resource and qualification requirements.
+
 ## Explicit owned failure-rule iteration
 
 Use `codegen::lower_with_basic_owned_failure_sources`, then
