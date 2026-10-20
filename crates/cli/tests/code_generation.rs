@@ -178,6 +178,8 @@ mod xml_mixed_document_outputs;
 mod xml_multiple_named_document_outputs;
 #[path = "code_generation/xml_output_sets.rs"]
 mod xml_output_sets;
+#[path = "code_generation/xml_owned_absence.rs"]
+mod xml_owned_absence;
 #[path = "code_generation/xml_text.rs"]
 mod xml_text;
 

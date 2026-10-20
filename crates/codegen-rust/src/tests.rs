@@ -53,6 +53,7 @@ mod scalar_functions;
 mod scalar_union;
 mod xml_inputs;
 mod xml_mixed_content;
+mod xml_mixed_owned_absence;
 mod xml_serialize;
 
 fn program() -> Program {

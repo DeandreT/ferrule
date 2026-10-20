@@ -1059,6 +1059,9 @@ mod trace_tests;
 #[cfg(test)]
 #[path = "tests/user_function.rs"]
 mod user_function_tests;
+#[cfg(test)]
+#[path = "tests/xml_owned_absence.rs"]
+mod xml_owned_absence_tests;
 
 #[cfg(test)]
 #[path = "tests/owned_collection.rs"]
