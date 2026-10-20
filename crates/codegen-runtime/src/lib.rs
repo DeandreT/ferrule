@@ -726,6 +726,7 @@ impl std::error::Error for RuntimeError {
             | Self::MissingRuntimeValue { .. }
             | Self::MissingRuntimeParameter { .. }
             | Self::RuntimeParameterType { .. }
+            | Self::PrimaryFilenameType { .. }
             | Self::UnknownTarget { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
