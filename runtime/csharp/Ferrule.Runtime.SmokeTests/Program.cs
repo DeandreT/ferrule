@@ -44,6 +44,8 @@ internal static partial class Program
             ("typed resolver errors", TypedResolverErrors),
             ("null and XML nil", NullAndXmlNil),
             ("double domain", DoubleDomain),
+            ("standalone decimal lexical domain", Decimal96Domain),
+            ("standalone decimal arithmetic", Decimal96Arithmetic),
             ("value maps", ValueMaps),
             ("CSV native scalar lexicals", CsvScalarLexicals),
             ("CSV native scalar refusals", CsvScalarRefusals),
